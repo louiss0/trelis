@@ -1,0 +1,392 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="4300" viewBox="0 0 1800 4300" role="img" aria-labelledby="title desc">
+<title id="title">Solar — Prompty CLI component theme</title>
+<desc id="desc">Throwaway visual prototype. Sunlit prompts that keep momentum moving forward. All 40 terminal components, with representative static states and a breathing row between selection titles and choices. Forward prompts / arrow choices / flowing navigation.</desc>
+<rect width="1800" height="4300" fill="#f4eacb"/>
+<style>text{font-family:'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace;font-variant-ligatures:none;white-space:pre} .editorial{font-family:Inter,'Segoe UI',sans-serif} text{font-kerning:none}</style>
+<text x="64" y="58" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="357" lengthAdjust="spacingAndGlyphs">PROMPTY  /  TERMINAL DESIGN STUDIES</text>
+<text x="1640" y="58" fill="#a66515" font-size="18" font-weight="400" class="" xml:space="preserve" textLength="75.6" lengthAdjust="spacingAndGlyphs">25 / 45</text>
+<text x="60" y="150" fill="#3d392b" font-size="80" font-weight="650" class="editorial" xml:space="preserve">Solar</text>
+<text x="64" y="199" fill="#7d745b" font-size="24" font-weight="400" class="editorial" xml:space="preserve">Sunlit prompts that keep momentum moving forward.</text>
+<text x="64" y="245" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="530.4" lengthAdjust="spacingAndGlyphs">Forward prompts / arrow choices / flowing navigation</text>
+<rect x="1450" y="115" width="32" height="32" fill="#fff7df" stroke="#d5c89f"/>
+<rect x="1496" y="115" width="32" height="32" fill="#3d392b" stroke="#d5c89f"/>
+<rect x="1542" y="115" width="32" height="32" fill="#7d745b" stroke="#d5c89f"/>
+<rect x="1588" y="115" width="32" height="32" fill="#a66515" stroke="#d5c89f"/>
+<rect x="1634" y="115" width="32" height="32" fill="#537843" stroke="#d5c89f"/>
+<rect x="1680" y="115" width="32" height="32" fill="#b44732" stroke="#d5c89f"/>
+<text x="1450" y="175" fill="#7d745b" font-size="14" font-weight="400" class="" xml:space="preserve" textLength="75.6" lengthAdjust="spacingAndGlyphs">TRUECOLOR</text>
+<text x="1450" y="201" fill="#7d745b" font-size="14" font-weight="400" class="" xml:space="preserve" textLength="134.4" lengthAdjust="spacingAndGlyphs">STATIC SPECIMENS</text>
+<path d="M64 307 H1736" stroke="#d5c89f"/>
+<path d="M64 857 H1736" stroke="#d5c89f"/>
+<path d="M64 1407 H1736" stroke="#d5c89f"/>
+<path d="M64 1957 H1736" stroke="#d5c89f"/>
+<path d="M64 2507 H1736" stroke="#d5c89f"/>
+<path d="M64 3057 H1736" stroke="#d5c89f"/>
+<path d="M64 277 H1736" stroke="#d5c89f"/>
+<text x="64" y="325" fill="#a66515" font-size="18" font-weight="650" class="" xml:space="preserve" textLength="108" lengthAdjust="spacingAndGlyphs">01 / INPUT</text>
+<text x="440" y="325" fill="#7d745b" font-size="18" font-weight="400" class="editorial" xml:space="preserve">Capture an answer</text>
+<g id="TextInput"><rect x="64" y="351" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="380" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">01  TextInput</text>
+<text x="84" y="403" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">FOCUSED</text>
+<text x="86" y="439" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">❯ Project name</text>
+<text x="86" y="458.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">  ❯ orbit▏</text>
+<text x="86" y="478" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="214.2" lengthAdjust="spacingAndGlyphs">  ↳ enter to continue</text>
+</g>
+<g id="Password"><rect x="629.333" y="351" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="380" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">02  Password</text>
+<text x="649.333" y="403" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="43.2" lengthAdjust="spacingAndGlyphs">MASKED</text>
+<text x="651.333" y="439" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">❯ Access token</text>
+<text x="651.333" y="458.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">  ❯ ••••••••••••▏</text>
+<text x="651.333" y="478" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  ↳ hidden / paste supported</text>
+</g>
+<g id="NumberInput"><rect x="1194.67" y="351" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="380" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">03  NumberInput</text>
+<text x="1214.67" y="403" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">INVALID</text>
+<text x="1216.67" y="439" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">❯ Worker count</text>
+<text x="1216.67" y="458.5" fill="#b44732" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="61.2" lengthAdjust="spacingAndGlyphs">  ❯ 0▏</text>
+<text x="1216.67" y="478" fill="#b44732" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  ! Must be between 1 and 16</text>
+<text x="1216.67" y="497.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">  ↳ default: 4</text>
+</g>
+<g id="Multiline"><rect x="64" y="609" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="638" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">04  Multiline</text>
+<text x="84" y="661" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">EDITING</text>
+<text x="86" y="697" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">❯ Release notes</text>
+<text x="86" y="716.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="244.8" lengthAdjust="spacingAndGlyphs">  1  Ship a smaller CLI.</text>
+<text x="86" y="736" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  2  Keep the good defaults.</text>
+<text x="86" y="755.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="61.2" lengthAdjust="spacingAndGlyphs">  3  ▏</text>
+<text x="86" y="775" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  ↳ alt+enter to submit</text>
+</g>
+<g id="Autocomplete"><rect x="629.333" y="609" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="638" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">05  Autocomplete</text>
+<text x="649.333" y="661" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="72" lengthAdjust="spacingAndGlyphs">SUGGESTING</text>
+<text x="651.333" y="697" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">❯ Package manager</text>
+<text x="651.333" y="716.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="651.333" y="736" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="51" lengthAdjust="spacingAndGlyphs">  pn▏</text>
+<text x="651.333" y="755.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="81.6" lengthAdjust="spacingAndGlyphs">  ❯ pnpm</text>
+<text x="651.333" y="775" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="81.6" lengthAdjust="spacingAndGlyphs">    pnpx</text>
+<text x="651.333" y="794.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">  ↳ tab to complete</text>
+</g>
+<g id="Confirm"><rect x="1194.67" y="609" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="638" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">06  Confirm</text>
+<text x="1214.67" y="661" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">PENDING</text>
+<text x="1216.67" y="697" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">❯ Create project?</text>
+<text x="1216.67" y="716.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="1216.67" y="736" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">  ❯ Yes  /  No</text>
+<text x="1216.67" y="755.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">  ↳ Y/n / default: yes</text>
+</g>
+<text x="64" y="875" fill="#a66515" font-size="18" font-weight="650" class="" xml:space="preserve" textLength="118.8" lengthAdjust="spacingAndGlyphs">02 / CHOICE</text>
+<text x="440" y="875" fill="#7d745b" font-size="18" font-weight="400" class="editorial" xml:space="preserve">Room between the question and options</text>
+<g id="Select"><rect x="64" y="901" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="930" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">07  Select</text>
+<text x="84" y="953" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">FOCUSED</text>
+<text x="86" y="989" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">❯ Choose a template</text>
+<text x="86" y="1008.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="86" y="1028" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">  ❯ Starter</text>
+<text x="86" y="1047.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">    Library</text>
+<text x="86" y="1067" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">    Workspace</text>
+<text x="86" y="1086.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="275.4" lengthAdjust="spacingAndGlyphs">  ↳ ↑/↓ move / enter select</text>
+</g>
+<g id="MultiSelect"><rect x="629.333" y="901" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="930" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">08  MultiSelect</text>
+<text x="649.333" y="953" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="72" lengthAdjust="spacingAndGlyphs">2 SELECTED</text>
+<text x="651.333" y="989" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">❯ Add integrations</text>
+<text x="651.333" y="1008.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="651.333" y="1028" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">  ❯ ✓ Lint</text>
+<text x="651.333" y="1047.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">    ✓ Tests</text>
+<text x="651.333" y="1067" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">    · Docs</text>
+<text x="651.333" y="1086.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  ↳ space toggle / 2 selected</text>
+</g>
+<g id="SearchSelect"><rect x="1194.67" y="901" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="930" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">09  SearchSelect</text>
+<text x="1214.67" y="953" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">FILTERED</text>
+<text x="1216.67" y="989" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">❯ Deployment region</text>
+<text x="1216.67" y="1008.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="1216.67" y="1028" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="71.4" lengthAdjust="spacingAndGlyphs">  / eu▏</text>
+<text x="1216.67" y="1047.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  ❯ eu-west-1   Ireland</text>
+<text x="1216.67" y="1067" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="255" lengthAdjust="spacingAndGlyphs">    eu-north-1  Stockholm</text>
+<text x="1216.67" y="1086.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">  ↳ 2 of 12 matches</text>
+</g>
+<g id="Checkbox"><rect x="64" y="1159" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="1188" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">10  Checkbox</text>
+<text x="84" y="1211" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">CHECKED</text>
+<text x="86" y="1247" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">❯ Telemetry</text>
+<text x="86" y="1266.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="86" y="1286" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="255" lengthAdjust="spacingAndGlyphs">  ✓ Share anonymous usage</text>
+<text x="86" y="1305.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">  · Include debug logs</text>
+<text x="86" y="1325" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">  ↳ space to toggle</text>
+</g>
+<g id="Radio"><rect x="629.333" y="1159" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="1188" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="91.8" lengthAdjust="spacingAndGlyphs">11  Radio</text>
+<text x="649.333" y="1211" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="64.8" lengthAdjust="spacingAndGlyphs">EXCLUSIVE</text>
+<text x="651.333" y="1247" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">❯ Release channel</text>
+<text x="651.333" y="1266.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="651.333" y="1286" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">  ❯ ◉ Stable</text>
+<text x="651.333" y="1305.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">    ○ Canary</text>
+<text x="651.333" y="1325" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">  ↳ one choice only</text>
+</g>
+<g id="TreeSelect"><rect x="1194.67" y="1159" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="1188" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">12  TreeSelect</text>
+<text x="1214.67" y="1211" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">EXPANDED</text>
+<text x="1216.67" y="1247" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">❯ Target workspace</text>
+<text x="1216.67" y="1266.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="1216.67" y="1286" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">  ▾ packages/</text>
+<text x="1216.67" y="1305.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">  ❯   ├─ cli/</text>
+<text x="1216.67" y="1325" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">    └─ core/</text>
+<text x="1216.67" y="1344.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="91.8" lengthAdjust="spacingAndGlyphs">  ▸ docs/</text>
+<text x="1216.67" y="1364" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  ↳ ←/→ expand / enter select</text>
+</g>
+<text x="64" y="1425" fill="#a66515" font-size="18" font-weight="650" class="" xml:space="preserve" textLength="226.8" lengthAdjust="spacingAndGlyphs">03 / INDIVIDUAL INPUT</text>
+<text x="440" y="1425" fill="#7d745b" font-size="18" font-weight="400" class="editorial" xml:space="preserve">One value. One focused interaction.</text>
+<g id="Toggle"><rect x="64" y="1451" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="1480" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">13  Toggle</text>
+<text x="84" y="1503" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="14.4" lengthAdjust="spacingAndGlyphs">ON</text>
+<text x="86" y="1539" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">❯ Automatic updates</text>
+<text x="86" y="1558.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">  ❯ [ ON ]   off</text>
+<text x="86" y="1578" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="346.8" lengthAdjust="spacingAndGlyphs">  ↳ space to switch / enter accept</text>
+</g>
+<g id="Slider"><rect x="629.333" y="1451" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="1480" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">14  Slider</text>
+<text x="649.333" y="1503" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="50.4" lengthAdjust="spacingAndGlyphs">6 OF 10</text>
+<text x="651.333" y="1539" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">❯ Compression level</text>
+<text x="651.333" y="1558.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">  0  ━━━━━━◆────  10</text>
+<text x="651.333" y="1578" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">  value: 6 / step: 1</text>
+<text x="651.333" y="1597.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  ↳ ←/→ adjust / enter accept</text>
+</g>
+<g id="DateInput"><rect x="1194.67" y="1451" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="1480" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">15  DateInput</text>
+<text x="1214.67" y="1503" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="93.6" lengthAdjust="spacingAndGlyphs">MONTH FOCUSED</text>
+<text x="1216.67" y="1539" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">❯ Launch date</text>
+<text x="1216.67" y="1558.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">  ❯ 2026 / [11] / 18</text>
+<text x="1216.67" y="1578" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">    YYYY    MM    DD</text>
+<text x="1216.67" y="1597.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  ↳ tab segment / ↑/↓ adjust</text>
+</g>
+<g id="TimeInput"><rect x="64" y="1709" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="1738" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">16  TimeInput</text>
+<text x="84" y="1761" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="86.4" lengthAdjust="spacingAndGlyphs">HOUR FOCUSED</text>
+<text x="86" y="1797" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">❯ Publish time</text>
+<text x="86" y="1816.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">  ❯ [09] : 30</text>
+<text x="86" y="1836" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">     HH    MM    24h</text>
+<text x="86" y="1855.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  ↳ tab segment / ↑/↓ adjust</text>
+</g>
+<g id="PathInput"><rect x="629.333" y="1709" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="1738" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">17  PathInput</text>
+<text x="649.333" y="1761" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="108" lengthAdjust="spacingAndGlyphs">VALID DIRECTORY</text>
+<text x="651.333" y="1797" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">❯ Output directory</text>
+<text x="651.333" y="1816.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">  ❯ ./dist/▏</text>
+<text x="651.333" y="1836" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="265.2" lengthAdjust="spacingAndGlyphs">  OK Directory is writable</text>
+<text x="651.333" y="1855.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="316.2" lengthAdjust="spacingAndGlyphs">  ↳ tab complete / enter accept</text>
+</g>
+<g id="Keypress"><rect x="1194.67" y="1709" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="1738" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">18  Keypress</text>
+<text x="1214.67" y="1761" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">CAPTURED</text>
+<text x="1216.67" y="1797" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">❯ Bind shortcut</text>
+<text x="1216.67" y="1816.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">  ❯ [ Ctrl + K ]</text>
+<text x="1216.67" y="1836" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">  Captured: Ctrl+K</text>
+<text x="1216.67" y="1855.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  ↳ press a key / esc cancel</text>
+</g>
+<text x="64" y="1975" fill="#a66515" font-size="18" font-weight="650" class="" xml:space="preserve" textLength="140.4" lengthAdjust="spacingAndGlyphs">04 / FEEDBACK</text>
+<text x="440" y="1975" fill="#7d745b" font-size="18" font-weight="400" class="editorial" xml:space="preserve">One task or many, at a glance</text>
+<g id="Text"><rect x="64" y="2001" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="2030" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="81.6" lengthAdjust="spacingAndGlyphs">19  Text</text>
+<text x="84" y="2053" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">SEMANTIC</text>
+<text x="86" y="2089" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">Build something small.</text>
+<text x="86" y="2108.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="244.8" lengthAdjust="spacingAndGlyphs">A quiet hint lives here.</text>
+<text x="86" y="2128" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">✓  Configuration valid</text>
+<text x="86" y="2147.5" fill="#b44732" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="265.2" lengthAdjust="spacingAndGlyphs">!  Token expires in 2 days</text>
+</g>
+<g id="Progress"><rect x="629.333" y="2001" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="2030" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">20  Progress</text>
+<text x="649.333" y="2053" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="21.6" lengthAdjust="spacingAndGlyphs">64%</text>
+<text x="651.333" y="2089" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">Installing dependencies</text>
+<text x="651.333" y="2108.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="651.333" y="2128" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="336.6" lengthAdjust="spacingAndGlyphs">━━━━━━━━━━━━━━━━━━──────────  64%</text>
+<text x="651.333" y="2147.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">128 / 200 packages</text>
+<text x="651.333" y="2167" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="255" lengthAdjust="spacingAndGlyphs">elapsed 00:08 / eta 00:04</text>
+</g>
+<g id="Spinner"><rect x="1194.67" y="2001" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="2030" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">21  Spinner</text>
+<text x="1214.67" y="2053" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="86.4" lengthAdjust="spacingAndGlyphs">STATIC FRAME</text>
+<text x="1216.67" y="2089" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">◓ Resolving packages...</text>
+<text x="1216.67" y="2108.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">  registry.npmjs.org</text>
+<text x="1216.67" y="2128" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="1216.67" y="2147.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">  ctrl+c to cancel</text>
+<text x="1216.67" y="2167" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="306" lengthAdjust="spacingAndGlyphs">  indeterminate / static frame</text>
+</g>
+<g id="MultiSpinner"><rect x="64" y="2259" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="2288" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">22  MultiSpinner</text>
+<text x="84" y="2311" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="115.2" lengthAdjust="spacingAndGlyphs">CONCURRENT TASKS</text>
+<text x="86" y="2347" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">Preparing workspace</text>
+<text x="86" y="2366.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="86" y="2386" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="255" lengthAdjust="spacingAndGlyphs">✓ Validate config    done</text>
+<text x="86" y="2405.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">◓ Install packages   running</text>
+<text x="86" y="2425" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">◓ Compile assets     running</text>
+<text x="86" y="2444.5" fill="#b44732" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="275.4" lengthAdjust="spacingAndGlyphs">! Publish preview    failed</text>
+<text x="86" y="2464" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">· Upload artifacts   waiting</text>
+<text x="86" y="2483.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="326.4" lengthAdjust="spacingAndGlyphs">2 running / 1 failed / 1 waiting</text>
+</g>
+<text x="64" y="2525" fill="#a66515" font-size="18" font-weight="650" class="" xml:space="preserve" textLength="248.4" lengthAdjust="spacingAndGlyphs">05 / SPECIALIZED VALUES</text>
+<text x="440" y="2525" fill="#7d745b" font-size="18" font-weight="400" class="editorial" xml:space="preserve">Structured values with useful context</text>
+<g id="TagInput"><rect x="64" y="2551" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="2580" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">23  TagInput</text>
+<text x="84" y="2603" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="43.2" lengthAdjust="spacingAndGlyphs">3 TAGS</text>
+<text x="86" y="2639" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">❯ Keywords</text>
+<text x="86" y="2658.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="244.8" lengthAdjust="spacingAndGlyphs">  ❯ &lt;dart&gt; &lt;cli&gt; &lt;tui&gt; ▏</text>
+<text x="86" y="2678" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="346.8" lengthAdjust="spacingAndGlyphs">  ↳ enter adds / backspace removes</text>
+</g>
+<g id="MaskedInput"><rect x="629.333" y="2551" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="2580" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">24  MaskedInput</text>
+<text x="649.333" y="2603" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="64.8" lengthAdjust="spacingAndGlyphs">FORMATTED</text>
+<text x="651.333" y="2639" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">❯ License key</text>
+<text x="651.333" y="2658.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  ❯ PRMP-7A__-____-____</text>
+<text x="651.333" y="2678" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">    XXXX-XXXX-XXXX-XXXX</text>
+<text x="651.333" y="2697.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="306" lengthAdjust="spacingAndGlyphs">  ↳ format applied as you type</text>
+</g>
+<g id="RegexInput"><rect x="1194.67" y="2551" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="2580" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">25  RegexInput</text>
+<text x="1214.67" y="2603" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="108" lengthAdjust="spacingAndGlyphs">VALID + MATCHES</text>
+<text x="1216.67" y="2639" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">❯ Version pattern</text>
+<text x="1216.67" y="2658.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">  ❯ r&quot;^v(\d+)\.\d+&quot;</text>
+<text x="1216.67" y="2678" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="244.8" lengthAdjust="spacingAndGlyphs">  OK 3 matches / 1 group</text>
+<text x="1216.67" y="2697.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  ↳ sample: v2.1, v3.0, v4.2</text>
+</g>
+<g id="URLInput"><rect x="64" y="2809" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="2838" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">26  URLInput</text>
+<text x="84" y="2861" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="36" lengthAdjust="spacingAndGlyphs">VALID</text>
+<text x="86" y="2897" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">❯ Documentation URL</text>
+<text x="86" y="2916.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="214.2" lengthAdjust="spacingAndGlyphs">  ❯ https://dart.dev▏</text>
+<text x="86" y="2936" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="275.4" lengthAdjust="spacingAndGlyphs">  OK HTTPS / host: dart.dev</text>
+<text x="86" y="2955.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">  ↳ enter to accept</text>
+</g>
+<g id="EmailInput"><rect x="629.333" y="2809" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="2838" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">27  EmailInput</text>
+<text x="649.333" y="2861" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="72" lengthAdjust="spacingAndGlyphs">COMPLETING</text>
+<text x="651.333" y="2897" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">❯ Maintainer email</text>
+<text x="651.333" y="2916.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="91.8" lengthAdjust="spacingAndGlyphs">  ❯ dev@▏</text>
+<text x="651.333" y="2936" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">    dev@dart.dev</text>
+<text x="651.333" y="2955.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  ↳ tab complete domain</text>
+</g>
+<g id="ColorInput"><rect x="1194.67" y="2809" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="2838" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">28  ColorInput</text>
+<text x="1214.67" y="2861" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="64.8" lengthAdjust="spacingAndGlyphs">TRUECOLOR</text>
+<text x="1216.67" y="2897" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">❯ Accent color</text>
+<text x="1216.67" y="2916.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">  ❯ #8A6FBF  ●</text>
+<text x="1216.67" y="2936" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="255" lengthAdjust="spacingAndGlyphs">  hex / RGB 138, 111, 191</text>
+<text x="1216.67" y="2955.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="336.6" lengthAdjust="spacingAndGlyphs">  ↳ named colors and hex accepted</text>
+</g>
+<g id="FilePicker"><rect x="64" y="3067" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="3096" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">29  FilePicker</text>
+<text x="84" y="3119" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="93.6" lengthAdjust="spacingAndGlyphs">FILE SELECTED</text>
+<text x="86" y="3155" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">❯ Entry file</text>
+<text x="86" y="3174.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="86" y="3194" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="61.2" lengthAdjust="spacingAndGlyphs">  lib/</text>
+<text x="86" y="3213.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">  ❯   ❯ main.dart</text>
+<text x="86" y="3233" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">      theme.dart</text>
+<text x="86" y="3252.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  ↳ file filter: *.dart</text>
+</g>
+<g id="DirectoryPicker"><rect x="629.333" y="3067" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="3096" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">30  DirectoryPicker</text>
+<text x="649.333" y="3119" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">BROWSING</text>
+<text x="651.333" y="3155" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">❯ Project folder</text>
+<text x="651.333" y="3174.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="651.333" y="3194" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="40.8" lengthAdjust="spacingAndGlyphs">  ..</text>
+<text x="651.333" y="3213.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="122.4" lengthAdjust="spacingAndGlyphs">  ❯   ❯ lib/</text>
+<text x="651.333" y="3233" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">      test/</text>
+<text x="651.333" y="3252.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">      example/</text>
+<text x="651.333" y="3272" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="357" lengthAdjust="spacingAndGlyphs">  ↳ enter opens / ctrl+enter select</text>
+</g>
+<g id="PortInput"><rect x="1194.67" y="3067" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="3096" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">31  PortInput</text>
+<text x="1214.67" y="3119" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="86.4" lengthAdjust="spacingAndGlyphs">INVALID PORT</text>
+<text x="1216.67" y="3155" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">❯ Listen port</text>
+<text x="1216.67" y="3174.5" fill="#b44732" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="102" lengthAdjust="spacingAndGlyphs">  ❯ 70000▏</text>
+<text x="1216.67" y="3194" fill="#b44732" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="244.8" lengthAdjust="spacingAndGlyphs">  ! Port must be 1-65535</text>
+<text x="1216.67" y="3213.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">  ↳ default: 8080</text>
+</g>
+<text x="64" y="3075" fill="#a66515" font-size="18" font-weight="650" class="" xml:space="preserve" textLength="248.4" lengthAdjust="spacingAndGlyphs">06 / FLOWS &amp; NAVIGATION</text>
+<text x="440" y="3075" fill="#7d745b" font-size="18" font-weight="400" class="editorial" xml:space="preserve">Files, priorities, shortcuts, and actions</text>
+<g id="IPAddressInput"><rect x="64" y="3101" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="3130" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">32  IPAddressInput</text>
+<text x="84" y="3153" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="28.8" lengthAdjust="spacingAndGlyphs">IPV6</text>
+<text x="86" y="3189" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="142.8" lengthAdjust="spacingAndGlyphs">❯ Bind address</text>
+<text x="86" y="3208.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="81.6" lengthAdjust="spacingAndGlyphs">  ❯ ::1▏</text>
+<text x="86" y="3228" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="275.4" lengthAdjust="spacingAndGlyphs">  IPv6 / loopback interface</text>
+<text x="86" y="3247.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  ↳ IPv4, IPv6, or CIDR</text>
+</g>
+<g id="DurationInput"><rect x="629.333" y="3101" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="3130" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">33  DurationInput</text>
+<text x="649.333" y="3153" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="100.8" lengthAdjust="spacingAndGlyphs">HUMAN READABLE</text>
+<text x="651.333" y="3189" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">❯ Request timeout</text>
+<text x="651.333" y="3208.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">  ❯ 1h 30m▏</text>
+<text x="651.333" y="3228" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  = 90 minutes / 5400 seconds</text>
+<text x="651.333" y="3247.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  ↳ examples: 90s, 2m, 1h 30m</text>
+</g>
+<g id="CronInput"><rect x="1194.67" y="3101" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="3130" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">34  CronInput</text>
+<text x="1214.67" y="3153" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">NEXT RUN</text>
+<text x="1216.67" y="3189" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">❯ Backup schedule</text>
+<text x="1216.67" y="3208.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">  ❯ 0 2 * * 1</text>
+<text x="1216.67" y="3228" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="234.6" lengthAdjust="spacingAndGlyphs">  Every Monday at 02:00</text>
+<text x="1216.67" y="3247.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="275.4" lengthAdjust="spacingAndGlyphs">  ↳ next: Mon 18 May, 02:00</text>
+</g>
+<g id="TimezoneSelect"><rect x="64" y="3359" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="3388" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">35  TimezoneSelect</text>
+<text x="84" y="3411" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">FILTERED</text>
+<text x="86" y="3447" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">❯ Schedule timezone</text>
+<text x="86" y="3466.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="86" y="3486" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">  / new yo▏</text>
+<text x="86" y="3505.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="204" lengthAdjust="spacingAndGlyphs">  ❯ America/New_York</text>
+<text x="86" y="3525" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">    UTC-04:00 / EDT</text>
+<text x="86" y="3544.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  ↳ city, zone, or UTC offset</text>
+</g>
+<g id="RangeSlider"><rect x="629.333" y="3359" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="3388" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">36  RangeSlider</text>
+<text x="649.333" y="3411" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="57.6" lengthAdjust="spacingAndGlyphs">20 TO 80</text>
+<text x="651.333" y="3447" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">❯ Confidence range</text>
+<text x="651.333" y="3466.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="326.4" lengthAdjust="spacingAndGlyphs">  0  ━━━━◆────────────◆━━━━  100</text>
+<text x="651.333" y="3486" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="285.6" lengthAdjust="spacingAndGlyphs">  minimum: 20    maximum: 80</text>
+<text x="651.333" y="3505.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="295.8" lengthAdjust="spacingAndGlyphs">  ↳ tab endpoint / ↑/↓ adjust</text>
+</g>
+<g id="SortableSelect"><rect x="1194.67" y="3359" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="3388" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">37  SortableSelect</text>
+<text x="1214.67" y="3411" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="64.8" lengthAdjust="spacingAndGlyphs">REORDERED</text>
+<text x="1216.67" y="3447" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="214.2" lengthAdjust="spacingAndGlyphs">❯ Validation priority</text>
+<text x="1216.67" y="3466.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="1216.67" y="3486" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">  ❯ 1. Required fields</text>
+<text x="1216.67" y="3505.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">    2. Schema</text>
+<text x="1216.67" y="3525" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="193.8" lengthAdjust="spacingAndGlyphs">    3. Custom rules</text>
+<text x="1216.67" y="3544.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="316.2" lengthAdjust="spacingAndGlyphs">  ↳ ↑/↓ move / ctrl+↑/↓ reorder</text>
+</g>
+<g id="KeyChordInput"><rect x="64" y="3617" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="84" y="3646" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="173.4" lengthAdjust="spacingAndGlyphs">38  KeyChordInput</text>
+<text x="84" y="3669" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="79.2" lengthAdjust="spacingAndGlyphs">2-KEY CHORD</text>
+<text x="86" y="3705" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">❯ Open command palette</text>
+<text x="86" y="3724.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">  ❯ [ Ctrl+K, Ctrl+C ]</text>
+<text x="86" y="3744" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="275.4" lengthAdjust="spacingAndGlyphs">  2-key chord / no conflict</text>
+<text x="86" y="3763.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="265.2" lengthAdjust="spacingAndGlyphs">  ↳ esc clear / enter bind</text>
+</g>
+<g id="StepperForm"><rect x="629.333" y="3617" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="649.333" y="3646" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">39  StepperForm</text>
+<text x="649.333" y="3669" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="79.2" lengthAdjust="spacingAndGlyphs">STEP 2 OF 4</text>
+<text x="651.333" y="3705" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">❯ New workspace</text>
+<text x="651.333" y="3724.5" fill="#537843" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="224.4" lengthAdjust="spacingAndGlyphs">  1  Project     orbit</text>
+<text x="651.333" y="3744" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="255" lengthAdjust="spacingAndGlyphs">  ❯ 2  Runtime     [Dart]</text>
+<text x="651.333" y="3763.5" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="132.6" lengthAdjust="spacingAndGlyphs">  3  Features</text>
+<text x="651.333" y="3783" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">  4  Review</text>
+<text x="651.333" y="3802.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="306" lengthAdjust="spacingAndGlyphs">  ↳ enter next / alt+left back</text>
+</g>
+<g id="CommandPalette"><rect x="1194.67" y="3617" width="541.333" height="240" fill="#fff7df" stroke="#d5c89f"/>
+<text x="1214.67" y="3646" fill="#3d392b" font-size="17" font-weight="650" class="" xml:space="preserve" textLength="183.6" lengthAdjust="spacingAndGlyphs">40  CommandPalette</text>
+<text x="1214.67" y="3669" fill="#7d745b" font-size="12" font-weight="400" class="" xml:space="preserve" textLength="93.6" lengthAdjust="spacingAndGlyphs">FUZZY COMMAND</text>
+<text x="1216.67" y="3705" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="153" lengthAdjust="spacingAndGlyphs">❯ Run a command</text>
+<text x="1216.67" y="3724.5" fill="#d5c89f" font-size="17" font-weight="400" class="" xml:space="preserve"></text>
+<text x="1216.67" y="3744" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="112.2" lengthAdjust="spacingAndGlyphs">  &gt; new pr▏</text>
+<text x="1216.67" y="3763.5" fill="#a66515" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">  ❯ Project: New</text>
+<text x="1216.67" y="3783" fill="#3d392b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="163.2" lengthAdjust="spacingAndGlyphs">    Profile: New</text>
+<text x="1216.67" y="3802.5" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="214.2" lengthAdjust="spacingAndGlyphs">    Preferences: Open</text>
+<text x="1216.67" y="3822" fill="#7d745b" font-size="17" font-weight="400" class="" xml:space="preserve" textLength="306" lengthAdjust="spacingAndGlyphs">  ↳ type to filter / enter run</text>
+</g>
+<path d="M64 4160 H1736" stroke="#d5c89f"/>
+<text x="64" y="4197" fill="#7d745b" font-size="15" font-weight="400" class="" xml:space="preserve" textLength="405" lengthAdjust="spacingAndGlyphs">THROWAWAY PROTOTYPE  /  NO THEME SELECTED YET</text>
+<text x="64" y="4233" fill="#7d745b" font-size="15" font-weight="400" class="editorial" xml:space="preserve">40 components · 45 directions · terminal-native primitives</text>
+<text x="1360" y="4233" fill="#a66515" font-size="15" font-weight="400" class="" xml:space="preserve" textLength="171" lengthAdjust="spacingAndGlyphs">example / solar.svg</text>
+</svg>

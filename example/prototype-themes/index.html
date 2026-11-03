@@ -1,0 +1,152 @@
+<!doctype html>
+<!-- THROWAWAY UI PROTOTYPE: 15 image-based CLI themes, ?variant=signal.
+     No existing web route exists in this Dart package. No production widgets. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompty — Terminal theme atlas</title>
+<style>
+:root { color-scheme: light; --ink:#242521; --muted:#686a61; --paper:#f4f3ed; --line:#d9dbcf; --green:#3b5333; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.5 'Segoe UI',system-ui,sans-serif; padding-bottom:125px; }
+a { color:inherit; } button,select { font:inherit; } button,a,select { -webkit-tap-highlight-color:transparent; }
+button { cursor:pointer; } :focus-visible { outline:3px solid #5a7d43; outline-offset:4px; }
+.top { border-bottom:1px solid var(--line); padding:19px max(28px,calc((100vw - 1450px)/2)); display:flex; justify-content:space-between; gap:20px; align-items:center; }
+.brand { font-weight:750; letter-spacing:-1px; font-size:24px; text-decoration:none; } .brand span { color:var(--green); }
+.eyebrow,.tag,.number { font:11px/1.4 Consolas,monospace; letter-spacing:1.4px; text-transform:uppercase; }
+.tag { border:1px solid #bdc6b4; border-radius:3px; color:var(--green); padding:6px 9px; }
+main { max-width:1506px; margin:auto; padding:48px 28px 0; }
+.hero { display:flex; justify-content:space-between; align-items:flex-end; gap:35px; padding-bottom:34px; }
+h1 { font-size:clamp(40px,5.6vw,76px); line-height:1.05; letter-spacing:-3px; font-weight:550; margin:13px 0 20px; }
+.hero p { color:var(--muted); max-width:640px; font-size:17px; margin:0; }
+.stats { display:flex; gap:28px; padding-bottom:5px; flex-shrink:0; }
+.stat strong { display:block; font:40px/1.1 Consolas,monospace; font-weight:400; }
+.stat span { font-size:12px; color:var(--muted); }
+.toolbar { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:15px 0; display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:28px; }
+.toolbar p { margin:0; color:var(--muted); font-size:13px; }
+.views { display:flex; gap:5px; flex-shrink:0; }
+.views button { background:transparent; color:var(--muted); padding:7px 13px; border:0; border-radius:4px; }
+.views button[aria-pressed=true] { background:var(--ink); color:white; }
+.grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:32px 24px; }
+.theme { text-align:left; width:100%; display:block; background:transparent; color:inherit; border:0; padding:0; text-decoration:none; }
+.thumb { display:block; overflow:hidden; border:1px solid #0002; aspect-ratio:1.17; background:#e2e2d8; }
+.thumb img { width:100%; height:100%; object-fit:cover; object-position:top; display:block; transition:transform .22s ease; }
+.theme:hover .thumb img { transform:scale(1.025); }
+.card-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:13px; }
+.card-heading h2 { font-size:21px; margin:0; font-weight:600; letter-spacing:-.5px; }
+.number { color:var(--muted); margin-right:12px; }
+.dots { display:flex; gap:5px; }.dot { width:11px; height:11px; border-radius:50%; border:1px solid #0002; display:inline-block; }
+.theme p { margin:4px 0 0 34px; color:var(--muted); font-size:13px; }
+.detail-head { display:flex; justify-content:space-between; gap:25px; align-items:flex-start; margin:3px 0 25px; }
+.detail-head h2 { margin:0; font-size:36px; letter-spacing:-1px; line-height:1.1; font-weight:600; }
+.detail-head p { margin:10px 0 0; color:var(--muted); }
+.actions { display:flex; gap:9px; flex-shrink:0; align-items:center; }
+.action { border:1px solid #c4c7ba; border-radius:4px; padding:9px 14px; background:transparent; color:var(--ink); text-decoration:none; display:inline-block; font-size:13px; }
+.action.primary { background:var(--ink); border-color:var(--ink); color:white; }
+.sheet-wrap { overflow:auto; border:1px solid #0002; background:#ddd; }
+.sheet { display:block; width:100%; height:auto; }.sheet.actual { width:1800px; max-width:none; }
+.state { border:1px solid var(--line); margin-top:22px; padding:16px 20px; font-size:13px; }
+.state summary { cursor:pointer; font-weight:600; }.state-body { padding-top:12px; }
+.state pre { white-space:pre-wrap; font:12px/1.8 Consolas,monospace; color:var(--muted); margin:0 0 12px; }
+.tokens { display:flex; gap:8px; flex-wrap:wrap; }.token { display:flex; gap:7px; align-items:center; border:1px solid var(--line); padding:5px 8px; font:11px Consolas,monospace; }
+.coverage { margin:35px 0 15px; border-top:1px solid var(--line); padding-top:22px; display:grid; grid-template-columns:140px 1fr; gap:20px; color:var(--muted); font-size:13px; }
+.coverage p { margin:0 0 10px; } .coverage strong { color:var(--ink); font-weight:600; }
+.switcher { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); display:flex; align-items:center; gap:5px; border:1px solid #ffffff25; border-radius:12px; padding:8px; background:#252820; color:#f6f6ee; box-shadow:0 8px 30px #0003; z-index:2; }
+.switcher button { border:0; background:transparent; color:inherit; min-width:40px; height:40px; border-radius:5px; font-size:21px; }
+.switcher button:hover { background:#ffffff18; }.switcher select { width:220px; color:inherit; background:#252820; border:0; padding:8px; cursor:pointer; font:14px Consolas,monospace; }
+.switcher .home { border-left:1px solid #ffffff28; border-radius:0; font-size:13px; min-width:68px; }
+.switcher .hint { font:11px Consolas,monospace; padding:0 10px; color:#bfc7b3; }
+[hidden] { display:none !important; }
+@media(max-width:950px) { .hero { display:block; }.stats { margin-top:30px; }.grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.detail-head { flex-wrap:wrap; } }
+@media(max-width:580px) { main { padding:30px 18px 0; }.top { padding:14px 18px; }.eyebrow { font-size:10px; }h1 { letter-spacing:-1.5px; }.hero p { font-size:15px; }.grid { grid-template-columns:1fr; gap:28px; }.stats { gap:28px; }.stat strong { font-size:30px; }.toolbar { align-items:flex-start; flex-direction:column; gap:10px; }.switcher { bottom:12px; gap:0; padding:6px; max-width:calc(100% - 20px); }.switcher select { width:185px; }.switcher .hint { display:none; }.coverage { grid-template-columns:1fr; gap:5px; }.tag { font-size:9px; letter-spacing:.5px; }.actions { flex-wrap:wrap; } }
+@media(prefers-reduced-motion:reduce) { * { transition:none !important; } }
+@media print { .top,.hero,.toolbar,.switcher,.coverage,.detail-head,.state { display:none !important; }body,main { padding:0; margin:0; background:white; }.sheet-wrap { border:0; }.sheet,.sheet.actual { width:100%; }.grid { display:block; }.theme { break-after:page; }.thumb { aspect-ratio:auto; }.thumb img { height:auto; } }
+</style>
+</head>
+<body>
+<header class="top"><a href="?view=grid" class="brand">prompty<span>_</span></a><a class="eyebrow" href="structures.html">Explore 15 structures ↗</a><span class="tag">Throwaway prototype</span></header>
+<main>
+<section class="hero"><div><div class="eyebrow">Design study / 001 — 045</div><h1>A little more character.</h1><p>Forty-five ways a command line could feel. Same components, same content, radically different voices. Find a direction—or borrow the best bits.</p></div><div class="stats"><div class="stat"><strong id="theme-count">45</strong><span>design languages</span></div><div class="stat"><strong id="component-count">40</strong><span>components each</span></div><div class="stat"><strong id="specimen-count">1800</strong><span>visual specimens</span></div></div></section>
+<div class="toolbar"><div class="views"><button id="grid-view" aria-pressed="true">All directions</button><button id="sheet-view" aria-pressed="false">Component sheet</button></div><p>SVG images · terminal-native · no library changes · nothing saved</p></div>
+<section id="grid" class="grid" aria-label="45 theme directions"></section>
+<section id="detail" hidden aria-label="Selected theme">
+<div class="detail-head"><div><div class="eyebrow" id="theme-index"></div><h2 id="theme-name"></h2><p id="theme-description"></p></div><div class="actions"><button class="action" id="zoom" aria-pressed="false">View at 100%</button><a class="action" id="open-svg" target="_blank" rel="noopener">Open SVG ↗</a><a class="action" id="download-png" download>PNG ↓</a><a class="action primary" id="download" download>SVG ↓</a></div></div>
+<div class="sheet-wrap" id="sheet-wrap"><img class="sheet" id="sheet" width="1800" height="4300" alt=""></div>
+<details class="state" open><summary>Prototype state &amp; terminal tokens</summary><div class="state-body"><pre id="state"></pre><div class="tokens" id="tokens"></div></div></details>
+</section>
+<footer class="coverage"><div class="eyebrow">Complete coverage</div><div><p><strong>Input</strong> &nbsp; TextInput · Password · NumberInput · Multiline · Autocomplete · Confirm</p><p><strong>Choice</strong> &nbsp; Select · MultiSelect · SearchSelect · Checkbox · Radio · TreeSelect</p><p><strong>Individual input</strong> &nbsp; Toggle · Slider · DateInput · TimeInput · PathInput · Keypress</p><p><strong>Feedback</strong> &nbsp; Text · Progress · Spinner · MultiSpinner</p><p><strong>Specialized values</strong> &nbsp; TagInput · MaskedInput · RegexInput · URLInput · EmailInput · ColorInput · FilePicker · DirectoryPicker · PortInput · IPAddressInput · DurationInput · CronInput · TimezoneSelect</p><p><strong>Flows &amp; navigation</strong> &nbsp; RangeSlider · SortableSelect · KeyChordInput · StepperForm · CommandPalette</p><p>These are static visual directions, not working prompts. Spinners show a static snapshot. Selection titles have a blank row before their options. No final theme has been chosen. Use ← / → to compare; select a theme below to share its URL.</p></div></footer>
+</main>
+<nav class="switcher" aria-label="Prototype variant switcher"><button id="prev" aria-label="Previous theme">←</button><select id="variants" aria-label="Theme direction"></select><button id="next" aria-label="Next theme">→</button><span class="hint">45 STUDIES</span><button id="overview" class="home" aria-label="Show all themes">All 45</button></nav>
+<script src="themes.js"></script>
+<script>
+const themes = window.THEMES;
+const $ = id => document.getElementById(id);
+let selected = 0, view = 'grid', actual = false;
+const tokenNames = ['canvas','terminal','text','muted','accent','on-accent','success','error','rule'];
+$('theme-count').textContent=themes.length;
+$('component-count').textContent=themes[0].components.length;
+$('specimen-count').textContent=themes.reduce((total,theme)=>total+theme.components.length,0);
+for (const theme of themes) {
+  const card = document.createElement('a');
+  card.className = 'theme';
+  card.href = '?variant='+theme.id;
+  card.setAttribute('aria-label',theme.name+' — open all '+theme.components.length+' components');
+  const frame = document.createElement('span'); frame.className = 'thumb';
+  const img = document.createElement('img'); img.src = theme.svg; img.alt = theme.name+' CLI component sheet preview'; img.loading = 'lazy'; img.width=theme.width; img.height=theme.height;
+  frame.append(img); card.append(frame);
+  const heading = document.createElement('div'); heading.className = 'card-heading';
+  const title = document.createElement('h2');
+  const num = document.createElement('span'); num.className='number'; num.textContent=String(theme.number).padStart(2,'0');
+  title.append(num,theme.name); heading.append(title);
+  const dots = document.createElement('span'); dots.className='dots'; dots.setAttribute('aria-hidden','true');
+  for (const color of [theme.palette[1],theme.palette[4],theme.palette[6]]) { const dot = document.createElement('i'); dot.className='dot'; dot.style.background=color; dots.append(dot); }
+  heading.append(dots); card.append(heading);
+  const desc = document.createElement('p'); desc.textContent=theme.description; card.append(desc);
+  card.addEventListener('click',event=>{ if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey) return; event.preventDefault(); navigate(theme.number-1,'sheet',true); });
+  $('grid').append(card);
+  const option = document.createElement('option'); option.value=theme.id; option.textContent=String(theme.number).padStart(2,'0')+' / '+theme.name; $('variants').append(option);
+}
+function readURL() {
+  const params = new URLSearchParams(location.search);
+  const found = themes.findIndex(t=>t.id===params.get('variant'));
+  selected = found<0 ? 0 : found;
+  view = params.get('view')==='grid'||!params.has('variant') ? 'grid' : 'sheet';
+  render();
+}
+function navigate(index,nextView,scroll=false) {
+  selected = (index+themes.length)%themes.length; view=nextView; actual=false;
+  const url = new URL(location.href); url.searchParams.set('variant',themes[selected].id);
+  if(view==='grid') url.searchParams.set('view','grid'); else url.searchParams.delete('view');
+  history.pushState(null,'',url); render();
+  if(scroll) window.scrollTo({top:0,behavior:'instant'});
+}
+function render() {
+  const theme=themes[selected];
+  $('grid').hidden=view!=='grid'; $('detail').hidden=view!=='sheet';
+  $('grid-view').setAttribute('aria-pressed',view==='grid'); $('sheet-view').setAttribute('aria-pressed',view==='sheet');
+  $('variants').value=theme.id;
+  $('theme-index').textContent='DIRECTION '+String(theme.number).padStart(2,'0')+' / '+themes.length;
+  $('theme-name').textContent=theme.name; $('theme-description').textContent=theme.description;
+  $('sheet').src=theme.svg; $('sheet').width=theme.width; $('sheet').height=theme.height;
+  $('sheet').alt=theme.name+': all '+theme.components.length+' CLI components. '+theme.grammar+'. Static visual prototype.';
+  $('sheet').classList.toggle('actual',actual); $('zoom').textContent=actual?'Fit to width':'View at 100%'; $('zoom').setAttribute('aria-pressed',actual);
+  $('download').href=theme.svg; $('download-png').href=theme.svg.replace('.svg','.png'); $('open-svg').href=theme.svg;
+  $('state').textContent=JSON.stringify({variant:theme.id,view,grammar:theme.mode,design:theme.grammar,components:theme.components.length,selectionGap:'one blank row between title and choices',interaction:'static SVG specimens',persistence:'none',selectedForProduction:false},null,2);
+  $('tokens').replaceChildren();
+  theme.palette.forEach((color,i)=>{ const token=document.createElement('span'); token.className='token'; const dot=document.createElement('i'); dot.className='dot'; dot.style.background=color; token.append(dot,tokenNames[i]+' '+color); $('tokens').append(token); });
+  document.title=(view==='sheet'?theme.name+' — ':'')+'Prompty theme atlas';
+}
+$('prev').onclick=()=>navigate(selected-1,'sheet'); $('next').onclick=()=>navigate(selected+1,'sheet');
+$('variants').onchange=e=>navigate(themes.findIndex(t=>t.id===e.target.value),'sheet');
+$('overview').onclick=()=>navigate(selected,'grid',true); $('grid-view').onclick=()=>navigate(selected,'grid'); $('sheet-view').onclick=()=>navigate(selected,'sheet');
+$('zoom').onclick=()=>{actual=!actual;render();};
+window.addEventListener('popstate',()=>{actual=false;readURL();});
+window.addEventListener('keydown',event=>{
+  if(event.altKey||event.ctrlKey||event.metaKey||event.shiftKey||event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
+  if(event.key==='ArrowLeft'||event.key==='ArrowRight') { event.preventDefault(); navigate(selected+(event.key==='ArrowRight'?1:-1),'sheet'); }
+});
+readURL();
+</script>
+</body>
+</html>

@@ -1,39 +1,58 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# Prompty
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+A Dart prompting-library project, currently at the design-to-implementation
+stage. The visual studies and terminal-backend trials are complete; the public
+prompt API is not implemented yet.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/tools/pub/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
+## Visual reference
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+Open [the 15 prompt structures](example/prototype-themes/structures.html) to
+compare layout grammars, or browse [the 45-theme atlas](example/prototype-themes/index.html).
+The complete folder is retained so the structure page's data, gallery links and
+images work together. These are static visual references, not working prompts.
 
-## Features
+Open the HTML directly, or serve it locally:
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
-
-## Usage
-
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
-```dart
-const like = 'sample';
+```powershell
+python example/prototype-themes/serve.py
 ```
 
-## Additional information
+Then visit <http://127.0.0.1:8765/structures.html>.
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+## Terminal backend and patch
+
+The validated implementation direction is **Dart TUI (`dart_tui`)**, rather
+than combining it with or extending the `dart_console` prototype backend.
+
+**Important: the successful Windows trials used a local patch to Dart TUI
+3.0.0.** Unmodified 3.0.0 failed exact echo/line-input restoration. Main records
+the decision but does not install either backend or carry the patched package.
+
+Read [the backend relationship, patch details and archived evidence](docs/terminal-backend.md).
+
+## Components used to make the themes
+
+The atlas depicts **40 named components** across 45 themes. See the
+[complete component-name inventory](docs/theme-components.md), sourced directly
+from the atlas generator. The structures page compares four of those components
+across fifteen structures; neither inventory is a claim of implemented APIs.
+
+## Archived prototypes
+
+- Branch: `prototype/cli-theme-atlas`
+- Commit: `8483a5a343bb595fdbeb3b3b5881e5233c285e90`
+
+That commit preserves both backend trials, their real Windows-console tests,
+and the locally patched Dart TUI snapshot. Main retains only the visual
+references and the conclusions needed for implementation.
+
+## Check the Dart package
+
+```powershell
+dart pub get
+dart analyze
+dart test
+```
+
+The current package/test are still the initial scaffold; the archived console
+interaction tests are not present or runnable on main.
