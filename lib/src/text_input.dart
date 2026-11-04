@@ -3302,6 +3302,9 @@ final class TagInput {
           extraCommands: const {'/done', '/list', '/edit', '/remove'},
           intercept: mode == PromptMode.rich
               ? (key, text) {
+                  if (key == '\x18' && text.isNotEmpty) {
+                    return 'discard-draft';
+                  }
                   if (key == '\t') {
                     finishFocused = true;
                     input.output.writeln('Finish focused; Enter submits.');
@@ -3310,7 +3313,7 @@ final class TagInput {
                   if (finishFocused && (key == '\r' || key == '\n')) {
                     if (text.isNotEmpty) {
                       input.output.writeln(
-                        'Add or discard the draft before finishing.',
+                        'Add the draft or press Ctrl+X to discard it before finishing.',
                       );
                       finishFocused = false;
                       return 'handled';
@@ -3355,6 +3358,13 @@ final class TagInput {
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action == 'finish') return Accepted(tags);
+        if (result.action == 'discard-draft') {
+          draft = '';
+          editing = null;
+          finishFocused = false;
+          input.output.writeln('Draft discarded.');
+          continue;
+        }
         if (result.action == 'edit-focused') {
           editing = focused;
           draft = tags[editing!];

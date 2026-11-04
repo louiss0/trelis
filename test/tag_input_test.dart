@@ -4,6 +4,16 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich draft must be explicitly discarded before finish', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(Stream.value('unfinished\t\r\x18\t\r'), output),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<List<String>>).value, isEmpty);
+    expect(output.toString(), contains('discard'));
+    expect(output.toString(), contains('Draft discarded'));
+  });
   test('orphan combining mark is rejected while editable', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
