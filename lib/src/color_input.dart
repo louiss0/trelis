@@ -46,7 +46,15 @@ final class ColorInput {
   void _showPreview(String text) {
     final value = _parseColor(text);
     final sink = _sink;
-    if (value == null || sink == null) return;
+    if (sink == null) return;
+    if (value == null) {
+      sink.writeln(
+        text.isEmpty
+            ? 'Preview unavailable: no color entered.'
+            : 'Preview unavailable: draft is not a valid color.',
+      );
+      return;
+    }
     String byte(double v) =>
         (v * 255).round().toRadixString(16).padLeft(2, '0');
     sink.writeln(

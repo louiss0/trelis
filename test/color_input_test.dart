@@ -4,6 +4,20 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('invalidated draft explicitly withdraws previous preview', () async {
+    final controller = StreamController<String>();
+    final out = StringBuffer();
+    final future = ColorInput('Color', initialValue: '#fff').prompt(
+      source: ScriptedInput(controller.stream, out),
+      mode: PromptMode.linear,
+    );
+    controller.add('x');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(out.toString(), contains('Preview unavailable'));
+    controller.add('/cancel\r');
+    await controller.close();
+    await future;
+  });
   test('accepted source can be supplied as an editable default', () async {
     final source = 'rgba(12.345678 10 20 / 0.123456789)';
     final value = (await ColorInput(
