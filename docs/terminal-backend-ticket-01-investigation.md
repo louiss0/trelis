@@ -1,7 +1,8 @@
 # Ticket 01 backend investigation (incomplete)
 
-This is an investigation, not a backend selection or a lifecycle pass. No probe
-has been implemented or qualified yet.
+This records the initial investigation, not a backend selection or a lifecycle
+pass. For subsequent probe implementation and observed evidence, see
+[Windows terminal lifecycle probe](terminal-probe.md).
 
 ## Source inspected
 
@@ -42,9 +43,9 @@ this ticket.
 
 The current command host reported `[Console]::IsInputRedirected`,
 `[Console]::IsOutputRedirected`, and `[Console]::IsErrorRedirected` as `True`.
-A separate native-console harness may still be possible; it was not run here.
-No submit, Escape, Ctrl+C, EOF, recoverable-error or repeated-session native
-integration checks were run. There is no NVDA qualification.
+At this investigation stage no separate native-console harness or submit,
+Escape, Ctrl+C, EOF, recoverable-error or repeated-session checks had been run.
+Subsequent probe evidence is recorded separately. There is no NVDA qualification.
 
 Implement and test a real probe, explicitly account for backend limitations,
 then run native original/final input-mode and cursor-state comparisons for each
