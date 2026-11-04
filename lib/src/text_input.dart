@@ -2,38 +2,61 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 
 sealed class PromptResult<T> {}
+
 final class Accepted<T> extends PromptResult<T> {
   Accepted(this.value);
   final T value;
 }
+
 final class InputEnded<T> extends PromptResult<T> {}
+
 final class Cancelled<T> extends PromptResult<T> {}
+
 final class Interrupted<T> extends PromptResult<T> {}
+
 final class Unavailable<T> extends PromptResult<T> {
   Unavailable(this.reason);
   final String reason;
 }
+
 sealed class PromptSource {}
+
 final class SuppliedAnswer extends PromptSource {
   SuppliedAnswer(this.value);
   final String value;
 }
+
 final class ScriptedInput extends PromptSource {
   ScriptedInput(this.input, this.output, {this.supportsRich = true});
   final Stream<String> input;
   final StringSink output;
   final bool supportsRich;
 }
+
 enum PromptMode { rich, linear, automatic }
+
 final class TextInput {
-  TextInput(this.label, {this.initialValue = '', this.required = false, this.validate, this.maxLength}) {
+  TextInput(
+    this.label, {
+    this.initialValue = '',
+    this.required = false,
+    this.validate,
+    this.maxLength,
+  }) {
     if (label.trim().isEmpty) throw ArgumentError.value(label, 'label');
-    if (maxLength != null && maxLength! < 0) throw ArgumentError.value(maxLength, 'maxLength');
-    if (initialValue.contains('\n') || initialValue.contains('\r') || (maxLength != null && initialValue.characters.length > maxLength!)) throw ArgumentError.value(initialValue, 'initialValue');
+    if (maxLength != null && maxLength! < 0) {
+      throw ArgumentError.value(maxLength, 'maxLength');
+    }
+    if (initialValue.contains('\n') ||
+        initialValue.contains('\r') ||
+        (maxLength != null && initialValue.characters.length > maxLength!)) {
+      throw ArgumentError.value(initialValue, 'initialValue');
+    }
   }
   final String label;
   final String initialValue;
@@ -41,24 +64,40 @@ final class TextInput {
   final int? maxLength;
   final String? Function(String)? validate;
   bool _active = false;
-  Future<PromptResult<String>> prompt({PromptSource? source, PromptMode? mode, PromptMode? userPreference, PromptMode? applicationPreference}) async {
+  Future<PromptResult<String>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+  }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      final selected = mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
       if (source == null) return await _terminal(selected);
       return await _run(source, selected);
     } finally {
       _active = false;
     }
   }
+
   Future<PromptResult<String>> _terminal(PromptMode mode) async {
     if (!Platform.isWindows || !stdin.hasTerminal) {
-      return Unavailable('Interactive console input is unavailable; supply an explicit input source.');
+      return Unavailable(
+        'Interactive console input is unavailable; supply an explicit input source.',
+      );
     }
-    final rich = mode == PromptMode.rich || (mode == PromptMode.automatic && stderr.hasTerminal);
+    final rich =
+        mode == PromptMode.rich ||
+        (mode == PromptMode.automatic && stderr.hasTerminal);
     if (rich && !stderr.hasTerminal) {
-      return Unavailable('Rich interaction unavailable on stderr; use linear or automatic mode.');
+      return Unavailable(
+        'Rich interaction unavailable on stderr; use linear or automatic mode.',
+      );
     }
     final console = _Console();
     final input = console.getHandle(-10);
@@ -83,23 +122,58 @@ final class TextInput {
         outputAcquired = true;
         stderr.write('\x1b[?2004h');
       }
-      return await _run(ScriptedInput(stdin.transform(utf8.decoder), stderr, supportsRich: stderr.hasTerminal), rich ? PromptMode.rich : PromptMode.linear);
+      return await _run(
+        ScriptedInput(
+          stdin.transform(utf8.decoder),
+          stderr,
+          supportsRich: stderr.hasTerminal,
+        ),
+        rich ? PromptMode.rich : PromptMode.linear,
+        beforeClose: () {
+          if (outputAcquired) {
+            stderr.write('\x1b[?2004l\n');
+            if (console.setMode(output, outputMode.value) == 0) {
+              throw StateError('Cannot restore console output.');
+            }
+            outputAcquired = false;
+          }
+          if (inputAcquired) {
+            if (console.setMode(input, inputMode.value) == 0) {
+              throw StateError('Cannot restore console input.');
+            }
+            inputAcquired = false;
+          }
+        },
+      );
     } finally {
       if (outputAcquired) {
         stderr.write('\x1b[?2004l\n');
-        if (console.setMode(output, outputMode.value) == 0) throw StateError('Cannot restore console output.');
+        if (console.setMode(output, outputMode.value) == 0) {
+          throw StateError('Cannot restore console output.');
+        }
       }
-      if (inputAcquired && console.setMode(input, inputMode.value) == 0) throw StateError('Cannot restore console input.');
+      if (inputAcquired && console.setMode(input, inputMode.value) == 0) {
+        throw StateError('Cannot restore console input.');
+      }
       calloc.free(inputMode);
       calloc.free(outputMode);
     }
   }
-  Future<PromptResult<String>> _run(PromptSource source, PromptMode mode) async {
+
+  Future<PromptResult<String>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
-      if ((required && value.isEmpty) || value.contains('\r') || value.contains('\n') ||
+      if ((required && value.isEmpty) ||
+          value.contains('\r') ||
+          value.contains('\n') ||
           (maxLength != null && value.characters.length > maxLength!)) {
-        return Unavailable('Supplied answer does not satisfy text constraints.');
+        return Unavailable(
+          'Supplied answer does not satisfy text constraints.',
+        );
       }
       final error = validate?.call(value);
       if (error != null) return Unavailable(error);
@@ -107,25 +181,44 @@ final class TextInput {
     }
     final scripted = source as ScriptedInput;
     if (mode == PromptMode.rich && !scripted.supportsRich) {
-      return Unavailable('Rich interaction unavailable; use linear or automatic mode.');
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
     }
-    if (mode == PromptMode.automatic) mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
-    scripted.output.writeln('$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).');
-    scripted.output.writeln('Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.');
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    scripted.output.writeln(
+      '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+    );
+    scripted.output.writeln(
+      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    );
     if (mode == PromptMode.linear) {
-      scripted.output.writeln(r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.');
+      scripted.output.writeln(
+        r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
+      );
     }
     final keys = Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
       while (true) {
-        final result = await edit(keys, value, scripted.output, linear: mode == PromptMode.linear, sequential: mode != PromptMode.rich, maxLength: maxLength);
+        final result = await edit(
+          keys,
+          value,
+          scripted.output,
+          linear: mode == PromptMode.linear,
+          sequential: mode != PromptMode.rich,
+          maxLength: maxLength,
+        );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action != 'submit') return InputEnded();
         value = result.value;
         if (required && value.isEmpty) {
-          scripted.output.writeln('Required: enter a non-empty value and submit again.');
+          scripted.output.writeln(
+            'Required: enter a non-empty value and submit again.',
+          );
           continue;
         }
         final error = validate?.call(value);
@@ -136,6 +229,7 @@ final class TextInput {
         return Accepted(value);
       }
     } finally {
+      beforeClose?.call();
       await keys.close();
     }
   }
@@ -167,7 +261,9 @@ Future<({String action, String value})> edit(
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
     if (maxLength != null && count > maxLength) {
-      output.writeln('Insertion rejected: character limit is $maxLength graphemes.');
+      output.writeln(
+        'Insertion rejected: character limit is $maxLength graphemes.',
+      );
       return;
     }
     final added = data.characters.toList();
@@ -390,7 +486,6 @@ class Keys {
   }
 }
 
-
 class _Console {
   final _dll = DynamicLibrary.open('kernel32.dll');
   late final int Function(int) getHandle = _dll
@@ -407,4 +502,3 @@ class _Console {
         'SetConsoleMode',
       );
 }
-
