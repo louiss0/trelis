@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 import 'package:path/path.dart' as path;
 
+part 'network_input.dart';
 part 'timezone_snapshot.dart';
 part 'timezone_select.dart';
 part 'path_input.dart';
@@ -3191,5 +3192,6 @@ final class TimeInput {
     }
   }
 }
+
 
 
