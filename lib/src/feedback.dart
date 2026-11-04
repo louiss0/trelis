@@ -65,21 +65,24 @@ final class Progress {
   int _value = 0;
   StringSink? _output;
   bool _rich = false;
-  bool _painted = false;
   bool _finished = false;
 
   void start({
     StringSink? output,
-    PromptMode mode = PromptMode.automatic,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
     bool? supportsRich,
   }) {
     if (_output != null) throw StateError('Already started');
     final sink = output ?? stderr;
     final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
-    if (mode == PromptMode.rich && !capable) {
+    final selected =
+        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+    if (selected == PromptMode.rich && !capable) {
       throw StateError('Rich output unavailable');
     }
-    _rich = capable && mode != PromptMode.linear;
+    _rich = capable && selected != PromptMode.linear;
     _output = sink;
     _show();
   }
@@ -87,7 +90,7 @@ final class Progress {
   void _show() {
     final value = _total == null
         ? 'indeterminate'
-        : '${(_value * 100 ~/ _total!)}%';
+        : '${(_value * 100 ~/ _total!)}%${_rich ? ' ($_value/$_total)' : ''}';
     _emit('${_safe(label)}: running, $value');
   }
 
@@ -105,6 +108,12 @@ final class Progress {
     }
     _value = completed;
     final percent = completed * 100 ~/ _total!;
+    if (percent == _shownPercent) {
+      _timer?.cancel();
+      _timer = null;
+      _pending = null;
+      return;
+    }
     if (percent ~/ milestone <= _shownPercent ~/ milestone &&
         _pending == null) {
       return;
@@ -160,14 +169,7 @@ final class Progress {
   }
 
   void _emit(String line, {bool finalLine = false}) {
-    if (_rich) {
-      if (_painted) _output!.write('\r\x1b[2K');
-      _output!.write(line);
-      if (finalLine) _output!.writeln();
-      _painted = true;
-    } else {
-      _output!.writeln(line);
-    }
+    _output!.writeln(_rich ? '[status] $line' : line);
   }
 
   /// Release presentation resources without inventing an outcome.
@@ -176,7 +178,6 @@ final class Progress {
     _finished = true;
     _timer?.cancel();
     _pending = null;
-    if (_rich && _painted) _output!.writeln();
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {
@@ -198,22 +199,25 @@ final class Spinner {
   final String label;
   StringSink? _output;
   bool _rich = false;
-  bool _painted = false;
   String _state = 'running';
   bool _finished = false;
 
   void start({
     StringSink? output,
-    PromptMode mode = PromptMode.automatic,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
     bool? supportsRich,
   }) {
     if (_output != null) throw StateError('Already started');
     final sink = output ?? stderr;
     final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
-    if (mode == PromptMode.rich && !capable) {
+    final selected =
+        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+    if (selected == PromptMode.rich && !capable) {
       throw StateError('Rich output unavailable');
     }
-    _rich = capable && mode != PromptMode.linear;
+    _rich = capable && selected != PromptMode.linear;
     _output = sink;
     _emit('${_safe(label)}: $_state');
   }
@@ -227,21 +231,13 @@ final class Spinner {
   }
 
   void _emit(String line, {bool finalLine = false}) {
-    if (_rich) {
-      if (_painted) _output!.write('\r\x1b[2K');
-      _output!.write(line);
-      if (finalLine) _output!.writeln();
-      _painted = true;
-    } else {
-      _output!.writeln(line);
-    }
+    _output!.writeln(_rich ? '[status] $line' : line);
   }
 
   /// Release presentation resources without inventing an outcome.
   void dispose() {
     if (_finished) return;
     _finished = true;
-    if (_rich && _painted) _output!.writeln();
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {

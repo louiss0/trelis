@@ -353,3 +353,10 @@ checking reachability. Set `cidr: true` to require an address and prefix;
 zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
 interface existence. Brackets and URL escaping are not interpreted.
+
+Rich feedback uses a static `[status]` layout, appending each actual state
+rather than addressing a cursor. This preserves complete task names and details
+when the terminal wraps or is resized and avoids overwriting other output; it
+is not an animated display. Linear output remains milestone-throttled and
+reviewable. Select `mode`, `userPreference`, or `applicationPreference` at
+`start()`; explicit rich mode requires a capable output.

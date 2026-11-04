@@ -83,7 +83,7 @@ void main() {
       'Index: running\nIndex: waiting for disk\nIndex: failed: disk error\n',
     );
   });
-  test('nonanimated rich feedback retains a static in-place layout', () {
+  test('nonanimated rich feedback retains static state and layout', () {
     final out = StringBuffer();
     final spinner = Spinner('Index');
     spinner.start(output: out, mode: PromptMode.rich, supportsRich: true);
@@ -91,7 +91,7 @@ void main() {
     spinner.finish(FeedbackOutcome.skipped);
     expect(
       out.toString(),
-      'Index: running\r\x1b[2KIndex: waiting\r\x1b[2KIndex: skipped\n',
+      '[status] Index: running\n[status] Index: waiting\n[status] Index: skipped\n',
     );
   });
   test(
@@ -107,6 +107,104 @@ void main() {
       expect(out.toString(), isNot(contains('completed')));
       expect(out.toString(), isNot(contains('50%')));
       expect(out.toString(), endsWith('\n'));
+    },
+  );
+  test(
+    'rich wrapped states remain intact without cursor-dependent erasure',
+    () {
+      final out = StringBuffer();
+      final spinner = Spinner('A very long task name');
+      spinner.start(output: out, mode: PromptMode.rich, supportsRich: true);
+      spinner.update('A long wrapped phase');
+      spinner.finish(FeedbackOutcome.failed, detail: 'long wrapped failure');
+      expect(out.toString(), isNot(contains('\x1b[2K')));
+      expect(out.toString(), contains('A long wrapped phase'));
+      expect(out.toString(), contains('failed: long wrapped failure'));
+    },
+  );
+  test('coalescing never emits an unchanged numeric heartbeat', () async {
+    final out = StringBuffer();
+    final progress = Progress(
+      'Task',
+      total: 100,
+      interval: const Duration(milliseconds: 80),
+    );
+    progress.start(output: out);
+    progress.update(10);
+    progress.update(20);
+    progress.update(10);
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    progress.dispose();
+    expect(out.toString(), 'Task: running, 0%\nTask: running, 10%\n');
+  });
+  test('feedback preference selects rich only when output supports it', () {
+    final out = StringBuffer();
+    final progress = Progress('Task', total: 100);
+    progress.start(
+      output: out,
+      userPreference: PromptMode.linear,
+      applicationPreference: PromptMode.rich,
+      supportsRich: true,
+    );
+    progress.update(1);
+    progress.finish(FeedbackOutcome.completed);
+    expect(out.toString(), isNot(contains('1%')));
+    expect(out.toString(), contains('completed'));
+  });
+  test('static rich spinner uses an explicit status layout', () {
+    final out = StringBuffer();
+    final spinner = Spinner('Build');
+    spinner.start(output: out, mode: PromptMode.rich, supportsRich: true);
+    spinner.update('waiting');
+    spinner.finish(FeedbackOutcome.cancelled);
+    expect(out.toString(), isNotEmpty);
+    expect(
+      out.toString(),
+      '[status] Build: running\n[status] Build: waiting\n[status] Build: cancelled\n',
+    );
+  });
+  test(
+    'every outcome stays final after stale phase, value and total updates',
+    () {
+      for (final outcome in FeedbackOutcome.values) {
+        final out = StringBuffer();
+        final progress = Progress('Job', total: 10);
+        progress.start(output: out);
+        progress.update(10);
+        expect(out.toString(), isNot(contains('completed')));
+        progress.finish(outcome, detail: 'detail');
+        final finalText = out.toString();
+        progress.update(1);
+        progress.phase('late');
+        progress.setTotal(100);
+        progress.finish(FeedbackOutcome.completed);
+        expect(out.toString(), finalText);
+        expect(finalText, contains('${outcome.name}: detail'));
+      }
+    },
+  );
+  test('invalid totals retain the previous valid display', () {
+    final out = StringBuffer();
+    final progress = Progress('Job', total: 10);
+    progress.start(output: out);
+    expect(() => progress.setTotal(0), throwsArgumentError);
+    expect(() => progress.setTotal(10, completed: -1), throwsArgumentError);
+    expect(() => progress.setTotal(10, completed: 11), throwsArgumentError);
+    expect(() => progress.setTotal(null, completed: 1), throwsArgumentError);
+    expect(out.toString(), 'Job: running, 0%\n');
+    progress.finish(FeedbackOutcome.interrupted);
+  });
+  test(
+    'rich progress exposes real value changes below percentage precision',
+    () {
+      final out = StringBuffer();
+      final progress = Progress('Job', total: 1000);
+      progress.start(output: out, mode: PromptMode.rich, supportsRich: true);
+      progress.update(1);
+      progress.update(2);
+      progress.finish(FeedbackOutcome.completed);
+      expect(out.toString(), contains('0% (1/1000)'));
+      expect(out.toString(), contains('0% (2/1000)'));
     },
   );
 }
