@@ -158,4 +158,28 @@ void main() {
     );
     expect(result, isA<InputEnded<String>>());
   });
+  test('control C interrupts while help is open', () async {
+    final result = await TextInput('Name').prompt(
+      source: ScriptedInput(Stream.value('draft\x14\x03'), StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    expect(result, isA<Interrupted<String>>());
+  });
+  test('identified pasted command remains literal after editing', () async {
+    final result = await TextInput('Name').prompt(
+      source: ScriptedInput(
+        Stream.value('\x1b[200~/cancel\x1b[201~x\x7f\r'),
+        StringBuffer(),
+      ),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, '/cancel');
+  });
+  test('backspace deletes a full grapheme', () async {
+    final result = await TextInput('Name', initialValue: 'ae\u0301').prompt(
+      source: ScriptedInput(Stream.value('\x7f\r'), StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<String>).value, 'a');
+  });
 }
