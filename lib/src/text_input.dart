@@ -26,10 +26,11 @@ final class ScriptedInput extends PromptSource {
 }
 enum PromptMode { rich, linear, automatic }
 final class TextInput {
-  TextInput(this.label, {this.initialValue = '', this.required = false});
+  TextInput(this.label, {this.initialValue = '', this.required = false, this.validate});
   final String label;
   final String initialValue;
   final bool required;
+  final String? Function(String)? validate;
   Future<PromptResult<String>> prompt({required PromptSource source, PromptMode mode = PromptMode.automatic}) async {
     if (source is SuppliedAnswer) return Accepted(source.value);
     final scripted = source as ScriptedInput;
@@ -45,6 +46,11 @@ final class TextInput {
         value = result.value;
         if (required && value.isEmpty) {
           scripted.output.writeln('Required: enter a non-empty value and submit again.');
+          continue;
+        }
+        final error = validate?.call(value);
+        if (error != null) {
+          scripted.output.writeln(error);
           continue;
         }
         return Accepted(value);

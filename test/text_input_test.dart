@@ -29,6 +29,13 @@ void main() {
     expect(await run('/cancel\r'), isA<Cancelled<String>>());
     expect((await run('\\/cancel\r') as Accepted<String>).value, '/cancel');
     expect(await run('/cancel'), isA<InputEnded<String>>());
+  });  test('validation retains the invalid draft for correction', () async {
+    final output = StringBuffer();
+    final result = await TextInput('Name', validate: (value) => value == 'abc' ? null : 'Enter abc').prompt(
+      source: ScriptedInput(Stream.value('ab\rc\r'), output), mode: PromptMode.linear);
+    expect((result as Accepted<String>).value, 'abc');
+    expect(output.toString(), contains('Enter abc'));
   });}
+
 
 
