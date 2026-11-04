@@ -242,6 +242,14 @@ final class SearchSelect<T> {
         } else if (key == '\r' || key == '\n') {
           final result = accept(focus);
           if (result != null) return result;
+        } else if (key.startsWith('\x1b[200~')) {
+          final data = key.substring(6, key.length - 6);
+          if (data.runes.any((r) => r < 32 || r == 127)) {
+            out.writeln('Paste rejected: single-line printable text only.');
+          } else {
+            query += data;
+            editing = true;
+          }
         } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
           query += key;
           editing = true;
