@@ -1,5 +1,15 @@
 # Terminal backend decision and patch status
 
+## Implementation decision
+
+The component library now deliberately uses its in-repo terminal/session backend,
+with Dart FFI for native console lifecycle handling. The user explicitly chose to
+keep this backend rather than migrate the component suite to Dart TUI. The ticket
+01 investigation found that the inspected Dart TUI 3.0.0 implementation did not
+satisfy the required alternate-stream ownership, EOF, and reliable Windows
+restoration contracts without further changes. The historical Dart TUI prototype
+and patch remain useful evidence, but are not the production backend.
+
 ## Outcome of prototyping
 
 The validated direction is to build Prompty's prompts on **Dart TUI
