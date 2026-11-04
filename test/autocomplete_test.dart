@@ -101,4 +101,16 @@ void main() {
       expect(output.toString(), contains('Add an exclamation'));
     },
   );
+  test('Escape dismisses help before the active suggestion layer', () async {
+    final input = StreamController<String>();
+    final result = Autocomplete('Name', suggestions: (_) => ['Ada']).prompt(
+      source: ScriptedInput(input.stream, StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    input.add('A\x1b[B\x14\x1b');
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    input.add('\r\r');
+    expect((await result as Accepted<String>).value, 'Ada');
+    await input.close();
+  });
 }

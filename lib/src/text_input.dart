@@ -281,8 +281,10 @@ Future<({String action, String value})> _edit(
     final key = await keys.next();
     if (key == null || key == '\x1a') return (action: 'eof', value: '');
     if (key == '\x03') return (action: 'interrupt', value: '');
-    final action = intercept?.call(key, chars.join());
-    if (action != null) return (action: action, value: chars.join());
+    if (!help) {
+      final action = intercept?.call(key, chars.join());
+      if (action != null) return (action: action, value: chars.join());
+    }
     if (key == '\x1b') {
       if (!help) return (action: 'cancel', value: '');
       help = false;
