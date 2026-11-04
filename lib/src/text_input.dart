@@ -89,7 +89,11 @@ final class TextInput {
         }
         _terminalActive = true;
         try {
-          return await _terminal(selected, output ?? stderr);
+          return await _terminal<String>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
         } finally {
           _terminalActive = false;
         }
@@ -97,90 +101,6 @@ final class TextInput {
       return await _run(source, selected);
     } finally {
       _active = false;
-    }
-  }
-
-  Future<PromptResult<String>> _terminal(
-    PromptMode mode,
-    Stdout outputStream,
-  ) async {
-    if (!Platform.isWindows || !stdin.hasTerminal) {
-      return Unavailable(
-        'Interactive console input is unavailable; supply an explicit input source.',
-      );
-    }
-    final rich =
-        mode == PromptMode.rich ||
-        (mode == PromptMode.automatic && outputStream.hasTerminal);
-    if (rich && !outputStream.hasTerminal) {
-      return Unavailable(
-        'Rich interaction unavailable on the selected output; use linear or automatic mode.',
-      );
-    }
-    final console = _Console();
-    final input = console.getHandle(-10);
-    final output = console.getHandle(
-      identical(outputStream, stdout) ? -11 : -12,
-    );
-    final inputMode = calloc<Uint32>();
-    final outputMode = calloc<Uint32>();
-    var inputAcquired = false;
-    var outputAcquired = false;
-    void restore() {
-      try {
-        if (outputAcquired) {
-          outputAcquired = false;
-          try {
-            outputStream.write('\x1b[?2004l\n');
-          } finally {
-            if (console.setMode(output, outputMode.value) == 0) {
-              throw StateError('Cannot restore console output.');
-            }
-          }
-        }
-      } finally {
-        if (inputAcquired) {
-          inputAcquired = false;
-          if (console.setMode(input, inputMode.value) == 0) {
-            throw StateError('Cannot restore console input.');
-          }
-        }
-      }
-    }
-
-    try {
-      if (console.getMode(input, inputMode) == 0 ||
-          (outputStream.hasTerminal &&
-              console.getMode(output, outputMode) == 0)) {
-        return Unavailable('Console capability unavailable.');
-      }
-      if (console.setMode(input, inputMode.value & ~0x207) == 0) {
-        return Unavailable('Cannot acquire console input.');
-      }
-      inputAcquired = true;
-      if (outputStream.hasTerminal) {
-        if (console.setMode(output, outputMode.value | 4) == 0) {
-          return Unavailable('Cannot enable rich console output.');
-        }
-        outputAcquired = true;
-        outputStream.write('\x1b[?2004h');
-      }
-      return await _run(
-        ScriptedInput(
-          _consoleInput(console, input),
-          outputStream,
-          supportsRich: outputStream.hasTerminal,
-        ),
-        rich ? PromptMode.rich : PromptMode.linear,
-        beforeClose: restore,
-      );
-    } finally {
-      try {
-        restore();
-      } finally {
-        calloc.free(inputMode);
-        calloc.free(outputMode);
-      }
     }
   }
 
@@ -223,11 +143,11 @@ final class TextInput {
         r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
       );
     }
-    final keys = Keys(scripted.input.transform(utf8.encoder));
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
       while (true) {
-        final result = await edit(
+        final result = await _edit(
           keys,
           value,
           scripted.output,
@@ -262,8 +182,8 @@ final class TextInput {
   }
 }
 
-Future<({String action, String value})> edit(
-  Keys keys,
+Future<({String action, String value})> _edit(
+  _Keys keys,
   String initial,
   StringSink output, {
   bool linear = false,
@@ -423,7 +343,7 @@ Future<({String action, String value})> edit(
   }
 }
 
-class Keys {
+class _Keys {
   final _controller = StreamController<String>();
   late final StreamSubscription<String> _subscription;
   late final StreamIterator<String> _iterator;
@@ -431,7 +351,7 @@ class Keys {
   bool _discardPaste = false;
   bool _afterCarriageReturn = false;
   Timer? _timer;
-  Keys(Stream<List<int>> source) {
+  _Keys(Stream<List<int>> source) {
     _iterator = StreamIterator(_controller.stream);
     _subscription = source
         .transform(utf8.decoder)
@@ -622,4 +542,88 @@ Stream<String> _consoleInput(_Console console, int handle) {
     },
   );
   return controller.stream;
+}
+
+Future<PromptResult<T>> _terminal<T>(
+  PromptMode mode,
+  Stdout outputStream,
+  Future<PromptResult<T>> Function(ScriptedInput, PromptMode, void Function())
+  run,
+) async {
+  if (!Platform.isWindows || !stdin.hasTerminal) {
+    return Unavailable(
+      'Interactive console input is unavailable; supply an explicit input source.',
+    );
+  }
+  final rich =
+      mode == PromptMode.rich ||
+      (mode == PromptMode.automatic && outputStream.hasTerminal);
+  if (rich && !outputStream.hasTerminal) {
+    return Unavailable(
+      'Rich interaction unavailable on the selected output; use linear or automatic mode.',
+    );
+  }
+  final console = _Console();
+  final input = console.getHandle(-10);
+  final output = console.getHandle(identical(outputStream, stdout) ? -11 : -12);
+  final inputMode = calloc<Uint32>();
+  final outputMode = calloc<Uint32>();
+  var inputAcquired = false;
+  var outputAcquired = false;
+  void restore() {
+    try {
+      if (outputAcquired) {
+        outputAcquired = false;
+        try {
+          outputStream.write('\x1b[?2004l\n');
+        } finally {
+          if (console.setMode(output, outputMode.value) == 0) {
+            throw StateError('Cannot restore console output.');
+          }
+        }
+      }
+    } finally {
+      if (inputAcquired) {
+        inputAcquired = false;
+        if (console.setMode(input, inputMode.value) == 0) {
+          throw StateError('Cannot restore console input.');
+        }
+      }
+    }
+  }
+
+  try {
+    if (console.getMode(input, inputMode) == 0 ||
+        (outputStream.hasTerminal &&
+            console.getMode(output, outputMode) == 0)) {
+      return Unavailable('Console capability unavailable.');
+    }
+    if (console.setMode(input, inputMode.value & ~0x207) == 0) {
+      return Unavailable('Cannot acquire console input.');
+    }
+    inputAcquired = true;
+    if (outputStream.hasTerminal) {
+      if (console.setMode(output, outputMode.value | 4) == 0) {
+        return Unavailable('Cannot enable rich console output.');
+      }
+      outputAcquired = true;
+      outputStream.write('\x1b[?2004h');
+    }
+    return await run(
+      ScriptedInput(
+        _consoleInput(console, input),
+        outputStream,
+        supportsRich: outputStream.hasTerminal,
+      ),
+      rich ? PromptMode.rich : PromptMode.linear,
+      restore,
+    );
+  } finally {
+    try {
+      restore();
+    } finally {
+      calloc.free(inputMode);
+      calloc.free(outputMode);
+    }
+  }
 }
