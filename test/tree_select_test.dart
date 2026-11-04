@@ -2,6 +2,18 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('linear shows current selectable branch after opening it', () async {
+    final out = StringBuffer();
+    final result =
+        await TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', selectable: true, children: [TreeNode('b', 'B')]),
+        ]).prompt(
+          source: ScriptedInput(Stream.value('/open\r1\r/choose\r1\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'a');
+    expect(out.toString(), contains('A [expanded] [selectable]'));
+  });
   test('initial focus prefers an enabled root', () async {
     final result =
         await TreeSelect<String>('Pick', [

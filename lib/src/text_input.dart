@@ -2188,15 +2188,16 @@ final class TreeSelect<T> {
       final rows = mode == PromptMode.linear
           ? all.where(
               (r) =>
-                  r.$2.length == current.length + 1 &&
-                  (current.isEmpty ||
-                      identical(r.$2[current.length - 1], current.last)),
+                  (current.isNotEmpty && identical(r.$1, current.last)) ||
+                  (r.$2.length == current.length + 1 &&
+                      (current.isEmpty ||
+                          identical(r.$2[current.length - 1], current.last))),
             )
           : visible();
       for (final row in rows) {
         final node = row.$1;
         out.writeln(
-          '${all.indexOf(row) + 1}. ${path(row.$2)}${identical(node, focus) ? ' [focused]' : ''} ${node.childrenUnavailableReason != null
+          '${all.indexOf(row) + 1}. ${path(row.$2)}${mode == PromptMode.rich && identical(node, focus) ? ' [focused]' : ''} ${node.childrenUnavailableReason != null
               ? '[children unavailable: ${node.childrenUnavailableReason}]'
               : node.children.isEmpty
               ? '[leaf]'
