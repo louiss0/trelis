@@ -2,6 +2,24 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('canonical duplicate remains editable and is not added', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value(
+          'HelloWorld\rhello world\r\x7f\x7f\x7f\x7f\x7fthere\r/done\r',
+        ),
+        output,
+      ),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, [
+      'hello-world',
+      'hello-there',
+    ]);
+    expect(output.toString(), contains('Duplicate'));
+  });
+
   test('snake style uses the configured separator', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags', style: TagStyle.snakeCase).prompt(

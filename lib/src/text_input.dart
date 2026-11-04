@@ -816,6 +816,7 @@ final class TagInput {
     final input = source as ScriptedInput;
     final keys = _Keys(input.input.transform(utf8.encoder));
     final tags = <String>[];
+    var draft = '';
     input.output.writeln(
       '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags.',
     );
@@ -823,7 +824,7 @@ final class TagInput {
       while (true) {
         final result = await _edit(
           keys,
-          '',
+          draft,
           input.output,
           linear: true,
           sequential: true,
@@ -846,7 +847,13 @@ final class TagInput {
         final canonical = style == TagStyle.snakeCase
             ? value.replaceAll('-', '_')
             : value;
+        if (tags.contains(canonical)) {
+          input.output.writeln('Duplicate tag; edit the draft.');
+          draft = result.value;
+          continue;
+        }
         tags.add(canonical);
+        draft = '';
         input.output.writeln('Added: $canonical');
       }
     } finally {
