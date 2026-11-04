@@ -2,7 +2,7 @@ part of 'text_input.dart';
 
 enum KeyModifier { control, alt, shift, meta }
 
-enum KeyGestureProvenance { observed, declared }
+enum KeyGestureProvenance { observed, declared, ambiguous }
 
 /// A logical key and modifiers, not a physical keyboard position.
 final class KeyGesture {
@@ -55,7 +55,13 @@ final class Keypress {
         KeyGesture._(key, modifiers, KeyGestureProvenance.declared),
       );
     }
-    return Unavailable('Interactive key capture is not yet available.');
+    return _singleInteractive(
+      label,
+      requireObservation,
+      source,
+      mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
+      output,
+    );
   }
 }
 
@@ -87,5 +93,97 @@ final class KeyChordInput {
       return Accepted(List.unmodifiable(gestures));
     }
     return Unavailable('Interactive key capture is not yet available.');
+  }
+}
+
+Future<PromptResult<KeyGesture>> _singleInteractive(
+  String label,
+  bool requireObservation,
+  PromptSource? source,
+  PromptMode mode,
+  Stdout? output,
+) async {
+  Future<PromptResult<KeyGesture>> run(
+    ScriptedInput input,
+    PromptMode selected, {
+    void Function()? beforeClose,
+  }) async {
+    if (selected == PromptMode.rich && !input.supportsRich) {
+      return Unavailable('Rich interaction unavailable.');
+    }
+    if (selected == PromptMode.automatic) {
+      selected = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    if (selected == PromptMode.linear) {
+      return Unavailable('Linear key capture is not yet available.');
+    }
+    final keys = _Keys(input.input.transform(utf8.encoder));
+    KeyGesture? draft;
+    var armed = false;
+    input.output.writeln(
+      '$label: c captures the next gesture; Enter submits; Escape cancels.',
+    );
+    try {
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (armed) {
+            armed = false;
+            input.output.writeln('Capture cancelled; Review.');
+            continue;
+          }
+          return Cancelled();
+        }
+        if (armed) {
+          armed = false;
+          if (RegExp(r'^[A-Za-z0-9]$').hasMatch(key)) {
+            draft = KeyGesture._(key, {}, KeyGestureProvenance.ambiguous);
+            input.output.writeln(
+              'Review: $key. Modifiers are ambiguous in this input stream.',
+            );
+          } else {
+            input.output.writeln('Gesture unavailable; Review.');
+          }
+          continue;
+        }
+        if (key == 'c') {
+          armed = true;
+          input.output.writeln('Capture next gesture; Escape cancels capture.');
+        } else if (key == '\r' || key == '\n') {
+          if (draft == null) {
+            input.output.writeln('Capture a gesture first.');
+          } else if (requireObservation) {
+            input.output.writeln(
+              'Observation required; ambiguous input cannot be accepted.',
+            );
+          } else {
+            return Accepted(draft);
+          }
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+
+  if (source is ScriptedInput) return run(source, mode);
+  if (_terminalActive) {
+    throw StateError('A terminal session is already active.');
+  }
+  _terminalActive = true;
+  try {
+    return await _terminal<KeyGesture>(
+      mode,
+      output ?? stderr,
+      (input, selected, restore) => run(input, selected, beforeClose: restore),
+    );
+  } finally {
+    _terminalActive = false;
   }
 }

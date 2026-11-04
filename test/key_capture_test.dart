@@ -2,6 +2,16 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich capture returns to review before explicit submission', () async {
+    final out = StringBuffer();
+    final result = await Keypress('Shortcut').prompt(
+      source: ScriptedInput(Stream.value('ca\r'), out),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<KeyGesture>).value.key, 'a');
+    expect(out.toString(), contains('Review'));
+  });
+
   test(
     'a supplied key sequence retains ordered declaration provenance',
     () async {
