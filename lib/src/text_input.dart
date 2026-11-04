@@ -9,6 +9,7 @@ import 'package:characters/characters.dart';
 
 part 'autocomplete.dart';
 part 'search_select.dart';
+part 'sortable_select.dart';
 
 sealed class PromptResult<T> {}
 
@@ -2960,3 +2961,4 @@ final class TreeSelect<T> {
     }
   }
 }
+
