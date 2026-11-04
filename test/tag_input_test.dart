@@ -11,7 +11,7 @@ void main() {
       mode: PromptMode.linear,
     );
     expect((result as Accepted<List<String>>).value, ['cafe']);
-    expect(output.toString(), contains('combining'));
+    expect(output.toString(), contains('Combining'));
   });
   test(
     'caller validates canonical tags and rejected drafts remain editable',
