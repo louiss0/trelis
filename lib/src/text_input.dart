@@ -2031,7 +2031,14 @@ final class Slider {
     required this.maximum,
     required this.step,
     this.initialValue,
+    this.precision,
+    this.units,
   }) {
+    if (label.trim().isEmpty ||
+        label.runes.any((c) => c < 32 || c == 127) ||
+        (units != null && units!.runes.any((c) => c < 32 || c == 127))) {
+      throw ArgumentError('Invalid label or units.');
+    }
     final min = _decimal(minimum);
     final max = _decimal(maximum);
     final increment = _decimal(step);
@@ -2039,7 +2046,12 @@ final class Slider {
         max == null ||
         increment == null ||
         _compare(min, max) > 0 ||
-        increment.$1 <= BigInt.zero) {
+        increment.$1 <= BigInt.zero ||
+        (precision != null &&
+            (precision! < 0 ||
+                min.$2 > precision! ||
+                max.$2 > precision! ||
+                increment.$2 > precision!))) {
       throw ArgumentError('Invalid slider bounds or step.');
     }
     if (initialValue != null && _validate(initialValue!) != null) {
@@ -2052,6 +2064,10 @@ final class Slider {
   final String maximum;
   final String step;
   final String? initialValue;
+  final int? precision;
+  final String? units;
+  String get _description =>
+      '$label (minimum $minimum, maximum $maximum, step $step${units == null ? '' : ', units $units'}${precision == null ? '' : ', maximum $precision decimal places'})';
 
   String? _validate(String value) {
     final number = _decimal(value);
@@ -2059,6 +2075,7 @@ final class Slider {
     final max = _decimal(maximum)!;
     final increment = _decimal(step)!;
     if (number == null ||
+        (precision != null && number.$2 > precision!) ||
         _compare(number, min) < 0 ||
         _compare(number, max) > 0) {
       return 'Enter a value between $minimum and $maximum on the $step grid.';
@@ -2076,25 +2093,139 @@ final class Slider {
         : 'Enter a value between $minimum and $maximum on the $step grid.';
   }
 
+  bool _active = false;
+
   Future<PromptResult<String>> prompt({
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
-  }) =>
-      TextInput(
-        '$label (minimum $minimum, maximum $maximum, step $step)',
-        required: true,
-        initialValue: initialValue ?? '',
-        validate: _validate,
-      ).prompt(
-        source: source,
-        mode: mode,
-        userPreference: userPreference,
-        applicationPreference: applicationPreference,
-        output: output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<String>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<String>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer ||
+        (source is ScriptedInput &&
+            (mode == PromptMode.linear ||
+                (mode == PromptMode.automatic && !source.supportsRich)))) {
+      try {
+        return await TextInput(
+          _description,
+          required: true,
+          initialValue: initialValue ?? '',
+          validate: _validate,
+        ).prompt(source: source, mode: PromptMode.linear);
+      } finally {
+        beforeClose?.call();
+      }
+    }
+    final scripted = source as ScriptedInput;
+    if (!scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
       );
+    }
+    final out = scripted.output;
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    var value = initialValue ?? '';
+    var focus = 0;
+    void show() {
+      out.writeln(
+        '$_description. Value: ${value.isEmpty ? 'not set' : value}.',
+      );
+      out.writeln(
+        'Focus: ${['Slider', 'Edit', 'Submit'][focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit.',
+      );
+    }
+
+    show();
+    try {
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') return Cancelled();
+        if (key == '\t') {
+          focus = (focus + 1) % 3;
+          show();
+          continue;
+        }
+        if (focus == 0 &&
+            (key == '\x1b[C' ||
+                key == '\x1b[A' ||
+                key == '\x1b[D' ||
+                key == '\x1b[B')) {
+          if (_validate(value) == null) {
+            final candidate = _addDecimal(
+              value,
+              step,
+              key == '\x1b[C' || key == '\x1b[A' ? 1 : -1,
+            );
+            if (_validate(candidate) == null) value = candidate;
+          } else {
+            out.writeln('Edit a valid value before adjusting.');
+          }
+          show();
+          continue;
+        }
+        if ((key == '\r' || key == '\n') && focus == 1) {
+          out.writeln('Edit value; Enter finishes editing.');
+          final edit = await _edit(keys, value, out);
+          if (edit.action == 'interrupt') return Interrupted();
+          if (edit.action == 'cancel') return Cancelled();
+          if (edit.action != 'submit') return InputEnded();
+          value = edit.value;
+          final error = _validate(value);
+          if (error != null) out.writeln(error);
+          show();
+          continue;
+        }
+        if ((key == '\r' || key == '\n') && focus == 2) {
+          final error = _validate(value);
+          if (error == null) return Accepted(value);
+          out.writeln(error);
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
 }
 
 (BigInt, int)? _decimal(String text) {
@@ -2108,4 +2239,148 @@ int _compare((BigInt, int) a, (BigInt, int) b) {
   return (a.$1 * BigInt.from(10).pow(scale - a.$2)).compareTo(
     b.$1 * BigInt.from(10).pow(scale - b.$2),
   );
+}
+
+String _addDecimal(String value, String step, int direction) {
+  final a = _decimal(value)!;
+  final b = _decimal(step)!;
+  final scale = a.$2 > b.$2 ? a.$2 : b.$2;
+  final number =
+      a.$1 * BigInt.from(10).pow(scale - a.$2) +
+      b.$1 * BigInt.from(10).pow(scale - b.$2) * BigInt.from(direction);
+  final negative = number.isNegative;
+  var digits = number.abs().toString().padLeft(scale + 1, '0');
+  if (scale > 0) {
+    digits =
+        '${digits.substring(0, digits.length - scale)}.${digits.substring(digits.length - scale)}';
+  }
+  return '${negative ? '-' : ''}$digits';
+}
+
+/// An exact pair of slider endpoints.
+final class RangeSlider {
+  RangeSlider(
+    String label, {
+    required String minimum,
+    required String maximum,
+    required String step,
+  }) : _slider = Slider(label, minimum: minimum, maximum: maximum, step: step);
+
+  final Slider _slider;
+  bool _active = false;
+
+  Future<PromptResult<(String, String)>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<(String, String)>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected, null);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<(String, String)>> _run(
+    PromptSource source,
+    PromptMode mode,
+    void Function()? beforeClose,
+  ) async {
+    if (source is SuppliedAnswer) {
+      return Unavailable('Supply both endpoints interactively.');
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich) {
+      return Unavailable('Rich range interaction is not implemented.');
+    }
+    final out = scripted.output;
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    var lower = '';
+    var upper = '';
+    try {
+      out.writeln(_slider._description);
+      while (true) {
+        out.writeln('Lower endpoint:');
+        final l = await _edit(keys, lower, out, linear: true, sequential: true);
+        if (l.action == 'cancel') return Cancelled();
+        if (l.action == 'interrupt') return Interrupted();
+        if (l.action != 'submit') return InputEnded();
+        lower = l.value;
+        final lowerError = _slider._validate(lower);
+        if (lowerError != null) {
+          out.writeln(lowerError);
+          continue;
+        }
+        while (true) {
+          out.writeln('Upper endpoint:');
+          final u = await _edit(
+            keys,
+            upper,
+            out,
+            linear: true,
+            sequential: true,
+          );
+          if (u.action == 'cancel') return Cancelled();
+          if (u.action == 'interrupt') return Interrupted();
+          if (u.action != 'submit') return InputEnded();
+          upper = u.value;
+          final upperError = _slider._validate(upper);
+          if (upperError != null) {
+            out.writeln(upperError);
+            continue;
+          }
+          if (_compare(_decimal(lower)!, _decimal(upper)!) > 0) {
+            out.writeln('Lower must not exceed Upper; edit the pair.');
+            break;
+          }
+          out.writeln(
+            'Review Lower $lower, Upper $upper. Submit: press Enter.',
+          );
+          final confirm = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+          );
+          if (confirm.action == 'cancel') return Cancelled();
+          if (confirm.action == 'interrupt') return Interrupted();
+          if (confirm.action != 'submit') return InputEnded();
+          if (confirm.value.isEmpty) return Accepted((lower, upper));
+          out.writeln('Enter an empty line to submit, or edit the pair.');
+          break;
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
 }
