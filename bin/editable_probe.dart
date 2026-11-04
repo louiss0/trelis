@@ -77,7 +77,7 @@ Future<String> runProbe(Keys keys, bool linear, String initial) async {
   }
   var value = initial;
   while (true) {
-    final result = await edit(keys, value, linear: linear);
+    final result = await edit(keys, value, linear: linear, sequential: linear);
     if (result.action != 'submit') return result.action;
     if (result.value.isEmpty) {
       stderr.writeln('Required: enter a non-empty value and submit again.');
@@ -98,7 +98,7 @@ Future<String> runProbe(Keys keys, bool linear, String initial) async {
     secret = entry.value;
     stderr.writeln('Secret actions: submit, edit, clear, help, cancel.');
     while (true) {
-      final action = await edit(keys, '', linear: false);
+      final action = await edit(keys, '', sequential: linear);
       if (action.action != 'submit') return action.action;
       switch (action.value) {
         case 'submit':
@@ -129,6 +129,7 @@ Future<({String action, String value})> edit(
   Keys keys,
   String initial, {
   bool linear = false,
+  bool sequential = false,
   bool secret = false,
 }) async {
   var chars = initial.characters.toList();
@@ -144,11 +145,44 @@ Future<({String action, String value})> edit(
     pos++;
     synthetic = 0;
   }
+  void insert(String data, bool isPaste) {
+    final added = data.characters.toList();
+    chars.insertAll(pos, added);
+    if (synthetic >= pos) synthetic += added.length;
+    provenance.insertAll(pos, List<bool>.filled(added.length, isPaste));
+    pos += added.length;
+    final caretOffset = chars.take(pos).join().length;
+    final syntheticOffset = synthetic < 0
+        ? -1
+        : chars.take(synthetic).join().length;
+    final flags = <bool>[];
+    for (var i = 0; i < chars.length; i++) {
+      flags.addAll(List<bool>.filled(chars[i].length, provenance[i]));
+    }
+    chars = chars.join().characters.toList();
+    provenance = <bool>[];
+    var offset = 0;
+    pos = 0;
+    synthetic = -1;
+    for (var i = 0; i < chars.length; i++) {
+      final end = offset + chars[i].length;
+      provenance.add(flags.sublist(offset, end).contains(true));
+      if (offset < caretOffset) pos = i + 1;
+      if (syntheticOffset >= offset && syntheticOffset < end) synthetic = i;
+      offset = end;
+    }
+  }
+
   void display() {
     if (secret) return;
-    stderr.write('\r\x1b[2K> ${chars.join()}');
-    final back = chars.length - pos;
-    if (back > 0) stderr.write('\x1b[${back}D');
+    if (sequential) {
+      stderr.writeln('Current text: ${chars.join()}');
+      stderr.writeln('Cursor position: $pos of ${chars.length} graphemes.');
+      return;
+    }
+    stderr.write(
+      '\r\x1b[2K> ${chars.take(pos).join()}\x1b[s${chars.skip(pos).join()}\x1b[u',
+    );
   }
 
   display();
@@ -176,7 +210,9 @@ Future<({String action, String value})> edit(
       stderr.writeln();
       var text = chars.join();
       if (synthetic >= 0) {
-        text = (chars.toList()..removeAt(synthetic)).join();
+        final answer = chars.toList();
+        answer[synthetic] = answer[synthetic].substring(1);
+        text = answer.join();
       } else if (linear && !provenance.contains(true)) {
         if (text == '/help') {
           stderr.writeln(
@@ -223,6 +259,8 @@ Future<({String action, String value})> edit(
           synthetic--;
         }
       }
+    } else if (key == '\x1b[999~') {
+      stderr.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
     } else if (key.startsWith('\x1b[200~')) {
       final data = key.substring(6, key.length - 6);
       if (data.runes.any((r) => r < 32 || r == 127)) {
@@ -230,22 +268,9 @@ Future<({String action, String value})> edit(
         display();
         continue;
       }
-      final added = data.characters.toList();
-      chars.insertAll(pos, added);
-      if (synthetic >= pos) synthetic += added.length;
-      provenance.insertAll(pos, List<bool>.filled(added.length, true));
-      pos += added.length;
+      insert(data, true);
     } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
-      final before = chars.take(pos).join() + key;
-      final after = chars.skip(pos).join();
-      final newChars = (before + after).characters.toList();
-      final newPos = before.characters.length;
-      if (newChars.length > chars.length) {
-        provenance.insert(pos, false);
-        if (synthetic >= pos) synthetic++;
-      }
-      chars = newChars;
-      pos = newPos;
+      insert(key, false);
     }
     display();
   }
@@ -256,6 +281,7 @@ class Keys {
   late final StreamSubscription<String> _subscription;
   late final StreamIterator<String> _iterator;
   String _buffer = '';
+  bool _discardPaste = false;
   Timer? _timer;
   Keys(Stream<List<int>> source) {
     _iterator = StreamIterator(_controller.stream);
@@ -267,7 +293,11 @@ class Keys {
             _parse();
           },
           onDone: () {
-            if (_buffer.isNotEmpty) _controller.add(_buffer);
+            if (!_discardPaste &&
+                !_buffer.startsWith('\x1b[200~') &&
+                _buffer.isNotEmpty) {
+              _controller.add(_buffer);
+            }
             _controller.close();
           },
         );
@@ -275,12 +305,33 @@ class Keys {
   void _parse() {
     _timer?.cancel();
     while (_buffer.isNotEmpty) {
+      if (_discardPaste) {
+        final end = _buffer.indexOf('\x1b[201~');
+        if (end < 0) {
+          if (_buffer.length > 5) {
+            _buffer = _buffer.substring(_buffer.length - 5);
+          }
+          return;
+        }
+        _buffer = _buffer.substring(end + 6);
+        _discardPaste = false;
+        _controller.add('\x1b[999~');
+        continue;
+      }
       if (_buffer.startsWith('\x1b[200~')) {
         final end = _buffer.indexOf('\x1b[201~', 6);
-        if (end < 0) return;
-        _controller.add(_buffer.substring(0, end + 6));
-        _buffer = _buffer.substring(end + 6);
-        continue;
+        if (end >= 0) {
+          _controller.add(
+            end - 6 > 4096 ? '\x1b[999~' : _buffer.substring(0, end + 6),
+          );
+          _buffer = _buffer.substring(end + 6);
+          continue;
+        }
+        if (_buffer.length > 4107) {
+          _discardPaste = true;
+          _buffer = _buffer.substring(_buffer.length - 5);
+        }
+        return;
       }
       if (_buffer.startsWith('\x1b')) {
         final match = RegExp(r'^\x1b\[[0-9;]*[A-Za-z~]').firstMatch(_buffer);

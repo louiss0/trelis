@@ -20,9 +20,7 @@ pre-launch output mode that the Dart launcher changed before `main`.
 
 ## Human Windows Terminal + NVDA task script
 
-**Do not run as qualification until the remaining implementation and native
-verification gaps below have been resolved.** Record observations, not what
-should have happened. Never enter a real secret or record its length.
+Record observations, not what should have happened. Never enter a real secret or record its length.
 
 1. Record the environment using the template below. Start NVDA and Windows
    Terminal, open the repository in the recorded shell, and use `dart --version`.
@@ -61,11 +59,23 @@ should have happened. Never enter a real secret or record its length.
 - Restoration and repeat-session observation:
 - Follow-up (do not include secret text or length):
 
-## Remaining engineering gaps
+## Clipboard framing check
 
-Native injected framing is not evidence of Windows Terminal clipboard framing.
-The two draft presentations still use the same in-place editor rather than a
-fully sequential, reviewable linear presentation. Grapheme display-width and
-paste-provenance edge cases require additional coverage; the editor also lacks a
-bounded resource policy for incoming framed paste. These are not NVDA-only
-observations, and this probe is not ready for qualification.
+In Windows Terminal with NVDA optional, run linear mode with an empty default:
+
+```powershell
+dart run bin/editable_probe.dart --linear --default=
+```
+
+Put the synthetic text `/cancel` on the Windows clipboard and use the configured
+Windows Terminal paste gesture. Press Enter. If the probe opens hidden secret
+entry, the paste was framed and treated as data; if it reports `cancel`, it was
+unframed and treated as a command. Record the terminal version, profile and
+paste settings. Do not infer framing from the native injection test. No such
+clipboard result has been observed by the agent.
+
+Framed paste is limited to 4096 UTF-16 code units. Longer frames are discarded
+as a unit; the previous draft remains. Linear mode prints reviewable sequential
+states; plain-rich redraw uses the terminal's saved cursor position rather than
+assuming grapheme count equals display width. Actual output and screen-reader
+usability are subject to the manual verification above.
