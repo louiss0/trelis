@@ -53,6 +53,28 @@ prototype called its text field “Input,” but the atlas names it `TextInput`.
 39. `StepperForm`
 40. `CommandPalette`
 
+## Current implementation-planning scope
+
+The atlas inventory above remains **40 historical specimens**. The current
+Trelis interaction-planning effort covers **38 components**: `StepperForm` is
+deferred, and the user removed `RegexInput` from the planned component set.
+Regex-based input validation is also deferred to later; it is not a replacement
+component being designed in this effort.
+
+See the [planning map](../.scratch/trelis-accessible-prompts/map.md) for current
+scope boundaries and decision context. Existing research that counted 39
+non-form specimens predates the removal of `RegexInput`.
+
+## DateInput interaction scope
+
+The planned `DateInput` includes **slash-separated date entry**, such as
+`YYYY/MM/DD`. This clarifies the existing component rather than adding a new
+specimen to the forty-component atlas. The static reference shows
+`2026 / [11] / 18`; its year-first order is an example, not the runtime default.
+The resolved [locale-calendar DateInput contract](../.scratch/trelis-accessible-prompts/issues/17-locale-calendar-date-contract.md)
+holds the system-convention, calendar-context, editing and verification decisions.
+This inventory does not specify a month-grid calendar or a `/` key that opens one.
+
 ## The four specimens shown on the structures page
 
 The anatomy page compares the 15 grammars using these four components:
