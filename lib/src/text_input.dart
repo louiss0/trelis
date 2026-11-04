@@ -51,12 +51,13 @@ final class TextInput {
     this.validate,
     this.maxLength,
   }) {
-    if (label.trim().isEmpty) throw ArgumentError.value(label, 'label');
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
     if (maxLength != null && maxLength! < 0) {
       throw ArgumentError.value(maxLength, 'maxLength');
     }
-    if (initialValue.contains('\n') ||
-        initialValue.contains('\r') ||
+    if (initialValue.runes.any((c) => c < 32 || c == 127) ||
         (maxLength != null && initialValue.characters.length > maxLength!)) {
       throw ArgumentError.value(initialValue, 'initialValue');
     }

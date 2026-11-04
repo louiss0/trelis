@@ -198,4 +198,14 @@ void main() {
     expect((result as Accepted<String>).value, 'ab');
     expect(RegExp('Enter ab').allMatches(output.toString()).length, 1);
   });
+  test(
+    'configuration rejects terminal control characters before a session',
+    () {
+      expect(
+        () => TextInput('Name', initialValue: 'bad\x1b[2J'),
+        throwsArgumentError,
+      );
+      expect(() => TextInput('bad\x1b[2J'), throwsArgumentError);
+    },
+  );
 }
