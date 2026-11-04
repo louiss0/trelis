@@ -1673,10 +1673,37 @@ abstract class _SingleChoice<T> {
 
 /// A draft set of choices, submitted in their original order.
 final class MultiSelect<T> {
-  MultiSelect(this.label, List<Choice<T>> choices)
-    : choices = List.unmodifiable(choices);
+  MultiSelect(
+    this.label,
+    List<Choice<T>> choices, {
+    List<T> defaultValues = const [],
+    this.min = 0,
+    this.max,
+  }) : choices = List.unmodifiable(choices),
+       defaultValues = List.unmodifiable(defaultValues) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (choices.map((c) => c.value).toSet().length != choices.length) {
+      throw ArgumentError('Choice identities must be unique.');
+    }
+    if (min < 0 || (max != null && (max! < min || max! < 0))) {
+      throw ArgumentError('Invalid selection bounds.');
+    }
+    if (defaultValues.toSet().length != defaultValues.length ||
+        defaultValues.any(
+          (v) => !choices.any((c) => c.value == v && c.disabledReason == null),
+        ) ||
+        (max != null && defaultValues.length > max!)) {
+      throw ArgumentError('Invalid default choices.');
+    }
+  }
   final String label;
   final List<Choice<T>> choices;
+  final List<T> defaultValues;
+  final int min;
+  final int? max;
+  bool _active = false;
 
   Future<PromptResult<List<T>>> prompt({
     PromptSource? source,
@@ -1685,23 +1712,33 @@ final class MultiSelect<T> {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
-    final selectedMode =
-        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
-    if (source == null) {
-      if (_terminalActive)
-        throw StateError('A terminal session is already active.');
-      _terminalActive = true;
-      try {
-        return await _terminal<List<T>>(
-          selectedMode,
-          output ?? stderr,
-          (source, mode, restore) => _run(source, mode, beforeClose: restore),
-        );
-      } finally {
-        _terminalActive = false;
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selectedMode =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<List<T>>(
+            selectedMode,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
       }
+      return await _run(source, selectedMode);
+    } finally {
+      _active = false;
     }
-    return _run(source, selectedMode);
   }
 
   Future<PromptResult<List<T>>> _run(
@@ -1709,30 +1746,244 @@ final class MultiSelect<T> {
     PromptMode mode, {
     void Function()? beforeClose,
   }) async {
-    if (source is SuppliedAnswer)
+    if (source is SuppliedAnswer) {
       return Unavailable('Supply interactive input.');
+    }
     final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
     final keys = _Keys(scripted.input.transform(utf8.encoder));
-    final selected = <int>{};
+    final selected = <int>{
+      for (var i = 0; i < choices.length; i++)
+        if (defaultValues.contains(choices[i].value)) i,
+    };
+    var filter = '';
     var focus = 0;
+    var page = 0;
+    const size = 10;
+    List<int> visible() => [
+      for (var i = 0; i < choices.length; i++)
+        if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
+    ];
+    void show() {
+      final items = visible();
+      final hidden = selected.where((i) => !items.contains(i)).length;
+      out.writeln(
+        '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
+      );
+      if (items.isEmpty) out.writeln('No matching choices.');
+      final shown = mode == PromptMode.linear
+          ? items.skip(page * size).take(size)
+          : items;
+      if (mode == PromptMode.linear && items.isNotEmpty) {
+        out.writeln(
+          'Page ${page + 1} of ${(items.length + size - 1) ~/ size}.',
+        );
+      }
+      for (final i in shown) {
+        final c = choices[i];
+        out.writeln(
+          '${i + 1}. ${c.label} [${selected.contains(i) ? 'checked' : 'unchecked'}]${mode == PromptMode.rich && items.isNotEmpty && items[focus] == i ? ' [focused]' : ''}${defaultValues.contains(c.value) ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+        );
+      }
+    }
+
+    void review() {
+      out.writeln('Selected: ${selected.length}.');
+      for (var i = 0; i < choices.length; i++) {
+        if (selected.contains(i)) {
+          out.writeln(
+            '${i + 1}. ${choices[i].label}${visible().contains(i) ? '' : ' [hidden]'}',
+          );
+        }
+      }
+    }
+
+    void toggle(int i) {
+      final c = choices[i];
+      if (c.disabledReason != null) {
+        out.writeln('Unavailable: ${c.disabledReason}.');
+        return;
+      }
+      if (selected.contains(i)) {
+        selected.remove(i);
+      } else if (max != null && selected.length >= max!) {
+        out.writeln('Maximum $max selections.');
+        return;
+      } else {
+        selected.add(i);
+      }
+      out.writeln(
+        '${c.label}: ${selected.contains(i) ? 'checked' : 'unchecked'}.',
+      );
+    }
+
+    void bulk(bool add) {
+      final enabled = visible()
+          .where((i) => choices[i].disabledReason == null)
+          .toSet();
+      if (add && max != null && selected.union(enabled).length > max!) {
+        out.writeln('Maximum $max selections; no changes made.');
+        return;
+      }
+      if (add) {
+        selected.addAll(enabled);
+      } else {
+        selected.removeAll(enabled);
+      }
+    }
+
+    PromptResult<List<T>>? submit() {
+      if (selected.length < min) {
+        out.writeln('Minimum $min selections required.');
+        return null;
+      }
+      return Accepted([
+        for (var i = 0; i < choices.length; i++)
+          if (selected.contains(i)) choices[i].value,
+      ]);
+    }
+
+    show();
+    out.writeln(
+      mode == PromptMode.linear
+          ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help, /cancel.'
+          : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+    );
     try {
+      if (mode == PromptMode.linear) {
+        while (true) {
+          final r = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {
+              '/done',
+              '/selected',
+              '/filter',
+              '/select-visible',
+              '/clear-visible',
+              '/next',
+              '/previous',
+            },
+          );
+          if (r.action == 'cancel') return Cancelled();
+          if (r.action == 'interrupt') return Interrupted();
+          if (r.action == 'eof') return InputEnded();
+          if (r.action == 'command') {
+            switch (r.value) {
+              case '/done':
+                final result = submit();
+                if (result != null) return result;
+              case '/selected':
+                review();
+              case '/select-visible':
+                bulk(true);
+                show();
+              case '/clear-visible':
+                bulk(false);
+                show();
+              case '/next':
+                if ((page + 1) * size < visible().length) page++;
+                show();
+              case '/previous':
+                if (page > 0) page--;
+                show();
+              case '/filter':
+                out.writeln('Enter filter text (empty clears):');
+                final f = await _edit(
+                  keys,
+                  '',
+                  out,
+                  linear: true,
+                  sequential: true,
+                );
+                if (f.action == 'cancel') return Cancelled();
+                if (f.action == 'interrupt') return Interrupted();
+                if (f.action != 'submit') return InputEnded();
+                filter = f.value;
+                page = 0;
+                focus = 0;
+                show();
+            }
+          } else {
+            final n = int.tryParse(r.value);
+            if (n == null ||
+                n < 1 ||
+                n > choices.length ||
+                !visible().contains(n - 1)) {
+              out.writeln('Enter a visible choice reference.');
+            } else {
+              toggle(n - 1);
+            }
+          }
+        }
+      }
+      var help = false;
       while (true) {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x1b') return Cancelled();
-        if (key == '\x1b[A' && focus > 0) focus--;
-        if (key == '\x1b[B' && focus < choices.length - 1) focus++;
-        if (key == ' ' &&
-            choices.isNotEmpty &&
-            choices[focus].disabledReason == null) {
-          if (!selected.add(focus)) selected.remove(focus);
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          show();
+          continue;
         }
-        if (key == '\r' || key == '\n')
-          return Accepted([
-            for (var i = 0; i < choices.length; i++)
-              if (selected.contains(i)) choices[i].value,
-          ]);
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Space toggles; Enter submits; / filters; Ctrl+A selects visible; Ctrl+X clears visible; Ctrl+R reviews; Escape dismisses help.',
+          );
+          continue;
+        }
+        if (help) continue;
+        final items = visible();
+        if (key == '\x1b[A' && focus > 0) {
+          focus--;
+          show();
+        }
+        if (key == '\x1b[B' && focus < items.length - 1) {
+          focus++;
+          show();
+        }
+        if (key == ' ' && items.isNotEmpty) {
+          toggle(items[focus]);
+          show();
+        }
+        if (key == '\x01') {
+          bulk(true);
+          show();
+        }
+        if (key == '\x18') {
+          bulk(false);
+          show();
+        }
+        if (key == '\x12') review();
+        if (key == '/') {
+          out.writeln('Enter filter text (empty clears):');
+          final f = await _edit(keys, '', out);
+          if (f.action == 'interrupt') return Interrupted();
+          if (f.action == 'eof') return InputEnded();
+          if (f.action == 'submit') {
+            filter = f.value;
+            focus = 0;
+            show();
+          }
+        }
+        if (key == '\r' || key == '\n') {
+          final result = submit();
+          if (result != null) return result;
+        }
       }
     } finally {
       try {
