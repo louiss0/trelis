@@ -3008,6 +3008,9 @@ final class TagInput {
     PromptSource source,
     PromptMode mode,
   ) async {
+    if (source is SuppliedAnswer) {
+      return Unavailable('A tag collection requires an interactive source.');
+    }
     final input = source as ScriptedInput;
     if (mode == PromptMode.rich && !input.supportsRich) {
       return Unavailable(

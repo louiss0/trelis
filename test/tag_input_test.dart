@@ -4,6 +4,14 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'supplied invalid single tag yields unavailable rather than throwing',
+    () async {
+      final result = await TagInput('Tags')
+          .prompt(source: SuppliedAnswer('bad!'));
+      expect(result, isA<Unavailable<List<String>>>());
+    },
+  );
   test('rich focused tag can be edited in place', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
