@@ -98,3 +98,20 @@ dart test
 
 Windows native console regressions can also be run with the PowerShell scripts
 in `test/`, including `text_input_windows.ps1`.
+
+## Password
+
+`Password('Password').prompt()` starts a fresh secret session. Enter ends
+hidden editing, not submission: choose `submit`, `edit`, `clear`, `help`, or
+`cancel` at the separate action stage. In linear mode `/help` and `/cancel`
+are also available there; hidden entry always treats them literally. Empty
+entry is an empty secret, and EOF never accepts a draft. Validation errors are
+reported generically, so callbacks must not rely on displaying their messages.
+
+No echo is the default. `mask: true` explicitly reveals length through mask
+characters. `initialValue` explicitly retains a prefilled secret in memory;
+reopening Edit retains it, while Clear starts empty. Both use the capable
+shared editor, including in linear mode. Neither terminal echo flags nor the
+scripted tests establish actual screen-reader typing behavior: terminal and
+NVDA secret entry, masking, and prefill require separate verification. Avoid
+real secrets in test transcripts and callback diagnostics.

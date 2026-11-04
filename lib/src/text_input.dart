@@ -189,6 +189,7 @@ Future<({String action, String value})> _edit(
   bool linear = false,
   bool sequential = false,
   bool secret = false,
+  bool mask = false,
   int? maxLength,
 }) async {
   var chars = initial.characters.toList();
@@ -241,7 +242,10 @@ Future<({String action, String value})> _edit(
   }
 
   void display() {
-    if (secret) return;
+    if (secret) {
+      if (mask) output.writeln('*' * chars.length);
+      return;
+    }
     if (sequential) {
       output.writeln('Current text: ${chars.join()}');
       output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
@@ -626,4 +630,174 @@ Future<PromptResult<T>> _terminal<T>(
       calloc.free(outputMode);
     }
   }
+}
+
+/// A secret prompt. Masking discloses the secret's length; prefill retains a
+/// caller-provided secret in memory. Terminal and screen-reader echo behavior
+/// requires independent verification.
+final class Password {
+  Password(
+    this.label, {
+    this.initialValue = '',
+    this.mask = false,
+    this.required = false,
+    this.validate,
+  }) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (initialValue.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError('Invalid secret prefill.');
+    }
+  }
+  final String label;
+  final String initialValue;
+  final bool mask;
+  final bool required;
+  final String? Function(String)? validate;
+  bool _active = false;
+
+  Future<PromptResult<String>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<String>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } on _SecretValidationException {
+      return Unavailable('Secret validation failed.');
+    } finally {
+      _active = false;
+    }
+  }
+
+  bool _validationFailed(String value) {
+    try {
+      return validate?.call(value) != null;
+    } catch (_) {
+      throw const _SecretValidationException();
+    }
+  }
+
+  Future<PromptResult<String>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final value = source.value;
+      if ((required && value.isEmpty) ||
+          value.contains('\r') ||
+          value.contains('\n') ||
+          _validationFailed(value)) {
+        return Unavailable('Secret does not satisfy the requirements.');
+      }
+      return Accepted(value);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    scripted.output.writeln(
+      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T for help; Escape cancels; Ctrl+C interrupts.',
+    );
+    if (mask) {
+      scripted.output.writeln('Masking is enabled and discloses length.');
+    }
+    if (initialValue.isNotEmpty) {
+      scripted.output.writeln(
+        'Secret prefill is enabled; the secret is retained in memory.',
+      );
+    }
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    var value = initialValue;
+    try {
+      while (true) {
+        final edit = await _edit(
+          keys,
+          value,
+          scripted.output,
+          secret: true,
+          mask: mask,
+        );
+        if (edit.action == 'cancel') return Cancelled();
+        if (edit.action == 'interrupt') return Interrupted();
+        if (edit.action != 'submit') return InputEnded();
+        value = edit.value;
+        while (true) {
+          scripted.output.writeln(
+            'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
+          );
+          final action = await _edit(keys, '', scripted.output, secret: true);
+          if (action.action == 'cancel') return Cancelled();
+          if (action.action == 'interrupt') return Interrupted();
+          if (action.action != 'submit') return InputEnded();
+          switch (action.value) {
+            case 'submit':
+              if ((required && value.isEmpty) || _validationFailed(value)) {
+                scripted.output.writeln(
+                  'Secret does not satisfy the requirements. Choose edit or clear and try again.',
+                );
+                continue;
+              }
+              return Accepted(value);
+            case 'edit':
+              break;
+            case 'clear':
+              value = '';
+              break;
+            case 'cancel':
+            case '/cancel':
+              return Cancelled();
+            case 'help':
+            case '/help':
+              scripted.output.writeln(
+                'Submit validates; edit reopens the secret; clear starts empty; cancel ends the prompt.',
+              );
+              continue;
+            default:
+              scripted.output.writeln('Choose one of the listed actions.');
+              continue;
+          }
+          break;
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
+
+final class _SecretValidationException implements Exception {
+  const _SecretValidationException();
 }
