@@ -308,3 +308,9 @@ target exists. With `allowNonexistent` and `PathTarget.any`, no filesystem
 inspection is performed. Existence and type checks are snapshots, not a
 promise that a later operation will succeed. Linear mode uses the shared
 command quoting rules; double an initial backslash (three for a UNC pair).
+
+For existence and typed-target checks, PathInput treats filesystem inspection
+errors as errors rather than assuming the path is absent. A prospective typed
+path is accepted only when the platform can establish absence; unsupported
+inspection platforms fail closed. These checks are snapshots and do not grant
+permission or guarantee a subsequent filesystem operation.

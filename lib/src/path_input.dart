@@ -96,6 +96,8 @@ final class PathInput {
     try {
       final type = await FileSystemEntity.type(candidate);
       if (type == FileSystemEntityType.notFound) {
+        final failure = _pathInspectionFailure(candidate);
+        if (failure != null) return failure;
         return allowNonexistent ? null : 'Target must exist.';
       }
       if (target == PathTarget.file && type != FileSystemEntityType.file) {
@@ -194,5 +196,97 @@ final class PathInput {
         await keys.close();
       }
     }
+  }
+}
+
+// Dart's type() maps filesystem errors to notFound. Probe again with native
+// error codes and fail closed when the absence cannot be established.
+String? _pathInspectionFailure(String candidate) {
+  try {
+    if (Platform.isWindows) {
+      final kernel = DynamicLibrary.open('kernel32.dll');
+      final attributes = kernel
+          .lookupFunction<
+            Uint32 Function(Pointer<Utf16>),
+            int Function(Pointer<Utf16>)
+          >('GetFileAttributesW');
+      final lastError = kernel
+          .lookupFunction<Uint32 Function(), int Function()>('GetLastError');
+      final name = candidate.toNativeUtf16();
+      try {
+        final result = attributes(name);
+        if (result != 0xffffffff) return 'Cannot inspect target type.';
+        final code = lastError();
+        if (code == 2) return null;
+        if (code == 3) {
+          // ERROR_PATH_NOT_FOUND also covers a regular file used as a parent.
+          // Inspect raw prefixes without normalizing symlink-sensitive dots.
+          var prefix = candidate;
+          final rootLength = path.rootPrefix(candidate).length;
+          while (prefix.length > rootLength) {
+            final slash = prefix.lastIndexOf(RegExp(r'[\\/]'));
+            if (slash < rootLength) {
+              prefix = candidate.substring(0, rootLength);
+            } else {
+              prefix = prefix.substring(0, slash);
+              if (prefix.length < rootLength) {
+                prefix = candidate.substring(0, rootLength);
+              }
+            }
+            final parentName = prefix.toNativeUtf16();
+            try {
+              final parent = attributes(parentName);
+              if (parent != 0xffffffff) {
+                return (parent & 0x10) != 0
+                    ? null
+                    : 'A path parent is not a directory.';
+              }
+              final parentError = lastError();
+              if (parentError != 2 && parentError != 3) {
+                return 'Cannot inspect target parent (Windows error $parentError).';
+              }
+            } finally {
+              calloc.free(parentName);
+            }
+            if (prefix.length <= rootLength) break;
+          }
+          return 'Cannot inspect target parent.';
+        }
+        return 'Cannot inspect target (Windows error $code).';
+      } finally {
+        calloc.free(name);
+      }
+    }
+    if (Platform.isLinux ||
+        Platform.isAndroid ||
+        Platform.isMacOS ||
+        Platform.isIOS) {
+      final libc = DynamicLibrary.process();
+      final access = libc
+          .lookupFunction<
+            Int32 Function(Pointer<Utf8>, Int32),
+            int Function(Pointer<Utf8>, int)
+          >('access');
+      final errno = libc
+          .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
+            Platform.isMacOS || Platform.isIOS
+                ? '__error'
+                : Platform.isAndroid
+                ? '__errno'
+                : '__errno_location',
+          );
+      final name = candidate.toNativeUtf8();
+      try {
+        if (access(name, 0) == 0) return 'Cannot inspect target type.';
+        final code = errno().value;
+        if (code == 2) return null;
+        return 'Cannot inspect target (filesystem error $code).';
+      } finally {
+        calloc.free(name);
+      }
+    }
+    return 'Cannot determine whether target exists on this platform.';
+  } catch (_) {
+    return 'Cannot determine whether target exists.';
   }
 }

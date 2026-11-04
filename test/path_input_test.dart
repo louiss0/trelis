@@ -51,4 +51,42 @@ void main() {
       contains('Resolved candidate: $base${path.separator}first'),
     );
   });
+  test('Windows UNC quoting preserves both leading backslashes', () async {
+    if (!Platform.isWindows) return;
+    final out = StringBuffer();
+    final result = await PathInput('Path', allowNonexistent: true).prompt(
+      source: ScriptedInput(
+        Stream.value(
+          r'\\\server\share\folder'
+          '\r\r',
+        ),
+        out,
+      ),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, r'\\server\share\folder');
+  });
+  test('initial command-shaped literal remains data when reopened', () async {
+    final out = StringBuffer();
+    final result =
+        await PathInput(
+          'Path',
+          initialValue: '/cancel',
+          allowNonexistent: true,
+        ).prompt(
+          source: ScriptedInput(Stream.value('\r\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect(result, isA<Accepted<String>>());
+  });
+  test('literal spaces and shell punctuation are not expanded', () async {
+    final base = Directory.current.path;
+    const value = r'~ $HOME "quoted" *';
+    final result = await PathInput(
+      'Path',
+      base: base,
+      allowNonexistent: true,
+    ).prompt(source: SuppliedAnswer(value));
+    expect((result as Accepted<String>).value, '$base${path.separator}$value');
+  });
 }
