@@ -7,6 +7,8 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 
+part 'autocomplete.dart';
+
 sealed class PromptResult<T> {}
 
 final class Accepted<T> extends PromptResult<T> {
@@ -190,7 +192,15 @@ Future<({String action, String value})> _edit(
   bool sequential = false,
   bool secret = false,
   bool mask = false,
+  bool clearHelpCommand = false,
+  bool allowCommandPrefixes = false,
   int? maxLength,
+  String? Function(String key, String text)? intercept,
+  void Function(String text)? onChanged,
+  void Function(bool literal)? onSubmit,
+  int? pasteMaxLength,
+  Set<String> extraCommands = const {},
+  bool multilinePaste = false,
 }) async {
   var chars = initial.characters.toList();
   var pos = chars.length;
@@ -199,6 +209,7 @@ Future<({String action, String value})> _edit(
   if (linear &&
       (initial == '/cancel' ||
           initial == '/help' ||
+          extraCommands.contains(initial) ||
           initial.startsWith('\\'))) {
     chars.insert(0, '\\');
     provenance.insert(0, false);
@@ -208,9 +219,18 @@ Future<({String action, String value})> _edit(
   void insert(String data, bool isPaste) {
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
-    if (maxLength != null && count > maxLength) {
+    final limit = isPaste ? (pasteMaxLength ?? maxLength) : maxLength;
+    final commandPrefix =
+        !isPaste &&
+        (extraCommands.isNotEmpty || allowCommandPrefixes) &&
+        ({'/help', '/cancel', ...extraCommands}).any(
+          (command) =>
+              command.startsWith(candidate) ||
+              ('\\$command').startsWith(candidate),
+        );
+    if (limit != null && count > limit && !commandPrefix) {
       output.writeln(
-        'Insertion rejected: character limit is $maxLength graphemes.',
+        'Insertion rejected: character limit is $limit graphemes.',
       );
       return;
     }
@@ -257,11 +277,20 @@ Future<({String action, String value})> _edit(
   }
 
   display();
+  onChanged?.call(chars.join());
   var help = false;
   while (true) {
     final key = await keys.next();
     if (key == null || key == '\x1a') return (action: 'eof', value: '');
     if (key == '\x03') return (action: 'interrupt', value: '');
+    if (!help) {
+      final action = intercept?.call(key, chars.join());
+      if (action == 'handled') {
+        display();
+        continue;
+      }
+      if (action != null) return (action: action, value: chars.join());
+    }
     if (key == '\x1b') {
       if (!help) return (action: 'cancel', value: '');
       help = false;
@@ -280,25 +309,55 @@ Future<({String action, String value})> _edit(
     if (key == '\r' || key == '\n') {
       output.writeln();
       var text = chars.join();
+      final literal =
+          synthetic >= 0 ||
+          provenance.contains(true) ||
+          (linear &&
+              (text.startsWith(r'\\') ||
+                  (text.startsWith(r'\') &&
+                      {
+                        '/cancel',
+                        '/help',
+                        ...extraCommands,
+                      }.contains(text.substring(1)))));
       if (synthetic >= 0) {
         final answer = chars.toList();
         answer[synthetic] = answer[synthetic].substring(1);
         text = answer.join();
       } else if (linear && !provenance.contains(true)) {
         if (text == '/help') {
-          output.writeln(
-            r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
-          );
+          if (extraCommands.isNotEmpty) {
+            output.writeln(
+              'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+            );
+          } else {
+            output.writeln(
+              r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
+            );
+          }
+          if (clearHelpCommand || extraCommands.isNotEmpty) {
+            chars.clear();
+            provenance.clear();
+            pos = 0;
+          }
           display();
           continue;
         }
         if (text == '/cancel') return (action: 'cancel', value: '');
-        if (text == r'\/cancel' ||
-            text == r'\/help' ||
-            text.startsWith(r'\\')) {
+        if (extraCommands.contains(text)) {
+          return (action: 'command', value: text);
+        }
+        if (text.startsWith(r'\\') ||
+            (text.startsWith(r'\') &&
+                ({
+                  '/cancel',
+                  '/help',
+                  ...extraCommands,
+                }).contains(text.substring(1)))) {
           text = text.substring(1);
         }
       }
+      onSubmit?.call(literal);
       return (action: 'submit', value: text);
     }
     if (key == '\x1b[D') {
@@ -333,8 +392,13 @@ Future<({String action, String value})> _edit(
     } else if (key == '\x1b[999~') {
       output.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
     } else if (key.startsWith('\x1b[200~')) {
-      final data = key.substring(6, key.length - 6);
-      if (data.runes.any((r) => r < 32 || r == 127)) {
+      var data = key.substring(6, key.length - 6);
+      if (multilinePaste) {
+        data = data.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      }
+      if (data.runes.any(
+        (r) => (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
+      )) {
         output.writeln('Paste rejected: single-line printable text only.');
         display();
         continue;
@@ -344,6 +408,7 @@ Future<({String action, String value})> _edit(
       insert(key, false);
     }
     display();
+    onChanged?.call(chars.join());
   }
 }
 
@@ -520,7 +585,9 @@ Stream<String> _consoleInput(_Console console, int handle) {
           ? String.fromCharCode(code)
           : switch (vk) {
               0x25 => '\x1b[D',
+              0x26 => '\x1b[A',
               0x27 => '\x1b[C',
+              0x28 => '\x1b[B',
               0x24 => '\x1b[H',
               0x23 => '\x1b[F',
               0x2e => '\x1b[3~',
@@ -800,6 +867,1160 @@ final class Password {
 
 final class _SecretValidationException implements Exception {
   const _SecretValidationException();
+}
+
+/// A Yes/No question whose draft is not submitted by a shortcut.
+final class Confirm extends _BooleanPrompt {
+  Confirm(super.label, {super.initialValue = false})
+    : super(kind: _BooleanKind.confirm);
+}
+
+final class Checkbox extends _BooleanPrompt {
+  Checkbox(super.label, {super.initialValue = false})
+    : super(kind: _BooleanKind.checkbox);
+}
+
+final class Toggle extends _BooleanPrompt {
+  Toggle(super.label, {super.initialValue = false})
+    : super(kind: _BooleanKind.toggle);
+}
+
+enum _BooleanKind { confirm, checkbox, toggle }
+
+abstract class _BooleanPrompt {
+  _BooleanPrompt(this.label, {required this.initialValue, required this.kind}) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+  }
+  final String label;
+  final bool initialValue;
+  final _BooleanKind kind;
+  bool _active = false;
+
+  Future<PromptResult<bool>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<bool>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  String _state(bool value) => switch (kind) {
+    _BooleanKind.confirm => value ? 'Yes' : 'No',
+    _BooleanKind.checkbox => value ? 'checked' : 'unchecked',
+    _BooleanKind.toggle => value ? 'on' : 'off',
+  };
+
+  bool? _parse(String value) => switch (value.toLowerCase()) {
+    'yes' || 'y' => true,
+    'no' || 'n' => false,
+    _ => null,
+  };
+
+  Future<PromptResult<bool>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final value = _parse(source.value);
+      return value == null ? Unavailable('Supply yes or no.') : Accepted(value);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
+    var draft = initialValue;
+    out.writeln(
+      '$label Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
+    );
+    if (mode == PromptMode.linear) {
+      out.writeln(
+        r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.',
+      );
+    } else {
+      out.writeln(
+        '${kind == _BooleanKind.confirm ? 'Y/N changes the draft' : 'Space toggles the draft'}; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      );
+    }
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      if (mode == PromptMode.linear) {
+        var entry = '';
+        while (true) {
+          final result = await _edit(
+            keys,
+            entry,
+            out,
+            linear: true,
+            sequential: true,
+            clearHelpCommand: true,
+          );
+          if (result.action == 'cancel') return Cancelled();
+          if (result.action == 'interrupt') return Interrupted();
+          if (result.action != 'submit') return InputEnded();
+          entry = result.value;
+          final answer = entry.isEmpty ? draft : _parse(entry);
+          if (answer != null) {
+            out.writeln('Accepted: ${_state(answer)}.');
+            return Accepted(answer);
+          }
+          out.writeln(
+            'Enter yes/y or no/n, or erase the line and submit the displayed default.',
+          );
+        }
+      }
+      var help = false;
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          out.writeln('Help dismissed. Draft: ${_state(draft)}.');
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: ${kind == _BooleanKind.confirm ? 'Y/N changes the draft' : 'Space toggles the draft'}; Enter submits. Escape dismisses help; Ctrl+C interrupts.',
+          );
+          continue;
+        }
+        if (help) continue;
+        if (key == '\r' || key == '\n') {
+          out.writeln('Accepted: ${_state(draft)}.');
+          return Accepted(draft);
+        }
+        if (kind == _BooleanKind.confirm &&
+            (key == 'y' || key == 'Y' || key == 'n' || key == 'N')) {
+          draft = key.toLowerCase() == 'y';
+          out.writeln('Draft: ${_state(draft)}.');
+        } else if (kind != _BooleanKind.confirm && key == ' ') {
+          draft = !draft;
+          out.writeln('Draft: ${_state(draft)}.');
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
+
+final class Multiline {
+  Multiline(
+    this.label, {
+    this.initialValue = '',
+    this.required = false,
+    this.validate,
+    this.maxLength,
+  }) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (maxLength != null && maxLength! < 0) {
+      throw ArgumentError.value(maxLength, 'maxLength');
+    }
+    if (maxLength != null &&
+        _normalize(initialValue).characters.length > maxLength!) {
+      throw ArgumentError.value(initialValue, 'initialValue');
+    }
+  }
+  final String label;
+  final String initialValue;
+  final bool required;
+  final String? Function(String)? validate;
+  final int? maxLength;
+  bool _active = false;
+  static String _normalize(String value) =>
+      value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  String? _error(String value) {
+    if (required && value.isEmpty) return 'Required: enter a non-empty value.';
+    if (maxLength != null && value.characters.length > maxLength!) {
+      return 'Maximum $maxLength graphemes.';
+    }
+    return validate?.call(value);
+  }
+
+  Future<PromptResult<String>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<String>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<String>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final value = _normalize(source.value);
+      final error = _error(value);
+      return error == null ? Accepted(value) : Unavailable(error);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
+    out.writeln(
+      mode == PromptMode.linear
+          ? '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+          : '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    );
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    if (mode == PromptMode.linear) {
+      final lines = initialValue.isEmpty
+          ? <String>[]
+          : _normalize(initialValue).split('\n');
+      try {
+        while (true) {
+          final result = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {
+              '/list',
+              '/edit',
+              '/insert',
+              '/remove',
+              '/done',
+            },
+            multilinePaste: true,
+            maxLength: maxLength == null
+                ? null
+                : (maxLength! -
+                          (lines.isEmpty
+                              ? 0
+                              : lines.join('\n').characters.length + 1))
+                      .clamp(0, maxLength!),
+            pasteMaxLength: maxLength == null
+                ? null
+                : (maxLength! -
+                          (lines.isEmpty
+                              ? 0
+                              : lines.join('\n').characters.length + 1))
+                      .clamp(0, maxLength!),
+          );
+          if (result.action == 'cancel') return Cancelled();
+          if (result.action == 'interrupt') return Interrupted();
+          if (result.action != 'submit' && result.action != 'command') {
+            return InputEnded();
+          }
+          if (result.action == 'submit') {
+            lines.addAll(result.value.split('\n'));
+            continue;
+          }
+          if (result.value == '/done') {
+            final value = lines.join('\n');
+            final error = _error(value);
+            if (error == null) return Accepted(value);
+            out.writeln(error);
+            continue;
+          }
+          if (result.value == '/list') {
+            for (var i = 0; i < lines.length; i++) {
+              out.writeln('${i + 1}: ${lines[i]}');
+            }
+            continue;
+          }
+          if (result.value == '/edit' ||
+              result.value == '/insert' ||
+              result.value == '/remove') {
+            out.writeln('Enter line number:');
+            final number = await _edit(
+              keys,
+              '',
+              out,
+              linear: true,
+              sequential: true,
+            );
+            if (number.action == 'cancel') return Cancelled();
+            if (number.action == 'interrupt') return Interrupted();
+            if (number.action != 'submit') return InputEnded();
+            final index = (int.tryParse(number.value) ?? 0) - 1;
+            if (index < 0 ||
+                index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
+              out.writeln('Invalid line number.');
+              continue;
+            }
+            if (result.value == '/remove') {
+              out.writeln('Remove line ${index + 1}? Enter y to confirm.');
+              final confirm = await _edit(
+                keys,
+                '',
+                out,
+                linear: true,
+                sequential: true,
+              );
+              if (confirm.action == 'cancel') return Cancelled();
+              if (confirm.action == 'interrupt') return Interrupted();
+              if (confirm.action != 'submit') return InputEnded();
+              if (confirm.value == 'y') lines.removeAt(index);
+            } else {
+              out.writeln('Edit line:');
+              final edited = await _edit(
+                keys,
+                result.value == '/edit' ? lines[index] : '',
+                out,
+                linear: true,
+                sequential: true,
+                extraCommands: const {
+                  '/list',
+                  '/edit',
+                  '/insert',
+                  '/remove',
+                  '/done',
+                },
+                multilinePaste: true,
+                maxLength: maxLength == null
+                    ? null
+                    : (maxLength! -
+                              (result.value == '/edit'
+                                  ? lines.join('\n').characters.length -
+                                        lines[index].characters.length
+                                  : lines.isEmpty
+                                  ? 0
+                                  : lines.join('\n').characters.length + 1))
+                          .clamp(0, maxLength!),
+                pasteMaxLength: maxLength == null
+                    ? null
+                    : (maxLength! -
+                              (result.value == '/edit'
+                                  ? lines.join('\n').characters.length -
+                                        lines[index].characters.length
+                                  : lines.isEmpty
+                                  ? 0
+                                  : lines.join('\n').characters.length + 1))
+                          .clamp(0, maxLength!),
+              );
+              if (edited.action == 'cancel') return Cancelled();
+              if (edited.action == 'interrupt') return Interrupted();
+              if (edited.action == 'command') {
+                out.writeln('Quote commands to enter them as text.');
+                continue;
+              }
+              if (edited.action != 'submit') return InputEnded();
+              if (result.value == '/edit') lines.removeAt(index);
+              lines.insertAll(index, edited.value.split('\n'));
+            }
+            continue;
+          }
+          lines.add(result.value);
+        }
+      } finally {
+        try {
+          beforeClose?.call();
+        } finally {
+          await keys.close();
+        }
+      }
+    }
+    var chars = _normalize(initialValue).characters.toList();
+    var pos = chars.length;
+    var action = 0;
+    var help = false;
+    void insert(String text) {
+      final before = chars.take(pos).join() + text;
+      final candidate = before + chars.skip(pos).join();
+      if (maxLength != null && candidate.characters.length > maxLength!) {
+        out.writeln(
+          'Insertion rejected: character limit is $maxLength graphemes.',
+        );
+        return;
+      }
+      chars = candidate.characters.toList();
+      var offset = 0;
+      pos = 0;
+      while (pos < chars.length && offset < before.length) {
+        offset += chars[pos].length;
+        pos++;
+      }
+    }
+
+    void display() {
+      var start = pos;
+      while (start > 0 && chars[start - 1] != '\n') {
+        start--;
+      }
+      var end = pos;
+      while (end < chars.length && chars[end] != '\n') {
+        end++;
+      }
+      final line = chars.take(start).where((c) => c == '\n').length + 1;
+      String visible(Iterable<String> part) =>
+          part.join().replaceAll('\t', '⇥');
+      out.write(
+        '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
+      );
+    }
+
+    display();
+    try {
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: arrows move; Home/End move to line boundaries; Backspace/Delete erase; Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates an action. Escape dismisses help or cancels; Ctrl+C interrupts.',
+          );
+          continue;
+        }
+        if (help) {
+          if (key == '\x1b') {
+            help = false;
+            out.writeln('Help dismissed.');
+          }
+          continue;
+        }
+        if (key == '\x1b') {
+          if (action != 0) {
+            action = 0;
+            out.writeln('Edit');
+            continue;
+          }
+          return Cancelled();
+        }
+        if (key == '\t') {
+          action = (action + 1) % 3;
+          out.writeln(['Edit', 'Finish', 'Insert tab'][action]);
+          continue;
+        }
+        if (key == '\r' || key == '\n') {
+          if (action == 1) {
+            final value = chars.join();
+            final error = _error(value);
+            if (error == null) return Accepted(value);
+            out.writeln(error);
+            action = 0;
+            continue;
+          }
+          if (action == 2) {
+            insert('\t');
+            action = 0;
+          } else {
+            insert('\n');
+          }
+        } else if (action != 0) {
+          continue;
+        } else if (key == '\x1b[A' || key == '\x1b[B') {
+          var start = pos;
+          while (start > 0 && chars[start - 1] != '\n') {
+            start--;
+          }
+          final column = pos - start;
+          if (key == '\x1b[A' && start > 0) {
+            final end = start - 1;
+            var previous = end;
+            while (previous > 0 && chars[previous - 1] != '\n') {
+              previous--;
+            }
+            pos = (previous + column).clamp(previous, end);
+          } else if (key == '\x1b[B') {
+            var end = pos;
+            while (end < chars.length && chars[end] != '\n') {
+              end++;
+            }
+            if (end < chars.length) {
+              final next = end + 1;
+              var nextEnd = next;
+              while (nextEnd < chars.length && chars[nextEnd] != '\n') {
+                nextEnd++;
+              }
+              pos = (next + column).clamp(next, nextEnd);
+            }
+          }
+        } else if (key == '\x1b[D') {
+          if (pos > 0) pos--;
+        } else if (key == '\x1b[C') {
+          if (pos < chars.length) pos++;
+        } else if (key == '\x1b[H' || key == '\x01') {
+          while (pos > 0 && chars[pos - 1] != '\n') {
+            pos--;
+          }
+        } else if (key == '\x1b[F' || key == '\x05') {
+          while (pos < chars.length && chars[pos] != '\n') {
+            pos++;
+          }
+        } else if (key == '\x7f' || key == '\x08') {
+          if (pos > 0) {
+            chars.removeAt(--pos);
+          }
+        } else if (key == '\x1b[3~') {
+          if (pos < chars.length) {
+            chars.removeAt(pos);
+          }
+        } else if (key == '\x1b[999~') {
+          out.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
+        } else if (key.startsWith('\x1b[200~')) {
+          final data = _normalize(key.substring(6, key.length - 6));
+          if (data.runes.any(
+            (r) => (r < 32 && r != 9 && r != 10) || r == 127,
+          )) {
+            out.writeln('Paste rejected: unsupported control character.');
+          } else {
+            insert(data);
+          }
+        } else if (!key.startsWith('\x1b') &&
+            key.codeUnitAt(0) >= 32 &&
+            key.codeUnitAt(0) != 127) {
+          insert(key);
+        }
+        display();
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
+
+/// One choice, identified independently of its display label.
+final class Choice<T> {
+  Choice(this.value, this.label, {this.disabledReason}) {
+    if (label.trim().isEmpty ||
+        label.runes.any((c) => c < 32 || c == 127) ||
+        (disabledReason != null &&
+            (disabledReason!.trim().isEmpty ||
+                disabledReason!.runes.any((c) => c < 32 || c == 127)))) {
+      throw ArgumentError(
+        'Choice labels and reasons must be nonempty safe text.',
+      );
+    }
+  }
+  final T value;
+  final String label;
+  final String? disabledReason;
+}
+
+final class Select<T> extends _SingleChoice<T> {
+  Select(super.label, super.choices, {super.defaultValue})
+    : super(radio: false);
+}
+
+final class Radio<T> extends _SingleChoice<T> {
+  Radio(super.label, super.choices, {super.defaultValue}) : super(radio: true);
+}
+
+abstract class _SingleChoice<T> {
+  _SingleChoice(
+    this.label,
+    List<Choice<T>> choices, {
+    this.defaultValue,
+    required this.radio,
+  }) : choices = List.unmodifiable(choices) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (choices.map((c) => c.value).toSet().length != choices.length) {
+      throw ArgumentError('Choice identities must be unique.');
+    }
+    if (defaultValue != null && !choices.any((c) => c.value == defaultValue)) {
+      throw ArgumentError('Default identity is not a choice.');
+    }
+  }
+  final String label;
+  final List<Choice<T>> choices;
+  final T? defaultValue;
+  final bool radio;
+  bool _active = false;
+
+  Future<PromptResult<T>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<T>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<T>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final n = int.tryParse(source.value);
+      if (n == null ||
+          n < 1 ||
+          n > choices.length ||
+          choices[n - 1].disabledReason != null) {
+        return Unavailable('Supply an enabled choice reference.');
+      }
+      return Accepted(choices[n - 1].value);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
+    var focus = defaultValue == null
+        ? -1
+        : choices.indexWhere((c) => c.value == defaultValue);
+    if (focus < 0) focus = choices.indexWhere((c) => c.disabledReason == null);
+    if (focus < 0 && choices.isNotEmpty) focus = 0;
+    var page = 0;
+    const pageSize = 10;
+    void show() {
+      out.writeln(
+        '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
+      );
+      if (choices.isEmpty) out.writeln('No choices available.');
+      final start = mode == PromptMode.linear ? page * pageSize : 0;
+      final end = mode == PromptMode.linear
+          ? (start + pageSize).clamp(0, choices.length)
+          : choices.length;
+      if (mode == PromptMode.linear && choices.isNotEmpty) {
+        out.writeln(
+          'Page ${page + 1} of ${(choices.length + pageSize - 1) ~/ pageSize}.',
+        );
+      }
+      for (var i = start; i < end; i++) {
+        final c = choices[i];
+        out.writeln(
+          '${i + 1}. ${radio ? '( ) ' : ''}${c.label}${i == focus ? ' [focused]' : ''}${defaultValue != null && c.value == defaultValue ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+        );
+      }
+    }
+
+    show();
+    out.writeln(
+      mode == PromptMode.rich
+          ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
+          : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+    );
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      if (mode == PromptMode.linear) {
+        var entry = '';
+        while (true) {
+          final result = await _edit(
+            keys,
+            entry,
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {'/next', '/previous'},
+          );
+          if (result.action == 'cancel') return Cancelled();
+          if (result.action == 'interrupt') return Interrupted();
+          if (result.action == 'command') {
+            if (result.value == '/next' &&
+                (page + 1) * pageSize < choices.length) {
+              page++;
+            }
+            if (result.value == '/previous' && page > 0) page--;
+            entry = '';
+            show();
+            continue;
+          }
+          if (result.action != 'submit') return InputEnded();
+          entry = result.value;
+          final n = int.tryParse(entry);
+          if (n == null || n < 1 || n > choices.length) {
+            out.writeln('Enter a valid choice reference.');
+            continue;
+          }
+          final c = choices[n - 1];
+          if (c.disabledReason != null) {
+            out.writeln(
+              'Unavailable: ${c.disabledReason}. Choose an enabled reference.',
+            );
+            continue;
+          }
+          out.writeln('Accepted: ${c.label}.');
+          return Accepted(c.value);
+        }
+      }
+      var help = false;
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Up/Down navigate; Enter accepts the focused enabled choice; Escape dismisses help.',
+          );
+          continue;
+        }
+        if (help) continue;
+        if (key == '\x1b[A' && focus > 0) {
+          focus--;
+          show();
+        }
+        if (key == '\x1b[B' && focus >= 0 && focus < choices.length - 1) {
+          focus++;
+          show();
+        }
+        if (key == '\r' || key == '\n') {
+          if (focus < 0) {
+            out.writeln('No choice available.');
+            continue;
+          }
+          final c = choices[focus];
+          if (c.disabledReason != null) {
+            out.writeln(
+              'Unavailable: ${c.disabledReason}. Navigate to an enabled choice.',
+            );
+            continue;
+          }
+          out.writeln('Accepted: ${c.label}.');
+          return Accepted(c.value);
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
+
+/// A draft set of choices, submitted in their original order.
+final class MultiSelect<T> {
+  MultiSelect(
+    this.label,
+    List<Choice<T>> choices, {
+    List<T> defaultValues = const [],
+    this.min = 0,
+    this.max,
+  }) : choices = List.unmodifiable(choices),
+       defaultValues = List.unmodifiable(defaultValues) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (choices.map((c) => c.value).toSet().length != choices.length) {
+      throw ArgumentError('Choice identities must be unique.');
+    }
+    if (min < 0 || (max != null && (max! < min || max! < 0))) {
+      throw ArgumentError('Invalid selection bounds.');
+    }
+    if (defaultValues.toSet().length != defaultValues.length ||
+        defaultValues.any(
+          (v) => !choices.any((c) => c.value == v && c.disabledReason == null),
+        ) ||
+        (max != null && defaultValues.length > max!)) {
+      throw ArgumentError('Invalid default choices.');
+    }
+  }
+  final String label;
+  final List<Choice<T>> choices;
+  final List<T> defaultValues;
+  final int min;
+  final int? max;
+  bool _active = false;
+
+  Future<PromptResult<List<T>>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selectedMode =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<List<T>>(
+            selectedMode,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selectedMode);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<List<T>>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      return Unavailable('Supply interactive input.');
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final selected = <int>{
+      for (var i = 0; i < choices.length; i++)
+        if (defaultValues.contains(choices[i].value)) i,
+    };
+    var filter = '';
+    var focus = 0;
+    var page = 0;
+    const size = 10;
+    List<int> visible() => [
+      for (var i = 0; i < choices.length; i++)
+        if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
+    ];
+    void show() {
+      final items = visible();
+      final hidden = selected.where((i) => !items.contains(i)).length;
+      out.writeln(
+        '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
+      );
+      if (items.isEmpty) out.writeln('No matching choices.');
+      final shown = mode == PromptMode.linear
+          ? items.skip(page * size).take(size)
+          : items;
+      if (mode == PromptMode.linear && items.isNotEmpty) {
+        out.writeln(
+          'Page ${page + 1} of ${(items.length + size - 1) ~/ size}.',
+        );
+      }
+      for (final i in shown) {
+        final c = choices[i];
+        out.writeln(
+          '${i + 1}. ${c.label} [${selected.contains(i) ? 'checked' : 'unchecked'}]${mode == PromptMode.rich && items.isNotEmpty && items[focus] == i ? ' [focused]' : ''}${defaultValues.contains(c.value) ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+        );
+      }
+    }
+
+    void review() {
+      out.writeln('Selected: ${selected.length}.');
+      for (var i = 0; i < choices.length; i++) {
+        if (selected.contains(i)) {
+          out.writeln(
+            '${i + 1}. ${choices[i].label}${visible().contains(i) ? '' : ' [hidden]'}',
+          );
+        }
+      }
+    }
+
+    void toggle(int i) {
+      final c = choices[i];
+      if (c.disabledReason != null) {
+        out.writeln('Unavailable: ${c.disabledReason}.');
+        return;
+      }
+      if (selected.contains(i)) {
+        selected.remove(i);
+      } else if (max != null && selected.length >= max!) {
+        out.writeln('Maximum $max selections.');
+        return;
+      } else {
+        selected.add(i);
+      }
+      out.writeln(
+        '${c.label}: ${selected.contains(i) ? 'checked' : 'unchecked'}.',
+      );
+    }
+
+    void bulk(bool add) {
+      final enabled = visible()
+          .where((i) => choices[i].disabledReason == null)
+          .toSet();
+      if (add && max != null && selected.union(enabled).length > max!) {
+        out.writeln('Maximum $max selections; no changes made.');
+        return;
+      }
+      if (add) {
+        selected.addAll(enabled);
+      } else {
+        selected.removeAll(enabled);
+      }
+    }
+
+    PromptResult<List<T>>? submit() {
+      if (selected.length < min) {
+        out.writeln('Minimum $min selections required.');
+        return null;
+      }
+      return Accepted([
+        for (var i = 0; i < choices.length; i++)
+          if (selected.contains(i)) choices[i].value,
+      ]);
+    }
+
+    show();
+    out.writeln(
+      mode == PromptMode.linear
+          ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help, /cancel.'
+          : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+    );
+    try {
+      if (mode == PromptMode.linear) {
+        while (true) {
+          final r = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {
+              '/done',
+              '/selected',
+              '/filter',
+              '/select-visible',
+              '/clear-visible',
+              '/next',
+              '/previous',
+            },
+          );
+          if (r.action == 'cancel') return Cancelled();
+          if (r.action == 'interrupt') return Interrupted();
+          if (r.action == 'eof') return InputEnded();
+          if (r.action == 'command') {
+            switch (r.value) {
+              case '/done':
+                final result = submit();
+                if (result != null) return result;
+              case '/selected':
+                review();
+              case '/select-visible':
+                bulk(true);
+                show();
+              case '/clear-visible':
+                bulk(false);
+                show();
+              case '/next':
+                if ((page + 1) * size < visible().length) page++;
+                show();
+              case '/previous':
+                if (page > 0) page--;
+                show();
+              case '/filter':
+                out.writeln('Enter filter text (empty clears):');
+                final f = await _edit(
+                  keys,
+                  '',
+                  out,
+                  linear: true,
+                  sequential: true,
+                );
+                if (f.action == 'cancel') return Cancelled();
+                if (f.action == 'interrupt') return Interrupted();
+                if (f.action != 'submit') return InputEnded();
+                filter = f.value;
+                page = 0;
+                focus = 0;
+                show();
+            }
+          } else {
+            final n = int.tryParse(r.value);
+            if (n == null ||
+                n < 1 ||
+                n > choices.length ||
+                !visible().contains(n - 1)) {
+              out.writeln('Enter a visible choice reference.');
+            } else {
+              toggle(n - 1);
+            }
+          }
+        }
+      }
+      var help = false;
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Space toggles; Enter submits; / filters; Ctrl+A selects visible; Ctrl+X clears visible; Ctrl+R reviews; Escape dismisses help.',
+          );
+          continue;
+        }
+        if (help) continue;
+        final items = visible();
+        if (key == '\x1b[A' && focus > 0) {
+          focus--;
+          show();
+        }
+        if (key == '\x1b[B' && focus < items.length - 1) {
+          focus++;
+          show();
+        }
+        if (key == ' ' && items.isNotEmpty) {
+          toggle(items[focus]);
+          show();
+        }
+        if (key == '\x01') {
+          bulk(true);
+          show();
+        }
+        if (key == '\x18') {
+          bulk(false);
+          show();
+        }
+        if (key == '\x12') review();
+        if (key == '/') {
+          out.writeln('Enter filter text (empty clears):');
+          final f = await _edit(keys, '', out);
+          if (f.action == 'interrupt') return Interrupted();
+          if (f.action == 'eof') return InputEnded();
+          if (f.action == 'submit') {
+            filter = f.value;
+            focus = 0;
+            show();
+          }
+        }
+        if (key == '\r' || key == '\n') {
+          final result = submit();
+          if (result != null) return result;
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
 }
 
 enum TagStyle { kebabCase, snakeCase }
