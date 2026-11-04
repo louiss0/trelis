@@ -16,6 +16,7 @@ part 'search_select.dart';
 part 'sortable_select.dart';
 
 part 'command_palette.dart';
+part 'duration_input.dart';
 
 sealed class PromptResult<T> {}
 
@@ -1334,7 +1335,7 @@ final class Multiline {
       }
       final line = chars.take(start).where((c) => c == '\n').length + 1;
       String visible(Iterable<String> part) =>
-          part.join().replaceAll('\t', '⇥');
+          part.join().replaceAll('\t', 'Ã¢â€¡Â¥');
       out.write(
         '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
       );
@@ -3190,5 +3191,3 @@ final class TimeInput {
     }
   }
 }
-
-
