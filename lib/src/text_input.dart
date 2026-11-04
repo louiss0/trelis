@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 import 'package:path/path.dart' as path;
 
+part 'network_input.dart';
 part 'timezone_snapshot.dart';
 part 'timezone_select.dart';
 part 'path_input.dart';
@@ -1335,7 +1336,7 @@ final class Multiline {
       }
       final line = chars.take(start).where((c) => c == '\n').length + 1;
       String visible(Iterable<String> part) =>
-          part.join().replaceAll('\t', 'Ã¢â€¡Â¥');
+          part.join().replaceAll('\t', 'ÃƒÂ¢Ã¢â‚¬Â¡Ã‚Â¥');
       out.write(
         '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
       );
