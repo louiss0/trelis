@@ -56,6 +56,9 @@ try {
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  switch ($Scenario) {
   'repeat' { [NativeProbe]::Text("`r`r") }
+  'error' { [NativeProbe]::Text("`r`r") }
+  'eof' { [NativeProbe]::Key([char]26,90,8) }
+  'escape' { [NativeProbe]::Key([char]27,27,0) }
   'concurrent' { [NativeProbe]::Text("`r") }
   'rich' { [NativeProbe]::Text("`r") }
   'redirected' { [NativeProbe]::Text("`r") }
@@ -75,7 +78,7 @@ try {
   if ($actual.Contains([char]27) -or !$actual.Contains('Name')) { throw 'unstable stdout transcript' }
   $actual = ($actual -split "`r?`n")[-1]
  }
- $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
+ $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($Scenario -eq 'redirected') {
   $transcript = Get-Content "$file.stderr" -Raw

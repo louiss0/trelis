@@ -10,6 +10,20 @@ Future<void> main(List<String> args) async {
       'Name',
       initialValue: scenario == 'paste' || scenario == 'unicode' ? '' : 'alpha',
     );
+    if (scenario == 'error') {
+      final failing = TextInput(
+        'Failure',
+        validate: (_) => throw StateError('validation'),
+      );
+      try {
+        await failing.prompt(mode: PromptMode.linear);
+      } on StateError {
+        // A subsequent session must still be usable after validation throws.
+      }
+      final result = await prompt.prompt(mode: PromptMode.linear);
+      print(result is Accepted<String> ? result.value : 'failed');
+      return;
+    }
     if (scenario == 'concurrent') {
       final pending = prompt.prompt(mode: PromptMode.linear);
       var outcome = 'overlap';
