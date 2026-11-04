@@ -153,4 +153,15 @@ void main() {
       await input.close();
     },
   );
+  test('linear quoted command remains free-text data', () async {
+    final result = await Autocomplete('Name', suggestions: (_) => <String>[])
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('\\/cancel\r/submit\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, '/cancel');
+  });
 }
