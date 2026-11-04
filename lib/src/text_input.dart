@@ -1670,3 +1670,76 @@ abstract class _SingleChoice<T> {
     }
   }
 }
+
+/// A draft set of choices, submitted in their original order.
+final class MultiSelect<T> {
+  MultiSelect(this.label, List<Choice<T>> choices)
+    : choices = List.unmodifiable(choices);
+  final String label;
+  final List<Choice<T>> choices;
+
+  Future<PromptResult<List<T>>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    final selectedMode =
+        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+    if (source == null) {
+      if (_terminalActive)
+        throw StateError('A terminal session is already active.');
+      _terminalActive = true;
+      try {
+        return await _terminal<List<T>>(
+          selectedMode,
+          output ?? stderr,
+          (source, mode, restore) => _run(source, mode, beforeClose: restore),
+        );
+      } finally {
+        _terminalActive = false;
+      }
+    }
+    return _run(source, selectedMode);
+  }
+
+  Future<PromptResult<List<T>>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer)
+      return Unavailable('Supply interactive input.');
+    final scripted = source as ScriptedInput;
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final selected = <int>{};
+    var focus = 0;
+    try {
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') return Cancelled();
+        if (key == '\x1b[A' && focus > 0) focus--;
+        if (key == '\x1b[B' && focus < choices.length - 1) focus++;
+        if (key == ' ' &&
+            choices.isNotEmpty &&
+            choices[focus].disabledReason == null) {
+          if (!selected.add(focus)) selected.remove(focus);
+        }
+        if (key == '\r' || key == '\n')
+          return Accepted([
+            for (var i = 0; i < choices.length; i++)
+              if (selected.contains(i)) choices[i].value,
+          ]);
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
