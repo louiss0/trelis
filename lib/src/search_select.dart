@@ -8,7 +8,8 @@ final class SearchSelect<T> {
     this.defaultValue,
     this.search,
   }) : choices = List.unmodifiable(choices),
-       _kind = 'SearchSelect' {
+       _kind = 'SearchSelect',
+       _matches = null {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -25,7 +26,8 @@ final class SearchSelect<T> {
     this.defaultValue,
     this.search,
   }) : choices = List.unmodifiable(choices),
-       _kind = 'CommandPalette' {
+       _kind = 'CommandPalette',
+       _matches = null {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -36,6 +38,22 @@ final class SearchSelect<T> {
       throw ArgumentError('Default identity is not a choice.');
     }
   }
+  SearchSelect._timezone(
+    this.label,
+    List<Choice<T>> choices, {
+    this.defaultValue,
+    required this._matches,
+  }) : choices = List.unmodifiable(choices),
+       search = null,
+       _kind = 'TimezoneSelect' {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (defaultValue != null && !choices.any((c) => c.value == defaultValue)) {
+      throw ArgumentError('Default identity is not a choice.');
+    }
+  }
+  final bool Function(Choice<T>, String)? _matches;
   final String label;
   final String _kind;
   final List<Choice<T>> choices;
@@ -131,7 +149,8 @@ final class SearchSelect<T> {
     List<int> visible() => search == null
         ? [
             for (var i = 0; i < choices.length; i++)
-              if (choices[i].label.toLowerCase().contains(query.toLowerCase()))
+              if (_matches?.call(choices[i], query) ??
+                  choices[i].label.toLowerCase().contains(query.toLowerCase()))
                 i,
           ]
         : [
@@ -164,6 +183,19 @@ final class SearchSelect<T> {
     }
 
     void request(String text) {
+      if (_matches != null && hadResultsFocus && focus >= 0) {
+        if (!visible().contains(focus) ||
+            choices[focus].disabledReason != null) {
+          if (!invalidFocus) {
+            out.writeln(
+              'Previously focused choice is removed or unavailable; navigate to choose another.',
+            );
+          }
+          invalidFocus = true;
+        } else {
+          invalidFocus = false;
+        }
+      }
       if (search == null || requestedQuery == text) return;
       requestedQuery = text;
       final requestId = ++generation;

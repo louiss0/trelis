@@ -31,32 +31,32 @@ SearchSelect<String> _createTimezoneSelect(
   String? defaultValue,
   Map<String, String> unavailable,
 ) {
+  if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+    throw ArgumentError.value(label, 'label');
+  }
   final disabled = <String, String>{};
   for (final entry in unavailable.entries) {
     final name = _canonicalZone(entry.key);
-    if (disabled.containsKey(name))
-      throw ArgumentError("Duplicate unavailable zone identity.");
+    if (disabled.containsKey(name)) {
+      throw ArgumentError('Duplicate unavailable zone identity.');
+    }
     disabled[name] = entry.value;
   }
   final choices = [
     for (final name in _ianaZones.keys)
       Choice(name, name.replaceAll('_', ' '), disabledReason: disabled[name]),
   ];
-  return SearchSelect<String>(
+  return SearchSelect<String>._timezone(
     '$label (IANA tzdata 2025c; search identifiers, city names and aliases; no offset previews)',
     choices,
     defaultValue: defaultValue == null ? null : _canonicalZone(defaultValue),
-    search: (query) {
+    matches: (choice, query) {
       final q = query.toLowerCase();
-      return [
-        for (final choice in choices)
-          if (choice.value.toLowerCase().contains(q) ||
-              choice.label.toLowerCase().contains(q) ||
-              _ianaZones[choice.value]!.any(
-                (alias) => alias.toLowerCase().contains(q),
-              ))
-            choice,
-      ];
+      return choice.value.toLowerCase().contains(q) ||
+          choice.label.toLowerCase().contains(q) ||
+          _ianaZones[choice.value]!.any(
+            (alias) => alias.toLowerCase().contains(q),
+          );
     },
   );
 }

@@ -294,3 +294,17 @@ formatted editing is available through the Edit action. Enter a valid formatted
 value before adjusting segments. Linear interaction accepts the same exact
 format, retaining invalid drafts for correction. Terminal and screen-reader
 support is subject to the qualifications documented above.
+
+### TimezoneSelect
+
+`TimezoneSelect('Zone')` returns a canonical IANA zone identifier, never a UTC
+ offset. Its bundled identifier and alias snapshot is generated from the Zone
+and Link records in IANA [tzdata2025c](https://data.iana.org/time-zones/releases/tzdata2025c.tar.gz),
+including `backward`, ordered by canonical identifier. Search is
+case-insensitive substring matching over identifiers, city labels (underscores
+rendered as spaces), and aliases. Alias defaults resolve to the corresponding
+canonical identity; unknown defaults are rejected. The optional `unavailable`
+map gives zone identifiers or aliases and reasons; unavailable choices cannot be
+accepted. No offset previews are provided, so there is no reference instant or
+claim about scheduling. No network, system timezone, or clock is consulted by
+the prompt. IANA data is maintained by IANA and distributed in the public domain.
