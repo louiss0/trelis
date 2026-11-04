@@ -153,3 +153,39 @@ first dismisses suggestions. Linear interaction offers numbered candidates,
 submit it. Quoted commands and identified paste are literal data. Unframed
 paste cannot be distinguished from typing. `initialValue`, `required`,
 `maxLength` (graphemes), and `validate` configure the answer constraints.
+
+## MultiSelect
+
+`MultiSelect<T>` returns selected identities in the original choice order. Empty
+selection is valid unless `min` requires more; `max` rejects additions as a
+whole. Defaults must identify enabled choices. In rich mode Space toggles the
+focused item and Enter submits; `/` edits the label filter, Ctrl+A selects the
+enabled filtered results, Ctrl+X clears them, and Ctrl+R reviews all selected
+items. In linear mode `/filter` asks for filter text, a stable choice number
+toggles that item, `/selected` reviews the entire selection and `/done` submits.
+`/select-visible` and `/clear-visible` apply to enabled results across every
+page, not hidden choices. Filtering matches labels case-insensitively.
+
+A `SuppliedAnswer` is the complete selection as comma-separated stable choice
+numbers, for example `2,1`; an empty string means the empty set. References
+must be unique and enabled, without whitespace, and satisfy count constraints.
+Supplied answers are literal and do not interpret prompt commands.
+
+### Slider and RangeSlider
+
+`Slider` and `RangeSlider` accept exact ASCII decimal strings for `minimum`,
+`maximum`, `step`, and values. Values must lie within the bounds and align to
+`step` measured from `minimum`; no entry is rounded or clipped. Optional
+`precision` limits the number of decimal places, and `units` is displayed as
+context. `initialValue`, or the pair `initialLower` and `initialUpper`, is
+optional and must satisfy the configured constraints. Range `minimumGap`
+defaults to zero; endpoints retain their Lower and Upper identities.
+
+In rich interaction Tab visits the value or endpoints, Edit actions, and Submit.
+Arrow keys adjust a focused value without crossing bounds or the minimum gap;
+inside an editor arrows instead move the text cursor. Enter opens or finishes
+editing and activates Submit. Escape dismisses help or the current editor before
+cancelling; Ctrl+T opens help and Ctrl+C interrupts. Linear range entry asks for
+each endpoint and a separate review/submit. Invalid text remains editable.
+A supplied range uses the literal `Lower,Upper` spelling, for example `2,8`;
+it must satisfy the same constraints. EOF does not submit a draft.
