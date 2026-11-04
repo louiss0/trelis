@@ -27,10 +27,15 @@ final class ScriptedInput extends PromptSource {
 }
 enum PromptMode { rich, linear, automatic }
 final class TextInput {
-  TextInput(this.label, {this.initialValue = '', this.required = false, this.validate});
+  TextInput(this.label, {this.initialValue = '', this.required = false, this.validate, this.maxLength}) {
+    if (label.trim().isEmpty) throw ArgumentError.value(label, 'label');
+    if (maxLength != null && maxLength! < 0) throw ArgumentError.value(maxLength, 'maxLength');
+    if (initialValue.contains('\n') || initialValue.contains('\r') || (maxLength != null && initialValue.characters.length > maxLength!)) throw ArgumentError.value(initialValue, 'initialValue');
+  }
   final String label;
   final String initialValue;
   final bool required;
+  final int? maxLength;
   final String? Function(String)? validate;
   Future<PromptResult<String>> prompt({required PromptSource source, PromptMode mode = PromptMode.automatic}) async {
     if (source is SuppliedAnswer) return Accepted(source.value);
@@ -43,7 +48,7 @@ final class TextInput {
     var value = initialValue;
     try {
       while (true) {
-        final result = await edit(keys, value, scripted.output, linear: mode == PromptMode.linear, sequential: mode != PromptMode.rich);
+        final result = await edit(keys, value, scripted.output, linear: mode == PromptMode.linear, sequential: mode != PromptMode.rich, maxLength: maxLength);
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action != 'submit') return InputEnded();
@@ -72,6 +77,7 @@ Future<({String action, String value})> edit(
   bool linear = false,
   bool sequential = false,
   bool secret = false,
+  int? maxLength,
 }) async {
   var chars = initial.characters.toList();
   var pos = chars.length;
@@ -87,6 +93,12 @@ Future<({String action, String value})> edit(
     synthetic = 0;
   }
   void insert(String data, bool isPaste) {
+    final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
+    final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
+    if (maxLength != null && count > maxLength) {
+      output.writeln('Insertion rejected: character limit is $maxLength graphemes.');
+      return;
+    }
     final added = data.characters.toList();
     chars.insertAll(pos, added);
     if (synthetic >= pos) synthetic += added.length;

@@ -41,7 +41,14 @@ void main() {
     final result = await TextInput('Name').prompt(source: source, mode: PromptMode.rich);
     expect(result, isA<Unavailable<String>>());
     expect(output.toString(), isEmpty);
+  });  test('oversized paste is rejected atomically', () async {
+    final output = StringBuffer();
+    final result = await TextInput('Name', maxLength: 3).prompt(
+      source: ScriptedInput(Stream.value('a\x1b[200~bcd\x1b[201~\r'), output), mode: PromptMode.rich);
+    expect((result as Accepted<String>).value, 'a');
+    expect(output.toString(), contains('limit'));
   });}
+
 
 
 
