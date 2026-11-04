@@ -2042,3 +2042,204 @@ final class MultiSelect<T> {
     }
   }
 }
+
+/// A node in a TreeSelect hierarchy. Branches are not selectable by default.
+final class TreeNode<T> {
+  TreeNode(
+    this.value,
+    this.label, {
+    List<TreeNode<T>> children = const [],
+    this.selectable,
+    this.disabledReason,
+  }) : children = List.unmodifiable(children) {
+    Choice(value, label, disabledReason: disabledReason);
+  }
+  final T value;
+  final String label;
+  final List<TreeNode<T>> children;
+  final bool? selectable;
+  final String? disabledReason;
+  bool get canSelect => selectable ?? children.isEmpty;
+}
+
+/// Selects one node independently of expanding or traversing branches.
+final class TreeSelect<T> {
+  TreeSelect(this.label, List<TreeNode<T>> nodes)
+    : nodes = List.unmodifiable(nodes) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127))
+      throw ArgumentError.value(label, 'label');
+    final identities = <T>{};
+    void validate(List<TreeNode<T>> nodes) {
+      for (final node in nodes) {
+        if (!identities.add(node.value))
+          throw ArgumentError('Node identities must be unique.');
+        validate(node.children);
+      }
+    }
+
+    validate(this.nodes);
+  }
+  final String label;
+  final List<TreeNode<T>> nodes;
+  bool _active = false;
+
+  Future<PromptResult<T>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source != null) return await _run(source, selected);
+      if (_terminalActive)
+        throw StateError('A terminal session is already active.');
+      _terminalActive = true;
+      try {
+        return await _terminal<T>(
+          selected,
+          output ?? stderr,
+          (source, mode, restore) => _run(source, mode, beforeClose: restore),
+        );
+      } finally {
+        _terminalActive = false;
+      }
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<T>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    final all = <(TreeNode<T>, List<TreeNode<T>>)>[];
+    void collect(List<TreeNode<T>> level, List<TreeNode<T>> path) {
+      for (final node in level) {
+        final current = [...path, node];
+        all.add((node, current));
+        collect(node.children, current);
+      }
+    }
+
+    collect(nodes, []);
+    if (source is SuppliedAnswer) {
+      final n = int.tryParse(source.value);
+      if (n == null ||
+          n < 1 ||
+          n > all.length ||
+          !all[n - 1].$1.canSelect ||
+          all[n - 1].$1.disabledReason != null)
+        return Unavailable('Supply an enabled selectable node reference.');
+      return Accepted(all[n - 1].$1.value);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich)
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    if (mode == PromptMode.automatic)
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    final out = scripted.output;
+    final expanded = <T>{};
+    var focus = nodes.isEmpty ? null : nodes.first;
+    List<(TreeNode<T>, List<TreeNode<T>>)> visible() => all
+        .where(
+          (row) => row.$2
+              .take(row.$2.length - 1)
+              .every((n) => expanded.contains(n.value)),
+        )
+        .toList();
+    String path(List<TreeNode<T>> nodes) =>
+        nodes.map((n) => n.label).join(' / ');
+    void show() {
+      out.writeln('$label TreeSelect:');
+      if (all.isEmpty) out.writeln('No nodes available.');
+      for (final row in visible()) {
+        final node = row.$1;
+        out.writeln(
+          '${all.indexOf(row) + 1}. ${path(row.$2)}${identical(node, focus) ? ' [focused]' : ''} ${node.children.isEmpty
+              ? '[leaf]'
+              : expanded.contains(node.value)
+              ? '[expanded]'
+              : '[collapsed]'} ${node.canSelect ? '[selectable]' : '[not selectable]'}${node.disabledReason == null ? '' : ' [unavailable: ${node.disabledReason}]'}',
+        );
+      }
+    }
+
+    out.writeln(
+      'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+    );
+    show();
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      var help = false;
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses; Escape dismisses help.',
+          );
+          continue;
+        }
+        if (help) continue;
+        final rows = visible();
+        final index = rows.indexWhere((r) => identical(r.$1, focus));
+        if (key == '\x1b[A' && index > 0) focus = rows[index - 1].$1;
+        if (key == '\x1b[B' && index >= 0 && index + 1 < rows.length)
+          focus = rows[index + 1].$1;
+        if (key == '\x1b[C' && focus != null && focus.children.isNotEmpty) {
+          if (!expanded.add(focus.value)) focus = focus.children.first;
+        }
+        if (key == '\x1b[D' && focus != null) {
+          if (!expanded.remove(focus.value) &&
+              index >= 0 &&
+              rows[index].$2.length > 1)
+            focus = rows[index].$2[rows[index].$2.length - 2];
+        }
+        if (key == '\r' || key == '\n') {
+          if (focus == null) {
+            out.writeln('No node available.');
+            continue;
+          }
+          if (!focus.canSelect) {
+            out.writeln('Node is not selectable.');
+            continue;
+          }
+          if (focus.disabledReason != null) {
+            out.writeln('Unavailable: ${focus.disabledReason}.');
+            continue;
+          }
+          out.writeln(
+            'Accepted: ${path(all.firstWhere((r) => identical(r.$1, focus)).$2)}.',
+          );
+          return Accepted(focus.value);
+        }
+        show();
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
