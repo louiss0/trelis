@@ -126,6 +126,28 @@ final class TextInput {
     final outputMode = calloc<Uint32>();
     var inputAcquired = false;
     var outputAcquired = false;
+    void restore() {
+      try {
+        if (outputAcquired) {
+          outputAcquired = false;
+          try {
+            outputStream.write('\x1b[?2004l\n');
+          } finally {
+            if (console.setMode(output, outputMode.value) == 0) {
+              throw StateError('Cannot restore console output.');
+            }
+          }
+        }
+      } finally {
+        if (inputAcquired) {
+          inputAcquired = false;
+          if (console.setMode(input, inputMode.value) == 0) {
+            throw StateError('Cannot restore console input.');
+          }
+        }
+      }
+    }
+
     try {
       if (console.getMode(input, inputMode) == 0 ||
           (outputStream.hasTerminal &&
@@ -150,34 +172,15 @@ final class TextInput {
           supportsRich: outputStream.hasTerminal,
         ),
         rich ? PromptMode.rich : PromptMode.linear,
-        beforeClose: () {
-          if (outputAcquired) {
-            outputStream.write('\x1b[?2004l\n');
-            if (console.setMode(output, outputMode.value) == 0) {
-              throw StateError('Cannot restore console output.');
-            }
-            outputAcquired = false;
-          }
-          if (inputAcquired) {
-            if (console.setMode(input, inputMode.value) == 0) {
-              throw StateError('Cannot restore console input.');
-            }
-            inputAcquired = false;
-          }
-        },
+        beforeClose: restore,
       );
     } finally {
-      if (outputAcquired) {
-        outputStream.write('\x1b[?2004l\n');
-        if (console.setMode(output, outputMode.value) == 0) {
-          throw StateError('Cannot restore console output.');
-        }
+      try {
+        restore();
+      } finally {
+        calloc.free(inputMode);
+        calloc.free(outputMode);
       }
-      if (inputAcquired && console.setMode(input, inputMode.value) == 0) {
-        throw StateError('Cannot restore console input.');
-      }
-      calloc.free(inputMode);
-      calloc.free(outputMode);
     }
   }
 
