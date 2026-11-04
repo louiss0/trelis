@@ -851,7 +851,13 @@ final class TagInput {
               (m) => '${m[1]}-${m[2]}',
             )
             .replaceAll(RegExp(r'[\s_-]+'), '-')
+            .replaceAll(RegExp(r'^-+|-+$'), '')
             .toLowerCase();
+        if (value.isEmpty) {
+          input.output.writeln('Enter a tag, or use Finish (/done).');
+          draft = result.value;
+          continue;
+        }
         final canonical = style == TagStyle.snakeCase
             ? value.replaceAll('-', '_')
             : value;

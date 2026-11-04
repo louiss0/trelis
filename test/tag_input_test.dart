@@ -3,6 +3,21 @@ import 'package:test/test.dart';
 
 void main() {
   test(
+    'separator edges are removed and empty drafts do not add tags',
+    () async {
+      final output = StringBuffer();
+      final result = await TagInput('Tags').prompt(
+        source: ScriptedInput(
+          Stream.value('\r--Hello World__\r/done\r'),
+          output,
+        ),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<List<String>>).value, ['hello-world']);
+      expect(output.toString(), contains('Finish'));
+    },
+  );
+  test(
     'unsupported punctuation is rejected and draft remains editable',
     () async {
       final output = StringBuffer();
