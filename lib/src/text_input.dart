@@ -190,6 +190,7 @@ Future<({String action, String value})> _edit(
   bool sequential = false,
   bool secret = false,
   bool mask = false,
+  bool clearHelpCommand = false,
   int? maxLength,
 }) async {
   var chars = initial.characters.toList();
@@ -286,6 +287,11 @@ Future<({String action, String value})> _edit(
         text = answer.join();
       } else if (linear && !provenance.contains(true)) {
         if (text == '/help') {
+          if (clearHelpCommand) {
+            chars.clear();
+            provenance.clear();
+            pos = 0;
+          }
           output.writeln(
             r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
           );
@@ -800,4 +806,182 @@ final class Password {
 
 final class _SecretValidationException implements Exception {
   const _SecretValidationException();
+}
+
+/// A Yes/No question whose draft is not submitted by a shortcut.
+final class Confirm extends _BooleanPrompt {
+  Confirm(super.label, {super.initialValue = false})
+    : super(kind: _BooleanKind.confirm);
+}
+
+final class Checkbox extends _BooleanPrompt {
+  Checkbox(super.label, {super.initialValue = false})
+    : super(kind: _BooleanKind.checkbox);
+}
+
+final class Toggle extends _BooleanPrompt {
+  Toggle(super.label, {super.initialValue = false})
+    : super(kind: _BooleanKind.toggle);
+}
+
+enum _BooleanKind { confirm, checkbox, toggle }
+
+abstract class _BooleanPrompt {
+  _BooleanPrompt(this.label, {required this.initialValue, required this.kind}) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+  }
+  final String label;
+  final bool initialValue;
+  final _BooleanKind kind;
+  bool _active = false;
+
+  Future<PromptResult<bool>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<bool>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  String _state(bool value) => switch (kind) {
+    _BooleanKind.confirm => value ? 'Yes' : 'No',
+    _BooleanKind.checkbox => value ? 'checked' : 'unchecked',
+    _BooleanKind.toggle => value ? 'on' : 'off',
+  };
+
+  bool? _parse(String value) => switch (value.toLowerCase()) {
+    'yes' || 'y' => true,
+    'no' || 'n' => false,
+    _ => null,
+  };
+
+  Future<PromptResult<bool>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final value = _parse(source.value);
+      return value == null ? Unavailable('Supply yes or no.') : Accepted(value);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
+    var draft = initialValue;
+    out.writeln(
+      '$label Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
+    );
+    if (mode == PromptMode.linear) {
+      out.writeln(
+        r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.',
+      );
+    } else {
+      out.writeln(
+        '${kind == _BooleanKind.confirm ? 'Y/N changes the draft' : 'Space toggles the draft'}; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      );
+    }
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      if (mode == PromptMode.linear) {
+        var entry = '';
+        while (true) {
+          final result = await _edit(
+            keys,
+            entry,
+            out,
+            linear: true,
+            sequential: true,
+            clearHelpCommand: true,
+          );
+          if (result.action == 'cancel') return Cancelled();
+          if (result.action == 'interrupt') return Interrupted();
+          if (result.action != 'submit') return InputEnded();
+          entry = result.value;
+          final answer = entry.isEmpty ? draft : _parse(entry);
+          if (answer != null) {
+            out.writeln('Accepted: ${_state(answer)}.');
+            return Accepted(answer);
+          }
+          out.writeln(
+            'Enter yes/y or no/n, or erase the line and submit the displayed default.',
+          );
+        }
+      }
+      var help = false;
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          out.writeln('Help dismissed. Draft: ${_state(draft)}.');
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: ${kind == _BooleanKind.confirm ? 'Y/N changes the draft' : 'Space toggles the draft'}; Enter submits. Escape dismisses help; Ctrl+C interrupts.',
+          );
+          continue;
+        }
+        if (help) continue;
+        if (key == '\r' || key == '\n') {
+          out.writeln('Accepted: ${_state(draft)}.');
+          return Accepted(draft);
+        }
+        if (kind == _BooleanKind.confirm &&
+            (key == 'y' || key == 'Y' || key == 'n' || key == 'N')) {
+          draft = key.toLowerCase() == 'y';
+          out.writeln('Draft: ${_state(draft)}.');
+        } else if (kind != _BooleanKind.confirm && key == ' ') {
+          draft = !draft;
+          out.writeln('Draft: ${_state(draft)}.');
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
 }
