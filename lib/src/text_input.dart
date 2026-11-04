@@ -302,7 +302,7 @@ Future<({String action, String value})> _edit(
         if (text == '/help') {
           if (extraCommands.isNotEmpty) {
             output.writeln(
-              r'Help: /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+              'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
             );
           } else {
             output.writeln(
@@ -1463,12 +1463,15 @@ abstract class _SingleChoice<T> {
     this.defaultValue,
     required this.radio,
   }) : choices = List.unmodifiable(choices) {
-    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127))
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
-    if (choices.map((c) => c.value).toSet().length != choices.length)
+    }
+    if (choices.map((c) => c.value).toSet().length != choices.length) {
       throw ArgumentError('Choice identities must be unique.');
-    if (defaultValue != null && !choices.any((c) => c.value == defaultValue))
+    }
+    if (defaultValue != null && !choices.any((c) => c.value == defaultValue)) {
       throw ArgumentError('Default identity is not a choice.');
+    }
   }
   final String label;
   final List<Choice<T>> choices;
@@ -1492,8 +1495,9 @@ abstract class _SingleChoice<T> {
           applicationPreference ??
           PromptMode.automatic;
       if (source == null) {
-        if (_terminalActive)
+        if (_terminalActive) {
           throw StateError('A terminal session is already active.');
+        }
         _terminalActive = true;
         try {
           return await _terminal<T>(
@@ -1521,17 +1525,20 @@ abstract class _SingleChoice<T> {
       if (n == null ||
           n < 1 ||
           n > choices.length ||
-          choices[n - 1].disabledReason != null)
+          choices[n - 1].disabledReason != null) {
         return Unavailable('Supply an enabled choice reference.');
+      }
       return Accepted(choices[n - 1].value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich)
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable(
         'Rich interaction unavailable; use linear or automatic mode.',
       );
-    if (mode == PromptMode.automatic)
+    }
+    if (mode == PromptMode.automatic) {
       mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
     final out = scripted.output;
     var focus = defaultValue == null
         ? -1
@@ -1549,10 +1556,11 @@ abstract class _SingleChoice<T> {
       final end = mode == PromptMode.linear
           ? (start + pageSize).clamp(0, choices.length)
           : choices.length;
-      if (mode == PromptMode.linear && choices.isNotEmpty)
+      if (mode == PromptMode.linear && choices.isNotEmpty) {
         out.writeln(
           'Page ${page + 1} of ${(choices.length + pageSize - 1) ~/ pageSize}.',
         );
+      }
       for (var i = start; i < end; i++) {
         final c = choices[i];
         out.writeln(
@@ -1584,8 +1592,9 @@ abstract class _SingleChoice<T> {
           if (result.action == 'interrupt') return Interrupted();
           if (result.action == 'command') {
             if (result.value == '/next' &&
-                (page + 1) * pageSize < choices.length)
+                (page + 1) * pageSize < choices.length) {
               page++;
+            }
             if (result.value == '/previous' && page > 0) page--;
             entry = '';
             show();

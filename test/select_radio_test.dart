@@ -18,4 +18,16 @@ void main() {
       expect(output.toString(), contains('focused'));
     },
   );
+  test(
+    'linear help advertises paging rather than unrelated commands',
+    () async {
+      final output = StringBuffer();
+      await Radio<String>('Pick', [Choice('a', 'A')]).prompt(
+        source: ScriptedInput(Stream.value('/help\r/cancel\r'), output),
+        mode: PromptMode.linear,
+      );
+      expect(output.toString(), isNot(contains('/list')));
+      expect(output.toString(), contains('/next'));
+    },
+  );
 }
