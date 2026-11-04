@@ -10,6 +10,7 @@ import 'package:path/path.dart' as path;
 
 part 'network_input.dart';
 part 'color_input.dart';
+part 'color_names.dart';
 part 'timezone_snapshot.dart';
 part 'timezone_select.dart';
 part 'path_input.dart';

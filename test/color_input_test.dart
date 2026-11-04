@@ -2,6 +2,21 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('named transparent is a value distinct from optional absence', () async {
+    final input = ColorInput('Color', required: false);
+    final transparent = (await input.prompt(
+      source: SuppliedAnswer('transparent'),
+    ) as Accepted<ColorValue?>).value!;
+    expect(transparent.alpha, 0);
+    final empty = (await input.prompt(
+      source: SuppliedAnswer(''),
+    ) as Accepted<ColorValue?>).value;
+    expect(empty, isNull);
+    final named = (await input.prompt(
+      source: SuppliedAnswer('RebeccaPurple'),
+    ) as Accepted<ColorValue?>).value!;
+    expect(named.red, closeTo(102 / 255, 1e-12));
+  });
   test('HSL wraps hue while retaining expression and alpha', () async {
     final result = await ColorInput('Color')
         .prompt(source: SuppliedAnswer('hsl(480deg 100% 50% / .5)'));

@@ -55,6 +55,17 @@ final class ColorInput {
 }
 
 ColorValue? _parseColor(String value) {
+  if (value.toLowerCase() == 'transparent')
+    return ColorValue._(value, 0, 0, 0, 0);
+  final named = _colorNames[value.toLowerCase()];
+  if (named != null)
+    return ColorValue._(
+      value,
+      ((named >> 16) & 255) / 255,
+      ((named >> 8) & 255) / 255,
+      (named & 255) / 255,
+      1,
+    );
   final hsl = RegExp(
     r'^hsla?\((.*)\)$',
     caseSensitive: false,
