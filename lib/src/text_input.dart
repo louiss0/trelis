@@ -2959,3 +2959,31 @@ final class TreeSelect<T> {
     }
   }
 }
+
+/// A time of day without a date or timezone.
+final class TimeInput {
+  TimeInput(this.label);
+  final String label;
+
+  Future<PromptResult<({int hour, int minute, int? second})>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+  }) async {
+    final result = await TextInput(label, required: true, validate: (value) {
+      final match = RegExp(r'^([0-9]{2}):([0-9]{2})$').firstMatch(value);
+      if (match == null || int.parse(match[1]!) > 23 || int.parse(match[2]!) > 59) {
+        return 'Enter HH:mm (00:00 to 23:59).';
+      }
+      return null;
+    }).prompt(source: source, mode: mode);
+    if (result is Accepted<String>) {
+      final parts = result.value.split(':');
+      return Accepted((hour: int.parse(parts[0]), minute: int.parse(parts[1]), second: null));
+    }
+    if (result is Cancelled<String>) return Cancelled();
+    if (result is Interrupted<String>) return Interrupted();
+    if (result is InputEnded<String>) return InputEnded();
+    return Unavailable((result as Unavailable<String>).reason);
+  }
+}
+
