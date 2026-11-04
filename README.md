@@ -179,8 +179,10 @@ is not selectable unless `selectable: true` is explicit; a leaf is selectable
 unless explicitly disabled for selection. `disabledReason` prevents choosing a
 node but does not prevent traversing its children. Labels and reasons must be
 nonempty safe text. The hierarchy is snapshotted at construction; create a new
-component when the application has a different tree. An unresolved branch can
-be represented with `childrenUnavailableReason`; it is not treated as a leaf,
+component when the application has a different tree. For a changing source,
+pass `isCurrent` to recheck every node in the path before opening or accepting;
+a removed node is reported as unavailable and is never replaced automatically.
+An unresolved branch can be represented with `childrenUnavailableReason`; it is not treated as a leaf,
 and attempting to open it reports the reason. This API does not load children.
 
 In rich mode Up/Down visit visible nodes, Right expands a branch or enters its

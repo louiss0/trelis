@@ -2075,7 +2075,7 @@ final class TreeNode<T> {
 
 /// Selects one node independently of expanding or traversing branches.
 final class TreeSelect<T> {
-  TreeSelect(this.label, List<TreeNode<T>> nodes)
+  TreeSelect(this.label, List<TreeNode<T>> nodes, {this.isCurrent})
     : nodes = List.unmodifiable(nodes) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -2094,6 +2094,9 @@ final class TreeSelect<T> {
   }
   final String label;
   final List<TreeNode<T>> nodes;
+
+  /// Optional currentness check for nodes that can disappear during a prompt.
+  final bool Function(T value)? isCurrent;
   bool _active = false;
 
   Future<PromptResult<T>> prompt({
@@ -2145,13 +2148,16 @@ final class TreeSelect<T> {
     }
 
     collect(nodes, []);
+    bool currentPath(List<TreeNode<T>> path) =>
+        isCurrent == null || path.every((node) => isCurrent!(node.value));
     if (source is SuppliedAnswer) {
       final n = int.tryParse(source.value);
       if (n == null ||
           n < 1 ||
           n > all.length ||
           !all[n - 1].$1.canSelect ||
-          all[n - 1].$1.disabledReason != null) {
+          all[n - 1].$1.disabledReason != null ||
+          !currentPath(all[n - 1].$2)) {
         return Unavailable('Supply an enabled selectable node reference.');
       }
       return Accepted(all[n - 1].$1.value);
@@ -2203,7 +2209,7 @@ final class TreeSelect<T> {
               ? '[leaf]'
               : expanded.contains(node.value)
               ? '[expanded]'
-              : '[collapsed]'} ${node.canSelect ? '[selectable]' : '[not selectable]'}${node.disabledReason == null ? '' : ' [unavailable: ${node.disabledReason}]'}',
+              : '[collapsed]'} ${node.canSelect ? '[selectable]' : '[not selectable]'}${node.disabledReason == null ? '' : ' [unavailable: ${node.disabledReason}]'}${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
         );
       }
     }
@@ -2267,6 +2273,10 @@ final class TreeSelect<T> {
           }
           final row = all[n - 1];
           final node = row.$1;
+          if (!currentPath(row.$2)) {
+            out.writeln('Node is no longer available.');
+            continue;
+          }
           if (action.value == '/open') {
             if (row.$2.length != current.length + 1 ||
                 (current.isNotEmpty &&
@@ -2326,6 +2336,10 @@ final class TreeSelect<T> {
         if (key == '\x1b[B' && index >= 0 && index + 1 < rows.length) {
           focus = rows[index + 1].$1;
         }
+        if (key == '\x1b[C' && index >= 0 && !currentPath(rows[index].$2)) {
+          out.writeln('Node is no longer available.');
+          continue;
+        }
         if (key == '\x1b[C' && focus?.childrenUnavailableReason != null) {
           out.writeln(
             'Children unavailable: ${focus!.childrenUnavailableReason}.',
@@ -2344,6 +2358,10 @@ final class TreeSelect<T> {
         if (key == '\r' || key == '\n') {
           if (focus == null) {
             out.writeln('No node available.');
+            continue;
+          }
+          if (index < 0 || !currentPath(rows[index].$2)) {
+            out.writeln('Node is no longer available.');
             continue;
           }
           if (!focus.canSelect) {

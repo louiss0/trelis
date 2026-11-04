@@ -2,6 +2,23 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('a removed node is not silently replaced on submission', () async {
+    final out = StringBuffer();
+    final tree = TreeSelect<String>('Pick', [
+      TreeNode('a', 'A'),
+      TreeNode('b', 'B'),
+    ], isCurrent: (id) => id != 'a');
+    final result = await tree.prompt(
+      source: ScriptedInput(Stream.value('/choose\r1\r/choose\r2\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, 'b');
+    expect(out.toString(), contains('no longer available'));
+    expect(
+      await tree.prompt(source: SuppliedAnswer('1')),
+      isA<Unavailable<String>>(),
+    );
+  });
   test('linear cancel and incomplete reference do not accept a node', () async {
     final tree = TreeSelect<String>('Pick', [TreeNode('a', 'A')]);
     expect(
