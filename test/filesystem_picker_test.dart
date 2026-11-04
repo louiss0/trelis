@@ -35,4 +35,19 @@ void main() {
       isA<Unavailable<String>>(),
     );
   });
+  test(
+    'linear directory browser reviews and chooses its current directory',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('picker_test');
+      addTearDown(() => dir.delete(recursive: true));
+      final out = StringBuffer();
+      final result = await DirectoryPicker('Directory', base: dir.path).prompt(
+        source: ScriptedInput(Stream.value('choose\r\r'), out),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<String>).value, dir.path);
+      expect(out.toString(), contains('Current directory: ${dir.path}'));
+      expect(out.toString(), contains('Choose'));
+    },
+  );
 }
