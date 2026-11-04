@@ -2107,7 +2107,7 @@ final class TagInput {
               (m) => '${m[1]}-${m[2]}',
             )
             .replaceAllMapped(
-              RegExp(r'([\p{Ll}\p{Nd}])(\p{Lu})', unicode: true),
+              RegExp(r'([\p{Ll}\p{Nd}]\p{M}*)(\p{Lu})', unicode: true),
               (m) => '${m[1]}-${m[2]}',
             )
             .replaceAll(RegExp(r'[\s_-]+'), '-')

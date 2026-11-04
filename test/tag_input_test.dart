@@ -2,6 +2,14 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('combining marks remain attached across camel boundaries', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(Stream.value('Cafe\u0301World\r/done\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, ['cafe\u0301-world']);
+  });
   test('linear editing replaces selected tag in place', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
