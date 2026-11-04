@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
@@ -99,6 +101,61 @@ void main() {
       ).prompt(source: ScriptedInput(Stream.value('12\r'), output), mode: mode);
       expect((result as Accepted<String?>).value, '12');
     }
+  });
+
+  test('optional empty input returns absence rather than zero', () async {
+    final input = NumberInput(
+      'Amount',
+      convention: NumericConvention.ascii(),
+      required: false,
+    );
+    final result = await input.prompt(source: SuppliedAnswer(''));
+    expect((result as Accepted<String?>).value, isNull);
+  });
+
+  test('overlapping sessions on one input are rejected', () async {
+    final input = NumberInput('Count', convention: NumericConvention.ascii());
+    final stream = StreamController<String>();
+    final pending = input.prompt(
+      source: ScriptedInput(stream.stream, StringBuffer()),
+    );
+    await expectLater(
+      input.prompt(source: SuppliedAnswer('2')),
+      throwsStateError,
+    );
+    stream.add('1\r');
+    expect((await pending as Accepted<String?>).value, '1');
+    await stream.close();
+    expect(await input.prompt(source: SuppliedAnswer('2')), isA<Accepted>());
+  });
+
+  test('convention provider resolves once per prompt and override takes precedence', () async {
+    var resolutions = 0;
+    NumericConvention? provider() {
+      resolutions++;
+      return NumericConvention.ascii();
+    }
+
+    final input = NumberInput('Count', conventionProvider: provider);
+    expect(await input.prompt(source: SuppliedAnswer('123')), isA<Accepted>());
+    expect(resolutions, 1);
+    final override = NumberInput(
+      'Count',
+      convention: NumericConvention.ascii(),
+      conventionProvider: provider,
+    );
+    expect(
+      await override.prompt(source: SuppliedAnswer('123')),
+      isA<Accepted>(),
+    );
+    expect(resolutions, 1);
+    expect(
+      await NumberInput(
+        'Count',
+        conventionProvider: () => null,
+      ).prompt(source: SuppliedAnswer('123')),
+      isA<Unavailable>(),
+    );
   });
 
   test('integer input rejects decimal and non-base-ten forms', () async {

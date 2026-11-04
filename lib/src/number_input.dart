@@ -85,11 +85,13 @@ final class NumericConvention {
 final class NumberInput {
   NumberInput(
     this.label, {
-    required this.convention,
+    this.convention,
+    this.conventionProvider,
     this.decimal = false,
     this.minimum,
     this.maximum,
     this.precision,
+    this.required = true,
   }) {
     if (precision != null && precision! < 0) {
       throw ArgumentError.value(precision, 'precision');
@@ -107,13 +109,17 @@ final class NumberInput {
     }
   }
   final String label;
-  final NumericConvention convention;
+  final NumericConvention? convention;
+  final NumericConvention? Function()? conventionProvider;
   final bool decimal;
   final String? minimum;
   final String? maximum;
   final int? precision;
+  final bool required;
+  bool _active = false;
 
-  String? _validate(String value) {
+  String? _validate(String value, NumericConvention convention) {
+    if (value.isEmpty && !required) return null;
     final canonical = convention.canonical(value, decimal);
     if (canonical == null) {
       return 'Enter a complete base-ten number using the stated convention.';
@@ -134,18 +140,36 @@ final class NumberInput {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
-    final result = await TextInput(label, required: true, validate: _validate)
-        .prompt(
-          source: source,
-          mode: mode,
-          userPreference: userPreference,
-          applicationPreference: applicationPreference,
-          output: output,
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final resolved = convention ?? conventionProvider?.call();
+      if (resolved == null) {
+        return Unavailable(
+          'System numeric conventions could not be resolved; supply an explicit supported convention.',
         );
-    if (result is Accepted<String>) return Accepted(result.value);
-    if (result is Cancelled<String>) return Cancelled();
-    if (result is Interrupted<String>) return Interrupted();
-    if (result is InputEnded<String>) return InputEnded();
-    return Unavailable((result as Unavailable<String>).reason);
+      }
+      final result =
+          await TextInput(
+            label,
+            required: required,
+            validate: (value) => _validate(value, resolved),
+          ).prompt(
+            source: source,
+            mode: mode,
+            userPreference: userPreference,
+            applicationPreference: applicationPreference,
+            output: output,
+          );
+      if (result is Accepted<String>) {
+        return Accepted(result.value.isEmpty ? null : result.value);
+      }
+      if (result is Cancelled<String>) return Cancelled();
+      if (result is Interrupted<String>) return Interrupted();
+      if (result is InputEnded<String>) return InputEnded();
+      return Unavailable((result as Unavailable<String>).reason);
+    } finally {
+      _active = false;
+    }
   }
 }
