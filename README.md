@@ -170,3 +170,27 @@ A `SuppliedAnswer` is the complete selection as comma-separated stable choice
 numbers, for example `2,1`; an empty string means the empty set. References
 must be unique and enabled, without whitespace, and satisfy count constraints.
 Supplied answers are literal and do not interpret prompt commands.
+
+## TreeSelect
+
+`TreeSelect<T>` accepts a hierarchy of `TreeNode<T>` and returns one node's
+identity. Identities must be unique throughout the tree. A node with children
+is not selectable unless `selectable: true` is explicit; a leaf is selectable
+unless explicitly disabled for selection. `disabledReason` prevents choosing a
+node but does not prevent traversing its children. Labels and reasons must be
+nonempty safe text. The hierarchy is snapshotted at construction; create a new
+component when the application has a different tree. An unresolved branch can
+be represented with `childrenUnavailableReason`; it is not treated as a leaf,
+and attempting to open it reports the reason. This API does not load children.
+
+In rich mode Up/Down visit visible nodes, Right expands a branch or enters its
+first child, Left collapses a branch or goes to its parent, and Enter chooses
+only a selectable enabled node. In linear mode `/open` requests a reference
+and enters a branch, `/up` returns to its parent, and `/choose` requests a
+reference and accepts that node if permitted. Full paths and branch, selection
+and unavailable states are shown as text. References are assigned once in
+preorder and remain stable during a session, including when branches close.
+`SuppliedAnswer` is one such numeric reference and is always literal. `/help`
+and `/cancel` are exact commands; quote a command with a backslash, and double
+a leading backslash. Identified paste is literal; unframed paste cannot be
+distinguished from typing. EOF never accepts a partial command or answer.

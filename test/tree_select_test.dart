@@ -2,6 +2,105 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('linear cancel and incomplete reference do not accept a node', () async {
+    final tree = TreeSelect<String>('Pick', [TreeNode('a', 'A')]);
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<Cancelled<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value('/choose\r1'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<InputEnded<String>>(),
+    );
+  });
+  test('rich left moves to parent then collapses without selecting', () async {
+    final out = StringBuffer();
+    final result =
+        await TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', selectable: true, children: [TreeNode('b', 'B')]),
+        ]).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[C\x1b[C\x1b[D\x1b[D\r'),
+            out,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<String>).value, 'a');
+    expect(out.toString(), contains('A [focused] [collapsed] [selectable]'));
+  });
+
+  test('disabled nodes remain visible but cannot be chosen', () async {
+    final out = StringBuffer();
+    final result =
+        await TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', disabledReason: 'offline'),
+          TreeNode('b', 'B'),
+        ]).prompt(
+          source: ScriptedInput(Stream.value('/choose\r1\r/choose\r2\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'b');
+    expect(out.toString(), contains('unavailable: offline'));
+  });
+
+  test(
+    'supplied references are stable and reject branches and disabled nodes',
+    () async {
+      final tree = TreeSelect<String>('Pick', [
+        TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+        TreeNode('c', 'C', disabledReason: 'offline'),
+      ]);
+      expect(
+        (await tree.prompt(
+          source: SuppliedAnswer('2'),
+        ) as Accepted<String>).value,
+        'b',
+      );
+      for (final value in ['1', '3', '4', '/cancel']) {
+        expect(
+          await tree.prompt(source: SuppliedAnswer(value)),
+          isA<Unavailable<String>>(),
+        );
+      }
+    },
+  );
+
+  test('empty tree and unsupported rich mode never select a node', () async {
+    final tree = TreeSelect<String>('Pick', []);
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+        mode: PromptMode.rich,
+      ),
+      isA<InputEnded<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(
+          Stream.value(''),
+          StringBuffer(),
+          supportsRich: false,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<Unavailable<String>>(),
+    );
+  });
+
+  test('duplicate identities are rejected even across branches', () {
+    expect(
+      () => TreeSelect<String>('Pick', [
+        TreeNode('x', 'X', children: [TreeNode('x', 'Other')]),
+      ]),
+      throwsArgumentError,
+    );
+  });
   test('linear shows current selectable branch after opening it', () async {
     final out = StringBuffer();
     final result =
