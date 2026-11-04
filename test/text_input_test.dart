@@ -15,4 +15,13 @@ void main() {
     expect((result as Accepted<String>).value, 'Ada');
     expect(output.toString(), contains('Name'));
   });
-}
+  test('default is editable and required validation keeps the draft', () async {
+    final output = StringBuffer();
+    final result = await TextInput('Name', initialValue: 'ab', required: true).prompt(
+      source: ScriptedInput(Stream.value('\x01\x1b[3~\x1b[3~\rZ\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, 'Z');
+    expect(output.toString(), contains('Required'));
+  });}
+
