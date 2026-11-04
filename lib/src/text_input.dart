@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
@@ -124,7 +125,7 @@ final class TextInput {
       }
       return await _run(
         ScriptedInput(
-          stdin.transform(utf8.decoder),
+          _consoleInput(console, input),
           stderr,
           supportsRich: stderr.hasTerminal,
         ),
@@ -497,8 +498,73 @@ class _Console {
         Int32 Function(IntPtr, Pointer<Uint32>),
         int Function(int, Pointer<Uint32>)
       >('GetConsoleMode');
+  late final int Function(int, Pointer<Uint32>) numberOfEvents = _dll
+      .lookupFunction<
+        Int32 Function(IntPtr, Pointer<Uint32>),
+        int Function(int, Pointer<Uint32>)
+      >('GetNumberOfConsoleInputEvents');
+  late final int Function(int, Pointer<Uint8>, int, Pointer<Uint32>) readInput =
+      _dll.lookupFunction<
+        Int32 Function(IntPtr, Pointer<Uint8>, Uint32, Pointer<Uint32>),
+        int Function(int, Pointer<Uint8>, int, Pointer<Uint32>)
+      >('ReadConsoleInputW');
   late final int Function(int, int) setMode = _dll
       .lookupFunction<Int32 Function(IntPtr, Uint32), int Function(int, int)>(
         'SetConsoleMode',
       );
+}
+
+// Read from the already-authorized console handle without subscribing to stdin:
+// cancelling Dart's stdin subscription closes the process handle on Windows.
+Stream<String> _consoleInput(_Console console, int handle) {
+  late StreamController<String> controller;
+  Timer? timer;
+  final count = calloc<Uint32>();
+  final read = calloc<Uint32>();
+  final records = calloc<Uint8>(20 * 64);
+  void poll(Timer _) {
+    if (console.numberOfEvents(handle, count) == 0) {
+      controller.addError(StateError('Cannot inspect console input.'));
+      return;
+    }
+    final available = count.value.clamp(0, 1);
+    if (available == 0) return;
+    if (console.readInput(handle, records, available, read) == 0) {
+      controller.addError(StateError('Cannot read console input.'));
+      return;
+    }
+    final bytes = ByteData.sublistView(records.asTypedList(20 * read.value));
+    for (var i = 0; i < read.value; i++) {
+      final base = i * 20;
+      if (bytes.getUint16(base, Endian.little) != 1 ||
+          bytes.getInt32(base + 4, Endian.little) == 0) {
+        continue;
+      }
+      final code = bytes.getUint16(base + 14, Endian.little);
+      final vk = bytes.getUint16(base + 10, Endian.little);
+      final key = code != 0
+          ? String.fromCharCode(code)
+          : switch (vk) {
+              0x25 => '\x1b[D',
+              0x27 => '\x1b[C',
+              0x24 => '\x1b[H',
+              0x23 => '\x1b[F',
+              0x2e => '\x1b[3~',
+              _ => '',
+            };
+      if (key.isNotEmpty) controller.add(key);
+    }
+  }
+
+  controller = StreamController<String>(
+    onListen: () =>
+        timer = Timer.periodic(const Duration(milliseconds: 5), poll),
+    onCancel: () {
+      timer?.cancel();
+      calloc.free(count);
+      calloc.free(read);
+      calloc.free(records);
+    },
+  );
+  return controller.stream;
 }
