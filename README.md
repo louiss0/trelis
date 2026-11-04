@@ -1,8 +1,50 @@
 # Prompty
 
 A Dart prompting-library project, currently at the design-to-implementation
-stage. The visual studies and terminal-backend trials are complete; the public
-prompt API is not implemented yet.
+stage. TextInput is the first public prompt component; other component APIs
+are not implemented yet.
+
+## TextInput
+
+```dart
+import 'package:prompty/prompty.dart';
+
+final result = await TextInput(
+  'Name',
+  initialValue: 'Ada',
+  required: true,
+  maxLength: 80,
+  validate: (text) => text.contains('@') ? 'Enter a name, not an address.' : null,
+).prompt();
+
+switch (result) {
+  case Accepted<String>(:final value): print(value);
+  case Cancelled<String>(): break;
+  case Interrupted<String>(): break;
+  case InputEnded<String>(): break;
+  case Unavailable<String>(:final reason): print(reason);
+}
+```
+
+Construction does not acquire the terminal. Each invocation starts a new
+session; overlapping sessions on the same prompt or console are rejected.
+Interactive console input currently requires Windows. Prompt output defaults to
+stderr; pass `output: stdout` to select stdout. Redirected output is sequential,
+without cursor addressing. Explicit rich mode requires terminal output and
+fails rather than falling back. Mode precedence is `mode`, `userPreference`,
+`applicationPreference`, then automatic capability selection.
+
+Redirected stdin is never consumed implicitly. Supply a literal value with
+`source: SuppliedAnswer(value)`, or explicitly opt into a stream with
+`ScriptedInput(stream, sink, supportsRich: false)`. Supplied answers are literal
+and validated. For a stream, only completed lines submit; EOF, cancellation and
+interruption are distinct outcomes. Linear `/help` and `/cancel` are exact
+commands: prefix either with `\` to enter it literally, and double an initial
+backslash to enter one. Identified bracketed paste is literal; unframed paste
+cannot be distinguished from typing. Paste frames are bounded to 4096 UTF-16
+code units and oversized frames are rejected as a unit. Character limits count
+grapheme clusters. Accessibility is not qualified by the automated tests;
+see [the editable probe](docs/editable-probe.md) for evidence and limitations.
 
 ## Visual reference
 
@@ -54,5 +96,5 @@ dart analyze
 dart test
 ```
 
-The current package/test are still the initial scaffold; the archived console
-interaction tests are not present or runnable on main.
+Windows native console regressions can also be run with the PowerShell scripts
+in `test/`, including `text_input_windows.ps1`.
