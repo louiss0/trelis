@@ -1,7 +1,60 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('linear user can explicitly choose after an async focused choice disappears', () async {
+    final out = StringBuffer();
+    final result =
+        await SearchSelect(
+          'Fruit',
+          [Choice('a', 'Apple'), Choice('b', 'Banana')],
+          defaultValue: 'a',
+          search: (q) => q.isEmpty
+              ? [Choice('a', 'Apple'), Choice('b', 'Banana')]
+              : [Choice('b', 'Banana')],
+        ).prompt(
+          source: ScriptedInput(Stream.value('\r/search\rb\r2\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'b');
+    expect(out.toString(), contains('Previously focused choice'));
+  });
+  test('obsolete async search cannot replace current results', () async {
+    final requests = <String, Completer<List<Choice<String>>>>{};
+    final input = StreamController<String>();
+    final out = StringBuffer();
+    final prompt = SearchSelect(
+      'Fruit',
+      [Choice('a', 'Apple'), Choice('b', 'Banana')],
+      search: (query) =>
+          (requests[query] = Completer<List<Choice<String>>>()).future,
+    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    input.add('a');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    input.add('\x7fb\r');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    requests['b']!.complete([Choice('b', 'Banana')]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    requests['a']!.complete([Choice('a', 'Apple')]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    input.add('1\r2\r');
+    expect((await prompt as Accepted<String>).value, 'b');
+    await input.close();
+  });
+  test(
+    'Tab traverses results and cancel action before returning to query',
+    () async {
+      final out = StringBuffer();
+      final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
+        source: ScriptedInput(Stream.value('\t\t\t\r\r'), out),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<String>).value, 'a');
+      expect(out.toString(), contains('Cancel action focused'));
+    },
+  );
   test('returning from no matches restores prior focused choice', () async {
     final result =
         await SearchSelect('Fruit', [
@@ -9,7 +62,7 @@ void main() {
           Choice('pear', 'Pear'),
         ]).prompt(
           source: ScriptedInput(
-            Stream.value('\r\x1b[B\tzzz\r\t\x7f\x7f\x7f\r\r'),
+            Stream.value('\r\x1b[B\t\tzzz\r\t\t\x7f\x7f\x7f\r\r'),
             StringBuffer(),
           ),
           mode: PromptMode.rich,
