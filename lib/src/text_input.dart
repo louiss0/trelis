@@ -7,6 +7,8 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 
+part 'timezone_snapshot.dart';
+part 'timezone_select.dart';
 part 'autocomplete.dart';
 part 'search_select.dart';
 part 'sortable_select.dart';
@@ -3186,6 +3188,8 @@ final class TimeInput {
     }
   }
 }
+
+
 
 enum TagStyle { kebabCase, snakeCase }
 
