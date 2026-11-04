@@ -340,3 +340,16 @@ reads input or controls the operation. Linear progress defaults to ten-percent
 milestones and a five-second intermediate interval; both are configurable.
 Static rich output is available with `PromptMode.rich` on capable outputs;
 redirected output defaults to linear. No color or animation is required.
+### Port and IP address entry
+
+`PortInput` accepts ASCII decimal ports 1-65535. Set `allowZero: true` only
+when zero means a caller-defined automatic allocation/bind request. It does
+not check availability or bind a socket.
+
+`IPAddressInput` accepts numeric IPv4 and IPv6 without resolving hostnames or
+checking reachability. Set `cidr: true` to require an address and prefix;
+`IPAddressValue` preserves the original `spelling`, parsed `address`, and
+`prefixLength` without masking host bits. Set `scoped: true` to allow an IPv6
+zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
+dot. The separate `zone` is environment-dependent and is not checked for
+interface existence. Brackets and URL escaping are not interpreted.
