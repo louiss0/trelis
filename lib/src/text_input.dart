@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
+import 'dart:io';
+import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 
 sealed class PromptResult<T> {}
@@ -22,7 +25,7 @@ final class SuppliedAnswer extends PromptSource {
 final class ScriptedInput extends PromptSource {
   ScriptedInput(this.input, this.output, {this.supportsRich = true});
   final Stream<String> input;
-  final StringBuffer output;
+  final StringSink output;
   final bool supportsRich;
 }
 enum PromptMode { rich, linear, automatic }
@@ -38,13 +41,56 @@ final class TextInput {
   final int? maxLength;
   final String? Function(String)? validate;
   bool _active = false;
-  Future<PromptResult<String>> prompt({required PromptSource source, PromptMode mode = PromptMode.automatic}) async {
+  Future<PromptResult<String>> prompt({PromptSource? source, PromptMode mode = PromptMode.automatic}) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
+      if (source == null) return await _terminal(mode);
       return await _run(source, mode);
     } finally {
       _active = false;
+    }
+  }
+  Future<PromptResult<String>> _terminal(PromptMode mode) async {
+    if (!Platform.isWindows || !stdin.hasTerminal) {
+      return Unavailable('Interactive console input is unavailable; supply an explicit input source.');
+    }
+    final rich = mode == PromptMode.rich || (mode == PromptMode.automatic && stderr.hasTerminal);
+    if (rich && !stderr.hasTerminal) {
+      return Unavailable('Rich interaction unavailable on stderr; use linear or automatic mode.');
+    }
+    final console = _Console();
+    final input = console.getHandle(-10);
+    final output = console.getHandle(-12);
+    final inputMode = calloc<Uint32>();
+    final outputMode = calloc<Uint32>();
+    var inputAcquired = false;
+    var outputAcquired = false;
+    try {
+      if (console.getMode(input, inputMode) == 0 ||
+          (rich && console.getMode(output, outputMode) == 0)) {
+        return Unavailable('Console capability unavailable.');
+      }
+      if (console.setMode(input, (inputMode.value | 0x200) & ~7) == 0) {
+        return Unavailable('Cannot acquire console input.');
+      }
+      inputAcquired = true;
+      if (rich) {
+        if (console.setMode(output, outputMode.value | 4) == 0) {
+          return Unavailable('Cannot enable rich console output.');
+        }
+        outputAcquired = true;
+        stderr.write('\x1b[?2004h');
+      }
+      return await _run(ScriptedInput(stdin.transform(utf8.decoder), stderr, supportsRich: stderr.hasTerminal), rich ? PromptMode.rich : PromptMode.linear);
+    } finally {
+      if (outputAcquired) {
+        stderr.write('\x1b[?2004l\n');
+        if (console.setMode(output, outputMode.value) == 0) throw StateError('Cannot restore console output.');
+      }
+      if (inputAcquired && console.setMode(input, inputMode.value) == 0) throw StateError('Cannot restore console input.');
+      calloc.free(inputMode);
+      calloc.free(outputMode);
     }
   }
   Future<PromptResult<String>> _run(PromptSource source, PromptMode mode) async {
@@ -327,5 +373,23 @@ class Keys {
     unawaited(_subscription.cancel());
     unawaited(_iterator.cancel());
   }
+}
+
+
+class _Console {
+  final _dll = DynamicLibrary.open('kernel32.dll');
+  late final int Function(int) getHandle = _dll
+      .lookupFunction<IntPtr Function(Int32), int Function(int)>(
+        'GetStdHandle',
+      );
+  late final int Function(int, Pointer<Uint32>) getMode = _dll
+      .lookupFunction<
+        Int32 Function(IntPtr, Pointer<Uint32>),
+        int Function(int, Pointer<Uint32>)
+      >('GetConsoleMode');
+  late final int Function(int, int) setMode = _dll
+      .lookupFunction<Int32 Function(IntPtr, Uint32), int Function(int, int)>(
+        'SetConsoleMode',
+      );
 }
 

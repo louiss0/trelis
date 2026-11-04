@@ -57,7 +57,11 @@ void main() {
     expect((await pending as Accepted<String>).value, 'one');
     await input.close();
     expect((await prompt.prompt(source: SuppliedAnswer('two')) as Accepted<String>).value, 'two');
+  });  test('redirected stdin is not consumed without explicit policy', () async {
+    final result = await TextInput('Name').prompt();
+    expect(result, isA<Unavailable<String>>());
   });}
+
 
 
 
