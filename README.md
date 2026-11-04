@@ -170,3 +170,27 @@ A `SuppliedAnswer` is the complete selection as comma-separated stable choice
 numbers, for example `2,1`; an empty string means the empty set. References
 must be unique and enabled, without whitespace, and satisfy count constraints.
 Supplied answers are literal and do not interpret prompt commands.
+
+### SearchSelect
+
+`SearchSelect<T>(label, choices, defaultValue: ...)` returns one enabled choice
+identity. By default it searches choice labels with case-insensitive substring
+matching in source order. Source numbers identify choices throughout the prompt,
+including across filters and pages. Rich Enter or an arrow enters results from
+query editing without accepting; Enter in results accepts the focused enabled
+choice. Tab traverses query, results, and the Cancel action; typing from results
+or the action returns to query editing. Linear interaction begins with a query,
+then accepts a result reference; `/search` edits the query, `/list` reviews the
+page, and `/next` and `/previous` page through results. `/help` and `/cancel`
+are exact commands. Quoted commands and identified paste are literal; unframed
+paste cannot be distinguished from typing.
+
+An optional `search` callback replaces the default matching policy; applications
+must describe their policy to users. It may return a `List<Choice<T>>` or a
+future of one. Returned identities must be unique and already exist in the
+configured choices; labels and disabled reasons may be updated. Results are
+shown in original source order with the original references. Pending, failed and
+obsolete searches cannot be accepted. If a previously focused result disappears
+or becomes unavailable, rich interaction explains it and requires navigation
+before selecting another result. Supplied references are unavailable with a
+custom search because dynamic availability cannot be verified without a query.

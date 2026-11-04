@@ -70,6 +70,11 @@ final class SearchSelect<T> {
     void Function()? beforeClose,
   }) async {
     if (source is SuppliedAnswer) {
+      if (search != null) {
+        return Unavailable(
+          'Supplied references cannot verify dynamic search availability.',
+        );
+      }
       final n = int.tryParse(source.value);
       if (n == null ||
           n < 1 ||
@@ -94,6 +99,7 @@ final class SearchSelect<T> {
     var focus = defaultValue == null
         ? -1
         : choices.indexWhere((c) => c.value == defaultValue);
+    var preferred = focus;
     var page = 0;
     const size = 10;
     var current = <int, Choice<T>>{};
@@ -172,6 +178,13 @@ final class SearchSelect<T> {
         } else if (current.containsKey(focus)) {
           invalidFocus = false;
         }
+        if (hadResultsFocus && focus < 0 && current.isNotEmpty) {
+          final items = visible();
+          final enabled = items.indexWhere(
+            (i) => item(i).disabledReason == null,
+          );
+          focus = enabled < 0 ? items.first : items[enabled];
+        }
         show();
       }
 
@@ -196,12 +209,15 @@ final class SearchSelect<T> {
 
     void enterResults() {
       final items = visible();
-      if (!loading &&
+      if (!loading && !invalidFocus && items.contains(preferred)) {
+        focus = preferred;
+      } else if (!loading &&
           !invalidFocus &&
           items.isNotEmpty &&
           !items.contains(focus)) {
         focus = items.indexWhere((i) => item(i).disabledReason == null);
         focus = focus < 0 ? (items.isEmpty ? -1 : items.first) : items[focus];
+        if (preferred < 0) preferred = focus;
       }
       hadResultsFocus = true;
       out.writeln('Results focused.');
@@ -227,7 +243,7 @@ final class SearchSelect<T> {
     out.writeln(
       mode == PromptMode.linear
           ? '$label. Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-          : '$label. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Escape cancels; Ctrl+C interrupts.',
+          : '$label. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
     );
     try {
       if (mode == PromptMode.linear) {
@@ -256,6 +272,7 @@ final class SearchSelect<T> {
           if (r.action == 'eof') return InputEnded();
           if (editing) {
             query = r.value;
+            request(query);
             page = 0;
             editing = false;
             enterResults();
@@ -288,8 +305,10 @@ final class SearchSelect<T> {
       }
       var editing = true;
       var actionFocus = false;
+      var help = false;
       while (true) {
         if (editing) {
+          var queryHelp = false;
           final r = await _edit(
             keys,
             query,
@@ -300,6 +319,20 @@ final class SearchSelect<T> {
               show();
             },
             intercept: (key, text) {
+              if (queryHelp) {
+                if (key == '\x1b') {
+                  queryHelp = false;
+                  out.writeln('Help dismissed.');
+                }
+                return 'handled';
+              }
+              if (key == '\x14') {
+                queryHelp = true;
+                out.writeln(
+                  'Help: edit query; Enter opens results without accepting. Tab or Up/Down also enters results. Escape dismisses help.',
+                );
+                return 'handled';
+              }
               if (key == '\t' || key == '\x1b[A' || key == '\x1b[B') {
                 return 'results';
               }
@@ -317,7 +350,20 @@ final class SearchSelect<T> {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x1b') return Cancelled();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          out.writeln('Help dismissed.');
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Tab traverses query, results and Cancel; arrows navigate results; Enter accepts a focused enabled result or Cancel; typing edits query. Escape dismisses help.',
+          );
+          continue;
+        }
+        if (help) continue;
         if (key == '\t') {
           if (actionFocus) {
             actionFocus = false;
@@ -341,6 +387,7 @@ final class SearchSelect<T> {
                   0,
                   items.length - 1,
                 )];
+            preferred = focus;
           }
           show();
         } else if (key == '\r' || key == '\n') {
