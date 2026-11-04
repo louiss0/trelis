@@ -833,6 +833,14 @@ final class TagInput {
         if (result.action == 'interrupt') return Interrupted();
         if (result.action != 'submit') return InputEnded();
         if (result.value == '/done') return Accepted(tags);
+        if (RegExp(
+          r'[^\p{L}\p{M}\p{N}\s_-]',
+          unicode: true,
+        ).hasMatch(result.value)) {
+          input.output.writeln('Unsupported punctuation; edit the draft.');
+          draft = result.value;
+          continue;
+        }
         final value = result.value
             .replaceAllMapped(
               RegExp(r'(\p{Lu})(\p{Lu}\p{Ll})', unicode: true),
