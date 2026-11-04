@@ -2,6 +2,19 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  for (final mode in [PromptMode.rich, PromptMode.linear]) {
+    test('$mode gives textual alpha and cyclic hue preview', () async {
+      final out = StringBuffer();
+      final result = await ColorInput(
+        'Color',
+        initialValue: 'hsl(480deg 100% 50% / .5)',
+      ).prompt(source: ScriptedInput(Stream.value('\r'), out), mode: mode);
+      expect(result, isA<Accepted<ColorValue?>>());
+      expect(out.toString(), contains('Hue: 120'));
+      expect(out.toString(), contains('Alpha: 0.5'));
+      expect(out.toString(), contains('approximate'));
+    });
+  }
   test('named transparent is a value distinct from optional absence', () async {
     final input = ColorInput('Color', required: false);
     final transparent = (await input.prompt(

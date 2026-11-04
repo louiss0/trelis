@@ -2,12 +2,22 @@ part of 'text_input.dart';
 
 /// An sRGB color and the original validated expression.
 final class ColorValue {
-  ColorValue._(this.source, this.red, this.green, this.blue, this.alpha);
+  ColorValue._(
+    this.source,
+    this.red,
+    this.green,
+    this.blue,
+    this.alpha, [
+    this.hue,
+  ]);
   final String source;
   final double red;
   final double green;
   final double blue;
   final double alpha;
+
+  /// HSL hue normalized to degrees in [0, 360), when entered as HSL.
+  final double? hue;
 }
 
 /// Textual sRGB color entry.
@@ -20,7 +30,7 @@ final class ColorInput {
       throw ArgumentError.value(initialValue, 'initialValue');
     }
     _input = TextInput(
-      label,
+      '$label (CSS Color 4 sRGB: #RGB, #RGBA, #RRGGBB, #RRGGBBAA, literal RGB/HSL and static names; alpha last; hue wraps modulo 360 degrees; ASCII decimals up to 12 digits)',
       required: required,
       initialValue: initialValue,
       validate: (value) =>
@@ -45,8 +55,25 @@ final class ColorInput {
       applicationPreference: applicationPreference,
       output: output,
     );
-    if (result is Accepted<String>)
-      return Accepted(result.value.isEmpty ? null : _parseColor(result.value)!);
+    if (result is Accepted<String>) {
+      final value = result.value.isEmpty ? null : _parseColor(result.value)!;
+      final sink = source is ScriptedInput
+          ? source.output
+          : source == null
+          ? (output ?? stderr)
+          : null;
+      if (value != null && sink != null) {
+        String byte(double v) =>
+            (v * 255).round().toRadixString(16).padLeft(2, '0');
+        sink.writeln(
+          'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
+        );
+        sink.writeln(
+          'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
+        );
+      }
+      return Accepted(value);
+    }
     if (result is Cancelled<String>) return Cancelled();
     if (result is Interrupted<String>) return Interrupted();
     if (result is InputEnded<String>) return InputEnded();
@@ -131,7 +158,7 @@ ColorValue? _parseColor(String value) {
       return l - a * (t > -1 ? t : -1);
     }
 
-    return ColorValue._(value, channel(0), channel(8), channel(4), alpha);
+    return ColorValue._(value, channel(0), channel(8), channel(4), alpha, hue);
   }
   final function = RegExp(
     r'^rgba?\((.*)\)$',
