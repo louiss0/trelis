@@ -12,10 +12,16 @@ final class PathInput {
     this.allowNonexistent = false,
     this.target = PathTarget.any,
   }) {
-    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127))
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
-    if (base != null && !path.isAbsolute(base!))
+    }
+    if (base != null &&
+        (!path.isAbsolute(base!) ||
+            (Platform.isWindows &&
+                !RegExp(r'^(?:[a-zA-Z]:[\\/]|[\\/]{2}[^\\/]+[\\/][^\\/]+)')
+                    .hasMatch(base!)))) {
       throw ArgumentError.value(base, 'base', 'Must be absolute');
+    }
   }
   final String label;
   final String? base;
@@ -41,8 +47,9 @@ final class PathInput {
           applicationPreference ??
           PromptMode.automatic;
       if (source == null) {
-        if (_terminalActive)
+        if (_terminalActive) {
           throw StateError('A terminal session is already active.');
+        }
         _terminalActive = true;
         try {
           return await _terminal<String>(
@@ -65,30 +72,39 @@ final class PathInput {
     if (value.isEmpty ||
         value.contains('\x00') ||
         value.contains('\r') ||
-        value.contains('\n'))
+        value.contains('\n')) {
       return null;
-    if (Platform.isWindows && RegExp(r'^[a-zA-Z]:(?![\\/])').hasMatch(value))
+    }
+    if (Platform.isWindows && RegExp(r'^[a-zA-Z]:(?![\\/])').hasMatch(value)) {
       return null;
-    if (path.isAbsolute(value)) return value;
+    }
     if (Platform.isWindows &&
-        (value.startsWith(r'\') || value.startsWith('/'))) {
+        (value.startsWith(r'\') || value.startsWith('/')) &&
+        !value.startsWith(r'\\') &&
+        !value.startsWith('//')) {
       return '${path.rootPrefix(base)}${value.substring(1)}';
     }
+    if (path.isAbsolute(value)) return value;
     return '$base${path.separator}$value';
   }
 
   Future<String?> _error(String? candidate) async {
-    if (candidate == null)
+    if (candidate == null) {
       return 'Enter a non-empty valid native path; drive-relative paths are not supported.';
+    }
+    if (allowNonexistent && target == PathTarget.any) return null;
     try {
       final type = await FileSystemEntity.type(candidate);
-      if (type == FileSystemEntityType.notFound)
+      if (type == FileSystemEntityType.notFound) {
         return allowNonexistent ? null : 'Target must exist.';
-      if (target == PathTarget.file && type != FileSystemEntityType.file)
+      }
+      if (target == PathTarget.file && type != FileSystemEntityType.file) {
         return 'Target must be a file.';
+      }
       if (target == PathTarget.directory &&
-          type != FileSystemEntityType.directory)
+          type != FileSystemEntityType.directory) {
         return 'Target must be a directory.';
+      }
       return null;
     } on FileSystemException catch (error) {
       return 'Cannot inspect target: ${error.message}';
@@ -107,12 +123,14 @@ final class PathInput {
       return error == null ? Accepted(candidate!) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich)
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable(
         'Rich interaction unavailable; use linear or automatic mode.',
       );
-    if (mode == PromptMode.automatic)
+    }
+    if (mode == PromptMode.automatic) {
       mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
     scripted.output.writeln(
       '$label. Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
     );
@@ -122,10 +140,11 @@ final class PathInput {
     scripted.output.writeln(
       'Enter edits the path, then review and confirm. Escape cancels; Ctrl+C interrupts; Ctrl+T opens help.',
     );
-    if (mode == PromptMode.linear)
+    if (mode == PromptMode.linear) {
       scripted.output.writeln(
         r'Exact /help and /cancel are commands; quote them with a backslash. Double a leading backslash: enter three for a UNC pair. Identified paste is literal.',
       );
+    }
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     var draft = initialValue;
     try {
