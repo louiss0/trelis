@@ -3,6 +3,22 @@ import 'package:test/test.dart';
 
 void main() {
   test(
+    'unresolved branches do not become selectable leaves or invent children',
+    () async {
+      final out = StringBuffer();
+      final result =
+          await TreeSelect<String>('Pick', [
+            TreeNode('a', 'A', childrenUnavailableReason: 'not loaded'),
+          ]).prompt(
+            source: ScriptedInput(Stream.value('\r\x1b[C\x03'), out),
+            mode: PromptMode.rich,
+          );
+      expect(result, isA<Interrupted<String>>());
+      expect(out.toString(), contains('not loaded'));
+      expect(out.toString(), contains('not selectable'));
+    },
+  );
+  test(
     'linear open and up navigate separately from choosing stable references',
     () async {
       final out = StringBuffer();

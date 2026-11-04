@@ -2051,28 +2051,41 @@ final class TreeNode<T> {
     List<TreeNode<T>> children = const [],
     this.selectable,
     this.disabledReason,
+    this.childrenUnavailableReason,
   }) : children = List.unmodifiable(children) {
     Choice(value, label, disabledReason: disabledReason);
+    if (childrenUnavailableReason != null) {
+      Choice(value, label, disabledReason: childrenUnavailableReason);
+      if (children.isNotEmpty) {
+        throw ArgumentError('Unavailable children cannot be supplied.');
+      }
+    }
   }
   final T value;
   final String label;
   final List<TreeNode<T>> children;
   final bool? selectable;
   final String? disabledReason;
-  bool get canSelect => selectable ?? children.isEmpty;
+
+  /// Explains why this branch's children are not currently available.
+  final String? childrenUnavailableReason;
+  bool get canSelect =>
+      selectable ?? (children.isEmpty && childrenUnavailableReason == null);
 }
 
 /// Selects one node independently of expanding or traversing branches.
 final class TreeSelect<T> {
   TreeSelect(this.label, List<TreeNode<T>> nodes)
     : nodes = List.unmodifiable(nodes) {
-    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127))
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
+    }
     final identities = <T>{};
     void validate(List<TreeNode<T>> nodes) {
       for (final node in nodes) {
-        if (!identities.add(node.value))
+        if (!identities.add(node.value)) {
           throw ArgumentError('Node identities must be unique.');
+        }
         validate(node.children);
       }
     }
@@ -2099,8 +2112,9 @@ final class TreeSelect<T> {
           applicationPreference ??
           PromptMode.automatic;
       if (source != null) return await _run(source, selected);
-      if (_terminalActive)
+      if (_terminalActive) {
         throw StateError('A terminal session is already active.');
+      }
       _terminalActive = true;
       try {
         return await _terminal<T>(
@@ -2137,17 +2151,20 @@ final class TreeSelect<T> {
           n < 1 ||
           n > all.length ||
           !all[n - 1].$1.canSelect ||
-          all[n - 1].$1.disabledReason != null)
+          all[n - 1].$1.disabledReason != null) {
         return Unavailable('Supply an enabled selectable node reference.');
+      }
       return Accepted(all[n - 1].$1.value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich)
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable(
         'Rich interaction unavailable; use linear or automatic mode.',
       );
-    if (mode == PromptMode.automatic)
+    }
+    if (mode == PromptMode.automatic) {
       mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
     final out = scripted.output;
     final expanded = <T>{};
     var focus = nodes.isEmpty ? null : nodes.first;
@@ -2164,8 +2181,9 @@ final class TreeSelect<T> {
     void show() {
       out.writeln('$label TreeSelect:');
       if (all.isEmpty) out.writeln('No nodes available.');
-      if (mode == PromptMode.linear)
+      if (mode == PromptMode.linear) {
         out.writeln('Path: ${current.isEmpty ? 'root' : path(current)}');
+      }
       final rows = mode == PromptMode.linear
           ? all.where(
               (r) =>
@@ -2177,7 +2195,9 @@ final class TreeSelect<T> {
       for (final row in rows) {
         final node = row.$1;
         out.writeln(
-          '${all.indexOf(row) + 1}. ${path(row.$2)}${identical(node, focus) ? ' [focused]' : ''} ${node.children.isEmpty
+          '${all.indexOf(row) + 1}. ${path(row.$2)}${identical(node, focus) ? ' [focused]' : ''} ${node.childrenUnavailableReason != null
+              ? '[children unavailable: ${node.childrenUnavailableReason}]'
+              : node.children.isEmpty
               ? '[leaf]'
               : expanded.contains(node.value)
               ? '[expanded]'
@@ -2206,17 +2226,19 @@ final class TreeSelect<T> {
           );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
-          if (action.action != 'command' && action.action != 'submit')
+          if (action.action != 'command' && action.action != 'submit') {
             return InputEnded();
+          }
           if (action.action != 'command') {
             out.writeln('Use /open, /up or /choose.');
             continue;
           }
           if (action.value == '/up') {
-            if (current.isNotEmpty)
+            if (current.isNotEmpty) {
               current = current.sublist(0, current.length - 1);
-            else
+            } else {
               out.writeln('Already at root.');
+            }
             show();
             continue;
           }
@@ -2248,6 +2270,12 @@ final class TreeSelect<T> {
                 (current.isNotEmpty &&
                     !identical(row.$2[current.length - 1], current.last))) {
               out.writeln('Open a node in the current path.');
+              continue;
+            }
+            if (node.childrenUnavailableReason != null) {
+              out.writeln(
+                'Children unavailable: ${node.childrenUnavailableReason}.',
+              );
               continue;
             }
             if (node.children.isEmpty) {
@@ -2293,16 +2321,23 @@ final class TreeSelect<T> {
         final rows = visible();
         final index = rows.indexWhere((r) => identical(r.$1, focus));
         if (key == '\x1b[A' && index > 0) focus = rows[index - 1].$1;
-        if (key == '\x1b[B' && index >= 0 && index + 1 < rows.length)
+        if (key == '\x1b[B' && index >= 0 && index + 1 < rows.length) {
           focus = rows[index + 1].$1;
+        }
+        if (key == '\x1b[C' && focus?.childrenUnavailableReason != null) {
+          out.writeln(
+            'Children unavailable: ${focus!.childrenUnavailableReason}.',
+          );
+        }
         if (key == '\x1b[C' && focus != null && focus.children.isNotEmpty) {
           if (!expanded.add(focus.value)) focus = focus.children.first;
         }
         if (key == '\x1b[D' && focus != null) {
           if (!expanded.remove(focus.value) &&
               index >= 0 &&
-              rows[index].$2.length > 1)
+              rows[index].$2.length > 1) {
             focus = rows[index].$2[rows[index].$2.length - 2];
+          }
         }
         if (key == '\r' || key == '\n') {
           if (focus == null) {
