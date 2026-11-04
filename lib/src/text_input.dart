@@ -2967,6 +2967,7 @@ final class TagInput {
   TagInput(this.label, {this.style = TagStyle.kebabCase});
   final String label;
   final TagStyle style;
+  bool _active = false;
 
   String _canonical(String text) {
     final value = text
@@ -2988,6 +2989,19 @@ final class TagInput {
     required PromptSource source,
     PromptMode mode = PromptMode.automatic,
   }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      return await _runTags(source, mode);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<List<String>>> _runTags(
+    PromptSource source,
+    PromptMode mode,
+  ) async {
     final input = source as ScriptedInput;
     if (mode == PromptMode.rich && !input.supportsRich) {
       return Unavailable(

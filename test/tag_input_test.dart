@@ -1,7 +1,27 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('overlapping sessions on the same prompt are rejected', () async {
+    final input = StreamController<String>();
+    final prompt = TagInput('Tags');
+    final first = prompt.prompt(
+      source: ScriptedInput(input.stream, StringBuffer()),
+      mode: PromptMode.linear,
+    );
+    await expectLater(
+      prompt.prompt(
+        source: ScriptedInput(Stream.value('/done\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      throwsStateError,
+    );
+    input.add('/done\r');
+    expect(await first, isA<Accepted<List<String>>>());
+    await input.close();
+  });
   test('rich mode previews canonical draft without rewriting input', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
