@@ -308,3 +308,22 @@ map gives zone identifiers or aliases and reasons; unavailable choices cannot be
 accepted. No offset previews are provided, so there is no reference instant or
 claim about scheduling. No network, system timezone, or clock is consulted by
 the prompt. IANA data is maintained by IANA and distributed in the public domain.
+### PathInput
+
+`PathInput` accepts a literal native path and captures a stable absolute base at
+prompt start (or uses the caller's absolute `base`). It shows the resolved
+candidate for confirmation before returning it. Relative paths retain `..`
+segments; there is no shell expansion, quote stripping, link canonicalization,
+or working-directory change. Drive-relative Windows paths are rejected.
+Existing targets are required by default. `allowNonexistent: true` explicitly
+permits prospective paths; `target` can require a file or directory when the
+target exists. With `allowNonexistent` and `PathTarget.any`, no filesystem
+inspection is performed. Existence and type checks are snapshots, not a
+promise that a later operation will succeed. Linear mode uses the shared
+command quoting rules; double an initial backslash (three for a UNC pair).
+
+For existence and typed-target checks, PathInput treats filesystem inspection
+errors as errors rather than assuming the path is absent. A prospective typed
+path is accepted only when the platform can establish absence; unsupported
+inspection platforms fail closed. These checks are snapshots and do not grant
+permission or guarantee a subsequent filesystem operation.
