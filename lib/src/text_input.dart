@@ -9,6 +9,7 @@ import 'package:characters/characters.dart';
 
 part 'autocomplete.dart';
 part 'search_select.dart';
+part 'command_palette.dart';
 
 sealed class PromptResult<T> {}
 
