@@ -5,6 +5,34 @@ import 'package:test/test.dart';
 
 void main() {
   test(
+    'snake policy preserves Unicode and uses word-aware separators',
+    () async {
+      final result = await TagInput('Tags', style: TagStyle.snakeCase).prompt(
+        source: SuppliedTags([
+          'My NewTag',
+          'HTTPServer',
+          'Déjà Vu',
+          '__Cafe\u0301--Noir__',
+        ]),
+      );
+      expect((result as Accepted<List<String>>).value, [
+        'my_new_tag',
+        'http_server',
+        'déjà_vu',
+        'cafe\u0301_noir',
+      ]);
+    },
+  );
+  test('supplied canonical duplicates are rejected in both styles', () async {
+    for (final style in TagStyle.values) {
+      final result = await TagInput(
+        'Tags',
+        style: style,
+      ).prompt(source: SuppliedTags(['HelloWorld', 'hello world']));
+      expect(result, isA<Unavailable<List<String>>>());
+    }
+  });
+  test(
     'linear rejected draft can be explicitly discarded before finishing',
     () async {
       final output = StringBuffer();
