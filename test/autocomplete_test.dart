@@ -113,4 +113,28 @@ void main() {
     expect((await result as Accepted<String>).value, 'Ada');
     await input.close();
   });
+  test('late rich results cannot replace newer suggestions', () async {
+    final requests = <String, Completer<List<String>>>{};
+    final input = StreamController<String>();
+    final result =
+        Autocomplete(
+          'Name',
+          suggestions: (query) =>
+              requests.putIfAbsent(query, Completer<List<String>>.new).future,
+        ).prompt(
+          source: ScriptedInput(input.stream, StringBuffer()),
+          mode: PromptMode.rich,
+        );
+    input.add('a');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    input.add('b');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    requests['ab']!.complete(['Newest']);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    requests['a']!.complete(['Stale']);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    input.add('\t\r');
+    expect((await result as Accepted<String>).value, 'Newest');
+    await input.close();
+  });
 }
