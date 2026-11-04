@@ -60,7 +60,15 @@ void main() {
   });  test('redirected stdin is not consumed without explicit policy', () async {
     final result = await TextInput('Name').prompt();
     expect(result, isA<Unavailable<String>>());
+  });  test('user preference overrides application preference before setup', () async {
+    final output = StringBuffer();
+    final result = await TextInput('Name').prompt(
+      source: ScriptedInput(Stream.value('ok\r'), output, supportsRich: false),
+      userPreference: PromptMode.rich, applicationPreference: PromptMode.linear);
+    expect(result, isA<Unavailable<String>>());
+    expect(output.toString(), isEmpty);
   });}
+
 
 
 

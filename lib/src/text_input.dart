@@ -41,12 +41,13 @@ final class TextInput {
   final int? maxLength;
   final String? Function(String)? validate;
   bool _active = false;
-  Future<PromptResult<String>> prompt({PromptSource? source, PromptMode mode = PromptMode.automatic}) async {
+  Future<PromptResult<String>> prompt({PromptSource? source, PromptMode? mode, PromptMode? userPreference, PromptMode? applicationPreference}) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      if (source == null) return await _terminal(mode);
-      return await _run(source, mode);
+      final selected = mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+      if (source == null) return await _terminal(selected);
+      return await _run(source, selected);
     } finally {
       _active = false;
     }
