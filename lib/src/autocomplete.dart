@@ -52,8 +52,16 @@ final class Autocomplete {
     PromptMode mode, {
     void Function()? beforeClose,
   }) async {
-    if (mode != PromptMode.linear) {
-      return Unavailable('Interactive rich autocomplete is not yet available.');
+    if (mode == PromptMode.rich && !source.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = source.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    if (mode == PromptMode.rich) {
+      return _rich(source, beforeClose: beforeClose);
     }
     final out = source.output;
     out.writeln(
@@ -111,6 +119,120 @@ final class Autocomplete {
         }
       }
     } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+
+  Future<PromptResult<String>> _rich(
+    ScriptedInput source, {
+    void Function()? beforeClose,
+  }) async {
+    final out = source.output;
+    out.writeln(
+      '$label. Type text; Up/Down inspect suggestions; Tab or Enter accepts a candidate; Enter submits; Escape dismisses suggestions, then cancels.',
+    );
+    final keys = _Keys(source.input.transform(utf8.encoder));
+    var value = '';
+    var query = '\u0000';
+    var candidates = <String>[];
+    var focus = -1;
+    var generation = 0;
+    var open = true;
+    var closed = false;
+    void changed(String text) {
+      if (text == query) return;
+      query = text;
+      focus = -1;
+      open = true;
+      candidates = [];
+      final request = ++generation;
+      void apply(List<String> items) {
+        if (closed || request != generation) return;
+        candidates = items
+            .where((item) => !item.runes.any((r) => r < 32 || r == 127))
+            .toList();
+        out.writeln('${candidates.length} suggestions; none active.');
+      }
+
+      try {
+        final result = suggestions(text);
+        if (result is List<String>) {
+          apply(result);
+        } else {
+          out.writeln('Loading suggestions.');
+          Future<List<String>>.value(result).then(
+            apply,
+            onError: (Object error) {
+              if (!closed && request == generation) {
+                out.writeln('Suggestions unavailable.');
+              }
+            },
+          );
+        }
+      } catch (_) {
+        out.writeln('Suggestions unavailable.');
+      }
+    }
+
+    try {
+      while (true) {
+        final result = await _edit(
+          keys,
+          value,
+          out,
+          onChanged: changed,
+          intercept: (key, text) {
+            if (key == '\x1b' && open && candidates.isNotEmpty) {
+              open = false;
+              focus = -1;
+              generation++;
+              out.writeln('Suggestions dismissed.');
+              return 'continue';
+            }
+            if ((key == '\x1b[B' || key == '\x1b[A') &&
+                open &&
+                candidates.isNotEmpty) {
+              if (key == '\x1b[B') {
+                focus = (focus + 1).clamp(0, candidates.length - 1);
+              } else {
+                focus = focus < 0
+                    ? candidates.length - 1
+                    : (focus - 1).clamp(0, candidates.length - 1);
+              }
+              out.writeln(
+                'Active candidate, not accepted: ${candidates[focus]}.',
+              );
+              return 'continue';
+            }
+            if (open &&
+                candidates.isNotEmpty &&
+                (key == '\t' || ((key == '\r' || key == '\n') && focus >= 0))) {
+              return 'accept';
+            }
+            return null;
+          },
+        );
+        if (result.action == 'cancel') return Cancelled();
+        if (result.action == 'interrupt') return Interrupted();
+        if (result.action == 'eof') return InputEnded();
+        if (result.action == 'submit') return Accepted(result.value);
+        value = result.value;
+        if (result.action == 'accept') {
+          value = candidates[focus < 0 ? 0 : focus];
+          query = value;
+          focus = -1;
+          open = false;
+          generation++;
+          out.writeln('Accepted into editable text: $value. Enter submits.');
+        }
+      }
+    } finally {
+      closed = true;
+      generation++;
       try {
         beforeClose?.call();
       } finally {

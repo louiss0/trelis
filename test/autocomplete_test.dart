@@ -35,4 +35,15 @@ void main() {
       expect(output.toString(), contains('2. Grace'));
     },
   );
+  test(
+    'rich navigation accepts a candidate before a separate submission',
+    () async {
+      final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
+          .prompt(
+            source: ScriptedInput(Stream.value('A\x1b[B\r\r'), StringBuffer()),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<String>).value, 'Ada');
+    },
+  );
 }

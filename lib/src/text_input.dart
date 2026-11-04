@@ -193,6 +193,8 @@ Future<({String action, String value})> _edit(
   bool secret = false,
   bool mask = false,
   int? maxLength,
+  String? Function(String key, String text)? intercept,
+  void Function(String text)? onChanged,
 }) async {
   var chars = initial.characters.toList();
   var pos = chars.length;
@@ -259,11 +261,14 @@ Future<({String action, String value})> _edit(
   }
 
   display();
+  onChanged?.call(chars.join());
   var help = false;
   while (true) {
     final key = await keys.next();
     if (key == null || key == '\x1a') return (action: 'eof', value: '');
     if (key == '\x03') return (action: 'interrupt', value: '');
+    final action = intercept?.call(key, chars.join());
+    if (action != null) return (action: action, value: chars.join());
     if (key == '\x1b') {
       if (!help) return (action: 'cancel', value: '');
       help = false;
@@ -346,6 +351,7 @@ Future<({String action, String value})> _edit(
       insert(key, false);
     }
     display();
+    onChanged?.call(chars.join());
   }
 }
 
