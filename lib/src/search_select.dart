@@ -7,7 +7,25 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     this.search,
-  }) : choices = List.unmodifiable(choices) {
+  }) : choices = List.unmodifiable(choices),
+       _kind = 'SearchSelect' {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (choices.map((c) => c.value).toSet().length != choices.length) {
+      throw ArgumentError('Choice identities must be unique.');
+    }
+    if (defaultValue != null && !choices.any((c) => c.value == defaultValue)) {
+      throw ArgumentError('Default identity is not a choice.');
+    }
+  }
+  SearchSelect._palette(
+    this.label,
+    List<Choice<T>> choices, {
+    this.defaultValue,
+    this.search,
+  }) : choices = List.unmodifiable(choices),
+       _kind = 'CommandPalette' {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -19,6 +37,7 @@ final class SearchSelect<T> {
     }
   }
   final String label;
+  final String _kind;
   final List<Choice<T>> choices;
   final T? defaultValue;
 
@@ -122,9 +141,7 @@ final class SearchSelect<T> {
     Choice<T> item(int i) => search == null ? choices[i] : current[i]!;
     void show() {
       final matches = visible();
-      out.writeln(
-        '$label SearchSelect: ${matches.length} results for "$query".',
-      );
+      out.writeln('$label $_kind: ${matches.length} results for "$query".');
       if (loading) {
         out.writeln('Searching; results cannot be accepted yet.');
       } else if (matches.isEmpty) {

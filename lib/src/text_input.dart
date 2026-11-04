@@ -11,6 +11,8 @@ part 'autocomplete.dart';
 part 'search_select.dart';
 part 'sortable_select.dart';
 
+part 'command_palette.dart';
+
 sealed class PromptResult<T> {}
 
 final class Accepted<T> extends PromptResult<T> {
