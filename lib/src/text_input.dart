@@ -801,3 +801,43 @@ final class Password {
 final class _SecretValidationException implements Exception {
   const _SecretValidationException();
 }
+
+final class TagInput {
+  TagInput(this.label);
+  final String label;
+
+  Future<PromptResult<List<String>>> prompt({
+    required PromptSource source,
+    PromptMode mode = PromptMode.automatic,
+  }) async {
+    final input = source as ScriptedInput;
+    final keys = _Keys(input.input.transform(utf8.encoder));
+    final tags = <String>[];
+    try {
+      while (true) {
+        final result = await _edit(
+          keys,
+          '',
+          input.output,
+          linear: true,
+          sequential: true,
+        );
+        if (result.action == 'cancel') return Cancelled();
+        if (result.action == 'interrupt') return Interrupted();
+        if (result.action != 'submit') return InputEnded();
+        if (result.value == '/done') return Accepted(tags);
+        final value = result.value
+            .replaceAllMapped(
+              RegExp(r'([a-z])([A-Z])'),
+              (m) => '${m[1]}-${m[2]}',
+            )
+            .replaceAll(RegExp(r'[\s_-]+'), '-')
+            .toLowerCase();
+        tags.add(value);
+        input.output.writeln('Added: $value');
+      }
+    } finally {
+      await keys.close();
+    }
+  }
+}
