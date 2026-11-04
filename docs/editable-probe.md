@@ -3,8 +3,8 @@
 This experimental probe is not an accessibility qualification. It requires
 Windows console stdin and stderr, owns stdin for its duration, and does not
 consume redirected stdin unless `--test-stream` is explicitly selected for
-automated tests. Use only synthetic text and synthetic secrets. No manual NVDA
-results are recorded here.
+automated tests. Use only synthetic text and synthetic secrets. The agent's
+NVDA observations below are not a human usability review or qualification.
 
 The probe requests bracketed paste. Identified bracketed paste is literal data,
 requires Enter, and control-containing paste is rejected. Without framing,
@@ -59,6 +59,35 @@ Record observations, not what should have happened. Never enter a real secret or
 - Restoration and repeat-session observation:
 - Follow-up (do not include secret text or length):
 
+## Agent-observed Windows Terminal + NVDA evidence
+
+An AI agent operated the GUI through Orca and observed actual NVDA `Speaking`
+debug entries. This was not an experienced human usability review and does not
+qualify the probe for accessibility. The environment was Windows 11 25H2
+build 10.0.26200.9711 AMD64, Windows Terminal 1.24.12741.0 with Nushell
+0.108.0, Dart 3.13.2 stable windows_x64, and probe revision
+`5f7badeed2747b652aa76f753669ab576cd76e23`. NVDA was 2026.3 AMD64,
+with the desktop keyboard layout and OneCore David en_US voice. Temporary
+`--log-level=10` logging was used to observe speech; normal logging was restored.
+
+In both plain-rich and linear presentations, the agent observed discoverable
+instructions and help, help-layer Escape followed by root Escape cancellation,
+erasure of the editable `alpha` default and recovery from the required error
+with replacement `beta`, and bounded validation 1/2 and 2/2. Hidden synthetic
+secret entry did not echo the secret or its length in speech or output. The
+edit/revise/submit path and clear plus required-empty validation passed. Ctrl+C
+while help was open interrupted the probe, and the shell was usable after exits.
+
+In linear mode, exact `/help` and `/cancel` commands passed; `\/cancel` was
+literal. Defaults of `/cancel` and `\alpha` (one leading backslash) were
+submitted literally. A real clipboard paste of synthetic `/cancel` was framed
+and treated as data; after editing it to `/cancelX`, the returned text was
+literal. The standard observed framing was `ESC[200~`, `/cancel`, `ESC[201~`.
+An initial paste rejection was reproducibly explained by a PowerShell pipeline
+adding an unintended trailing newline to `--text-stdin`, not by an app defect.
+Control-containing paste remains rejected; unframed paste retains the command
+limitation described above.
+
 ## Clipboard framing check
 
 In Windows Terminal with NVDA optional, run linear mode with an empty default:
@@ -71,8 +100,8 @@ Put the synthetic text `/cancel` on the Windows clipboard and use the configured
 Windows Terminal paste gesture. Press Enter. If the probe opens hidden secret
 entry, the paste was framed and treated as data; if it reports `cancel`, it was
 unframed and treated as a command. Record the terminal version, profile and
-paste settings. Do not infer framing from the native injection test. No such
-clipboard result has been observed by the agent.
+paste settings. Do not infer framing from the native injection test; the
+agent-observed clipboard result above applies only to that recorded environment.
 
 Framed paste is limited to 4096 UTF-16 code units. Longer frames are discarded
 as a unit; the previous draft remains. Linear mode prints reviewable sequential
