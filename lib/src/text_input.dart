@@ -1994,3 +1994,90 @@ final class MultiSelect<T> {
     }
   }
 }
+
+/// Exact decimal slider input. Decimal values are represented as strings.
+final class Slider {
+  Slider(
+    this.label, {
+    required this.minimum,
+    required this.maximum,
+    required this.step,
+    this.initialValue,
+  }) {
+    final min = _decimal(minimum);
+    final max = _decimal(maximum);
+    final increment = _decimal(step);
+    if (min == null ||
+        max == null ||
+        increment == null ||
+        _compare(min, max) > 0 ||
+        increment.$1 <= BigInt.zero) {
+      throw ArgumentError('Invalid slider bounds or step.');
+    }
+    if (initialValue != null && _validate(initialValue!) != null) {
+      throw ArgumentError.value(initialValue, 'initialValue');
+    }
+  }
+
+  final String label;
+  final String minimum;
+  final String maximum;
+  final String step;
+  final String? initialValue;
+
+  String? _validate(String value) {
+    final number = _decimal(value);
+    final min = _decimal(minimum)!;
+    final max = _decimal(maximum)!;
+    final increment = _decimal(step)!;
+    if (number == null ||
+        _compare(number, min) < 0 ||
+        _compare(number, max) > 0) {
+      return 'Enter a value between $minimum and $maximum on the $step grid.';
+    }
+    final scale = [
+      number.$2,
+      min.$2,
+      increment.$2,
+    ].reduce((a, b) => a > b ? a : b);
+    final n = number.$1 * BigInt.from(10).pow(scale - number.$2);
+    final m = min.$1 * BigInt.from(10).pow(scale - min.$2);
+    final s = increment.$1 * BigInt.from(10).pow(scale - increment.$2);
+    return (n - m) % s == BigInt.zero
+        ? null
+        : 'Enter a value between $minimum and $maximum on the $step grid.';
+  }
+
+  Future<PromptResult<String>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) =>
+      TextInput(
+        '$label (minimum $minimum, maximum $maximum, step $step)',
+        required: true,
+        initialValue: initialValue ?? '',
+        validate: _validate,
+      ).prompt(
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+      );
+}
+
+(BigInt, int)? _decimal(String text) {
+  if (!RegExp(r'^-?[0-9]+(?:\.[0-9]+)?$').hasMatch(text)) return null;
+  final parts = text.split('.');
+  return (BigInt.parse(parts.join()), parts.length == 2 ? parts[1].length : 0);
+}
+
+int _compare((BigInt, int) a, (BigInt, int) b) {
+  final scale = a.$2 > b.$2 ? a.$2 : b.$2;
+  return (a.$1 * BigInt.from(10).pow(scale - a.$2)).compareTo(
+    b.$1 * BigInt.from(10).pow(scale - b.$2),
+  );
+}
