@@ -3315,7 +3315,7 @@ final class TagInput {
     int? focused;
     var finishFocused = false;
     input.output.writeln(
-      '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags.',
+      '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags. Enter adds; Ctrl+X discards the draft. ${mode == PromptMode.linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}',
     );
     try {
       while (true) {
@@ -3326,57 +3326,56 @@ final class TagInput {
           linear: mode == PromptMode.linear,
           sequential: mode == PromptMode.linear,
           extraCommands: const {'/done', '/list', '/edit', '/remove'},
-          intercept: mode == PromptMode.rich
-              ? (key, text) {
-                  if (key == '\x18' && text.isNotEmpty) {
-                    return 'discard-draft';
-                  }
-                  if (key == '\t') {
-                    finishFocused = true;
-                    input.output.writeln('Finish focused; Enter submits.');
-                    return 'handled';
-                  }
-                  if (finishFocused && (key == '\r' || key == '\n')) {
-                    if (text.isNotEmpty) {
-                      input.output.writeln(
-                        'Add the draft or press Ctrl+X to discard it before finishing.',
-                      );
-                      finishFocused = false;
-                      return 'handled';
-                    }
-                    return 'finish';
-                  }
-                  if (key == '\x7f' || key == '\x08') {
-                    if (text.isEmpty && tags.isNotEmpty) {
-                      focused ??= tags.length - 1;
-                      input.output.writeln('Focused: ${tags[focused!]}');
-                      return 'handled';
-                    }
-                  }
-                  if (text.isEmpty &&
-                      focused != null &&
-                      (key == '\x1b[D' || key == '\x1b[C')) {
-                    focused = (focused! + (key == '\x1b[D' ? -1 : 1)).clamp(
-                      0,
-                      tags.length - 1,
-                    );
-                    input.output.writeln('Focused: ${tags[focused!]}');
-                    return 'handled';
-                  }
-                  if ((key == '\r' || key == '\n') &&
-                      text.isEmpty &&
-                      focused != null) {
-                    return 'edit-focused';
-                  }
-                  if (key == '\x1b[3~' && text.isEmpty && focused != null) {
-                    input.output.writeln('Removed: ${tags.removeAt(focused!)}');
-                    focused = null;
-                    return 'handled';
-                  }
-                  finishFocused = false;
-                  return null;
-                }
-              : null,
+          intercept: (key, text) {
+            if (key == '\x18' && text.isNotEmpty) {
+              return 'discard-draft';
+            }
+            if (mode != PromptMode.rich) return null;
+            if (key == '\t') {
+              finishFocused = true;
+              input.output.writeln('Finish focused; Enter submits.');
+              return 'handled';
+            }
+            if (finishFocused && (key == '\r' || key == '\n')) {
+              if (text.isNotEmpty) {
+                input.output.writeln(
+                  'Add the draft or press Ctrl+X to discard it before finishing.',
+                );
+                finishFocused = false;
+                return 'handled';
+              }
+              return 'finish';
+            }
+            if (key == '\x7f' || key == '\x08') {
+              if (text.isEmpty && tags.isNotEmpty) {
+                focused ??= tags.length - 1;
+                input.output.writeln('Focused: ${tags[focused!]}');
+                return 'handled';
+              }
+            }
+            if (text.isEmpty &&
+                focused != null &&
+                (key == '\x1b[D' || key == '\x1b[C')) {
+              focused = (focused! + (key == '\x1b[D' ? -1 : 1)).clamp(
+                0,
+                tags.length - 1,
+              );
+              input.output.writeln('Focused: ${tags[focused!]}');
+              return 'handled';
+            }
+            if ((key == '\r' || key == '\n') &&
+                text.isEmpty &&
+                focused != null) {
+              return 'edit-focused';
+            }
+            if (key == '\x1b[3~' && text.isEmpty && focused != null) {
+              input.output.writeln('Removed: ${tags.removeAt(focused!)}');
+              focused = null;
+              return 'handled';
+            }
+            finishFocused = false;
+            return null;
+          },
           onChanged: mode == PromptMode.rich
               ? (text) => input.output.writeln('Preview: ${_canonical(text)}')
               : null,

@@ -5,6 +5,18 @@ import 'package:test/test.dart';
 
 void main() {
   test(
+    'linear rejected draft can be explicitly discarded before finishing',
+    () async {
+      final output = StringBuffer();
+      final result = await TagInput('Tags').prompt(
+        source: ScriptedInput(Stream.value('bad!\r\x18/done\r'), output),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<List<String>>).value, isEmpty);
+      expect(output.toString(), contains('Draft discarded'));
+    },
+  );
+  test(
     'supplied tag collection returns validated canonical ordered values',
     () async {
       final result = await TagInput('Tags')
