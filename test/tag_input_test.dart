@@ -2,6 +2,19 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('linear editing replaces selected tag in place', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value(
+          'one\rtwo\r/edit\r1\r\x01\x1b[3~\x1b[3~\x1b[3~New Value\r/done\r',
+        ),
+        output,
+      ),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, ['new-value', 'two']);
+  });
   test('linear removal selects a tag explicitly and preserves order', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(

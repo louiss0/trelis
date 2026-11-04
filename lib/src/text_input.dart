@@ -823,6 +823,8 @@ final class TagInput {
     final tags = <String>[];
     var draft = '';
     var selectingRemoval = false;
+    var selectingEdit = false;
+    int? editing;
     input.output.writeln(
       '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags.',
     );
@@ -838,24 +840,35 @@ final class TagInput {
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action != 'submit') return InputEnded();
-        if (selectingRemoval) {
+        if (selectingRemoval || selectingEdit) {
           final index = int.tryParse(result.value);
           if (index == null || index < 1 || index > tags.length) {
             input.output.writeln('Select a listed tag number.');
             continue;
           }
-          input.output.writeln('Removed: ${tags.removeAt(index - 1)}');
-          selectingRemoval = false;
+          if (selectingRemoval) {
+            input.output.writeln('Removed: ${tags.removeAt(index - 1)}');
+            selectingRemoval = false;
+          } else {
+            editing = index - 1;
+            draft = tags[editing];
+            selectingEdit = false;
+          }
           continue;
         }
         if (result.value == '/done') return Accepted(tags);
-        if (result.value == '/list' || result.value == '/remove') {
+        if (result.value == '/list' ||
+            result.value == '/remove' ||
+            result.value == '/edit') {
           for (var i = 0; i < tags.length; i++) {
             input.output.writeln('${i + 1}. ${tags[i]}');
           }
           if (result.value == '/remove' && tags.isNotEmpty) {
             selectingRemoval = true;
             input.output.writeln('Enter the number of the tag to remove.');
+          } else if (result.value == '/edit' && tags.isNotEmpty) {
+            selectingEdit = true;
+            input.output.writeln('Enter the number of the tag to edit.');
           }
           continue;
         }
@@ -887,12 +900,19 @@ final class TagInput {
         final canonical = style == TagStyle.snakeCase
             ? value.replaceAll('-', '_')
             : value;
-        if (tags.contains(canonical)) {
+        if (tags.asMap().entries.any(
+          (entry) => entry.key != editing && entry.value == canonical,
+        )) {
           input.output.writeln('Duplicate tag; edit the draft.');
           draft = result.value;
           continue;
         }
-        tags.add(canonical);
+        if (editing == null) {
+          tags.add(canonical);
+        } else {
+          tags[editing] = canonical;
+          editing = null;
+        }
         draft = '';
         input.output.writeln('Added: $canonical');
       }
