@@ -8,6 +8,12 @@ final class Accepted<T> extends PromptResult<T> {
   final T value;
 }
 final class InputEnded<T> extends PromptResult<T> {}
+final class Cancelled<T> extends PromptResult<T> {}
+final class Interrupted<T> extends PromptResult<T> {}
+final class Unavailable<T> extends PromptResult<T> {
+  Unavailable(this.reason);
+  final String reason;
+}
 sealed class PromptSource {}
 final class SuppliedAnswer extends PromptSource {
   SuppliedAnswer(this.value);
@@ -33,6 +39,8 @@ final class TextInput {
     try {
       while (true) {
         final result = await edit(keys, value, scripted.output, linear: mode == PromptMode.linear, sequential: mode != PromptMode.rich);
+        if (result.action == 'cancel') return Cancelled();
+        if (result.action == 'interrupt') return Interrupted();
         if (result.action != 'submit') return InputEnded();
         value = result.value;
         if (required && value.isEmpty) {

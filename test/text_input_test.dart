@@ -23,5 +23,12 @@ void main() {
     );
     expect((result as Accepted<String>).value, 'Z');
     expect(output.toString(), contains('Required'));
+  });  test('linear cancel, quoted commands, and incomplete EOF are distinct', () async {
+    Future<PromptResult<String>> run(String keys) => TextInput('Name').prompt(
+      source: ScriptedInput(Stream.value(keys), StringBuffer()), mode: PromptMode.linear);
+    expect(await run('/cancel\r'), isA<Cancelled<String>>());
+    expect((await run('\\/cancel\r') as Accepted<String>).value, '/cancel');
+    expect(await run('/cancel'), isA<InputEnded<String>>());
   });}
+
 
