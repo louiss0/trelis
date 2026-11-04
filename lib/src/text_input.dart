@@ -41,6 +41,8 @@ final class ScriptedInput extends PromptSource {
 
 enum PromptMode { rich, linear, automatic }
 
+bool _terminalActive = false;
+
 final class TextInput {
   TextInput(
     this.label, {
@@ -79,7 +81,17 @@ final class TextInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
-      if (source == null) return await _terminal(selected);
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal(selected);
+        } finally {
+          _terminalActive = false;
+        }
+      }
       return await _run(source, selected);
     } finally {
       _active = false;
@@ -109,14 +121,14 @@ final class TextInput {
     var outputAcquired = false;
     try {
       if (console.getMode(input, inputMode) == 0 ||
-          (rich && console.getMode(output, outputMode) == 0)) {
+          (stderr.hasTerminal && console.getMode(output, outputMode) == 0)) {
         return Unavailable('Console capability unavailable.');
       }
-      if (console.setMode(input, (inputMode.value | 0x200) & ~7) == 0) {
+      if (console.setMode(input, inputMode.value & ~0x207) == 0) {
         return Unavailable('Cannot acquire console input.');
       }
       inputAcquired = true;
-      if (rich) {
+      if (stderr.hasTerminal) {
         if (console.setMode(output, outputMode.value | 4) == 0) {
           return Unavailable('Cannot enable rich console output.');
         }
@@ -516,6 +528,7 @@ class _Console {
 Stream<String> _consoleInput(_Console console, int handle) {
   late StreamController<String> controller;
   Timer? timer;
+  int? highSurrogate;
   final count = calloc<Uint32>();
   final read = calloc<Uint32>();
   final records = calloc<Uint8>(20 * 64);
@@ -539,6 +552,19 @@ Stream<String> _consoleInput(_Console console, int handle) {
       }
       final code = bytes.getUint16(base + 14, Endian.little);
       final vk = bytes.getUint16(base + 10, Endian.little);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        highSurrogate = code;
+        continue;
+      }
+      if (highSurrogate != null && code >= 0xdc00 && code <= 0xdfff) {
+        controller.add(String.fromCharCodes([highSurrogate!, code]));
+        highSurrogate = null;
+        continue;
+      }
+      if (highSurrogate != null) {
+        controller.add('\ufffd');
+        highSurrogate = null;
+      }
       final key = code != 0
           ? String.fromCharCode(code)
           : switch (vk) {

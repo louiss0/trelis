@@ -1,11 +1,11 @@
-param([string]$Report = (Join-Path $env:TEMP 'prompty-probe-report.txt'))
+param([string]$Scenario = 'repeat', [string]$Report = (Join-Path $env:TEMP 'prompty-probe-report.txt'))
 $ErrorActionPreference = 'Stop'
 Remove-Item $Report -Force -ErrorAction SilentlyContinue
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class NativeProbe {
- [StructLayout(LayoutKind.Explicit, Size=20)] public struct Input {
+ [StructLayout(LayoutKind.Explicit, Size=20, CharSet=CharSet.Unicode)] public struct Input {
   [FieldOffset(0)] public ushort Type; [FieldOffset(4)] public int Down;
   [FieldOffset(8)] public ushort Repeat; [FieldOffset(10)] public ushort VK;
   [FieldOffset(14)] public char Char; [FieldOffset(16)] public uint State;
@@ -38,7 +38,8 @@ public static class NativeProbe {
 $root = Split-Path $PSScriptRoot -Parent
 $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
-$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/text_input_native_app.dart > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$redirect = if ($Scenario -eq 'redirected') { "2> '$file.stderr'" } else { '' }
+$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/text_input_native_app.dart $Scenario $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -53,16 +54,30 @@ try {
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
- [NativeProbe]::Text("`r`r")
+ switch ($Scenario) {
+  'repeat' { [NativeProbe]::Text("`r`r") }
+  'concurrent' { [NativeProbe]::Text("`r") }
+  'rich' { [NativeProbe]::Text("`r") }
+  'redirected' { [NativeProbe]::Text("`r") }
+  'paste' { [NativeProbe]::Text("$([char]27)[200~/cancel$([char]27)[201~`r") }
+  'unicode' { [NativeProbe]::Text("$([char]::ConvertFromUtf32(0x1f600))`r") }
+  'interrupt' { [NativeProbe]::Key([char]3,67,8) }
+  default { throw "Unknown scenario $Scenario" }
+ }
  for($n=0;$n -lt 100;$n++){if((Test-Path $file) -and (Get-Item $file).Length -gt 0){break}; Start-Sleep -Milliseconds 100}
 
  for($n=0;$n -lt 100 -and !(Test-Path "$file.done");$n++){Start-Sleep -Milliseconds 100}
  if (!(Test-Path "$file.done")) { throw "probe process did not exit" }
  $actual=(Get-Content $file -Raw).Trim()
  $after=''; for($n=0;$n -lt 100;$n++){ $after=[NativeProbe]::State(); if($after -eq $before){break}; Start-Sleep -Milliseconds 100 }
- $expected = 'alpha,alpha'
+ $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'redirected' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
  if($actual -ne $expected){throw "unexpected result: $actual"}
+ if($Scenario -eq 'redirected') {
+  $transcript = Get-Content "$file.stderr" -Raw
+  if ($transcript.Contains([char]27) -or !$transcript.Contains('Name')) { throw 'unstable redirected output' }
+ }
  if($before -ne $after){throw "console state changed: $before -> $after"}
- Set-Content $Report "text input repeated sessions PASS result=$actual state=$before -> $during -> $after"
-} catch { Set-Content $Report "text input repeated sessions FAIL $_"; throw }
-finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done" -Force -ErrorAction SilentlyContinue }
+ Set-Content $Report "text input $Scenario PASS result=$actual state=$before -> $during -> $after"
+} catch { Set-Content $Report "text input $Scenario FAIL $_"; throw }
+finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
+
