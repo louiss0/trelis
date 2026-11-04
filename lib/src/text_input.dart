@@ -191,6 +191,9 @@ Future<({String action, String value})> _edit(
   bool secret = false,
   bool mask = false,
   int? maxLength,
+  int? pasteMaxLength,
+  Set<String> extraCommands = const {},
+  bool multilinePaste = false,
 }) async {
   var chars = initial.characters.toList();
   var pos = chars.length;
@@ -199,6 +202,7 @@ Future<({String action, String value})> _edit(
   if (linear &&
       (initial == '/cancel' ||
           initial == '/help' ||
+          extraCommands.contains(initial) ||
           initial.startsWith('\\'))) {
     chars.insert(0, '\\');
     provenance.insert(0, false);
@@ -208,9 +212,10 @@ Future<({String action, String value})> _edit(
   void insert(String data, bool isPaste) {
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
-    if (maxLength != null && count > maxLength) {
+    final limit = isPaste ? (pasteMaxLength ?? maxLength) : maxLength;
+    if (limit != null && count > limit) {
       output.writeln(
-        'Insertion rejected: character limit is $maxLength graphemes.',
+        'Insertion rejected: character limit is $limit graphemes.',
       );
       return;
     }
@@ -293,9 +298,16 @@ Future<({String action, String value})> _edit(
           continue;
         }
         if (text == '/cancel') return (action: 'cancel', value: '');
-        if (text == r'\/cancel' ||
-            text == r'\/help' ||
-            text.startsWith(r'\\')) {
+        if (extraCommands.contains(text)) {
+          return (action: 'command', value: text);
+        }
+        if (text.startsWith(r'\\') ||
+            (text.startsWith(r'\') &&
+                ({
+                  '/cancel',
+                  '/help',
+                  ...extraCommands,
+                }).contains(text.substring(1)))) {
           text = text.substring(1);
         }
       }
@@ -333,8 +345,13 @@ Future<({String action, String value})> _edit(
     } else if (key == '\x1b[999~') {
       output.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
     } else if (key.startsWith('\x1b[200~')) {
-      final data = key.substring(6, key.length - 6);
-      if (data.runes.any((r) => r < 32 || r == 127)) {
+      var data = key.substring(6, key.length - 6);
+      if (multilinePaste) {
+        data = data.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      }
+      if (data.runes.any(
+        (r) => (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
+      )) {
         output.writeln('Paste rejected: single-line printable text only.');
         display();
         continue;
@@ -520,7 +537,9 @@ Stream<String> _consoleInput(_Console console, int handle) {
           ? String.fromCharCode(code)
           : switch (vk) {
               0x25 => '\x1b[D',
+              0x26 => '\x1b[A',
               0x27 => '\x1b[C',
+              0x28 => '\x1b[B',
               0x24 => '\x1b[H',
               0x23 => '\x1b[F',
               0x2e => '\x1b[3~',
@@ -803,9 +822,39 @@ final class _SecretValidationException implements Exception {
 }
 
 final class Multiline {
-  Multiline(this.label);
+  Multiline(
+    this.label, {
+    this.initialValue = '',
+    this.required = false,
+    this.validate,
+    this.maxLength,
+  }) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (maxLength != null && maxLength! < 0) {
+      throw ArgumentError.value(maxLength, 'maxLength');
+    }
+    if (maxLength != null &&
+        _normalize(initialValue).characters.length > maxLength!) {
+      throw ArgumentError.value(initialValue, 'initialValue');
+    }
+  }
   final String label;
+  final String initialValue;
+  final bool required;
+  final String? Function(String)? validate;
+  final int? maxLength;
   bool _active = false;
+  static String _normalize(String value) =>
+      value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  String? _error(String value) {
+    if (required && value.isEmpty) return 'Required: enter a non-empty value.';
+    if (maxLength != null && value.characters.length > maxLength!) {
+      return 'Maximum $maxLength graphemes.';
+    }
+    return validate?.call(value);
+  }
 
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -848,7 +897,11 @@ final class Multiline {
     PromptMode mode, {
     void Function()? beforeClose,
   }) async {
-    if (source is SuppliedAnswer) return Accepted(source.value);
+    if (source is SuppliedAnswer) {
+      final value = _normalize(source.value);
+      final error = _error(value);
+      return error == null ? Accepted(value) : Unavailable(error);
+    }
     final scripted = source as ScriptedInput;
     if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable(
@@ -866,7 +919,9 @@ final class Multiline {
     );
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
-      final lines = <String>[];
+      final lines = initialValue.isEmpty
+          ? <String>[]
+          : _normalize(initialValue).split('\n');
       try {
         while (true) {
           final result = await _edit(
@@ -875,11 +930,38 @@ final class Multiline {
             out,
             linear: true,
             sequential: true,
+            extraCommands: const {
+              '/list',
+              '/edit',
+              '/insert',
+              '/remove',
+              '/done',
+            },
+            multilinePaste: true,
+            pasteMaxLength: maxLength == null
+                ? null
+                : (maxLength! -
+                          (lines.isEmpty
+                              ? 0
+                              : lines.join('\n').characters.length + 1))
+                      .clamp(0, maxLength!),
           );
           if (result.action == 'cancel') return Cancelled();
           if (result.action == 'interrupt') return Interrupted();
-          if (result.action != 'submit') return InputEnded();
-          if (result.value == '/done') return Accepted(lines.join('\n'));
+          if (result.action != 'submit' && result.action != 'command') {
+            return InputEnded();
+          }
+          if (result.action == 'submit') {
+            lines.addAll(result.value.split('\n'));
+            continue;
+          }
+          if (result.value == '/done') {
+            final value = lines.join('\n');
+            final error = _error(value);
+            if (error == null) return Accepted(value);
+            out.writeln(error);
+            continue;
+          }
           if (result.value == '/list') {
             for (var i = 0; i < lines.length; i++) {
               out.writeln('${i + 1}: ${lines[i]}');
@@ -927,15 +1009,24 @@ final class Multiline {
                 out,
                 linear: true,
                 sequential: true,
+                extraCommands: const {
+                  '/list',
+                  '/edit',
+                  '/insert',
+                  '/remove',
+                  '/done',
+                },
+                multilinePaste: true,
               );
               if (edited.action == 'cancel') return Cancelled();
               if (edited.action == 'interrupt') return Interrupted();
-              if (edited.action != 'submit') return InputEnded();
-              if (result.value == '/edit') {
-                lines[index] = edited.value;
-              } else {
-                lines.insert(index, edited.value);
+              if (edited.action == 'command') {
+                out.writeln('Quote commands to enter them as text.');
+                continue;
               }
+              if (edited.action != 'submit') return InputEnded();
+              if (result.value == '/edit') lines.removeAt(index);
+              lines.insertAll(index, edited.value.split('\n'));
             }
             continue;
           }
@@ -949,23 +1040,134 @@ final class Multiline {
         }
       }
     }
-    var value = '';
-    var finish = false;
+    var chars = _normalize(initialValue).characters.toList();
+    var pos = chars.length;
+    var action = 0;
+    void insert(String text) {
+      final before = chars.take(pos).join() + text;
+      final candidate = before + chars.skip(pos).join();
+      if (maxLength != null && candidate.characters.length > maxLength!) {
+        out.writeln(
+          'Insertion rejected: character limit is $maxLength graphemes.',
+        );
+        return;
+      }
+      chars = candidate.characters.toList();
+      var offset = 0;
+      pos = 0;
+      while (pos < chars.length && offset < before.length) {
+        offset += chars[pos].length;
+        pos++;
+      }
+    }
+
+    void display() {
+      out.writeln('Current text: ${chars.join()}');
+      out.writeln(
+        'Cursor: $pos of ${chars.length} graphemes. Actions: Finish, Insert tab.',
+      );
+    }
+
+    display();
     try {
       while (true) {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x1b') return Cancelled();
-        if (key == '\t') {
-          finish = !finish;
-          out.writeln(finish ? 'Finish' : 'Edit');
-        } else if (key == '\r' || key == '\n') {
-          if (finish) return Accepted(value);
-          value += '\n';
-        } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
-          value += key;
+        if (key == '\x1b') {
+          if (action != 0) {
+            action = 0;
+            out.writeln('Edit');
+            continue;
+          }
+          return Cancelled();
         }
+        if (key == '\t') {
+          action = (action + 1) % 3;
+          out.writeln(['Edit', 'Finish', 'Insert tab'][action]);
+          continue;
+        }
+        if (key == '\r' || key == '\n') {
+          if (action == 1) {
+            final value = chars.join();
+            final error = _error(value);
+            if (error == null) return Accepted(value);
+            out.writeln(error);
+            action = 0;
+            continue;
+          }
+          if (action == 2) {
+            insert('\t');
+            action = 0;
+          } else {
+            insert('\n');
+          }
+        } else if (action != 0) {
+          continue;
+        } else if (key == '\x1b[A' || key == '\x1b[B') {
+          var start = pos;
+          while (start > 0 && chars[start - 1] != '\n') {
+            start--;
+          }
+          final column = pos - start;
+          if (key == '\x1b[A' && start > 0) {
+            final end = start - 1;
+            var previous = end;
+            while (previous > 0 && chars[previous - 1] != '\n') {
+              previous--;
+            }
+            pos = (previous + column).clamp(previous, end);
+          } else if (key == '\x1b[B') {
+            var end = pos;
+            while (end < chars.length && chars[end] != '\n') {
+              end++;
+            }
+            if (end < chars.length) {
+              final next = end + 1;
+              var nextEnd = next;
+              while (nextEnd < chars.length && chars[nextEnd] != '\n') {
+                nextEnd++;
+              }
+              pos = (next + column).clamp(next, nextEnd);
+            }
+          }
+        } else if (key == '\x1b[D') {
+          if (pos > 0) pos--;
+        } else if (key == '\x1b[C') {
+          if (pos < chars.length) pos++;
+        } else if (key == '\x1b[H' || key == '\x01') {
+          while (pos > 0 && chars[pos - 1] != '\n') {
+            pos--;
+          }
+        } else if (key == '\x1b[F' || key == '\x05') {
+          while (pos < chars.length && chars[pos] != '\n') {
+            pos++;
+          }
+        } else if (key == '\x7f' || key == '\x08') {
+          if (pos > 0) {
+            chars.removeAt(--pos);
+          }
+        } else if (key == '\x1b[3~') {
+          if (pos < chars.length) {
+            chars.removeAt(pos);
+          }
+        } else if (key == '\x1b[999~') {
+          out.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
+        } else if (key.startsWith('\x1b[200~')) {
+          final data = _normalize(key.substring(6, key.length - 6));
+          if (data.runes.any(
+            (r) => (r < 32 && r != 9 && r != 10) || r == 127,
+          )) {
+            out.writeln('Paste rejected: unsupported control character.');
+          } else {
+            insert(data);
+          }
+        } else if (!key.startsWith('\x1b') &&
+            key.codeUnitAt(0) >= 32 &&
+            key.codeUnitAt(0) != 127) {
+          insert(key);
+        }
+        display();
       }
     } finally {
       try {
