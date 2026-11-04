@@ -2,6 +2,24 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'a supplied key sequence retains ordered declaration provenance',
+    () async {
+      final result = await KeyChordInput('Sequence')
+          .prompt(source: SuppliedAnswer('Ctrl+A,Alt+B'));
+      final gestures = (result as Accepted<List<KeyGesture>>).value;
+      expect(gestures.map((g) => g.key), ['A', 'B']);
+      expect(gestures.map((g) => g.modifiers), [
+        {KeyModifier.control},
+        {KeyModifier.alt},
+      ]);
+      expect(
+        gestures.every((g) => g.provenance == KeyGestureProvenance.declared),
+        isTrue,
+      );
+    },
+  );
+
   test('observation-required policy rejects a supplied declaration', () async {
     final result = await Keypress(
       'Shortcut',

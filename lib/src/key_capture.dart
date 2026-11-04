@@ -58,3 +58,34 @@ final class Keypress {
     return Unavailable('Interactive key capture is not yet available.');
   }
 }
+
+/// An ordered, non-empty sequence of logical key gestures.
+final class KeyChordInput {
+  KeyChordInput(this.label, {this.requireObservation = false});
+  final String label;
+  final bool requireObservation;
+
+  Future<PromptResult<List<KeyGesture>>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final gestures = <KeyGesture>[];
+      for (final declaration in source.value.split(',')) {
+        final result = await Keypress(
+          label,
+          requireObservation: requireObservation,
+        ).prompt(source: SuppliedAnswer(declaration));
+        if (result is Unavailable<KeyGesture>) {
+          return Unavailable(result.reason);
+        }
+        gestures.add((result as Accepted<KeyGesture>).value);
+      }
+      return Accepted(List.unmodifiable(gestures));
+    }
+    return Unavailable('Interactive key capture is not yet available.');
+  }
+}
