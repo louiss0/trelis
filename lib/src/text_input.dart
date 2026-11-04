@@ -823,8 +823,9 @@ final class Multiline {
           applicationPreference ??
           PromptMode.automatic;
       if (source == null) {
-        if (_terminalActive)
+        if (_terminalActive) {
           throw StateError('A terminal session is already active.');
+        }
         _terminalActive = true;
         try {
           return await _terminal<String>(
@@ -849,17 +850,105 @@ final class Multiline {
   }) async {
     if (source is SuppliedAnswer) return Accepted(source.value);
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich)
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable(
         'Rich interaction unavailable; use linear or automatic mode.',
       );
-    if (mode == PromptMode.automatic)
+    }
+    if (mode == PromptMode.automatic) {
       mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
     final out = scripted.output;
     out.writeln(
-      '$label. Enter inserts a newline. Tab selects Finish; Enter activates Finish.',
+      mode == PromptMode.linear
+          ? '$label. Enter a line; /list, /edit, /insert, /remove, /done are commands.'
+          : '$label. Enter inserts a newline. Tab selects Finish; Enter activates Finish.',
     );
     final keys = _Keys(scripted.input.transform(utf8.encoder));
+    if (mode == PromptMode.linear) {
+      final lines = <String>[];
+      try {
+        while (true) {
+          final result = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+          );
+          if (result.action == 'cancel') return Cancelled();
+          if (result.action == 'interrupt') return Interrupted();
+          if (result.action != 'submit') return InputEnded();
+          if (result.value == '/done') return Accepted(lines.join('\n'));
+          if (result.value == '/list') {
+            for (var i = 0; i < lines.length; i++) {
+              out.writeln('${i + 1}: ${lines[i]}');
+            }
+            continue;
+          }
+          if (result.value == '/edit' ||
+              result.value == '/insert' ||
+              result.value == '/remove') {
+            out.writeln('Enter line number:');
+            final number = await _edit(
+              keys,
+              '',
+              out,
+              linear: true,
+              sequential: true,
+            );
+            if (number.action == 'cancel') return Cancelled();
+            if (number.action == 'interrupt') return Interrupted();
+            if (number.action != 'submit') return InputEnded();
+            final index = (int.tryParse(number.value) ?? 0) - 1;
+            if (index < 0 ||
+                index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
+              out.writeln('Invalid line number.');
+              continue;
+            }
+            if (result.value == '/remove') {
+              out.writeln('Remove line ${index + 1}? Enter y to confirm.');
+              final confirm = await _edit(
+                keys,
+                '',
+                out,
+                linear: true,
+                sequential: true,
+              );
+              if (confirm.action == 'cancel') return Cancelled();
+              if (confirm.action == 'interrupt') return Interrupted();
+              if (confirm.action != 'submit') return InputEnded();
+              if (confirm.value == 'y') lines.removeAt(index);
+            } else {
+              out.writeln('Edit line:');
+              final edited = await _edit(
+                keys,
+                result.value == '/edit' ? lines[index] : '',
+                out,
+                linear: true,
+                sequential: true,
+              );
+              if (edited.action == 'cancel') return Cancelled();
+              if (edited.action == 'interrupt') return Interrupted();
+              if (edited.action != 'submit') return InputEnded();
+              if (result.value == '/edit') {
+                lines[index] = edited.value;
+              } else {
+                lines.insert(index, edited.value);
+              }
+            }
+            continue;
+          }
+          lines.add(result.value);
+        }
+      } finally {
+        try {
+          beforeClose?.call();
+        } finally {
+          await keys.close();
+        }
+      }
+    }
     var value = '';
     var finish = false;
     try {
