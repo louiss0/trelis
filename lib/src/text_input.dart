@@ -2151,6 +2151,7 @@ final class TreeSelect<T> {
     final out = scripted.output;
     final expanded = <T>{};
     var focus = nodes.isEmpty ? null : nodes.first;
+    var current = <TreeNode<T>>[];
     List<(TreeNode<T>, List<TreeNode<T>>)> visible() => all
         .where(
           (row) => row.$2
@@ -2163,7 +2164,17 @@ final class TreeSelect<T> {
     void show() {
       out.writeln('$label TreeSelect:');
       if (all.isEmpty) out.writeln('No nodes available.');
-      for (final row in visible()) {
+      if (mode == PromptMode.linear)
+        out.writeln('Path: ${current.isEmpty ? 'root' : path(current)}');
+      final rows = mode == PromptMode.linear
+          ? all.where(
+              (r) =>
+                  r.$2.length == current.length + 1 &&
+                  (current.isEmpty ||
+                      identical(r.$2[current.length - 1], current.last)),
+            )
+          : visible();
+      for (final row in rows) {
         final node = row.$1;
         out.writeln(
           '${all.indexOf(row) + 1}. ${path(row.$2)}${identical(node, focus) ? ' [focused]' : ''} ${node.children.isEmpty
@@ -2176,11 +2187,90 @@ final class TreeSelect<T> {
     }
 
     out.writeln(
-      'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      mode == PromptMode.linear
+          ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
+          : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
     );
     show();
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     try {
+      if (mode == PromptMode.linear) {
+        while (true) {
+          final action = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {'/open', '/up', '/choose'},
+          );
+          if (action.action == 'cancel') return Cancelled();
+          if (action.action == 'interrupt') return Interrupted();
+          if (action.action != 'command' && action.action != 'submit')
+            return InputEnded();
+          if (action.action != 'command') {
+            out.writeln('Use /open, /up or /choose.');
+            continue;
+          }
+          if (action.value == '/up') {
+            if (current.isNotEmpty)
+              current = current.sublist(0, current.length - 1);
+            else
+              out.writeln('Already at root.');
+            show();
+            continue;
+          }
+          out.writeln('Enter node reference:');
+          final reference = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {'/open', '/up', '/choose'},
+          );
+          if (reference.action == 'cancel') return Cancelled();
+          if (reference.action == 'interrupt') return Interrupted();
+          if (reference.action == 'command') {
+            out.writeln('Enter a node reference.');
+            continue;
+          }
+          if (reference.action != 'submit') return InputEnded();
+          final n = int.tryParse(reference.value);
+          if (n == null || n < 1 || n > all.length) {
+            out.writeln('Enter a valid node reference.');
+            continue;
+          }
+          final row = all[n - 1];
+          final node = row.$1;
+          if (action.value == '/open') {
+            if (row.$2.length != current.length + 1 ||
+                (current.isNotEmpty &&
+                    !identical(row.$2[current.length - 1], current.last))) {
+              out.writeln('Open a node in the current path.');
+              continue;
+            }
+            if (node.children.isEmpty) {
+              out.writeln('Node has no children.');
+              continue;
+            }
+            expanded.add(node.value);
+            current = row.$2;
+            show();
+            continue;
+          }
+          if (!node.canSelect) {
+            out.writeln('Node is not selectable.');
+            continue;
+          }
+          if (node.disabledReason != null) {
+            out.writeln('Unavailable: ${node.disabledReason}.');
+            continue;
+          }
+          out.writeln('Accepted: ${path(row.$2)}.');
+          return Accepted(node.value);
+        }
+      }
       var help = false;
       while (true) {
         final key = await keys.next();
