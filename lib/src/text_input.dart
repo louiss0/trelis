@@ -3408,6 +3408,16 @@ final class TagInput {
           draft = result.value;
           continue;
         }
+        if (!RegExp(
+          r'^(?:[\p{L}\p{Nd}]\p{M}*|[\s_-])*$',
+          unicode: true,
+        ).hasMatch(result.value)) {
+          input.output.writeln(
+            'Combining marks must follow a letter or digit; edit the draft.',
+          );
+          draft = result.value;
+          continue;
+        }
         final value = _canonical(result.value);
         if (value.isEmpty) {
           input.output.writeln('Enter a tag, or use Finish (/done).');

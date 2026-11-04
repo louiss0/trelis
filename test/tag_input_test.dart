@@ -4,6 +4,15 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('orphan combining mark is rejected while editable', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(Stream.value('\u0301\r\x7fCafe\r/done\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, ['cafe']);
+    expect(output.toString(), contains('combining'));
+  });
   test(
     'caller validates canonical tags and rejected drafts remain editable',
     () async {
