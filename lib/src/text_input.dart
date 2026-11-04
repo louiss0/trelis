@@ -2964,3 +2964,225 @@ final class TreeSelect<T> {
   }
 }
 
+/// A time of day without a date or timezone.
+final class TimeInput {
+  TimeInput(
+    this.label, {
+    this.twelveHour = false,
+    this.seconds = false,
+    this.initialValue,
+  }) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (initialValue != null && _parse(initialValue!) == null) {
+      throw ArgumentError.value(initialValue, 'initialValue');
+    }
+  }
+  final String label;
+  final bool twelveHour;
+  final bool seconds;
+  final String? initialValue;
+  bool _active = false;
+
+  String get _format =>
+      '${seconds ? 'HH:mm:ss' : 'HH:mm'}${twelveHour ? ' AM or PM (period required; hours 01-12)' : ' (hours 00-23)'}; minutes${seconds ? ' and seconds' : ''} 00-59';
+  String get _error => 'Enter $_format.';
+
+  ({int hour, int minute, int? second})? _parse(String value) {
+    final pattern = seconds
+        ? r'^([0-9]{2}):([0-9]{2}):([0-9]{2})'
+        : r'^([0-9]{2}):([0-9]{2})';
+    final match = RegExp('$pattern${twelveHour ? r' (AM|PM)' : ''}\$')
+        .firstMatch(value);
+    if (match == null) return null;
+    var hour = int.parse(match[1]!);
+    final minute = int.parse(match[2]!);
+    final second = seconds ? int.parse(match[3]!) : null;
+    if (minute > 59 ||
+        (second != null && second > 59) ||
+        (twelveHour ? hour < 1 || hour > 12 : hour > 23)) {
+      return null;
+    }
+    if (twelveHour) {
+      final period = match[seconds ? 4 : 3];
+      hour = hour % 12 + (period == 'PM' ? 12 : 0);
+    }
+    return (hour: hour, minute: minute, second: second);
+  }
+
+  Future<PromptResult<({int hour, int minute, int? second})>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<({int hour, int minute, int? second})>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer ||
+        (source is ScriptedInput &&
+            (mode == PromptMode.linear ||
+                (mode == PromptMode.automatic && !source.supportsRich)))) {
+      try {
+        final result = await TextInput(
+          '$label ($_format)',
+          required: true,
+          initialValue: initialValue ?? '',
+          validate: (v) => _parse(v) == null ? _error : null,
+        ).prompt(source: source, mode: PromptMode.linear);
+        if (result is Accepted<String>) return Accepted(_parse(result.value)!);
+        if (result is Cancelled<String>) return Cancelled();
+        if (result is Interrupted<String>) return Interrupted();
+        if (result is InputEnded<String>) return InputEnded();
+        return Unavailable((result as Unavailable<String>).reason);
+      } finally {
+        beforeClose?.call();
+      }
+    }
+    final scripted = source as ScriptedInput;
+    if (!scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    final out = scripted.output;
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    var value = initialValue ?? '';
+    final segments = [
+      'Hour',
+      'Minute',
+      if (seconds) 'Second',
+      if (twelveHour) 'Period',
+    ];
+    final controls = [...segments, 'Edit formatted time', 'Submit'];
+    var focus = 0;
+    var help = false;
+    void show() {
+      out.writeln(
+        '$label. Format: $_format. Draft: ${value.isEmpty ? 'not set' : value}.',
+      );
+      out.writeln(
+        'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      );
+    }
+
+    show();
+    try {
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Tab moves between labeled segments and actions. Up/Down or + and - adjust; Enter edits or submits. Escape dismisses help. $_error',
+          );
+          continue;
+        }
+        if (help) continue;
+        if (key == '\t') {
+          focus = (focus + 1) % controls.length;
+          show();
+          continue;
+        }
+        if (focus < segments.length &&
+            (key == '\x1b[A' || key == '\x1b[B' || key == '+' || key == '-')) {
+          if (_parse(value) == null) {
+            out.writeln('Edit a valid formatted time before adjusting.');
+            show();
+            continue;
+          }
+          final up = key == '+' || key == '\x1b[A';
+          if (segments[focus] == 'Period') {
+            if (up && value.endsWith('AM')) {
+              value = '${value.substring(0, value.length - 2)}PM';
+            }
+            if (!up && value.endsWith('PM')) {
+              value = '${value.substring(0, value.length - 2)}AM';
+            }
+          } else {
+            final start = focus * 3;
+            final current = int.parse(value.substring(start, start + 2));
+            final min = focus == 0 && twelveHour ? 1 : 0;
+            final max = focus == 0 ? (twelveHour ? 12 : 23) : 59;
+            final next = current + (up ? 1 : -1);
+            if (next >= min && next <= max) {
+              value = value.replaceRange(
+                start,
+                start + 2,
+                next.toString().padLeft(2, '0'),
+              );
+            }
+          }
+          show();
+          continue;
+        }
+        if ((key == '\r' || key == '\n') && focus == segments.length) {
+          out.writeln('Edit formatted time; Enter finishes editing.');
+          final edit = await _edit(keys, value, out);
+          if (edit.action == 'interrupt') return Interrupted();
+          if (edit.action == 'cancel') {
+            show();
+            continue;
+          }
+          if (edit.action != 'submit') return InputEnded();
+          value = edit.value;
+          if (_parse(value) == null) out.writeln(_error);
+          show();
+          continue;
+        }
+        if ((key == '\r' || key == '\n') && focus == segments.length + 1) {
+          final parsed = _parse(value);
+          if (parsed != null) return Accepted(parsed);
+          out.writeln(_error);
+          show();
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
