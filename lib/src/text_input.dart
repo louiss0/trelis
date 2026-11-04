@@ -100,6 +100,7 @@ final class TextInput {
     if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable('Rich interaction unavailable; use linear or automatic mode.');
     }
+    if (mode == PromptMode.automatic) mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
     scripted.output.writeln(label);
     final keys = Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;

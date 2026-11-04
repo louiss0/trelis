@@ -67,7 +67,12 @@ void main() {
       userPreference: PromptMode.rich, applicationPreference: PromptMode.linear);
     expect(result, isA<Unavailable<String>>());
     expect(output.toString(), isEmpty);
+  });  test('automatic mode falls back to command-aware linear entry', () async {
+    final result = await TextInput('Name').prompt(
+      source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer(), supportsRich: false));
+    expect(result, isA<Cancelled<String>>());
   });}
+
 
 
 
