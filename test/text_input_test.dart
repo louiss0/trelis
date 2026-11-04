@@ -35,7 +35,14 @@ void main() {
       source: ScriptedInput(Stream.value('ab\rc\r'), output), mode: PromptMode.linear);
     expect((result as Accepted<String>).value, 'abc');
     expect(output.toString(), contains('Enter abc'));
+  });  test('explicit rich mode fails before writing when output lacks capability', () async {
+    final output = StringBuffer();
+    final source = ScriptedInput(Stream.value('ok\r'), output, supportsRich: false);
+    final result = await TextInput('Name').prompt(source: source, mode: PromptMode.rich);
+    expect(result, isA<Unavailable<String>>());
+    expect(output.toString(), isEmpty);
   });}
+
 
 
 

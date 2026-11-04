@@ -20,9 +20,10 @@ final class SuppliedAnswer extends PromptSource {
   final String value;
 }
 final class ScriptedInput extends PromptSource {
-  ScriptedInput(this.input, this.output);
+  ScriptedInput(this.input, this.output, {this.supportsRich = true});
   final Stream<String> input;
   final StringBuffer output;
+  final bool supportsRich;
 }
 enum PromptMode { rich, linear, automatic }
 final class TextInput {
@@ -34,6 +35,9 @@ final class TextInput {
   Future<PromptResult<String>> prompt({required PromptSource source, PromptMode mode = PromptMode.automatic}) async {
     if (source is SuppliedAnswer) return Accepted(source.value);
     final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable('Rich interaction unavailable; use linear or automatic mode.');
+    }
     scripted.output.writeln(label);
     final keys = Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
