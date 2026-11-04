@@ -2,6 +2,15 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('HSL wraps hue while retaining expression and alpha', () async {
+    final result = await ColorInput('Color')
+        .prompt(source: SuppliedAnswer('hsl(480deg 100% 50% / .5)'));
+    final value = (result as Accepted<ColorValue?>).value!;
+    expect(value.source, 'hsl(480deg 100% 50% / .5)');
+    expect(value.red, closeTo(0, 1e-12));
+    expect(value.green, closeTo(1, 1e-12));
+    expect(value.alpha, .5);
+  });
   test('modern RGB preserves fractional channels and alpha', () async {
     final result = await ColorInput('Color')
         .prompt(source: SuppliedAnswer('rgb(12.5 20 30 / 25%)'));

@@ -55,6 +55,73 @@ final class ColorInput {
 }
 
 ColorValue? _parseColor(String value) {
+  final hsl = RegExp(
+    r'^hsla?\((.*)\)$',
+    caseSensitive: false,
+  ).firstMatch(value);
+  if (hsl != null) {
+    final body = hsl[1]!;
+    final legacy = body.contains(',');
+    final List<String> parts;
+    if (legacy) {
+      if (body.contains('/')) return null;
+      parts = body.split(',').map((x) => x.trim()).toList();
+    } else {
+      final slash = body.split('/');
+      if (slash.length > 2) return null;
+      parts = slash[0].trim().split(RegExp(r'\s+'));
+      if (slash.length == 2) parts.add(slash[1].trim());
+    }
+    if (parts.length != 3 && parts.length != 4) return null;
+    final hueMatch = RegExp(
+      r'^([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))(deg|grad|rad|turn)?$',
+      caseSensitive: false,
+    ).firstMatch(parts[0]);
+    if (hueMatch == null) return null;
+    final hueNumber = _colorNumber(hueMatch[1]!);
+    if (hueNumber == null) return null;
+    final unit = hueMatch[2]?.toLowerCase();
+    final hue =
+        (hueNumber *
+            (unit == 'grad'
+                ? .9
+                : unit == 'turn'
+                ? 360
+                : unit == 'rad'
+                ? 180 / 3.141592653589793
+                : 1)) %
+        360;
+    if (!parts[1].endsWith('%') || !parts[2].endsWith('%')) return null;
+    final saturation = _colorNumber(parts[1].substring(0, parts[1].length - 1));
+    final lightness = _colorNumber(parts[2].substring(0, parts[2].length - 1));
+    if (saturation == null ||
+        lightness == null ||
+        saturation < 0 ||
+        saturation > 100 ||
+        lightness < 0 ||
+        lightness > 100)
+      return null;
+    var alpha = 1.0;
+    if (parts.length == 4) {
+      final isPercent = parts[3].endsWith('%');
+      final n = _colorNumber(
+        isPercent ? parts[3].substring(0, parts[3].length - 1) : parts[3],
+      );
+      final max = isPercent ? 100 : 1;
+      if (n == null || n < 0 || n > max) return null;
+      alpha = n / max;
+    }
+    final s = saturation / 100;
+    final l = lightness / 100;
+    final a = s * (l < 1 - l ? l : 1 - l);
+    double channel(int n) {
+      final k = (n + hue / 30) % 12;
+      final t = [k - 3, 9 - k, 1.0].reduce((x, y) => x < y ? x : y);
+      return l - a * (t > -1 ? t : -1);
+    }
+
+    return ColorValue._(value, channel(0), channel(8), channel(4), alpha);
+  }
   final function = RegExp(
     r'^rgba?\((.*)\)$',
     caseSensitive: false,
@@ -110,4 +177,12 @@ ColorValue? _parseColor(String value) {
     int.parse(h.substring(4, 6), radix: 16) / 255,
     int.parse(h.substring(6, 8), radix: 16) / 255,
   );
+}
+
+double? _colorNumber(String text) {
+  if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$').hasMatch(text) ||
+      text.replaceAll(RegExp(r'[^0-9]'), '').length > 12)
+    return null;
+  final n = double.tryParse(text);
+  return n != null && n.isFinite ? n : null;
 }
