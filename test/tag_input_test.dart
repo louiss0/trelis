@@ -2,6 +2,15 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('snake style uses the configured separator', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags', style: TagStyle.snakeCase).prompt(
+      source: ScriptedInput(Stream.value('HTTPServer\r/done\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, ['http_server']);
+    expect(output.toString(), contains('snake'));
+  });
   test('acronym and Unicode word boundaries produce canonical tags', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(

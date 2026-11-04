@@ -802,9 +802,12 @@ final class _SecretValidationException implements Exception {
   const _SecretValidationException();
 }
 
+enum TagStyle { kebabCase, snakeCase }
+
 final class TagInput {
-  TagInput(this.label);
+  TagInput(this.label, {this.style = TagStyle.kebabCase});
   final String label;
+  final TagStyle style;
 
   Future<PromptResult<List<String>>> prompt({
     required PromptSource source,
@@ -813,6 +816,9 @@ final class TagInput {
     final input = source as ScriptedInput;
     final keys = _Keys(input.input.transform(utf8.encoder));
     final tags = <String>[];
+    input.output.writeln(
+      '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags.',
+    );
     try {
       while (true) {
         final result = await _edit(
@@ -837,8 +843,11 @@ final class TagInput {
             )
             .replaceAll(RegExp(r'[\s_-]+'), '-')
             .toLowerCase();
-        tags.add(value);
-        input.output.writeln('Added: $value');
+        final canonical = style == TagStyle.snakeCase
+            ? value.replaceAll('-', '_')
+            : value;
+        tags.add(canonical);
+        input.output.writeln('Added: $canonical');
       }
     } finally {
       await keys.close();
