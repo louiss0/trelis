@@ -168,6 +168,7 @@ final class Autocomplete {
     var focus = -1;
     var generation = 0;
     var open = true;
+    var loading = false;
     var closed = false;
     void changed(String text) {
       if (text == query) return;
@@ -175,9 +176,11 @@ final class Autocomplete {
       focus = -1;
       open = true;
       candidates = [];
+      loading = true;
       final request = ++generation;
       void apply(List<String> items) {
         if (closed || request != generation) return;
+        loading = false;
         candidates = items
             .where((item) => !item.runes.any((r) => r < 32 || r == 127))
             .toList();
@@ -194,12 +197,14 @@ final class Autocomplete {
             apply,
             onError: (Object error) {
               if (!closed && request == generation) {
+                loading = false;
                 out.writeln('Suggestions unavailable.');
               }
             },
           );
         }
       } catch (_) {
+        loading = false;
         out.writeln('Suggestions unavailable.');
       }
     }
@@ -212,8 +217,9 @@ final class Autocomplete {
           out,
           onChanged: changed,
           intercept: (key, text) {
-            if (key == '\x1b' && open && candidates.isNotEmpty) {
+            if (key == '\x1b' && open && (loading || candidates.isNotEmpty)) {
               open = false;
+              loading = false;
               focus = -1;
               generation++;
               out.writeln('Suggestions dismissed.');

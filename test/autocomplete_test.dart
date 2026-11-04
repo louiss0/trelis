@@ -62,4 +62,21 @@ void main() {
             .timeout(const Duration(seconds: 1));
     expect((result as Accepted<String>).value, 'Grace');
   });
+  test(
+    'rich Escape dismisses pending suggestions before cancellation',
+    () async {
+      final pending = Completer<List<String>>();
+      final input = StreamController<String>();
+      final result = Autocomplete('Name', suggestions: (_) => pending.future)
+          .prompt(
+            source: ScriptedInput(input.stream, StringBuffer()),
+            mode: PromptMode.rich,
+          );
+      input.add('A\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      input.add('\r');
+      expect((await result as Accepted<String>).value, 'A');
+      await input.close();
+    },
+  );
 }
