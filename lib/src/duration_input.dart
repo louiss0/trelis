@@ -20,14 +20,14 @@ final class DurationInput {
     this.label, {
     required this.durationMode,
     this.signed = false,
-    this.minimumMicroseconds = 0,
+    this.minimumMicroseconds,
     this.initialValue,
   }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
     if (durationMode == DurationInputMode.calendarRelative &&
-        minimumMicroseconds != 0) {
+        minimumMicroseconds != null) {
       throw ArgumentError('Calendar periods do not have an elapsed minimum.');
     }
     if (initialValue != null && _parse(initialValue!) == null) {
@@ -37,7 +37,7 @@ final class DurationInput {
   final String label;
   final DurationInputMode durationMode;
   final bool signed;
-  final int minimumMicroseconds;
+  final int? minimumMicroseconds;
   final String? initialValue;
   bool _active = false;
   static final _limit = BigInt.parse('9223372036854775807');
@@ -102,7 +102,8 @@ final class DurationInput {
     if (seen.isEmpty) return null;
     total *= sign;
     if (durationMode == DurationInputMode.elapsed &&
-        total < BigInt.from(minimumMicroseconds))
+        minimumMicroseconds != null &&
+        total < BigInt.from(minimumMicroseconds!))
       return null;
     return DurationValue._(
       text,
@@ -123,7 +124,7 @@ final class DurationInput {
     _active = true;
     try {
       final description = durationMode == DurationInputMode.elapsed
-          ? 'elapsed; units w d h m s ms us; minimum $minimumMicroseconds microseconds'
+          ? 'elapsed; units w d h m s ms us; minimum ${minimumMicroseconds?.toString() ?? (signed ? "none" : "0")} microseconds'
           : 'calendar-relative; whole y mo w d and elapsed h m s ms us; unapplied period';
       final result =
           await TextInput(
