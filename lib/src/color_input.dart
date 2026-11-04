@@ -29,18 +29,34 @@ final class ColorInput {
     if (initialValue.isNotEmpty && _parseColor(initialValue) == null) {
       throw ArgumentError.value(initialValue, 'initialValue');
     }
-    _input = TextInput(
+    _input = TextInput._(
       '$label (CSS Color 4 sRGB: #RGB, #RGBA, #RRGGBB, #RRGGBBAA, literal RGB/HSL and static names; alpha last; hue wraps modulo 360 degrees; ASCII decimals up to 12 digits)',
       required: required,
       initialValue: initialValue,
+      onChanged: _showPreview,
       validate: (value) =>
-          value.isEmpty && !required || _parseColor(value) != null
-          ? null
-          : 'Enter a valid sRGB color.',
+          value.isEmpty && !required || _parseColor(value) != null ? null : 'Enter a valid sRGB color: hex, static name, or literal RGB/HSL. RGB channels must be 0-255 or 0-100%; HSL saturation and lightness 0-100%; alpha 0-1 or 0-100%. Use at most 12 digits per number; expressions and other color spaces are not supported.',
     );
   }
   final bool required;
   late final TextInput _input;
+  StringSink? _sink;
+  bool _active = false;
+
+  void _showPreview(String text) {
+    final value = _parseColor(text);
+    final sink = _sink;
+    if (value == null || sink == null) return;
+    String byte(double v) =>
+        (v * 255).round().toRadixString(16).padLeft(2, '0');
+    sink.writeln(
+      'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
+    );
+    sink.writeln(
+      'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
+    );
+  }
+
   Future<PromptResult<ColorValue?>> prompt({
     PromptSource? source,
     PromptMode? mode,
@@ -48,45 +64,43 @@ final class ColorInput {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
-    final result = await _input.prompt(
-      source: source,
-      mode: mode,
-      userPreference: userPreference,
-      applicationPreference: applicationPreference,
-      output: output,
-    );
-    if (result is Accepted<String>) {
-      final value = result.value.isEmpty ? null : _parseColor(result.value)!;
-      final sink = source is ScriptedInput
-          ? source.output
-          : source == null
-          ? (output ?? stderr)
-          : null;
-      if (value != null && sink != null) {
-        String byte(double v) =>
-            (v * 255).round().toRadixString(16).padLeft(2, '0');
-        sink.writeln(
-          'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
-        );
-        sink.writeln(
-          'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
-        );
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    _sink = source is ScriptedInput
+        ? source.output
+        : source == null
+        ? (output ?? stderr)
+        : null;
+    try {
+      final result = await _input.prompt(
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+      );
+      if (result is Accepted<String>) {
+        final value = result.value.isEmpty ? null : _parseColor(result.value)!;
+        return Accepted(value);
       }
-      return Accepted(value);
+      if (result is Cancelled<String>) return Cancelled();
+      if (result is Interrupted<String>) return Interrupted();
+      if (result is InputEnded<String>) return InputEnded();
+      return Unavailable((result as Unavailable<String>).reason);
+    } finally {
+      _sink = null;
+      _active = false;
     }
-    if (result is Cancelled<String>) return Cancelled();
-    if (result is Interrupted<String>) return Interrupted();
-    if (result is InputEnded<String>) return InputEnded();
-    return Unavailable((result as Unavailable<String>).reason);
   }
 }
 
 ColorValue? _parseColor(String value) {
   if (value.runes.any((c) => c < 32 || c > 126)) return null;
-  if (value.toLowerCase() == 'transparent')
+  if (value.toLowerCase() == 'transparent') {
     return ColorValue._(value, 0, 0, 0, 0);
+  }
   final named = _colorNames[value.toLowerCase()];
-  if (named != null)
+  if (named != null) {
     return ColorValue._(
       value,
       ((named >> 16) & 255) / 255,
@@ -94,6 +108,7 @@ ColorValue? _parseColor(String value) {
       (named & 255) / 255,
       1,
     );
+  }
   final hsl = RegExp(
     r'^hsla?\((.*)\)$',
     caseSensitive: false,
@@ -138,8 +153,9 @@ ColorValue? _parseColor(String value) {
         saturation < 0 ||
         saturation > 100 ||
         lightness < 0 ||
-        lightness > 100)
+        lightness > 100) {
       return null;
+    }
     var alpha = 1.0;
     if (parts.length == 4) {
       final isPercent = parts[3].endsWith('%');
@@ -179,8 +195,10 @@ ColorValue? _parseColor(String value) {
       if (slash.length == 2) parts.add(slash[1].trim());
     }
     if (parts.length != 3 && parts.length != 4) return null;
-    if (legacy && parts.take(3).map((x) => x.endsWith('%')).toSet().length != 1)
+    if (legacy &&
+        parts.take(3).map((x) => x.endsWith('%')).toSet().length != 1) {
       return null;
+    }
     final channels = <double>[];
     for (var i = 0; i < parts.length; i++) {
       final token = parts[i];
@@ -188,8 +206,9 @@ ColorValue? _parseColor(String value) {
       final number = percent ? token.substring(0, token.length - 1) : token;
       if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$')
               .hasMatch(number) ||
-          number.replaceAll(RegExp(r'[^0-9]'), '').length > 12)
+          number.replaceAll(RegExp(r'[^0-9]'), '').length > 12) {
         return null;
+      }
       final n = double.tryParse(number);
       final max = percent ? 100 : (i == 3 ? 1 : 255);
       if (n == null || !n.isFinite || n < 0 || n > max) return null;
@@ -204,8 +223,9 @@ ColorValue? _parseColor(String value) {
     );
   }
   if (!RegExp(r'^#(?:[a-fA-F0-9]{3,4}|[a-fA-F0-9]{6}|[a-fA-F0-9]{8})$')
-      .hasMatch(value))
+      .hasMatch(value)) {
     return null;
+  }
   var h = value.substring(1);
   if (h.length <= 4) h = h.split('').map((c) => '$c$c').join();
   if (h.length == 6) h += 'ff';
@@ -220,8 +240,9 @@ ColorValue? _parseColor(String value) {
 
 double? _colorNumber(String text) {
   if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$').hasMatch(text) ||
-      text.replaceAll(RegExp(r'[^0-9]'), '').length > 12)
+      text.replaceAll(RegExp(r'[^0-9]'), '').length > 12) {
     return null;
+  }
   final n = double.tryParse(text);
   return n != null && n.isFinite ? n : null;
 }

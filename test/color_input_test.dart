@@ -1,7 +1,82 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('accepted source can be supplied as an editable default', () async {
+    final source = 'rgba(12.345678 10 20 / 0.123456789)';
+    final value = (await ColorInput(
+      'Color',
+    ).prompt(source: SuppliedAnswer(source)) as Accepted<ColorValue?>).value!;
+    final result = await ColorInput('Color', initialValue: value.source).prompt(
+      source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    final again = (result as Accepted<ColorValue?>).value!;
+    expect(again.source, source);
+    expect(again.red, value.red);
+    expect(again.alpha, value.alpha);
+  });
+  test('cancellation and unsupported rich preserve prompt semantics', () async {
+    expect(
+      await ColorInput('Color').prompt(
+        source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<Cancelled<ColorValue?>>(),
+    );
+    final out = StringBuffer();
+    expect(
+      await ColorInput('Color').prompt(
+        source: ScriptedInput(Stream.value('red\r'), out, supportsRich: false),
+        mode: PromptMode.rich,
+      ),
+      isA<Unavailable<ColorValue?>>(),
+    );
+    expect(out.toString(), isEmpty);
+  });
+  test('normalized hue is previewed before submission', () async {
+    final controller = StreamController<String>();
+    final out = StringBuffer();
+    final future = ColorInput('Color', initialValue: 'hsl(480 100% 50%)')
+        .prompt(
+          source: ScriptedInput(controller.stream, out),
+          mode: PromptMode.linear,
+        );
+    await Future<void>.delayed(Duration.zero);
+    expect(out.toString(), contains('Hue: 120'));
+    controller.add('\r');
+    expect(await future, isA<Accepted<ColorValue?>>());
+    await controller.close();
+  });
+  test('declared hex, legacy and modern forms are interpreted', () async {
+    final input = ColorInput('Color');
+    final examples = <String, List<double>>{
+      '#f00': [1, 0, 0, 1],
+      '#ff000080': [1, 0, 0, 128 / 255],
+      'rgb(100% 0 0 / 50%)': [1, 0, 0, .5],
+      'rgba(255, 0, 0, .25)': [1, 0, 0, .25],
+      'rgb(100%, 0%, 0%)': [1, 0, 0, 1],
+      'hsl(-240, 100%, 50%)': [0, 1, 0, 1],
+      'hsla(.5turn, 100%, 50%, 25%)': [0, 1, 1, .25],
+      'hsl(200grad 100% 50%)': [0, 1, 1, 1],
+      'blue': [0, 0, 1, 1],
+    };
+    for (final entry in examples.entries) {
+      final result = await input.prompt(source: SuppliedAnswer(entry.key));
+      final value = (result as Accepted<ColorValue?>).value!;
+      expect(value.source, entry.key);
+      for (final (actual, expected) in [
+        (value.red, entry.value[0]),
+        (value.green, entry.value[1]),
+        (value.blue, entry.value[2]),
+        (value.alpha, entry.value[3]),
+      ]) {
+        expect(actual, closeTo(expected, 1e-12), reason: entry.key);
+      }
+    }
+  });
   test('invalid values are not repaired or clamped', () async {
     final input = ColorInput('Color');
     for (final invalid in [
