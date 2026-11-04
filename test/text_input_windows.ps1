@@ -59,6 +59,7 @@ try {
   'concurrent' { [NativeProbe]::Text("`r") }
   'rich' { [NativeProbe]::Text("`r") }
   'redirected' { [NativeProbe]::Text("`r") }
+  'stdout' { [NativeProbe]::Text("`r") }
   'paste' { [NativeProbe]::Text("$([char]27)[200~/cancel$([char]27)[201~`r") }
   'unicode' { [NativeProbe]::Text("$([char]::ConvertFromUtf32(0x1f600))`r") }
   'interrupt' { [NativeProbe]::Key([char]3,67,8) }
@@ -70,7 +71,11 @@ try {
  if (!(Test-Path "$file.done")) { throw "probe process did not exit" }
  $actual=(Get-Content $file -Raw).Trim()
  $after=''; for($n=0;$n -lt 100;$n++){ $after=[NativeProbe]::State(); if($after -eq $before){break}; Start-Sleep -Milliseconds 100 }
- $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'redirected' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
+ if ($Scenario -eq 'stdout') {
+  if ($actual.Contains([char]27) -or !$actual.Contains('Name')) { throw 'unstable stdout transcript' }
+  $actual = ($actual -split "`r?`n")[-1]
+ }
+ $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($Scenario -eq 'redirected') {
   $transcript = Get-Content "$file.stderr" -Raw

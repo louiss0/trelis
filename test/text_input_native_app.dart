@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:prompty/prompty.dart';
 
@@ -29,6 +30,7 @@ Future<void> main(List<String> args) async {
     for (var i = 0; i < (scenario == 'repeat' ? 2 : 1); i++) {
       final result = await prompt.prompt(
         mode: scenario == 'rich' ? PromptMode.rich : PromptMode.linear,
+        output: scenario == 'stdout' ? stdout : null,
       );
       results.add(switch (result) {
         Accepted<String>(:final value) => value,

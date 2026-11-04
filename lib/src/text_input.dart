@@ -72,6 +72,7 @@ final class TextInput {
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
+    Stdout? output,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
@@ -87,7 +88,7 @@ final class TextInput {
         }
         _terminalActive = true;
         try {
-          return await _terminal(selected);
+          return await _terminal(selected, output ?? stderr);
         } finally {
           _terminalActive = false;
         }
@@ -98,7 +99,10 @@ final class TextInput {
     }
   }
 
-  Future<PromptResult<String>> _terminal(PromptMode mode) async {
+  Future<PromptResult<String>> _terminal(
+    PromptMode mode,
+    Stdout outputStream,
+  ) async {
     if (!Platform.isWindows || !stdin.hasTerminal) {
       return Unavailable(
         'Interactive console input is unavailable; supply an explicit input source.',
@@ -106,45 +110,48 @@ final class TextInput {
     }
     final rich =
         mode == PromptMode.rich ||
-        (mode == PromptMode.automatic && stderr.hasTerminal);
-    if (rich && !stderr.hasTerminal) {
+        (mode == PromptMode.automatic && outputStream.hasTerminal);
+    if (rich && !outputStream.hasTerminal) {
       return Unavailable(
-        'Rich interaction unavailable on stderr; use linear or automatic mode.',
+        'Rich interaction unavailable on the selected output; use linear or automatic mode.',
       );
     }
     final console = _Console();
     final input = console.getHandle(-10);
-    final output = console.getHandle(-12);
+    final output = console.getHandle(
+      identical(outputStream, stdout) ? -11 : -12,
+    );
     final inputMode = calloc<Uint32>();
     final outputMode = calloc<Uint32>();
     var inputAcquired = false;
     var outputAcquired = false;
     try {
       if (console.getMode(input, inputMode) == 0 ||
-          (stderr.hasTerminal && console.getMode(output, outputMode) == 0)) {
+          (outputStream.hasTerminal &&
+              console.getMode(output, outputMode) == 0)) {
         return Unavailable('Console capability unavailable.');
       }
       if (console.setMode(input, inputMode.value & ~0x207) == 0) {
         return Unavailable('Cannot acquire console input.');
       }
       inputAcquired = true;
-      if (stderr.hasTerminal) {
+      if (outputStream.hasTerminal) {
         if (console.setMode(output, outputMode.value | 4) == 0) {
           return Unavailable('Cannot enable rich console output.');
         }
         outputAcquired = true;
-        stderr.write('\x1b[?2004h');
+        outputStream.write('\x1b[?2004h');
       }
       return await _run(
         ScriptedInput(
           _consoleInput(console, input),
-          stderr,
-          supportsRich: stderr.hasTerminal,
+          outputStream,
+          supportsRich: outputStream.hasTerminal,
         ),
         rich ? PromptMode.rich : PromptMode.linear,
         beforeClose: () {
           if (outputAcquired) {
-            stderr.write('\x1b[?2004l\n');
+            outputStream.write('\x1b[?2004l\n');
             if (console.setMode(output, outputMode.value) == 0) {
               throw StateError('Cannot restore console output.');
             }
@@ -160,7 +167,7 @@ final class TextInput {
       );
     } finally {
       if (outputAcquired) {
-        stderr.write('\x1b[?2004l\n');
+        outputStream.write('\x1b[?2004l\n');
         if (console.setMode(output, outputMode.value) == 0) {
           throw StateError('Cannot restore console output.');
         }
@@ -242,8 +249,11 @@ final class TextInput {
         return Accepted(value);
       }
     } finally {
-      beforeClose?.call();
-      await keys.close();
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
     }
   }
 }
@@ -503,8 +513,8 @@ class Keys {
 
   Future<void> close() async {
     _timer?.cancel();
-    unawaited(_subscription.cancel());
-    unawaited(_iterator.cancel());
+    await _subscription.cancel();
+    await _iterator.cancel();
   }
 }
 
@@ -540,6 +550,7 @@ class _Console {
 Stream<String> _consoleInput(_Console console, int handle) {
   late StreamController<String> controller;
   Timer? timer;
+  StreamSubscription<ProcessSignal>? signals;
   int? highSurrogate;
   final count = calloc<Uint32>();
   final read = calloc<Uint32>();
@@ -592,10 +603,15 @@ Stream<String> _consoleInput(_Console console, int handle) {
   }
 
   controller = StreamController<String>(
-    onListen: () =>
-        timer = Timer.periodic(const Duration(milliseconds: 5), poll),
-    onCancel: () {
+    onListen: () {
+      signals = ProcessSignal.sigint.watch().listen(
+        (_) => controller.add('\x03'),
+      );
+      timer = Timer.periodic(const Duration(milliseconds: 5), poll);
+    },
+    onCancel: () async {
       timer?.cancel();
+      await signals?.cancel();
       calloc.free(count);
       calloc.free(read);
       calloc.free(records);
