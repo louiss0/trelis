@@ -3217,13 +3217,36 @@ final class TagInput {
   }
 
   Future<PromptResult<List<String>>> prompt({
-    required PromptSource source,
-    PromptMode mode = PromptMode.automatic,
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      return await _runTags(source, mode);
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive)
+          throw StateError('A terminal session is already active.');
+        _terminalActive = true;
+        try {
+          return await _terminal<List<String>>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) =>
+                _runTags(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _runTags(source, selected);
     } finally {
       _active = false;
     }
@@ -3231,8 +3254,9 @@ final class TagInput {
 
   Future<PromptResult<List<String>>> _runTags(
     PromptSource source,
-    PromptMode mode,
-  ) async {
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
     if (source is SuppliedAnswer) {
       return Unavailable('A tag collection requires an interactive source.');
     }
@@ -3391,7 +3415,11 @@ final class TagInput {
         input.output.writeln('Added: $canonical');
       }
     } finally {
-      await keys.close();
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
     }
   }
 }

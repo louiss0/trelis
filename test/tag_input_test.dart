@@ -4,6 +4,10 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('native prompt without a terminal reports unavailable', () async {
+    final result = await TagInput('Tags').prompt();
+    expect(result, isA<Unavailable<List<String>>>());
+  });
   test(
     'supplied invalid single tag yields unavailable rather than throwing',
     () async {
