@@ -4,6 +4,19 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich backspace focuses last tag and only Delete removes it', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value('one\rtwo\r\x7f\x7f\x1b[3~\t\r'),
+        output,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<List<String>>).value, ['one']);
+    expect(output.toString(), contains('Focused: two'));
+    expect(output.toString(), contains('Removed: two'));
+  });
   test(
     'canonical length validation retains the draft for correction',
     () async {

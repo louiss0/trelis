@@ -3019,6 +3019,8 @@ final class TagInput {
     var selectingRemoval = false;
     var selectingEdit = false;
     int? editing;
+    int? focused;
+    var finishFocused = false;
     input.output.writeln(
       '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags.',
     );
@@ -3031,12 +3033,46 @@ final class TagInput {
           linear: true,
           sequential: true,
           extraCommands: const {'/done', '/list', '/edit', '/remove'},
+          intercept: mode == PromptMode.rich
+              ? (key, text) {
+                  if (key == '\t') {
+                    finishFocused = true;
+                    input.output.writeln('Finish focused; Enter submits.');
+                    return 'handled';
+                  }
+                  if (finishFocused && (key == '\r' || key == '\n')) {
+                    if (text.isNotEmpty) {
+                      input.output.writeln(
+                        'Add or discard the draft before finishing.',
+                      );
+                      finishFocused = false;
+                      return 'handled';
+                    }
+                    return 'finish';
+                  }
+                  if (key == '\x7f' || key == '\x08') {
+                    if (text.isEmpty && tags.isNotEmpty) {
+                      focused ??= tags.length - 1;
+                      input.output.writeln('Focused: ${tags[focused!]}');
+                      return 'handled';
+                    }
+                  }
+                  if (key == '\x1b[3~' && text.isEmpty && focused != null) {
+                    input.output.writeln('Removed: ${tags.removeAt(focused!)}');
+                    focused = null;
+                    return 'handled';
+                  }
+                  finishFocused = false;
+                  return null;
+                }
+              : null,
           onChanged: mode == PromptMode.rich
               ? (text) => input.output.writeln('Preview: ${_canonical(text)}')
               : null,
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
+        if (result.action == 'finish') return Accepted(tags);
         if (result.action != 'submit' && result.action != 'command') {
           return InputEnded();
         }
