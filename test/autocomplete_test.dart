@@ -175,4 +175,51 @@ void main() {
         );
     expect(result, isA<Cancelled<String>>());
   });
+  test('quoted action-stage submit is not executed', () async {
+    final result = await Autocomplete('Name', suggestions: (_) => <String>[])
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('Ada\r\\/submit\r/cancel\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.linear,
+        );
+    expect(result, isA<Cancelled<String>>());
+  });
+  test('pasted candidate number does not accept a candidate', () async {
+    final result = await Autocomplete('Name', suggestions: (_) => ['Grace'])
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('Ada\r\x1b[200~1\x1b[201~\r/submit\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'Ada');
+  });
+  test(
+    'late linear results cannot replace results for the edited query',
+    () async {
+      final requests = <String, Completer<List<String>>>{};
+      final input = StreamController<String>();
+      final result =
+          Autocomplete(
+            'Name',
+            suggestions: (query) =>
+                requests.putIfAbsent(query, Completer<List<String>>.new).future,
+          ).prompt(
+            source: ScriptedInput(input.stream, StringBuffer()),
+            mode: PromptMode.linear,
+          );
+      input.add('a\r/edit\rb\r');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      requests['ab']!.complete(['Newest']);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      requests['a']!.complete(['Stale']);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      input.add('1\r/submit\r');
+      expect((await result as Accepted<String>).value, 'Newest');
+      await input.close();
+    },
+  );
 }
