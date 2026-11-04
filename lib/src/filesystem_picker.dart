@@ -45,7 +45,7 @@ final class DirectoryPicker {
         output: output,
       );
     }
-    final current = base ?? Directory.current.path;
+    var current = base ?? Directory.current.path;
     final input = PathInput(label, base: current, target: PathTarget.directory);
     final keys = _Keys(source.input.transform(utf8.encoder));
     try {
@@ -53,6 +53,19 @@ final class DirectoryPicker {
         source.output.writeln(
           'Current directory: $current. Choose current directory: choose. Enter a path: path.',
         );
+        List<FileSystemEntity> entries;
+        try {
+          entries = await Directory(current).list(followLinks: false).toList();
+          entries.sort((a, b) => a.path.compareTo(b.path));
+          for (var i = 0; i < entries.length; i++) {
+            source.output.writeln(
+              '${i + 1}. ${path.basename(entries[i].path)}',
+            );
+          }
+        } on FileSystemException catch (error) {
+          source.output.writeln('Cannot list $current: ${error.message}');
+          entries = [];
+        }
         final action = await _edit(
           keys,
           '',
@@ -63,6 +76,25 @@ final class DirectoryPicker {
         if (action.action == 'cancel') return Cancelled();
         if (action.action == 'interrupt') return Interrupted();
         if (action.action != 'submit') return InputEnded();
+        if (action.value.startsWith('open ')) {
+          final reference = int.tryParse(action.value.substring(5));
+          if (reference == null ||
+              reference < 1 ||
+              reference > entries.length) {
+            source.output.writeln('Invalid entry reference.');
+            continue;
+          }
+          final entry = entries[reference - 1];
+          if (await FileSystemEntity.type(entry.path, followLinks: false) !=
+              FileSystemEntityType.directory) {
+            source.output.writeln(
+              'Cannot open ${entry.path}: not an accessible directory or is a link.',
+            );
+            continue;
+          }
+          current = entry.path;
+          continue;
+        }
         var candidate = current;
         if (action.value == 'path') {
           source.output.writeln('Enter literal path:');

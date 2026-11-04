@@ -50,4 +50,37 @@ void main() {
       expect(out.toString(), contains('Choose'));
     },
   );
+  test(
+    'linear directory browser accepts a literal path after review',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('picker_test');
+      addTearDown(() => dir.delete(recursive: true));
+      final child = await Directory(
+        '${dir.path}${Platform.pathSeparator}literal\$name',
+      ).create();
+      final out = StringBuffer();
+      final result = await DirectoryPicker('Directory', base: dir.path).prompt(
+        source: ScriptedInput(Stream.value('path\rliteral\$name\r\r'), out),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<String>).value, child.path);
+      expect(out.toString(), contains('Choose ${child.path}'));
+    },
+  );
+  test(
+    'linear directory browser opens a listed directory before choosing it',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('picker_test');
+      addTearDown(() => dir.delete(recursive: true));
+      final child = await Directory('${dir.path}${Platform.pathSeparator}child')
+          .create();
+      final out = StringBuffer();
+      final result = await DirectoryPicker('Directory', base: dir.path).prompt(
+        source: ScriptedInput(Stream.value('open 1\rchoose\r\r'), out),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<String>).value, child.path);
+      expect(out.toString(), contains('1. child'));
+    },
+  );
 }
