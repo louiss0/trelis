@@ -141,3 +141,15 @@ counts grapheme clusters including line separators. Failed validation retains
 the draft. EOF never submits. Framed paste is limited to 4096 UTF-16 code units
 and oversized insertions are rejected. Native tests cover the Windows console
 protocol, not actual clipboard or NVDA qualification.
+
+### Autocomplete
+
+`Autocomplete(label, suggestions: (query) => ...)` accepts independently valid
+free-form text; suggestions may be synchronous or asynchronous. Rich Up/Down
+inspects candidates, Tab accepts the active or first candidate, and Enter
+accepts an active candidate or submits the text when none is active. Escape
+first dismisses suggestions. Linear interaction offers numbered candidates,
+`/edit`, `/submit`, `/help`, and `/cancel`; selecting a candidate does not
+submit it. Quoted commands and identified paste are literal data. Unframed
+paste cannot be distinguished from typing. `initialValue`, `required`,
+`maxLength` (graphemes), and `validate` configure the answer constraints.
