@@ -4,6 +4,18 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich focused tag can be edited in place', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value('one\rtwo\r\x7f\r\x01\x1b[3~\x1b[3~\x1b[3~NewTag\r\t\r'),
+        output,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<List<String>>).value, ['one', 'new-tag']);
+    expect(output.toString(), contains('Editing: two'));
+  });
   test('rich backspace focuses last tag and only Delete removes it', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(

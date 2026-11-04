@@ -2962,7 +2962,6 @@ final class TreeSelect<T> {
   }
 }
 
-
 enum TagStyle { kebabCase, snakeCase }
 
 final class TagInput {
@@ -3059,6 +3058,11 @@ final class TagInput {
                       return 'handled';
                     }
                   }
+                  if ((key == '\r' || key == '\n') &&
+                      text.isEmpty &&
+                      focused != null) {
+                    return 'edit-focused';
+                  }
                   if (key == '\x1b[3~' && text.isEmpty && focused != null) {
                     input.output.writeln('Removed: ${tags.removeAt(focused!)}');
                     focused = null;
@@ -3075,6 +3079,13 @@ final class TagInput {
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action == 'finish') return Accepted(tags);
+        if (result.action == 'edit-focused') {
+          editing = focused;
+          draft = tags[editing!];
+          input.output.writeln('Editing: $draft');
+          focused = null;
+          continue;
+        }
         if (result.action != 'submit' && result.action != 'command') {
           return InputEnded();
         }
