@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
@@ -47,7 +48,17 @@ void main() {
       source: ScriptedInput(Stream.value('a\x1b[200~bcd\x1b[201~\r'), output), mode: PromptMode.rich);
     expect((result as Accepted<String>).value, 'a');
     expect(output.toString(), contains('limit'));
+  });  test('sessions cannot overlap and a completed instance can be reused', () async {
+    final input = StreamController<String>();
+    final prompt = TextInput('Name');
+    final pending = prompt.prompt(source: ScriptedInput(input.stream, StringBuffer()));
+    await expectLater(prompt.prompt(source: SuppliedAnswer('x')), throwsStateError);
+    input.add('one\r');
+    expect((await pending as Accepted<String>).value, 'one');
+    await input.close();
+    expect((await prompt.prompt(source: SuppliedAnswer('two')) as Accepted<String>).value, 'two');
   });}
+
 
 
 

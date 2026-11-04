@@ -37,7 +37,17 @@ final class TextInput {
   final bool required;
   final int? maxLength;
   final String? Function(String)? validate;
+  bool _active = false;
   Future<PromptResult<String>> prompt({required PromptSource source, PromptMode mode = PromptMode.automatic}) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      return await _run(source, mode);
+    } finally {
+      _active = false;
+    }
+  }
+  Future<PromptResult<String>> _run(PromptSource source, PromptMode mode) async {
     if (source is SuppliedAnswer) return Accepted(source.value);
     final scripted = source as ScriptedInput;
     if (mode == PromptMode.rich && !scripted.supportsRich) {
