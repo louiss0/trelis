@@ -2,6 +2,15 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich mode previews canonical draft without rewriting input', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(Stream.value('NewTag\r/done\r'), output),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<List<String>>).value, ['new-tag']);
+    expect(output.toString(), contains('Preview: new-tag'));
+  });
   test(
     'pasted finish command is literal and cannot finish collection',
     () async {

@@ -2602,6 +2602,22 @@ final class TagInput {
   final String label;
   final TagStyle style;
 
+  String _canonical(String text) {
+    final value = text
+        .replaceAllMapped(
+          RegExp(r'(\p{Lu})(\p{Lu}\p{Ll})', unicode: true),
+          (m) => '${m[1]}-${m[2]}',
+        )
+        .replaceAllMapped(
+          RegExp(r'([\p{Ll}\p{Nd}]\p{M}*)(\p{Lu})', unicode: true),
+          (m) => '${m[1]}-${m[2]}',
+        )
+        .replaceAll(RegExp(r'[\s_-]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '')
+        .toLowerCase();
+    return style == TagStyle.snakeCase ? value.replaceAll('-', '_') : value;
+  }
+
   Future<PromptResult<List<String>>> prompt({
     required PromptSource source,
     PromptMode mode = PromptMode.automatic,
@@ -2630,6 +2646,9 @@ final class TagInput {
           linear: true,
           sequential: true,
           extraCommands: const {'/done', '/list', '/edit', '/remove'},
+          onChanged: mode == PromptMode.rich
+              ? (text) => input.output.writeln('Preview: ${_canonical(text)}')
+              : null,
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
@@ -2679,18 +2698,7 @@ final class TagInput {
           draft = result.value;
           continue;
         }
-        final value = result.value
-            .replaceAllMapped(
-              RegExp(r'(\p{Lu})(\p{Lu}\p{Ll})', unicode: true),
-              (m) => '${m[1]}-${m[2]}',
-            )
-            .replaceAllMapped(
-              RegExp(r'([\p{Ll}\p{Nd}]\p{M}*)(\p{Lu})', unicode: true),
-              (m) => '${m[1]}-${m[2]}',
-            )
-            .replaceAll(RegExp(r'[\s_-]+'), '-')
-            .replaceAll(RegExp(r'^-+|-+$'), '')
-            .toLowerCase();
+        final value = _canonical(result.value);
         if (value.isEmpty) {
           input.output.writeln('Enter a tag, or use Finish (/done).');
           draft = result.value;
