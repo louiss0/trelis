@@ -14,8 +14,9 @@ final class KeyGesture {
 }
 
 final class Keypress {
-  Keypress(this.label);
+  Keypress(this.label, {this.requireObservation = false});
   final String label;
+  final bool requireObservation;
 
   Future<PromptResult<KeyGesture>> prompt({
     PromptSource? source,
@@ -25,6 +26,11 @@ final class Keypress {
     Stdout? output,
   }) async {
     if (source is SuppliedAnswer) {
+      if (requireObservation) {
+        return Unavailable(
+          'A declared gesture does not satisfy the observation requirement.',
+        );
+      }
       final parts = source.value.split('+');
       final modifiers = <KeyModifier>{};
       for (final part in parts.take(parts.length - 1)) {
@@ -40,7 +46,9 @@ final class Keypress {
         }
       }
       final key = parts.last;
-      if (key.isEmpty) {
+      if (!RegExp(
+        r'^(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Enter|Tab|Escape|Space|Backspace|Delete|Insert|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$',
+      ).hasMatch(key)) {
         return Unavailable('Invalid logical gesture declaration.');
       }
       return Accepted(
