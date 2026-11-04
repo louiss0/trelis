@@ -12,6 +12,7 @@ part 'search_select.dart';
 part 'sortable_select.dart';
 
 part 'command_palette.dart';
+part 'key_capture.dart';
 
 sealed class PromptResult<T> {}
 
