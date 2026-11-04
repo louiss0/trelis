@@ -238,3 +238,26 @@ obsolete searches cannot be accepted. If a previously focused result disappears
 or becomes unavailable, rich interaction explains it and requires navigation
 before selecting another result. Supplied references are unavailable with a
 custom search because dynamic availability cannot be verified without a query.
+
+## CommandPalette
+
+`CommandPalette('Commands', [Choice('save', 'Save')]).prompt()` returns a
+`PromptResult` containing the accepted choice identity. The application decides
+whether and how to execute that identity after acceptance; the palette does not
+receive or invoke command actions. Identities must be unique. A `Choice` may
+supply a `disabledReason`; unavailable commands remain visible but cannot be
+accepted.
+
+By default matching is case-insensitive substring matching in source order.
+Rich interaction separates query editing from result acceptance: Enter first
+opens results, and a subsequent Enter accepts the focused enabled command.
+Linear interaction asks for a query and then a stable source reference; `/search`
+edits the query. Neither unmatched query text nor an unavailable reference can
+be accepted as a command. Escape in rich mode and `/cancel` in linear mode
+cancel without acceptance.
+
+An optional `search` callback may provide updated choices from the original
+identities, including availability. Results are displayed in source order, not
+callback order; pending, failed, obsolete, unknown or duplicate results cannot
+be accepted. Supplied answers are source references and are unavailable when
+using dynamic search because availability cannot be verified.

@@ -72,4 +72,18 @@ void main() {
     expect(out.toString(), contains('Search unavailable'));
     expect(out.toString(), isNot(contains('Accepted:')));
   });
+  test(
+    'rich empty query requests available commands before acceptance',
+    () async {
+      final out = StringBuffer();
+      final result =
+          await CommandPalette('Commands', [
+            Choice('save', 'Save'),
+          ], search: (_) => [Choice('save', 'Save')]).prompt(
+            source: ScriptedInput(Stream.value('\r\r'), out),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<String>).value, 'save');
+    },
+  );
 }
