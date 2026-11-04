@@ -153,3 +153,20 @@ first dismisses suggestions. Linear interaction offers numbered candidates,
 submit it. Quoted commands and identified paste are literal data. Unframed
 paste cannot be distinguished from typing. `initialValue`, `required`,
 `maxLength` (graphemes), and `validate` configure the answer constraints.
+
+## MultiSelect
+
+`MultiSelect<T>` returns selected identities in the original choice order. Empty
+selection is valid unless `min` requires more; `max` rejects additions as a
+whole. Defaults must identify enabled choices. In rich mode Space toggles the
+focused item and Enter submits; `/` edits the label filter, Ctrl+A selects the
+enabled filtered results, Ctrl+X clears them, and Ctrl+R reviews all selected
+items. In linear mode `/filter` asks for filter text, a stable choice number
+toggles that item, `/selected` reviews the entire selection and `/done` submits.
+`/select-visible` and `/clear-visible` apply to enabled results across every
+page, not hidden choices. Filtering matches labels case-insensitively.
+
+A `SuppliedAnswer` is the complete selection as comma-separated stable choice
+numbers, for example `2,1`; an empty string means the empty set. References
+must be unique and enabled, without whitespace, and satisfy count constraints.
+Supplied answers are literal and do not interpret prompt commands.

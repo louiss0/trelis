@@ -1902,7 +1902,7 @@ final class MultiSelect<T> {
     show();
     out.writeln(
       mode == PromptMode.linear
-          ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help, /cancel.'
+          ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
           : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
     );
     try {
