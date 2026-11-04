@@ -26,7 +26,7 @@ Future<void> main(List<String> args) async {
   final outputMode = calloc<Uint32>();
   final input = api?.getHandle(-10) ?? 0;
   final output = api?.getHandle(-12) ?? 0;
-  final keys = Keys(stdin);
+
   try {
     if (api != null &&
         (api.getMode(input, mode) == 0 ||
@@ -44,11 +44,11 @@ Future<void> main(List<String> args) async {
       return;
     }
     stderr.write('\x1b[?2004h');
+    final keys = Keys(stdin);
+    late final String outcome;
     try {
-      final outcome = await runProbe(keys, linear, initial);
-      stdout.writeln(outcome);
+      outcome = await runProbe(keys, linear, initial);
     } finally {
-      await keys.close();
       stderr.write('\x1b[?2004l\n');
       if (api != null) {
         final restoredInput = api.setMode(input, mode.value);
@@ -57,7 +57,9 @@ Future<void> main(List<String> args) async {
           throw StateError('failed to restore console mode');
         }
       }
+      await keys.close();
     }
+    stdout.writeln(outcome);
   } finally {
     calloc.free(mode);
     calloc.free(outputMode);
@@ -132,7 +134,7 @@ Future<({String action, String value})> edit(
   var chars = initial.characters.toList();
   var pos = chars.length;
   var provenance = List<bool>.filled(chars.length, false, growable: true);
-  var synthetic = false;
+  var synthetic = -1;
   if (linear &&
       (initial == '/cancel' ||
           initial == '/help' ||
@@ -140,7 +142,7 @@ Future<({String action, String value})> edit(
     chars.insert(0, '\\');
     provenance.insert(0, false);
     pos++;
-    synthetic = true;
+    synthetic = 0;
   }
   void display() {
     if (secret) return;
@@ -173,8 +175,8 @@ Future<({String action, String value})> edit(
     if (key == '\r' || key == '\n') {
       stderr.writeln();
       var text = chars.join();
-      if (synthetic && text.startsWith('\\')) {
-        text = text.substring(1);
+      if (synthetic >= 0) {
+        text = (chars.toList()..removeAt(synthetic)).join();
       } else if (linear && !provenance.contains(true)) {
         if (text == '/help') {
           stderr.writeln(
@@ -205,13 +207,21 @@ Future<({String action, String value})> edit(
         pos--;
         chars.removeAt(pos);
         provenance.removeAt(pos);
-        if (pos == 0) synthetic = false;
+        if (pos == synthetic) {
+          synthetic = -1;
+        } else if (pos < synthetic) {
+          synthetic--;
+        }
       }
     } else if (key == '\x1b[3~') {
       if (pos < chars.length) {
         chars.removeAt(pos);
         provenance.removeAt(pos);
-        if (pos == 0) synthetic = false;
+        if (pos == synthetic) {
+          synthetic = -1;
+        } else if (pos < synthetic) {
+          synthetic--;
+        }
       }
     } else if (key.startsWith('\x1b[200~')) {
       final data = key.substring(6, key.length - 6);
@@ -222,6 +232,7 @@ Future<({String action, String value})> edit(
       }
       final added = data.characters.toList();
       chars.insertAll(pos, added);
+      if (synthetic >= pos) synthetic += added.length;
       provenance.insertAll(pos, List<bool>.filled(added.length, true));
       pos += added.length;
     } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
@@ -231,6 +242,7 @@ Future<({String action, String value})> edit(
       final newPos = before.characters.length;
       if (newChars.length > chars.length) {
         provenance.insert(pos, false);
+        if (synthetic >= pos) synthetic++;
       }
       chars = newChars;
       pos = newPos;

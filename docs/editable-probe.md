@@ -1,45 +1,71 @@
-# Editable-default probe — work in progress
+# Editable-default probe
 
-This is **not ready for NVDA evaluation** and establishes no accessibility
-support. `dart run bin/editable_probe.dart --linear` selects the draft linear
-presentation; omit `--linear` for the draft rich presentation. The explicit
-`--test-stream` flag is only for automated input and does not qualify a real
-console. Do not enter real secrets.
+This experimental probe is not an accessibility qualification. It requires
+Windows console stdin and stderr, owns stdin for its duration, and does not
+consume redirected stdin unless `--test-stream` is explicitly selected for
+automated tests. Use only synthetic text and synthetic secrets. No manual NVDA
+results are recorded here.
 
-Known gaps blocking evaluation: Escape does not yet dismiss a transient layer;
-editing is by Unicode scalar, not grapheme; paste provenance is not tracked per
-range; terminal output mode and actual Windows Terminal paste framing have not
-been verified; status is only a placeholder. The interaction and lifecycle
-need further automated and native-console tests before a human task script can
-be executed. Unframed paste cannot be distinguished from typing and follows
-ordinary entry/command rules.
+The probe requests bracketed paste. Identified bracketed paste is literal data,
+requires Enter, and control-containing paste is rejected. Without framing,
+pasted bytes are indistinguishable from typed bytes and follow ordinary command
+rules. A native console injection test supplies framed bytes; that test does not
+prove which framing Windows Terminal sends for clipboard paste.
 
-## Evidence template (not observed results)
+The Dart launcher itself enabled VT output when the native harness started it
+with VT initially disabled (`503:3` became `503:7` even for `dart --version`).
+The probe snapshots and restores the modes it receives; its native regression
+uses the normal `503:7` launcher baseline. It cannot promise restoration to a
+pre-launch output mode that the Dart launcher changed before `main`.
 
-- Date, tester identifier or role (no private information):
+## Human Windows Terminal + NVDA task script
+
+**Do not run as qualification until the remaining implementation and native
+verification gaps below have been resolved.** Record observations, not what
+should have happened. Never enter a real secret or record its length.
+
+1. Record the environment using the template below. Start NVDA and Windows
+   Terminal, open the repository in the recorded shell, and use `dart --version`.
+2. For each mode, run `dart run bin/editable_probe.dart` (plain-rich) and
+   `dart run bin/editable_probe.dart --linear` (linear). Without looking at this
+   document's key descriptions, discover the label, initial value and help.
+   Use Ctrl+T for help if necessary; Escape should dismiss help, and a second
+   Escape at root should cancel. Verify the shell remains usable.
+3. Restart in each mode. Correct the initial `alpha` using navigation and
+   deletion; erase it, press Enter and check the required error remains
+   discoverable; enter a replacement and submit. Check the status identifies
+   the completed validation step.
+4. Run linear mode with `--default=/cancel`, then with a leading-backslash
+   default (quote it as required by the shell). Edit near the initial value and
+   submit; confirm the accepted synthetic text is correct, with no extra
+   representation backslash. Test `/help`, `/cancel`, and quoted literal
+   `\/cancel`. Record whether clipboard paste of command-looking synthetic text
+   is identified as literal; an unframed paste may follow command rules.
+5. On the hidden secret stage, type a throwaway secret, press Enter, choose
+   `edit`, revise it, then `submit`. Check no secret or length is exposed in
+   output or status. Test `clear` and required-empty validation separately.
+   Record NVDA's actual typing feedback without transcribing the secret.
+6. Restart, open help and press Ctrl+C. Confirm interruption rather than
+   acceptance. Separately test root Escape and a successful submission, and
+   type a harmless shell command after each to check terminal usability. Repeat
+   both modes. Report any failure or inability to complete a task; a failure
+   blocks qualification.
+
+## Environment and evidence template
+
+- Date, tester role (no private information):
 - Windows version/build; Windows Terminal version, profile and settings:
 - Shell/version; Dart version; probe git revision; NVDA version and settings:
-- Presentation and exact task:
+- Presentation and task number:
 - Sanitized actions, expected outcome, observed outcome, pass/fail:
 - Restoration and repeat-session observation:
-- Follow-up or failure (do not include entered secrets or secret length):
+- Follow-up (do not include secret text or length):
 
-After the gaps above are resolved, a human NVDA tester must discover the
-instructions and, in each presentation, edit and erase a default, correct a
-validation error, enter command/backslash collisions, use literal paste, edit a
-synthetic hidden secret, inspect bounded status, dismiss a transient layer with
-Escape, cancel at root, interrupt with Ctrl+C, and confirm terminal usability
-and repeat sessions. A failure blocks qualification; no result is implied here.
+## Remaining engineering gaps
 
-## Native-console blocker observed
-
-The draft must not be used for NVDA tasks. On this Windows command host,
-`powershell -NoProfile -ExecutionPolicy Bypass -File test/editable_probe_windows.ps1`
-reported `editable FAIL console state changed: 503:3:25:1 -> 1008:7:25:1`.
-The harness starts a fresh console, disables VT output before launching the
-probe, injects a synthetic answer, and compares input/output mode and cursor
-afterward. The input mode is still raw (1008) rather than the original 503.
-This failure has not been diagnosed to a specific library or API cause.
-A native input/lifecycle design that demonstrably restores the original state is
-required before a human session. The harness does not exercise Windows Terminal
-clipboard paste framing and cannot establish that it works there.
+Native injected framing is not evidence of Windows Terminal clipboard framing.
+The two draft presentations still use the same in-place editor rather than a
+fully sequential, reviewable linear presentation. Grapheme display-width and
+paste-provenance edge cases require additional coverage; the editor also lacks a
+bounded resource policy for incoming framed paste. These are not NVDA-only
+observations, and this probe is not ready for qualification.

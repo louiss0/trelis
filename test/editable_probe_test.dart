@@ -84,15 +84,41 @@ void main() {
     expect(out, contains('text:alpha;'));
     expect(err, contains('Paste rejected'));
   });
-  test('status names each completed validation step without revealing secret', () async {
-    final p = await Process.start(Platform.resolvedExecutable, ['run', 'bin/editable_probe.dart', '--test-stream']);
-    p.stdin.write('\rsynthetic-secret\rsubmit\r');
-    await p.stdin.close();
-    final out = await p.stdout.transform(systemEncoding.decoder).join();
-    final err = await p.stderr.transform(systemEncoding.decoder).join();
-    expect(await p.exitCode, 0);
-    expect(err, contains('Validation 1/2: text accepted'));
-    expect(err, contains('Validation 2/2: secret accepted'));
-    expect(err, isNot(contains('synthetic-secret')));
-    expect(out, isNot(contains('synthetic-secret')));
-  });}
+  test(
+    'status names each completed validation step without revealing secret',
+    () async {
+      final p = await Process.start(Platform.resolvedExecutable, [
+        'run',
+        'bin/editable_probe.dart',
+        '--test-stream',
+      ]);
+      p.stdin.write('\rsynthetic-secret\rsubmit\r');
+      await p.stdin.close();
+      final out = await p.stdout.transform(systemEncoding.decoder).join();
+      final err = await p.stderr.transform(systemEncoding.decoder).join();
+      expect(await p.exitCode, 0);
+      expect(err, contains('Validation 1/2: text accepted'));
+      expect(err, contains('Validation 2/2: secret accepted'));
+      expect(err, isNot(contains('synthetic-secret')));
+      expect(out, isNot(contains('synthetic-secret')));
+    },
+  );
+  test(
+    'pasting before a quoted default does not turn representation into data',
+    () async {
+      final p = await Process.start(Platform.resolvedExecutable, [
+        'run',
+        'bin/editable_probe.dart',
+        '--linear',
+        '--test-stream',
+        '--default=/cancel',
+      ]);
+      p.stdin.write('\x01\x1b[200~x\x1b[201~\rsecret\rsubmit\r');
+      await p.stdin.close();
+      final out = await p.stdout.transform(systemEncoding.decoder).join();
+      await p.stderr.drain<void>();
+      expect(await p.exitCode, 0);
+      expect(out, contains('text:x/cancel;'));
+    },
+  );
+}
