@@ -115,7 +115,7 @@ final class SearchSelect<T> {
 
     void enterResults() {
       final items = visible();
-      if (!items.contains(focus)) {
+      if (items.isNotEmpty && !items.contains(focus)) {
         focus = items.indexWhere((i) => choices[i].disabledReason == null);
         focus = focus < 0 ? (items.isEmpty ? -1 : items.first) : items[focus];
       }
