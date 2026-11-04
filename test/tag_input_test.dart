@@ -2,6 +2,18 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('linear removal selects a tag explicitly and preserves order', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value('one\rtwo\rthree\r/list\r/remove\r2\r/done\r'),
+        output,
+      ),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, ['one', 'three']);
+    expect(output.toString(), contains('2. two'));
+  });
   test('explicit rich mode is unavailable on incapable source', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(

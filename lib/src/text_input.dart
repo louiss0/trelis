@@ -822,6 +822,7 @@ final class TagInput {
     final keys = _Keys(input.input.transform(utf8.encoder));
     final tags = <String>[];
     var draft = '';
+    var selectingRemoval = false;
     input.output.writeln(
       '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags.',
     );
@@ -837,7 +838,27 @@ final class TagInput {
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action != 'submit') return InputEnded();
+        if (selectingRemoval) {
+          final index = int.tryParse(result.value);
+          if (index == null || index < 1 || index > tags.length) {
+            input.output.writeln('Select a listed tag number.');
+            continue;
+          }
+          input.output.writeln('Removed: ${tags.removeAt(index - 1)}');
+          selectingRemoval = false;
+          continue;
+        }
         if (result.value == '/done') return Accepted(tags);
+        if (result.value == '/list' || result.value == '/remove') {
+          for (var i = 0; i < tags.length; i++) {
+            input.output.writeln('${i + 1}. ${tags[i]}');
+          }
+          if (result.value == '/remove' && tags.isNotEmpty) {
+            selectingRemoval = true;
+            input.output.writeln('Enter the number of the tag to remove.');
+          }
+          continue;
+        }
         if (RegExp(
           r'[^\p{L}\p{M}\p{N}\s_-]',
           unicode: true,
