@@ -256,3 +256,41 @@ backslash; other backslashes remain literal (for example `C:\work` and a UNC
 path entered with its leading backslash doubled). Identified paste is literal.
 A supplied answer is a comma-separated complete permutation of original numeric
 references, subject to the same anchor rules; an empty list uses an empty string.
+
+## CommandPalette
+
+`CommandPalette('Commands', [Choice('save', 'Save')]).prompt()` returns a
+`PromptResult` containing the accepted choice identity. The application decides
+whether and how to execute that identity after acceptance; the palette does not
+receive or invoke command actions. Identities must be unique. A `Choice` may
+supply a `disabledReason`; unavailable commands remain visible but cannot be
+accepted.
+
+By default matching is case-insensitive substring matching in source order.
+Rich interaction separates query editing from result acceptance: Enter first
+opens results, and a subsequent Enter accepts the focused enabled command.
+Linear interaction asks for a query and then a stable source reference; `/search`
+edits the query. Neither unmatched query text nor an unavailable reference can
+be accepted as a command. Escape in rich mode and `/cancel` in linear mode
+cancel without acceptance.
+
+An optional `search` callback may provide updated choices from the original
+identities, including availability. Results are displayed in source order, not
+callback order; pending, failed, obsolete, unknown or duplicate results cannot
+be accepted. Supplied answers are source references and are unavailable when
+using dynamic search because availability cannot be verified.
+### TimeInput
+
+`TimeInput('Start')` accepts strict 24-hour `HH:mm` time-of-day values.
+Set `seconds: true` to require `HH:mm:ss`, or `twelveHour: true` to
+require a space and uppercase `AM` or `PM` with hours `01` through `12`.
+These options may be combined. `initialValue` uses the configured format and
+is editable. The accepted record contains a 24-hour `hour`, `minute`, and
+nullable `second`; it does not contain or imply a date, timezone or instant.
+
+Rich interaction uses Tab to reach labeled segments, formatted editing and
+Submit. Up/Down or `+`/`-` adjust the focused segment without carry or wrap;
+formatted editing is available through the Edit action. Enter a valid formatted
+value before adjusting segments. Linear interaction accepts the same exact
+format, retaining invalid drafts for correction. Terminal and screen-reader
+support is subject to the qualifications documented above.
