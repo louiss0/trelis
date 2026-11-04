@@ -79,4 +79,26 @@ void main() {
       await input.close();
     },
   );
+  test(
+    'linear default is editable and invalid submission retains draft',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await Autocomplete(
+            'Name',
+            initialValue: 'Ada',
+            required: true,
+            suggestions: (_) => <String>[],
+            validate: (value) => value == 'Ada!' ? null : 'Add an exclamation',
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\r/submit\r/edit\r!\r/submit\r'),
+              output,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'Ada!');
+      expect(output.toString(), contains('Add an exclamation'));
+    },
+  );
 }

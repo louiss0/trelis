@@ -2,10 +2,26 @@ part of 'text_input.dart';
 
 /// Collects free-form text with suggestions.
 final class Autocomplete {
-  Autocomplete(this.label, {required this.suggestions})
-    : _input = TextInput(label);
+  Autocomplete(
+    this.label, {
+    required this.suggestions,
+    this.initialValue = '',
+    this.required = false,
+    this.validate,
+    this.maxLength,
+  }) : _input = TextInput(
+         label,
+         initialValue: initialValue,
+         required: required,
+         validate: validate,
+         maxLength: maxLength,
+       );
 
   final String label;
+  final String initialValue;
+  final bool required;
+  final int? maxLength;
+  final String? Function(String)? validate;
   final FutureOr<List<String>> Function(String) suggestions;
   final TextInput _input;
   bool _active = false;
@@ -68,7 +84,7 @@ final class Autocomplete {
       '$label. Enter a query; select a number, /submit, /edit, /help or /cancel.',
     );
     final keys = _Keys(source.input.transform(utf8.encoder));
-    var pending = '';
+    var pending = initialValue;
     var editing = true;
     var candidates = <String>[];
     var generation = 0;
@@ -81,6 +97,7 @@ final class Autocomplete {
           out,
           linear: true,
           sequential: true,
+          maxLength: editing ? maxLength : null,
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
@@ -123,6 +140,11 @@ final class Autocomplete {
           );
           editing = false;
         } else if (result.value == '/submit') {
+          final error = _error(pending);
+          if (error != null) {
+            out.writeln(error);
+            continue;
+          }
           return Accepted(pending);
         } else if (result.value == '/edit') {
           generation++;
@@ -131,7 +153,12 @@ final class Autocomplete {
         } else {
           final index = int.tryParse(result.value);
           if (index != null && index > 0 && index <= candidates.length) {
-            pending = candidates[index - 1];
+            final candidate = candidates[index - 1];
+            if (maxLength != null && candidate.characters.length > maxLength!) {
+              out.writeln('Candidate exceeds maximum length.');
+              continue;
+            }
+            pending = candidate;
             out.writeln(
               'Accepted into pending answer: $pending. Use /submit to finish or /edit to change.',
             );
@@ -162,7 +189,7 @@ final class Autocomplete {
       '$label. Type text; Up/Down inspect suggestions; Tab or Enter accepts a candidate; Enter submits; Escape dismisses suggestions, then cancels.',
     );
     final keys = _Keys(source.input.transform(utf8.encoder));
-    var value = '';
+    var value = initialValue;
     var query = '\u0000';
     var candidates = <String>[];
     var focus = -1;
@@ -216,6 +243,7 @@ final class Autocomplete {
           value,
           out,
           onChanged: changed,
+          maxLength: maxLength,
           intercept: (key, text) {
             if (key == '\x1b' && open && (loading || candidates.isNotEmpty)) {
               open = false;
@@ -251,10 +279,21 @@ final class Autocomplete {
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
         if (result.action == 'eof') return InputEnded();
-        if (result.action == 'submit') return Accepted(result.value);
+        if (result.action == 'submit') {
+          final error = _error(result.value);
+          if (error == null) return Accepted(result.value);
+          out.writeln(error);
+          value = result.value;
+          continue;
+        }
         value = result.value;
         if (result.action == 'accept') {
-          value = candidates[focus < 0 ? 0 : focus];
+          final candidate = candidates[focus < 0 ? 0 : focus];
+          if (maxLength != null && candidate.characters.length > maxLength!) {
+            out.writeln('Candidate exceeds maximum length.');
+            continue;
+          }
+          value = candidate;
           query = value;
           focus = -1;
           open = false;
@@ -271,5 +310,12 @@ final class Autocomplete {
         await keys.close();
       }
     }
+  }
+
+  String? _error(String value) {
+    if (required && value.isEmpty) {
+      return 'Required: enter a non-empty value and submit again.';
+    }
+    return validate?.call(value);
   }
 }
