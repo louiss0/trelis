@@ -251,7 +251,7 @@ final class Autocomplete {
               focus = -1;
               generation++;
               out.writeln('Suggestions dismissed.');
-              return 'continue';
+              return 'handled';
             }
             if ((key == '\x1b[B' || key == '\x1b[A') &&
                 open &&
@@ -266,7 +266,7 @@ final class Autocomplete {
               out.writeln(
                 'Active candidate, not accepted: ${candidates[focus]}.',
               );
-              return 'continue';
+              return 'handled';
             }
             if (open &&
                 candidates.isNotEmpty &&

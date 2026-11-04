@@ -137,4 +137,20 @@ void main() {
     expect((await result as Accepted<String>).value, 'Newest');
     await input.close();
   });
+  test(
+    'navigating and dismissing suggestions retains the editing cursor',
+    () async {
+      final input = StreamController<String>();
+      final result = Autocomplete('Name', suggestions: (_) => ['candidate'])
+          .prompt(
+            source: ScriptedInput(input.stream, StringBuffer()),
+            mode: PromptMode.rich,
+          );
+      input.add('ab\x1b[D\x1b[B\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      input.add('X\r');
+      expect((await result as Accepted<String>).value, 'aXb');
+      await input.close();
+    },
+  );
 }

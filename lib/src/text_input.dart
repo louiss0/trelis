@@ -283,6 +283,10 @@ Future<({String action, String value})> _edit(
     if (key == '\x03') return (action: 'interrupt', value: '');
     if (!help) {
       final action = intercept?.call(key, chars.join());
+      if (action == 'handled') {
+        display();
+        continue;
+      }
       if (action != null) return (action: action, value: chars.join());
     }
     if (key == '\x1b') {
