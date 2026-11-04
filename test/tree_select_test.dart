@@ -2,6 +2,31 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('linear discloses default even when it is nested', () async {
+    final out = StringBuffer();
+    await TreeSelect<String>('Pick', [
+      TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+    ], defaultValue: 'b').prompt(
+      source: ScriptedInput(Stream.value('/cancel\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect(out.toString(), contains('Default: A / B'));
+  });
+  test(
+    'configured default receives focus with its ancestors expanded',
+    () async {
+      final out = StringBuffer();
+      final tree = TreeSelect<String>('Pick', [
+        TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+      ], defaultValue: 'b');
+      final result = await tree.prompt(
+        source: ScriptedInput(Stream.value('\r'), out),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<String>).value, 'b');
+      expect(out.toString(), contains('A / B [focused]'));
+    },
+  );
   test('a removed node is not silently replaced on submission', () async {
     final out = StringBuffer();
     final tree = TreeSelect<String>('Pick', [

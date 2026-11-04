@@ -53,9 +53,13 @@ try {
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
- [NativeProbe]::Key([char]0,39,0)
- [NativeProbe]::Key([char]0,39,0)
- [NativeProbe]::Text("`r")
+ if ($Scenario -eq 'linear') {
+  [NativeProbe]::Text("/open`r1`r/choose`r2`r")
+ } else {
+  [NativeProbe]::Key([char]0,39,0)
+  [NativeProbe]::Key([char]0,39,0)
+  [NativeProbe]::Text("`r")
+ }
 
  for($n=0;$n -lt 100;$n++){if((Test-Path $file) -and (Get-Item $file).Length -gt 0){break}; Start-Sleep -Milliseconds 100}
 

@@ -2075,8 +2075,12 @@ final class TreeNode<T> {
 
 /// Selects one node independently of expanding or traversing branches.
 final class TreeSelect<T> {
-  TreeSelect(this.label, List<TreeNode<T>> nodes, {this.isCurrent})
-    : nodes = List.unmodifiable(nodes) {
+  TreeSelect(
+    this.label,
+    List<TreeNode<T>> nodes, {
+    this.isCurrent,
+    this.defaultValue,
+  }) : nodes = List.unmodifiable(nodes) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -2091,9 +2095,13 @@ final class TreeSelect<T> {
     }
 
     validate(this.nodes);
+    if (defaultValue != null && !identities.contains(defaultValue)) {
+      throw ArgumentError('Default identity is not a node.');
+    }
   }
   final String label;
   final List<TreeNode<T>> nodes;
+  final T? defaultValue;
 
   /// Optional currentness check for nodes that can disappear during a prompt.
   final bool Function(T value)? isCurrent;
@@ -2175,6 +2183,11 @@ final class TreeSelect<T> {
     final expanded = <T>{};
     final enabledRoot = nodes.indexWhere((node) => node.disabledReason == null);
     var focus = nodes.isEmpty ? null : nodes[enabledRoot < 0 ? 0 : enabledRoot];
+    if (defaultValue != null) {
+      final row = all.firstWhere((r) => r.$1.value == defaultValue);
+      focus = row.$1;
+      expanded.addAll(row.$2.take(row.$2.length - 1).map((node) => node.value));
+    }
     var current = <TreeNode<T>>[];
     List<(TreeNode<T>, List<TreeNode<T>>)> visible() => all
         .where(
@@ -2190,6 +2203,12 @@ final class TreeSelect<T> {
       if (all.isEmpty) out.writeln('No nodes available.');
       if (mode == PromptMode.linear) {
         out.writeln('Path: ${current.isEmpty ? 'root' : path(current)}');
+        if (defaultValue != null) {
+          final row = all.firstWhere((r) => r.$1.value == defaultValue);
+          out.writeln(
+            'Default: ${path(row.$2)} (reference ${all.indexOf(row) + 1})${row.$1.canSelect ? '' : ' [not selectable]'}${row.$1.disabledReason == null ? '' : ' [unavailable: ${row.$1.disabledReason}]'}${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
+          );
+        }
       }
       final rows = mode == PromptMode.linear
           ? all.where(
@@ -2203,7 +2222,7 @@ final class TreeSelect<T> {
       for (final row in rows) {
         final node = row.$1;
         out.writeln(
-          '${all.indexOf(row) + 1}. ${path(row.$2)}${mode == PromptMode.rich && identical(node, focus) ? ' [focused]' : ''} ${node.childrenUnavailableReason != null
+          '${all.indexOf(row) + 1}. ${path(row.$2)}${mode == PromptMode.rich && identical(node, focus) ? ' [focused]' : ''}${defaultValue != null && node.value == defaultValue ? ' [default]' : ''} ${node.childrenUnavailableReason != null
               ? '[children unavailable: ${node.childrenUnavailableReason}]'
               : node.children.isEmpty
               ? '[leaf]'

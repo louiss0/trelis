@@ -1,9 +1,12 @@
 import 'package:prompty/prompty.dart';
 
-Future<void> main() async {
-  final result = await TreeSelect<String>('Pick', [
-    TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
-  ]).prompt(mode: PromptMode.rich);
+Future<void> main(List<String> args) async {
+  final result = await TreeSelect<String>(
+    'Pick',
+    [
+      TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+    ],
+  ).prompt(mode: args.contains('linear') ? PromptMode.linear : PromptMode.rich);
   print(switch (result) {
     Accepted<String>(:final value) => value,
     Cancelled<String>() => 'cancel',
