@@ -4,6 +4,20 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich navigation edits an earlier tag without reordering', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value(
+          'one\rtwo\r\x7f\x1b[D\r\x01\x1b[3~\x1b[3~\x1b[3~first\r\t\r',
+        ),
+        output,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<List<String>>).value, ['first', 'two']);
+    expect(output.toString(), contains('Editing: one'));
+  });
   test('rich slash command text remains a literal draft', () async {
     final result = await TagInput('Tags').prompt(
       source: ScriptedInput(Stream.value('/done\r\x03'), StringBuffer()),

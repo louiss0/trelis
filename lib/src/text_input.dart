@@ -3189,8 +3189,6 @@ final class TimeInput {
   }
 }
 
-
-
 enum TagStyle { kebabCase, snakeCase }
 
 final class TagInput {
@@ -3317,6 +3315,16 @@ final class TagInput {
                       input.output.writeln('Focused: ${tags[focused!]}');
                       return 'handled';
                     }
+                  }
+                  if (text.isEmpty &&
+                      focused != null &&
+                      (key == '\x1b[D' || key == '\x1b[C')) {
+                    focused = (focused! + (key == '\x1b[D' ? -1 : 1)).clamp(
+                      0,
+                      tags.length - 1,
+                    );
+                    input.output.writeln('Focused: ${tags[focused!]}');
+                    return 'handled';
                   }
                   if ((key == '\r' || key == '\n') &&
                       text.isEmpty &&
