@@ -3232,8 +3232,9 @@ final class TagInput {
           applicationPreference ??
           PromptMode.automatic;
       if (source == null) {
-        if (_terminalActive)
+        if (_terminalActive) {
           throw StateError('A terminal session is already active.');
+        }
         _terminalActive = true;
         try {
           return await _terminal<List<String>>(
