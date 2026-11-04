@@ -2,6 +2,52 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('invalid values are not repaired or clamped', () async {
+    final input = ColorInput('Color');
+    for (final invalid in [
+      'rgb(1. 2 3)',
+      'rgb(1\u00a02 3)',
+      '#12345',
+      'rgb(256 0 0)',
+      'rgb(-1 0 0)',
+      'rgb(1 2 3 / 101%)',
+      'rgb(10%, 5, 0%)',
+      'hsl(10 101% 50%)',
+      'hsl(0 1% -1%)',
+      'hsl(0 50% 50% / -1)',
+      'currentcolor',
+      'var(--c)',
+      'color(display-p3 1 0 0)',
+      'rgb(from red r g b)',
+      'rgb(calc(1) 0 0)',
+    ]) {
+      expect(
+        await input.prompt(source: SuppliedAnswer(invalid)),
+        isA<Unavailable>(),
+        reason: invalid,
+      );
+    }
+    expect(
+      () => ColorInput('Color', initialValue: 'rgb(999 0 0)'),
+      throwsArgumentError,
+    );
+  });
+  for (final mode in [PromptMode.rich, PromptMode.linear]) {
+    test('$mode retains an invalid draft for correction', () async {
+      final out = StringBuffer();
+      final result = await ColorInput('Color').prompt(
+        source: ScriptedInput(
+          Stream.value(
+            'rgb(256 0 0)\r\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f#fff\r',
+          ),
+          out,
+        ),
+        mode: mode,
+      );
+      expect((result as Accepted<ColorValue?>).value!.source, '#fff');
+      expect(out.toString(), contains('Enter a valid sRGB color'));
+    });
+  }
   for (final mode in [PromptMode.rich, PromptMode.linear]) {
     test('$mode gives textual alpha and cyclic hue preview', () async {
       final out = StringBuffer();

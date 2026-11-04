@@ -82,6 +82,7 @@ final class ColorInput {
 }
 
 ColorValue? _parseColor(String value) {
+  if (value.runes.any((c) => c < 32 || c > 126)) return null;
   if (value.toLowerCase() == 'transparent')
     return ColorValue._(value, 0, 0, 0, 0);
   final named = _colorNames[value.toLowerCase()];
@@ -112,7 +113,7 @@ ColorValue? _parseColor(String value) {
     }
     if (parts.length != 3 && parts.length != 4) return null;
     final hueMatch = RegExp(
-      r'^([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))(deg|grad|rad|turn)?$',
+      r'^([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))(deg|grad|rad|turn)?$',
       caseSensitive: false,
     ).firstMatch(parts[0]);
     if (hueMatch == null) return null;
@@ -185,7 +186,7 @@ ColorValue? _parseColor(String value) {
       final token = parts[i];
       final percent = token.endsWith('%');
       final number = percent ? token.substring(0, token.length - 1) : token;
-      if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$')
+      if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$')
               .hasMatch(number) ||
           number.replaceAll(RegExp(r'[^0-9]'), '').length > 12)
         return null;
@@ -218,7 +219,7 @@ ColorValue? _parseColor(String value) {
 }
 
 double? _colorNumber(String text) {
-  if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$').hasMatch(text) ||
+  if (!RegExp(r'^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$').hasMatch(text) ||
       text.replaceAll(RegExp(r'[^0-9]'), '').length > 12)
     return null;
   final n = double.tryParse(text);
