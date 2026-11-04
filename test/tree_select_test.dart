@@ -2,6 +2,17 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('initial focus prefers an enabled root', () async {
+    final result =
+        await TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', disabledReason: 'offline'),
+          TreeNode('b', 'B'),
+        ]).prompt(
+          source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<String>).value, 'b');
+  });
   test(
     'unresolved branches do not become selectable leaves or invent children',
     () async {

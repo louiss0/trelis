@@ -2167,7 +2167,8 @@ final class TreeSelect<T> {
     }
     final out = scripted.output;
     final expanded = <T>{};
-    var focus = nodes.isEmpty ? null : nodes.first;
+    final enabledRoot = nodes.indexWhere((node) => node.disabledReason == null);
+    var focus = nodes.isEmpty ? null : nodes[enabledRoot < 0 ? 0 : enabledRoot];
     var current = <TreeNode<T>>[];
     List<(TreeNode<T>, List<TreeNode<T>>)> visible() => all
         .where(
