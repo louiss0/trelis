@@ -2061,8 +2061,9 @@ final class TagInput {
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
-        if (result.action != 'submit' && result.action != 'command')
+        if (result.action != 'submit' && result.action != 'command') {
           return InputEnded();
+        }
         if (selectingRemoval || selectingEdit) {
           final index = int.tryParse(result.value);
           if (index == null || index < 1 || index > tags.length) {
@@ -2079,8 +2080,9 @@ final class TagInput {
           }
           continue;
         }
-        if (result.action == 'command' && result.value == '/done')
+        if (result.action == 'command' && result.value == '/done') {
           return Accepted(tags);
+        }
         if (result.action == 'command' &&
             (result.value == '/list' ||
                 result.value == '/remove' ||
