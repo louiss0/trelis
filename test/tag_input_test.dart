@@ -2,6 +2,18 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('explicit rich mode is unavailable on incapable source', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value('value\r/done\r'),
+        output,
+        supportsRich: false,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(result, isA<Unavailable<List<String>>>());
+  });
   test(
     'separator edges are removed and empty drafts do not add tags',
     () async {

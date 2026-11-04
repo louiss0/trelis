@@ -814,6 +814,11 @@ final class TagInput {
     PromptMode mode = PromptMode.automatic,
   }) async {
     final input = source as ScriptedInput;
+    if (mode == PromptMode.rich && !input.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
     final keys = _Keys(input.input.transform(utf8.encoder));
     final tags = <String>[];
     var draft = '';
