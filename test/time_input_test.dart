@@ -203,4 +203,32 @@ void main() {
       isA<Accepted>(),
     );
   });
+  test('arrow adjustment stops at lower bounds without carry', () async {
+    final result = await TimeInput('T', seconds: true, initialValue: '00:00:00')
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B\t\x1b[B\t\x1b[B\t\t\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<({int hour, int minute, int? second})>).value, (
+      hour: 0,
+      minute: 0,
+      second: 0,
+    ));
+  });
+  test(
+    'identified pasted controls do not adjust or submit rich time',
+    () async {
+      final result = await TimeInput('T', initialValue: '12:34').prompt(
+        source: ScriptedInput(
+          Stream.value('\x1b[200~+\t\t\t\r\x1b[201~'),
+          StringBuffer(),
+        ),
+        mode: PromptMode.rich,
+      );
+      expect(result, isA<InputEnded>());
+    },
+  );
 }
