@@ -801,3 +801,89 @@ final class Password {
 final class _SecretValidationException implements Exception {
   const _SecretValidationException();
 }
+
+final class Multiline {
+  Multiline(this.label);
+  final String label;
+  bool _active = false;
+
+  Future<PromptResult<String>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive)
+          throw StateError('A terminal session is already active.');
+        _terminalActive = true;
+        try {
+          return await _terminal<String>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<String>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) return Accepted(source.value);
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich)
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    if (mode == PromptMode.automatic)
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    final out = scripted.output;
+    out.writeln(
+      '$label. Enter inserts a newline. Tab selects Finish; Enter activates Finish.',
+    );
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    var value = '';
+    var finish = false;
+    try {
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') return Cancelled();
+        if (key == '\t') {
+          finish = !finish;
+          out.writeln(finish ? 'Finish' : 'Edit');
+        } else if (key == '\r' || key == '\n') {
+          if (finish) return Accepted(value);
+          value += '\n';
+        } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
+          value += key;
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
