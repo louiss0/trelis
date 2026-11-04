@@ -40,11 +40,18 @@ void main() {
       out.toString(),
       'Work: running, 0%\nWork: running, 10%\nWork: running, 35%\n',
     );
-    progress.update(50);
-    progress.finish(FeedbackOutcome.completed);
+    final pending = Progress(
+      'Pending',
+      total: 100,
+      interval: const Duration(seconds: 2),
+    );
+    pending.start(output: out);
+    pending.update(10);
+    pending.update(50);
+    pending.finish(FeedbackOutcome.completed);
     await Future<void>.delayed(const Duration(milliseconds: 90));
-    expect(out.toString(), endsWith('Work: completed\n'));
-    expect(out.toString(), isNot(contains('50%')));
+    expect(out.toString(), endsWith('Pending: completed\n'));
+    expect(out.toString(), isNot(contains('Pending: running, 50%')));
   });
   test(
     'indeterminate progress reports phase and changed totals explicitly',
@@ -76,4 +83,30 @@ void main() {
       'Index: running\nIndex: waiting for disk\nIndex: failed: disk error\n',
     );
   });
+  test('nonanimated rich feedback retains a static in-place layout', () {
+    final out = StringBuffer();
+    final spinner = Spinner('Index');
+    spinner.start(output: out, mode: PromptMode.rich, supportsRich: true);
+    spinner.update('waiting');
+    spinner.finish(FeedbackOutcome.skipped);
+    expect(
+      out.toString(),
+      'Index: running\r\x1b[2KIndex: waiting\r\x1b[2KIndex: skipped\n',
+    );
+  });
+  test(
+    'rich progress updates actual values and disposal does not imply success',
+    () {
+      final out = StringBuffer();
+      final progress = Progress('Build', total: 100);
+      progress.start(output: out, mode: PromptMode.rich, supportsRich: true);
+      progress.update(1);
+      progress.dispose();
+      progress.update(50);
+      expect(out.toString(), contains('1%'));
+      expect(out.toString(), isNot(contains('completed')));
+      expect(out.toString(), isNot(contains('50%')));
+      expect(out.toString(), endsWith('\n'));
+    },
+  );
 }

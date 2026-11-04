@@ -327,3 +327,16 @@ errors as errors rather than assuming the path is absent. A prospective typed
 path is accepted only when the platform can establish absence; unsupported
 inspection platforms fail closed. These checks are snapshots and do not grant
 permission or guarantee a subsequent filesystem operation.
+
+### Feedback
+
+`Text('Saved', kind: TextKind.success).present()` writes literal semantic text.
+`Progress('Download', total: 100)` and `Spinner('Connecting')` are explicitly
+started with `start()`, updated by the application, and finalized with
+`finish(FeedbackOutcome.completed)` or another explicit outcome. A null total
+is indeterminate; `setTotal` reports recalculation. `dispose()` releases the
+presentation without asserting success. Feedback defaults to stderr and never
+reads input or controls the operation. Linear progress defaults to ten-percent
+milestones and a five-second intermediate interval; both are configurable.
+Static rich output is available with `PromptMode.rich` on capable outputs;
+redirected output defaults to linear. No color or animation is required.

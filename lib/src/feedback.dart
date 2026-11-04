@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'text_input.dart' show PromptMode;
+
 /// Semantic meaning that remains readable without color.
 enum TextKind { ordinary, hint, success, warning, error }
 
@@ -45,8 +47,9 @@ final class Progress {
     this.interval = const Duration(seconds: 5),
     this.milestone = 10,
   }) : _total = total {
-    if (interval.isNegative || milestone <= 0 || milestone > 100)
+    if (interval.isNegative || milestone <= 0 || milestone > 100) {
       throw ArgumentError('Invalid progress cadence');
+    }
     if (total != null && total <= 0) throw ArgumentError.value(total, 'total');
   }
   final String label;
@@ -61,11 +64,23 @@ final class Progress {
   int? _total;
   int _value = 0;
   StringSink? _output;
+  bool _rich = false;
+  bool _painted = false;
   bool _finished = false;
 
-  void start({StringSink? output}) {
+  void start({
+    StringSink? output,
+    PromptMode mode = PromptMode.automatic,
+    bool? supportsRich,
+  }) {
     if (_output != null) throw StateError('Already started');
-    _output = output ?? stderr;
+    final sink = output ?? stderr;
+    final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
+    if (mode == PromptMode.rich && !capable) {
+      throw StateError('Rich output unavailable');
+    }
+    _rich = capable && mode != PromptMode.linear;
+    _output = sink;
     _show();
   }
 
@@ -73,7 +88,7 @@ final class Progress {
     final value = _total == null
         ? 'indeterminate'
         : '${(_value * 100 ~/ _total!)}%';
-    _output!.writeln('${_safe(label)}: running, $value');
+    _emit('${_safe(label)}: running, $value');
   }
 
   void update(int completed) {
@@ -82,10 +97,18 @@ final class Progress {
     if (_total == null || completed < 0 || completed > _total!) {
       throw ArgumentError.value(completed, 'completed');
     }
+    if (_rich) {
+      if (completed == _value) return;
+      _value = completed;
+      _show();
+      return;
+    }
     _value = completed;
     final percent = completed * 100 ~/ _total!;
-    if (percent ~/ milestone <= _shownPercent ~/ milestone && _pending == null)
+    if (percent ~/ milestone <= _shownPercent ~/ milestone &&
+        _pending == null) {
       return;
+    }
     _pending = completed;
     final elapsed = _lastUpdate == null
         ? interval
@@ -103,7 +126,7 @@ final class Progress {
     if (_output == null) throw StateError('Not started');
     if (_phase == description) return;
     _phase = description;
-    _output!.writeln('${_safe(label)}: running, ${_safe(description)}');
+    _emit('${_safe(label)}: running, ${_safe(description)}');
   }
 
   /// Change the work estimate, explicitly identifying the recalculation.
@@ -122,7 +145,7 @@ final class Progress {
     _value = completed;
     _shownPercent = total == null ? 0 : completed * 100 ~/ total;
     final value = total == null ? 'indeterminate' : '$_shownPercent%';
-    _output!.writeln('${_safe(label)}: recalculated, $value');
+    _emit('${_safe(label)}: recalculated, $value');
   }
 
   void _flush() {
@@ -136,14 +159,35 @@ final class Progress {
     _show();
   }
 
+  void _emit(String line, {bool finalLine = false}) {
+    if (_rich) {
+      if (_painted) _output!.write('\r\x1b[2K');
+      _output!.write(line);
+      if (finalLine) _output!.writeln();
+      _painted = true;
+    } else {
+      _output!.writeln(line);
+    }
+  }
+
+  /// Release presentation resources without inventing an outcome.
+  void dispose() {
+    if (_finished) return;
+    _finished = true;
+    _timer?.cancel();
+    _pending = null;
+    if (_rich && _painted) _output!.writeln();
+  }
+
   void finish(FeedbackOutcome outcome, {String? detail}) {
     if (_finished) return;
     if (_output == null) throw StateError('Not started');
     _finished = true;
     _timer?.cancel();
     _pending = null;
-    _output!.writeln(
+    _emit(
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
+      finalLine: true,
     );
   }
 }
@@ -153,13 +197,25 @@ final class Spinner {
   Spinner(this.label);
   final String label;
   StringSink? _output;
+  bool _rich = false;
+  bool _painted = false;
   String _state = 'running';
   bool _finished = false;
 
-  void start({StringSink? output}) {
+  void start({
+    StringSink? output,
+    PromptMode mode = PromptMode.automatic,
+    bool? supportsRich,
+  }) {
     if (_output != null) throw StateError('Already started');
-    _output = output ?? stderr;
-    _output!.writeln('${_safe(label)}: $_state');
+    final sink = output ?? stderr;
+    final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
+    if (mode == PromptMode.rich && !capable) {
+      throw StateError('Rich output unavailable');
+    }
+    _rich = capable && mode != PromptMode.linear;
+    _output = sink;
+    _emit('${_safe(label)}: $_state');
   }
 
   void update(String state) {
@@ -167,15 +223,34 @@ final class Spinner {
     if (_output == null) throw StateError('Not started');
     if (state == _state) return;
     _state = state;
-    _output!.writeln('${_safe(label)}: ${_safe(state)}');
+    _emit('${_safe(label)}: ${_safe(state)}');
+  }
+
+  void _emit(String line, {bool finalLine = false}) {
+    if (_rich) {
+      if (_painted) _output!.write('\r\x1b[2K');
+      _output!.write(line);
+      if (finalLine) _output!.writeln();
+      _painted = true;
+    } else {
+      _output!.writeln(line);
+    }
+  }
+
+  /// Release presentation resources without inventing an outcome.
+  void dispose() {
+    if (_finished) return;
+    _finished = true;
+    if (_rich && _painted) _output!.writeln();
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {
     if (_finished) return;
     if (_output == null) throw StateError('Not started');
     _finished = true;
-    _output!.writeln(
+    _emit(
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
+      finalLine: true,
     );
   }
 }
