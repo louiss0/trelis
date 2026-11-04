@@ -79,4 +79,33 @@ void main() {
     );
     expect((result as Accepted<List<String>>).value, isEmpty);
   });
+  test('supplied references are literal, validated and ordered', () async {
+    final prompt = MultiSelect<String>(
+      'Pick',
+      [
+        Choice('a', 'Same'),
+        Choice('b', 'Same'),
+        Choice('c', 'C', disabledReason: 'offline'),
+      ],
+      min: 1,
+      max: 2,
+    );
+    expect(
+      (await prompt.prompt(
+        source: SuppliedAnswer('2,1'),
+      ) as Accepted<List<String>>).value,
+      ['a', 'b'],
+    );
+    for (final input in ['', '1,1', '3', '4', '/cancel', '1,2,3']) {
+      expect(
+        await prompt.prompt(source: SuppliedAnswer(input)),
+        isA<Unavailable<List<String>>>(),
+      );
+    }
+    final empty = await MultiSelect<String>(
+      'Pick',
+      [],
+    ).prompt(source: SuppliedAnswer(''));
+    expect((empty as Accepted<List<String>>).value, isEmpty);
+  });
 }

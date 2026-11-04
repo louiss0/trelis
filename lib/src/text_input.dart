@@ -1775,7 +1775,27 @@ final class MultiSelect<T> {
     void Function()? beforeClose,
   }) async {
     if (source is SuppliedAnswer) {
-      return Unavailable('Supply interactive input.');
+      final refs = source.value.isEmpty ? <String>[] : source.value.split(',');
+      final indices = <int>{};
+      for (final ref in refs) {
+        if (!RegExp(r'^[1-9][0-9]*$').hasMatch(ref)) {
+          return Unavailable('Supply comma-separated choice references.');
+        }
+        final n = int.tryParse(ref);
+        if (n == null ||
+            n > choices.length ||
+            choices[n - 1].disabledReason != null ||
+            !indices.add(n - 1)) {
+          return Unavailable('Supply unique enabled choice references.');
+        }
+      }
+      if (indices.length < min || (max != null && indices.length > max!)) {
+        return Unavailable('Selection count is outside the configured bounds.');
+      }
+      return Accepted([
+        for (var i = 0; i < choices.length; i++)
+          if (indices.contains(i)) choices[i].value,
+      ]);
     }
     final scripted = source as ScriptedInput;
     if (mode == PromptMode.rich && !scripted.supportsRich) {
