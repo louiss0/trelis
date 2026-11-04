@@ -151,4 +151,11 @@ void main() {
     ).prompt(source: SuppliedAnswer(''));
     expect(result, isA<Unavailable<String>>());
   });
+  test('incomplete escape at EOF does not cancel', () async {
+    final result = await TextInput('Name').prompt(
+      source: ScriptedInput(Stream.value('partial\x1b'), StringBuffer()),
+      mode: PromptMode.linear,
+    );
+    expect(result, isA<InputEnded<String>>());
+  });
 }

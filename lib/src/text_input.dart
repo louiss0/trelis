@@ -413,12 +413,9 @@ class Keys {
             _buffer += data;
             _parse();
           },
+          onError: _controller.addError,
           onDone: () {
-            if (!_discardPaste &&
-                !_buffer.startsWith('\x1b[200~') &&
-                _buffer.isNotEmpty) {
-              _controller.add(_buffer);
-            }
+            _timer?.cancel();
             _controller.close();
           },
         );
