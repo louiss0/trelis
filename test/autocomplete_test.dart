@@ -164,4 +164,15 @@ void main() {
         );
     expect((result as Accepted<String>).value, '/cancel');
   });
+  test('pasted action-stage submit is literal, not a command', () async {
+    final result = await Autocomplete('Name', suggestions: (_) => <String>[])
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('Ada\r\x1b[200~/submit\x1b[201~\r/cancel\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.linear,
+        );
+    expect(result, isA<Cancelled<String>>());
+  });
 }

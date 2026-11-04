@@ -196,6 +196,7 @@ Future<({String action, String value})> _edit(
   int? maxLength,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
   bool multilinePaste = false,
@@ -307,6 +308,17 @@ Future<({String action, String value})> _edit(
     if (key == '\r' || key == '\n') {
       output.writeln();
       var text = chars.join();
+      final literal =
+          synthetic >= 0 ||
+          provenance.contains(true) ||
+          (linear &&
+              (text.startsWith(r'\\') ||
+                  (text.startsWith(r'\') &&
+                      {
+                        '/cancel',
+                        '/help',
+                        ...extraCommands,
+                      }.contains(text.substring(1)))));
       if (synthetic >= 0) {
         final answer = chars.toList();
         answer[synthetic] = answer[synthetic].substring(1);
@@ -344,6 +356,7 @@ Future<({String action, String value})> _edit(
           text = text.substring(1);
         }
       }
+      onSubmit?.call(literal);
       return (action: 'submit', value: text);
     }
     if (key == '\x1b[D') {

@@ -91,6 +91,7 @@ final class Autocomplete {
     var closed = false;
     try {
       while (true) {
+        var literal = false;
         final result = await _edit(
           keys,
           editing ? pending : '',
@@ -98,10 +99,14 @@ final class Autocomplete {
           linear: true,
           sequential: true,
           maxLength: editing ? maxLength : null,
+          extraCommands: editing ? const {} : const {'/submit', '/edit'},
+          onSubmit: (value) => literal = value,
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
-        if (result.action != 'submit') return InputEnded();
+        if (result.action != 'submit' && result.action != 'command') {
+          return InputEnded();
+        }
         if (editing) {
           pending = result.value;
           candidates = [];
@@ -139,19 +144,19 @@ final class Autocomplete {
             'Pending answer: $pending. Choose a number or /submit, /edit, /help, /cancel.',
           );
           editing = false;
-        } else if (result.value == '/submit') {
+        } else if (result.action == 'command' && result.value == '/submit') {
           final error = _error(pending);
           if (error != null) {
             out.writeln(error);
             continue;
           }
           return Accepted(pending);
-        } else if (result.value == '/edit') {
+        } else if (result.action == 'command' && result.value == '/edit') {
           generation++;
           candidates = [];
           editing = true;
         } else {
-          final index = int.tryParse(result.value);
+          final index = literal ? null : int.tryParse(result.value);
           if (index != null && index > 0 && index <= candidates.length) {
             final candidate = candidates[index - 1];
             if (maxLength != null && candidate.characters.length > maxLength!) {
