@@ -2284,7 +2284,50 @@ final class RangeSlider {
     required String minimum,
     required String maximum,
     required String step,
-  }) : _slider = Slider(label, minimum: minimum, maximum: maximum, step: step);
+    this.minimumGap = '0',
+    this.initialLower,
+    this.initialUpper,
+    int? precision,
+    String? units,
+  }) : _slider = Slider(
+         label,
+         minimum: minimum,
+         maximum: maximum,
+         step: step,
+         precision: precision,
+         units: units,
+       ) {
+    final gap = _decimal(minimumGap);
+    if (gap == null ||
+        gap.$1.isNegative ||
+        (precision != null && gap.$2 > precision)) {
+      throw ArgumentError.value(minimumGap, 'minimumGap');
+    }
+    if ((initialLower == null) != (initialUpper == null) ||
+        (initialLower != null &&
+            _pairError(initialLower!, initialUpper!) != null)) {
+      throw ArgumentError('Invalid initial range.');
+    }
+  }
+
+  final String minimumGap;
+  final String? initialLower;
+  final String? initialUpper;
+
+  String? _pairError(String lower, String upper) {
+    final l = _slider._validate(lower);
+    if (l != null) return 'Lower: $l';
+    final u = _slider._validate(upper);
+    if (u != null) return 'Upper: $u';
+    if (_compare(
+          _decimal(_addDecimal(lower, minimumGap, 1))!,
+          _decimal(upper)!,
+        ) >
+        0) {
+      return 'Lower and Upper must remain ordered with minimum gap $minimumGap.';
+    }
+    return null;
+  }
 
   final Slider _slider;
   bool _active = false;
@@ -2331,18 +2374,33 @@ final class RangeSlider {
     void Function()? beforeClose,
   ) async {
     if (source is SuppliedAnswer) {
-      return Unavailable('Supply both endpoints interactively.');
+      final parts = source.value.split(',');
+      if (parts.length != 2) {
+        return Unavailable(
+          'Supply Lower,Upper as two decimal values separated by a comma.',
+        );
+      }
+      final error = _pairError(parts[0], parts[1]);
+      return error == null
+          ? Accepted((parts[0], parts[1]))
+          : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich) {
-      return Unavailable('Rich range interaction is not implemented.');
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.rich ||
+        (mode == PromptMode.automatic && scripted.supportsRich)) {
+      return _rich(scripted, beforeClose);
     }
     final out = scripted.output;
     final keys = _Keys(scripted.input.transform(utf8.encoder));
-    var lower = '';
-    var upper = '';
+    var lower = initialLower ?? '';
+    var upper = initialUpper ?? '';
     try {
-      out.writeln(_slider._description);
+      out.writeln('${_slider._description}, minimum gap $minimumGap.');
       while (true) {
         out.writeln('Lower endpoint:');
         final l = await _edit(keys, lower, out, linear: true, sequential: true);
@@ -2373,8 +2431,9 @@ final class RangeSlider {
             out.writeln(upperError);
             continue;
           }
-          if (_compare(_decimal(lower)!, _decimal(upper)!) > 0) {
-            out.writeln('Lower must not exceed Upper; edit the pair.');
+          final pairError = _pairError(lower, upper);
+          if (pairError != null) {
+            out.writeln(pairError);
             break;
           }
           out.writeln(
@@ -2393,6 +2452,99 @@ final class RangeSlider {
           if (confirm.value.isEmpty) return Accepted((lower, upper));
           out.writeln('Enter an empty line to submit, or edit the pair.');
           break;
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+
+  Future<PromptResult<(String, String)>> _rich(
+    ScriptedInput source,
+    void Function()? beforeClose,
+  ) async {
+    final out = source.output;
+    final keys = _Keys(source.input.transform(utf8.encoder));
+    var lower = initialLower ?? '';
+    var upper = initialUpper ?? '';
+    var focus = 0;
+    const names = ['Lower', 'Upper', 'Edit Lower', 'Edit Upper', 'Submit'];
+    void show() {
+      out.writeln(
+        '${_slider._description}, minimum gap $minimumGap. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
+      );
+      out.writeln(
+        'Focus: ${names[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit.',
+      );
+    }
+
+    try {
+      show();
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') return Cancelled();
+        if (key == '\t') {
+          focus = (focus + 1) % names.length;
+          show();
+          continue;
+        }
+        if (focus < 2 &&
+            (key == '\x1b[A' ||
+                key == '\x1b[B' ||
+                key == '\x1b[C' ||
+                key == '\x1b[D')) {
+          if (_pairError(lower, upper) == null) {
+            final current = focus == 0 ? lower : upper;
+            final next = _addDecimal(
+              current,
+              _slider.step,
+              key == '\x1b[A' || key == '\x1b[C' ? 1 : -1,
+            );
+            if (_pairError(
+                  focus == 0 ? next : lower,
+                  focus == 1 ? next : upper,
+                ) ==
+                null) {
+              if (focus == 0) {
+                lower = next;
+              } else {
+                upper = next;
+              }
+            }
+          } else {
+            out.writeln(
+              'Edit both endpoints to valid values before adjustment.',
+            );
+          }
+          show();
+          continue;
+        }
+        if ((key == '\r' || key == '\n') && (focus == 2 || focus == 3)) {
+          out.writeln('${names[focus]}: Enter finishes editing.');
+          final edit = await _edit(keys, focus == 2 ? lower : upper, out);
+          if (edit.action == 'cancel') return Cancelled();
+          if (edit.action == 'interrupt') return Interrupted();
+          if (edit.action != 'submit') return InputEnded();
+          if (focus == 2) {
+            lower = edit.value;
+          } else {
+            upper = edit.value;
+          }
+          final error = _pairError(lower, upper);
+          if (error != null) out.writeln(error);
+          show();
+          continue;
+        }
+        if ((key == '\r' || key == '\n') && focus == 4) {
+          final error = _pairError(lower, upper);
+          if (error == null) return Accepted((lower, upper));
+          out.writeln(error);
         }
       }
     } finally {
