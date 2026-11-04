@@ -34,7 +34,26 @@ public static class NativeProbe {
 $root = Split-Path $PSScriptRoot -Parent
 $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("prompty-probe-" + [guid]::NewGuid() + '.txt')
-$line = "Set-Location '$root'; Start-Sleep -Seconds 4; & '$dart' run bin/terminal_probe.dart --twice > '$file'; Start-Sleep -Seconds 30"
+if($Scenario -eq 'stream-eof') {
+ $line = @'
+Set-Location '__ROOT__'; Start-Sleep -Seconds 4
+$info = New-Object System.Diagnostics.ProcessStartInfo
+$info.FileName = '__DART__'
+$info.Arguments = 'run bin/terminal_probe.dart --stream-stdin'
+$info.UseShellExecute = $false
+$info.RedirectStandardInput = $true
+$info.RedirectStandardOutput = $true
+$child = [System.Diagnostics.Process]::Start($info)
+$child.StandardInput.Write('partial')
+$child.StandardInput.Close()
+$result = $child.StandardOutput.ReadToEnd()
+$child.WaitForExit()
+Set-Content -Path '__FILE__' -Value $result.TrimEnd()
+Start-Sleep -Seconds 30
+'@.Replace('__ROOT__',$root).Replace('__DART__',$dart).Replace('__FILE__',$file)
+} else {
+ $line = "Set-Location '$root'; Start-Sleep -Seconds 4; & '$dart' run bin/terminal_probe.dart --twice --pause-between > '$file'; Start-Sleep -Seconds 30"
+}
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -44,6 +63,16 @@ try {
  for ($n=0; $n -lt 100 -and !$attached; $n++) { $attached=[NativeProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
  if(!$attached){throw "AttachConsole failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"}
  $before=[NativeProbe]::State()
+ if($Scenario -eq 'stream-eof') {
+  for($n=0; $n -lt 150; $n++) { if((Test-Path $file) -and (Get-Item $file).Length -gt 0) { break }; Start-Sleep -Milliseconds 100 }
+  $actual=@(Get-Content $file)
+  Start-Sleep -Seconds 2
+  $after=[NativeProbe]::State()
+  if($actual.Count -ne 1 -or $actual[0] -ne 'eof') { throw "unexpected EOF results: $($actual -join ',')" }
+  if($before -ne $after) { throw "console state changed: $before -> $after" }
+  Set-Content -Path $Report -Value "stream-eof PASS result=$($actual[0]) state=$before -> $after"
+  return
+ }
  Start-Sleep -Seconds 7
  switch ($Scenario) {
   'submit' { $char=[char]13; $vk=13; $state=0; $expected='submit:ok' }
@@ -57,14 +86,24 @@ try {
   if($Scenario -eq 'submit') { [NativeProbe]::Key([char]111,79,0); [NativeProbe]::Key([char]107,75,0) }
   if($Scenario -eq 'error') { foreach($c in 'abcde'.ToCharArray()) { [NativeProbe]::Key($c,[uint16][char]::ToUpper($c),0) } }
   [NativeProbe]::Key($char,$vk,$state)
-  Start-Sleep -Seconds 2
+  if($session -eq 0) {
+   $middle = $null
+   for($n=0; $n -lt 100; $n++) {
+    Start-Sleep -Milliseconds 100
+    $stateNow=[NativeProbe]::State()
+    if($stateNow -eq $before) { $middle=$stateNow; break }
+   }
+   if(!$middle) { throw "first session did not restore console before next session" }
+   [NativeProbe]::Key([char]13,13,0)
+   Start-Sleep -Seconds 2
+  }
  }
  for($n=0; $n -lt 100; $n++){ if((Test-Path $file) -and ((Get-Content $file -ErrorAction SilentlyContinue | Measure-Object -Line).Lines -ge 2)){break}; Start-Sleep -Milliseconds 100 }
  $actual=@(Get-Content $file)
  $after=[NativeProbe]::State()
  if($actual.Count -ne 2 -or $actual[0] -ne $expected -or $actual[1] -ne $expected){ throw "unexpected results: $($actual -join ',')" }
  if($before -ne $after){throw "console state changed: $before -> $after"}
- Set-Content -Path $Report -Value "$Scenario PASS results=$($actual -join ',') state=$before -> $after"
+ Set-Content -Path $Report -Value "$Scenario PASS results=$($actual -join ',') state=$before -> $middle -> $after"
 } catch {
  Set-Content -Path $Report -Value "$Scenario FAIL $_"
  throw

@@ -6,6 +6,22 @@ import 'package:ffi/ffi.dart';
 // A narrowly scoped Windows console probe. It owns stdin only while reading;
 // prompt output is stderr and machine-readable results are stdout.
 void main(List<String> args) {
+  if (args.contains('--stream-stdin')) {
+    stderr.write('stream probe> ');
+    final line = StringBuffer();
+    while (true) {
+      final byte = stdin.readByteSync();
+      if (byte == -1) {
+        stdout.writeln('eof');
+        return;
+      }
+      if (byte == 10) {
+        stdout.writeln('submit:${line.toString()}');
+        return;
+      }
+      line.writeCharCode(byte);
+    }
+  }
   if (!Platform.isWindows || !stdin.hasTerminal || !stderr.hasTerminal) {
     stderr.writeln(
       'rich interaction unavailable: console stdin and stderr required',
@@ -76,6 +92,10 @@ void main(List<String> args) {
       }
       stderr.writeln();
       stdout.writeln(result);
+      if (i + 1 < sessions && args.contains('--pause-between')) {
+        stderr.writeln('Press Enter for the next session.');
+        stdin.readLineSync();
+      }
     }
   } finally {
     calloc.free(inputMode);
