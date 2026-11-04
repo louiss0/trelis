@@ -6,7 +6,9 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
+import 'package:path/path.dart' as path;
 
+part 'path_input.dart';
 part 'autocomplete.dart';
 part 'search_select.dart';
 part 'sortable_select.dart';
