@@ -2,6 +2,126 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('supplied answers are literal, normalized and validated', () async {
+    final prompt = Multiline('Notes', required: true);
+    final accepted = await prompt.prompt(source: SuppliedAnswer('/done\r\n\r'));
+    expect((accepted as Accepted<String>).value, '/done\n\n');
+    expect(
+      await prompt.prompt(source: SuppliedAnswer('')),
+      isA<Unavailable<String>>(),
+    );
+  });
+  test(
+    'rich mode capability and incomplete outcomes remain distinct',
+    () async {
+      final output = StringBuffer();
+      final unavailable = await Multiline('Notes').prompt(
+        source: ScriptedInput(Stream.value(''), output, supportsRich: false),
+        mode: PromptMode.rich,
+      );
+      expect(unavailable, isA<Unavailable<String>>());
+      expect(output.toString(), isEmpty);
+      Future<PromptResult<String>> run(String input) => Multiline('Notes')
+          .prompt(
+            source: ScriptedInput(Stream.value(input), StringBuffer()),
+            mode: PromptMode.rich,
+          );
+      expect(await run('a\x1b\t'), isA<Cancelled<String>>());
+      expect(await run('a\x03'), isA<Interrupted<String>>());
+      expect(await run('a'), isA<InputEnded<String>>());
+    },
+  );
+  test('declining line deletion preserves the draft', () async {
+    final result = await Multiline('Notes', initialValue: 'first\nsecond')
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('/remove\r1\rn\r/done\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'first\nsecond');
+  });
+  test('linear character limit rejects oversized insertion while keeping command access', () async {
+    final output = StringBuffer();
+    final result = await Multiline('Notes', maxLength: 3).prompt(
+      source: ScriptedInput(Stream.value('a\rxy\r/done\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, 'a\nx');
+    expect(output.toString(), contains('limit'));
+  });
+  test(
+    'linear cancellation interruption and partial EOF never submit',
+    () async {
+      Future<PromptResult<String>> run(String input) =>
+          Multiline('Notes').prompt(
+            source: ScriptedInput(Stream.value(input), StringBuffer()),
+            mode: PromptMode.linear,
+          );
+      expect(await run('draft\r/cancel\r'), isA<Cancelled<String>>());
+      expect(await run('draft\r\x03'), isA<Interrupted<String>>());
+      expect(await run('draft\r/done'), isA<InputEnded<String>>());
+    },
+  );
+  test('rich editing updates the focused line in place', () async {
+    final output = StringBuffer();
+    await Multiline('Notes').prompt(
+      source: ScriptedInput(Stream.value('ab\t\r'), output),
+      mode: PromptMode.rich,
+    );
+    expect(output.toString(), contains('\r\x1b[2K'));
+    expect(output.toString(), contains('\x1b[s'));
+  });
+  test(
+    'oversized paste into an existing line is rejected atomically',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await Multiline('Notes', initialValue: 'a\nb', maxLength: 4).prompt(
+            source: ScriptedInput(
+              Stream.value('/edit\r1\r\x1b[200~xx\x1b[201~\r/done\r'),
+              output,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'a\nb');
+      expect(output.toString(), contains('limit'));
+    },
+  );
+  test(
+    'rich Insert tab action inserts a literal tab before finishing',
+    () async {
+      final output = StringBuffer();
+      final result = await Multiline('Notes').prompt(
+        source: ScriptedInput(Stream.value('a\t\t\rb\t\r'), output),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<String>).value, 'a\tb');
+      expect(output.toString(), contains('Insert tab'));
+    },
+  );
+  test('linear help advertises all commands and quoting', () async {
+    final output = StringBuffer();
+    await Multiline('Notes').prompt(
+      source: ScriptedInput(Stream.value('/help\r/done\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect(output.toString(), contains('Help:'));
+    final help = output.toString().split('Help:').last;
+    expect(help, contains('/list'));
+    expect(help, contains('/done'));
+    expect(help, contains('backslash'));
+  });
+  test('rich help is dismissible without cancelling the draft', () async {
+    final output = StringBuffer();
+    final result = await Multiline('Notes').prompt(
+      source: ScriptedInput(Stream.value('x\x14\x1b\t\r'), output),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<String>).value, 'x');
+    expect(output.toString(), contains('Help:'));
+  });
   test(
     'linear oversized paste is rejected without changing existing lines',
     () async {

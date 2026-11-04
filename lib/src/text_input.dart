@@ -213,7 +213,15 @@ Future<({String action, String value})> _edit(
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
     final limit = isPaste ? (pasteMaxLength ?? maxLength) : maxLength;
-    if (limit != null && count > limit) {
+    final commandPrefix =
+        !isPaste &&
+        extraCommands.isNotEmpty &&
+        ({'/help', '/cancel', ...extraCommands}).any(
+          (command) =>
+              command.startsWith(candidate) ||
+              ('\\$command').startsWith(candidate),
+        );
+    if (limit != null && count > limit && !commandPrefix) {
       output.writeln(
         'Insertion rejected: character limit is $limit graphemes.',
       );
@@ -291,9 +299,18 @@ Future<({String action, String value})> _edit(
         text = answer.join();
       } else if (linear && !provenance.contains(true)) {
         if (text == '/help') {
-          output.writeln(
-            r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
-          );
+          if (extraCommands.isNotEmpty) {
+            output.writeln(
+              r'Help: /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+            );
+            chars.clear();
+            provenance.clear();
+            pos = 0;
+          } else {
+            output.writeln(
+              r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
+            );
+          }
           display();
           continue;
         }
@@ -914,8 +931,8 @@ final class Multiline {
     final out = scripted.output;
     out.writeln(
       mode == PromptMode.linear
-          ? '$label. Enter a line; /list, /edit, /insert, /remove, /done are commands.'
-          : '$label. Enter inserts a newline. Tab selects Finish; Enter activates Finish.',
+          ? '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+          : '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
     );
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
@@ -938,6 +955,13 @@ final class Multiline {
               '/done',
             },
             multilinePaste: true,
+            maxLength: maxLength == null
+                ? null
+                : (maxLength! -
+                          (lines.isEmpty
+                              ? 0
+                              : lines.join('\n').characters.length + 1))
+                      .clamp(0, maxLength!),
             pasteMaxLength: maxLength == null
                 ? null
                 : (maxLength! -
@@ -1017,6 +1041,26 @@ final class Multiline {
                   '/done',
                 },
                 multilinePaste: true,
+                maxLength: maxLength == null
+                    ? null
+                    : (maxLength! -
+                              (result.value == '/edit'
+                                  ? lines.join('\n').characters.length -
+                                        lines[index].characters.length
+                                  : lines.isEmpty
+                                  ? 0
+                                  : lines.join('\n').characters.length + 1))
+                          .clamp(0, maxLength!),
+                pasteMaxLength: maxLength == null
+                    ? null
+                    : (maxLength! -
+                              (result.value == '/edit'
+                                  ? lines.join('\n').characters.length -
+                                        lines[index].characters.length
+                                  : lines.isEmpty
+                                  ? 0
+                                  : lines.join('\n').characters.length + 1))
+                          .clamp(0, maxLength!),
               );
               if (edited.action == 'cancel') return Cancelled();
               if (edited.action == 'interrupt') return Interrupted();
@@ -1043,6 +1087,7 @@ final class Multiline {
     var chars = _normalize(initialValue).characters.toList();
     var pos = chars.length;
     var action = 0;
+    var help = false;
     void insert(String text) {
       final before = chars.take(pos).join() + text;
       final candidate = before + chars.skip(pos).join();
@@ -1062,9 +1107,19 @@ final class Multiline {
     }
 
     void display() {
-      out.writeln('Current text: ${chars.join()}');
-      out.writeln(
-        'Cursor: $pos of ${chars.length} graphemes. Actions: Finish, Insert tab.',
+      var start = pos;
+      while (start > 0 && chars[start - 1] != '\n') {
+        start--;
+      }
+      var end = pos;
+      while (end < chars.length && chars[end] != '\n') {
+        end++;
+      }
+      final line = chars.take(start).where((c) => c == '\n').length + 1;
+      String visible(Iterable<String> part) =>
+          part.join().replaceAll('\t', '⇥');
+      out.write(
+        '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
       );
     }
 
@@ -1074,6 +1129,20 @@ final class Multiline {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: arrows move; Home/End move to line boundaries; Backspace/Delete erase; Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates an action. Escape dismisses help or cancels; Ctrl+C interrupts.',
+          );
+          continue;
+        }
+        if (help) {
+          if (key == '\x1b') {
+            help = false;
+            out.writeln('Help dismissed.');
+          }
+          continue;
+        }
         if (key == '\x1b') {
           if (action != 0) {
             action = 0;
