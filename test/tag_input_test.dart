@@ -2,6 +2,21 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('acronym and Unicode word boundaries produce canonical tags', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value('HTTPServer\rDéjà Vu\r/done\r'),
+        output,
+      ),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<List<String>>).value, [
+      'http-server',
+      'déjà-vu',
+    ]);
+  });
+
   test('linear entry adds canonical tag and explicitly finishes', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(

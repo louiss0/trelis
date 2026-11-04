@@ -828,7 +828,11 @@ final class TagInput {
         if (result.value == '/done') return Accepted(tags);
         final value = result.value
             .replaceAllMapped(
-              RegExp(r'([a-z])([A-Z])'),
+              RegExp(r'(\p{Lu})(\p{Lu}\p{Ll})', unicode: true),
+              (m) => '${m[1]}-${m[2]}',
+            )
+            .replaceAllMapped(
+              RegExp(r'([\p{Ll}\p{Nd}])(\p{Lu})', unicode: true),
               (m) => '${m[1]}-${m[2]}',
             )
             .replaceAll(RegExp(r'[\s_-]+'), '-')
