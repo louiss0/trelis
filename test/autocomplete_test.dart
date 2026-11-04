@@ -222,4 +222,48 @@ void main() {
       await input.close();
     },
   );
+  test('offered candidates do not intercept free-text Enter', () async {
+    final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
+        .prompt(
+          source: ScriptedInput(Stream.value('Grace\r'), StringBuffer()),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<String>).value, 'Grace');
+  });
+  test('Tab accepts the first suggestion without submitting it', () async {
+    final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
+        .prompt(
+          source: ScriptedInput(Stream.value('x\t!\r'), StringBuffer()),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<String>).value, 'Ada!');
+  });
+  test('rich Escape dismisses suggestions then cancels', () async {
+    final input = StreamController<String>();
+    final result = Autocomplete('Name', suggestions: (_) => ['Ada']).prompt(
+      source: ScriptedInput(input.stream, StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    input.add('x\x1b');
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    input.add('\x1b');
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(await result, isA<Cancelled<String>>());
+    await input.close();
+  });
+  test(
+    'linear cancel remains available with a short character limit',
+    () async {
+      final result =
+          await Autocomplete(
+            'Name',
+            maxLength: 2,
+            suggestions: (_) => <String>[],
+          ).prompt(
+            source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+            mode: PromptMode.linear,
+          );
+      expect(result, isA<Cancelled<String>>());
+    },
+  );
 }

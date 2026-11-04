@@ -193,6 +193,7 @@ Future<({String action, String value})> _edit(
   bool secret = false,
   bool mask = false,
   bool clearHelpCommand = false,
+  bool allowCommandPrefixes = false,
   int? maxLength,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
@@ -221,7 +222,7 @@ Future<({String action, String value})> _edit(
     final limit = isPaste ? (pasteMaxLength ?? maxLength) : maxLength;
     final commandPrefix =
         !isPaste &&
-        extraCommands.isNotEmpty &&
+        (extraCommands.isNotEmpty || allowCommandPrefixes) &&
         ({'/help', '/cancel', ...extraCommands}).any(
           (command) =>
               command.startsWith(candidate) ||

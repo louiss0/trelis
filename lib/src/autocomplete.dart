@@ -98,6 +98,7 @@ final class Autocomplete {
           out,
           linear: true,
           sequential: true,
+          allowCommandPrefixes: true,
           maxLength: editing ? maxLength : null,
           extraCommands: editing ? const {} : const {'/submit', '/edit'},
           onSubmit: (value) => literal = value,
@@ -108,6 +109,12 @@ final class Autocomplete {
           return InputEnded();
         }
         if (editing) {
+          if (maxLength != null &&
+              result.value.characters.length > maxLength!) {
+            out.writeln('Text exceeds maximum length; edit and submit again.');
+            pending = result.value;
+            continue;
+          }
           pending = result.value;
           candidates = [];
           final request = ++generation;
