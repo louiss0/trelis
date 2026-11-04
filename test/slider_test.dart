@@ -1,7 +1,153 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'Escape from rich numeric editing returns to slider without cancelling',
+    () async {
+      final input = StreamController<String>();
+      final slider = Slider(
+        'S',
+        minimum: '0',
+        maximum: '10',
+        step: '1',
+        initialValue: '2',
+      );
+      final result = slider.prompt(
+        source: ScriptedInput(input.stream, StringBuffer()),
+        mode: PromptMode.rich,
+      );
+      input.add('\t\r9\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      input.add('\t\r');
+      await input.close();
+      expect((await result as Accepted<String>).value, '2');
+    },
+  );
+  test(
+    'inverted typed range remains editable without swapping endpoints',
+    () async {
+      final output = StringBuffer();
+      final range = RangeSlider('R', minimum: '0', maximum: '10', step: '1');
+      final result = await range.prompt(
+        source: ScriptedInput(Stream.value('8\r2\r\x7f1\r\r\r'), output),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<(String, String)>).value, ('1', '2'));
+      expect(output.toString(), contains('must remain ordered'));
+    },
+  );
+  test('range with no default cannot submit without endpoints', () async {
+    final range = RangeSlider('R', minimum: '0', maximum: '10', step: '1');
+    expect(
+      await range.prompt(
+        source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<InputEnded<(String, String)>>(),
+    );
+    expect(
+      await range.prompt(
+        source: ScriptedInput(Stream.value('\t\t\t\t\r'), StringBuffer()),
+        mode: PromptMode.rich,
+      ),
+      isA<InputEnded<(String, String)>>(),
+    );
+  });
+  test(
+    'slider numeric editor arrows move the cursor rather than adjust',
+    () async {
+      final slider = Slider(
+        'S',
+        minimum: '0',
+        maximum: '99',
+        step: '1',
+        initialValue: '12',
+      );
+      final result = await slider.prompt(
+        source: ScriptedInput(
+          Stream.value('\t\r\x1b[D\x7f3\r\t\r'),
+          StringBuffer(),
+        ),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<String>).value, '32');
+    },
+  );
+  test(
+    'slider and range reject concurrent sessions and can be reused',
+    () async {
+      final slider = Slider('S', minimum: '0', maximum: '2', step: '1');
+      final range = RangeSlider('R', minimum: '0', maximum: '2', step: '1');
+      final a = StreamController<String>();
+      final b = StreamController<String>();
+      final first = slider.prompt(
+        source: ScriptedInput(a.stream, StringBuffer()),
+        mode: PromptMode.rich,
+      );
+      final second = range.prompt(
+        source: ScriptedInput(b.stream, StringBuffer()),
+        mode: PromptMode.rich,
+      );
+      expect(
+        () => slider.prompt(source: SuppliedAnswer('1')),
+        throwsStateError,
+      );
+      expect(
+        () => range.prompt(source: SuppliedAnswer('0,1')),
+        throwsStateError,
+      );
+      a.add('\x03');
+      b.add('\x03');
+      expect(await first, isA<Interrupted<String>>());
+      expect(await second, isA<Interrupted<(String, String)>>());
+      await a.close();
+      await b.close();
+      expect(
+        (await slider.prompt(
+          source: SuppliedAnswer('1'),
+        ) as Accepted<String>).value,
+        '1',
+      );
+      expect(
+        (await range.prompt(
+          source: SuppliedAnswer('0,1'),
+        ) as Accepted<(String, String)>).value,
+        ('0', '1'),
+      );
+    },
+  );
+  test('rich slider and range help dismisses before interruption', () async {
+    for (final run in <Future<Object?> Function(ScriptedInput)>[
+      (source) => Slider(
+        'S',
+        minimum: '0',
+        maximum: '2',
+        step: '1',
+      ).prompt(source: source, mode: PromptMode.rich),
+      (source) => RangeSlider(
+        'R',
+        minimum: '0',
+        maximum: '2',
+        step: '1',
+      ).prompt(source: source, mode: PromptMode.rich),
+    ]) {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final future = run(ScriptedInput(input.stream, output));
+      input.add('\x14\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      input.add('\x03');
+      await input.close();
+      expect(
+        await future,
+        anyOf(isA<Interrupted<String>>(), isA<Interrupted<(String, String)>>()),
+      );
+      expect(output.toString(), contains('Help dismissed'));
+    }
+  });
   test('range configuration rejects invalid defaults and gap', () {
     expect(
       () => RangeSlider(

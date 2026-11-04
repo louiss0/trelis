@@ -170,3 +170,22 @@ A `SuppliedAnswer` is the complete selection as comma-separated stable choice
 numbers, for example `2,1`; an empty string means the empty set. References
 must be unique and enabled, without whitespace, and satisfy count constraints.
 Supplied answers are literal and do not interpret prompt commands.
+
+### Slider and RangeSlider
+
+`Slider` and `RangeSlider` accept exact ASCII decimal strings for `minimum`,
+`maximum`, `step`, and values. Values must lie within the bounds and align to
+`step` measured from `minimum`; no entry is rounded or clipped. Optional
+`precision` limits the number of decimal places, and `units` is displayed as
+context. `initialValue`, or the pair `initialLower` and `initialUpper`, is
+optional and must satisfy the configured constraints. Range `minimumGap`
+defaults to zero; endpoints retain their Lower and Upper identities.
+
+In rich interaction Tab visits the value or endpoints, Edit actions, and Submit.
+Arrow keys adjust a focused value without crossing bounds or the minimum gap;
+inside an editor arrows instead move the text cursor. Enter opens or finishes
+editing and activates Submit. Escape dismisses help or the current editor before
+cancelling; Ctrl+T opens help and Ctrl+C interrupts. Linear range entry asks for
+each endpoint and a separate review/submit. Invalid text remains editable.
+A supplied range uses the literal `Lower,Upper` spelling, for example `2,8`;
+it must satisfy the same constraints. EOF does not submit a draft.

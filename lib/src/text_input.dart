@@ -2181,12 +2181,13 @@ final class Slider {
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue ?? '';
     var focus = 0;
+    var help = false;
     void show() {
       out.writeln(
         '$_description. Value: ${value.isEmpty ? 'not set' : value}.',
       );
       out.writeln(
-        'Focus: ${['Slider', 'Edit', 'Submit'][focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit.',
+        'Focus: ${['Slider', 'Edit', 'Submit'][focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       );
     }
 
@@ -2196,7 +2197,21 @@ final class Slider {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x1b') return Cancelled();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          out.writeln('Help dismissed.');
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Tab moves through controls; arrows adjust a focused value; Enter activates Edit or Submit. Escape dismisses help; Ctrl+C interrupts.',
+          );
+          continue;
+        }
+        if (help) continue;
         if (key == '\t') {
           focus = (focus + 1) % 3;
           show();
@@ -2224,7 +2239,11 @@ final class Slider {
           out.writeln('Edit value; Enter finishes editing.');
           final edit = await _edit(keys, value, out);
           if (edit.action == 'interrupt') return Interrupted();
-          if (edit.action == 'cancel') return Cancelled();
+          if (edit.action == 'cancel') {
+            out.writeln('Edit dismissed.');
+            show();
+            continue;
+          }
           if (edit.action != 'submit') return InputEnded();
           value = edit.value;
           final error = _validate(value);
@@ -2472,13 +2491,14 @@ final class RangeSlider {
     var lower = initialLower ?? '';
     var upper = initialUpper ?? '';
     var focus = 0;
+    var help = false;
     const names = ['Lower', 'Upper', 'Edit Lower', 'Edit Upper', 'Submit'];
     void show() {
       out.writeln(
         '${_slider._description}, minimum gap $minimumGap. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
       );
       out.writeln(
-        'Focus: ${names[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit.',
+        'Focus: ${names[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       );
     }
 
@@ -2488,7 +2508,21 @@ final class RangeSlider {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x1b') return Cancelled();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          out.writeln('Help dismissed.');
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Tab moves through controls; arrows adjust a focused value; Enter activates Edit or Submit. Escape dismisses help; Ctrl+C interrupts.',
+          );
+          continue;
+        }
+        if (help) continue;
         if (key == '\t') {
           focus = (focus + 1) % names.length;
           show();
@@ -2528,7 +2562,11 @@ final class RangeSlider {
         if ((key == '\r' || key == '\n') && (focus == 2 || focus == 3)) {
           out.writeln('${names[focus]}: Enter finishes editing.');
           final edit = await _edit(keys, focus == 2 ? lower : upper, out);
-          if (edit.action == 'cancel') return Cancelled();
+          if (edit.action == 'cancel') {
+            out.writeln('Edit dismissed.');
+            show();
+            continue;
+          }
           if (edit.action == 'interrupt') return Interrupted();
           if (edit.action != 'submit') return InputEnded();
           if (focus == 2) {
