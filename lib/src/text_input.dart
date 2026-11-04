@@ -309,7 +309,7 @@ Future<({String action, String value})> _edit(
         if (text == '/help') {
           if (extraCommands.isNotEmpty) {
             output.writeln(
-              r'Help: /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+              'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
             );
           } else {
             output.writeln(
@@ -1426,6 +1426,248 @@ final class Multiline {
           insert(key);
         }
         display();
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
+
+/// One choice, identified independently of its display label.
+final class Choice<T> {
+  Choice(this.value, this.label, {this.disabledReason}) {
+    if (label.trim().isEmpty ||
+        label.runes.any((c) => c < 32 || c == 127) ||
+        (disabledReason != null &&
+            (disabledReason!.trim().isEmpty ||
+                disabledReason!.runes.any((c) => c < 32 || c == 127)))) {
+      throw ArgumentError(
+        'Choice labels and reasons must be nonempty safe text.',
+      );
+    }
+  }
+  final T value;
+  final String label;
+  final String? disabledReason;
+}
+
+final class Select<T> extends _SingleChoice<T> {
+  Select(super.label, super.choices, {super.defaultValue})
+    : super(radio: false);
+}
+
+final class Radio<T> extends _SingleChoice<T> {
+  Radio(super.label, super.choices, {super.defaultValue}) : super(radio: true);
+}
+
+abstract class _SingleChoice<T> {
+  _SingleChoice(
+    this.label,
+    List<Choice<T>> choices, {
+    this.defaultValue,
+    required this.radio,
+  }) : choices = List.unmodifiable(choices) {
+    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
+      throw ArgumentError.value(label, 'label');
+    }
+    if (choices.map((c) => c.value).toSet().length != choices.length) {
+      throw ArgumentError('Choice identities must be unique.');
+    }
+    if (defaultValue != null && !choices.any((c) => c.value == defaultValue)) {
+      throw ArgumentError('Default identity is not a choice.');
+    }
+  }
+  final String label;
+  final List<Choice<T>> choices;
+  final T? defaultValue;
+  final bool radio;
+  bool _active = false;
+
+  Future<PromptResult<T>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<T>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<T>> _run(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedAnswer) {
+      final n = int.tryParse(source.value);
+      if (n == null ||
+          n < 1 ||
+          n > choices.length ||
+          choices[n - 1].disabledReason != null) {
+        return Unavailable('Supply an enabled choice reference.');
+      }
+      return Accepted(choices[n - 1].value);
+    }
+    final scripted = source as ScriptedInput;
+    if (mode == PromptMode.rich && !scripted.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final out = scripted.output;
+    var focus = defaultValue == null
+        ? -1
+        : choices.indexWhere((c) => c.value == defaultValue);
+    if (focus < 0) focus = choices.indexWhere((c) => c.disabledReason == null);
+    if (focus < 0 && choices.isNotEmpty) focus = 0;
+    var page = 0;
+    const pageSize = 10;
+    void show() {
+      out.writeln(
+        '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
+      );
+      if (choices.isEmpty) out.writeln('No choices available.');
+      final start = mode == PromptMode.linear ? page * pageSize : 0;
+      final end = mode == PromptMode.linear
+          ? (start + pageSize).clamp(0, choices.length)
+          : choices.length;
+      if (mode == PromptMode.linear && choices.isNotEmpty) {
+        out.writeln(
+          'Page ${page + 1} of ${(choices.length + pageSize - 1) ~/ pageSize}.',
+        );
+      }
+      for (var i = start; i < end; i++) {
+        final c = choices[i];
+        out.writeln(
+          '${i + 1}. ${radio ? '( ) ' : ''}${c.label}${i == focus ? ' [focused]' : ''}${defaultValue != null && c.value == defaultValue ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+        );
+      }
+    }
+
+    show();
+    out.writeln(
+      mode == PromptMode.rich
+          ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
+          : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+    );
+    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      if (mode == PromptMode.linear) {
+        var entry = '';
+        while (true) {
+          final result = await _edit(
+            keys,
+            entry,
+            out,
+            linear: true,
+            sequential: true,
+            extraCommands: const {'/next', '/previous'},
+          );
+          if (result.action == 'cancel') return Cancelled();
+          if (result.action == 'interrupt') return Interrupted();
+          if (result.action == 'command') {
+            if (result.value == '/next' &&
+                (page + 1) * pageSize < choices.length) {
+              page++;
+            }
+            if (result.value == '/previous' && page > 0) page--;
+            entry = '';
+            show();
+            continue;
+          }
+          if (result.action != 'submit') return InputEnded();
+          entry = result.value;
+          final n = int.tryParse(entry);
+          if (n == null || n < 1 || n > choices.length) {
+            out.writeln('Enter a valid choice reference.');
+            continue;
+          }
+          final c = choices[n - 1];
+          if (c.disabledReason != null) {
+            out.writeln(
+              'Unavailable: ${c.disabledReason}. Choose an enabled reference.',
+            );
+            continue;
+          }
+          out.writeln('Accepted: ${c.label}.');
+          return Accepted(c.value);
+        }
+      }
+      var help = false;
+      while (true) {
+        final key = await keys.next();
+        if (key == null || key == '\x1a') return InputEnded();
+        if (key == '\x03') return Interrupted();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          help = true;
+          out.writeln(
+            'Help: Up/Down navigate; Enter accepts the focused enabled choice; Escape dismisses help.',
+          );
+          continue;
+        }
+        if (help) continue;
+        if (key == '\x1b[A' && focus > 0) {
+          focus--;
+          show();
+        }
+        if (key == '\x1b[B' && focus >= 0 && focus < choices.length - 1) {
+          focus++;
+          show();
+        }
+        if (key == '\r' || key == '\n') {
+          if (focus < 0) {
+            out.writeln('No choice available.');
+            continue;
+          }
+          final c = choices[focus];
+          if (c.disabledReason != null) {
+            out.writeln(
+              'Unavailable: ${c.disabledReason}. Navigate to an enabled choice.',
+            );
+            continue;
+          }
+          out.writeln('Accepted: ${c.label}.');
+          return Accepted(c.value);
+        }
       }
     } finally {
       try {
