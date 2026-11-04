@@ -115,3 +115,29 @@ shared editor, including in linear mode. Neither terminal echo flags nor the
 scripted tests establish actual screen-reader typing behavior: terminal and
 NVDA secret entry, masking, and prefill require separate verification. Avoid
 real secrets in test transcripts and callback diagnostics.
+
+## Multiline
+
+`Multiline('Notes').prompt()` starts a fresh session. In rich mode Enter adds
+an LF; Tab cycles Edit, Finish and Insert tab, and Enter activates the focused
+action. Arrow keys move between graphemes and lines, Home/End move to line
+boundaries, and Ctrl+T opens help. Escape dismisses help or an action before
+cancelling; Ctrl+C interrupts. The focused line is displayed in place, with
+literal tab characters shown as `?`.
+
+In linear mode, Enter appends a logical line, including an empty line. `/list`
+reviews lines; `/edit`, `/insert` and `/remove` ask for a line number in a
+separate step; removal requires confirmation. `/done` validates and submits.
+Exact `/help` and `/cancel` are also available. A backslash quotes an exact
+command; double a leading backslash to enter one. For example, `\temp` remains
+`\temp`, while `\\server\share` enters `\server\share`; use three leading
+backslashes to enter a UNC pair. Identified framed paste is literal and does
+not execute commands; unframed paste cannot be distinguished from typing.
+
+Line endings in supplied, initial and framed pasted text normalize CRLF and CR
+to LF. Blank lines and final blank lines are retained. `initialValue` is
+editable, `required` and `validate` are checked on finish, and `maxLength`
+counts grapheme clusters including line separators. Failed validation retains
+the draft. EOF never submits. Framed paste is limited to 4096 UTF-16 code units
+and oversized insertions are rejected. Native tests cover the Windows console
+protocol, not actual clipboard or NVDA qualification.
