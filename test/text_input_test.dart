@@ -77,7 +77,11 @@ void main() {
     expect(output.toString(), contains('Required'));
     expect(output.toString(), contains('/cancel'));
     expect(output.toString(), contains('backslash'));
+  });  test('supplied answers cannot bypass required validation', () async {
+    final result = await TextInput('Name', required: true).prompt(source: SuppliedAnswer(''));
+    expect(result, isA<Unavailable<String>>());
   });}
+
 
 
 

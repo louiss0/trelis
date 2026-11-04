@@ -95,7 +95,16 @@ final class TextInput {
     }
   }
   Future<PromptResult<String>> _run(PromptSource source, PromptMode mode) async {
-    if (source is SuppliedAnswer) return Accepted(source.value);
+    if (source is SuppliedAnswer) {
+      final value = source.value;
+      if ((required && value.isEmpty) || value.contains('\r') || value.contains('\n') ||
+          (maxLength != null && value.characters.length > maxLength!)) {
+        return Unavailable('Supplied answer does not satisfy text constraints.');
+      }
+      final error = validate?.call(value);
+      if (error != null) return Unavailable(error);
+      return Accepted(value);
+    }
     final scripted = source as ScriptedInput;
     if (mode == PromptMode.rich && !scripted.supportsRich) {
       return Unavailable('Rich interaction unavailable; use linear or automatic mode.');
