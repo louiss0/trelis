@@ -189,3 +189,52 @@ cancelling; Ctrl+T opens help and Ctrl+C interrupts. Linear range entry asks for
 each endpoint and a separate review/submit. Invalid text remains editable.
 A supplied range uses the literal `Lower,Upper` spelling, for example `2,8`;
 it must satisfy the same constraints. EOF does not submit a draft.
+
+## TreeSelect
+
+`TreeSelect<T>` accepts a hierarchy of `TreeNode<T>` and returns one node's
+identity. Identities must be unique throughout the tree. A node with children
+is not selectable unless `selectable: true` is explicit; a leaf is selectable
+unless explicitly disabled for selection. `disabledReason` prevents choosing a
+node but does not prevent traversing its children. Labels and reasons must be
+nonempty safe text. The hierarchy is snapshotted at construction; create a new
+component when the application has a different tree. For a changing source,
+pass `isCurrent` to recheck every node in the path before opening or accepting;
+a removed node is reported as unavailable and is never replaced automatically.
+An unresolved branch can be represented with `childrenUnavailableReason`; it is not treated as a leaf,
+and attempting to open it reports the reason. This API does not load children.
+
+In rich mode Up/Down visit visible nodes, Right expands a branch or enters its
+first child, Left collapses a branch or goes to its parent, and Enter chooses
+only a selectable enabled node. In linear mode `/open` requests a reference
+and enters a branch, `/up` returns to its parent, and `/choose` requests a
+reference and accepts that node if permitted. Full paths and branch, selection
+and unavailable states are shown as text. References are assigned once in
+preorder and remain stable during a session, including when branches close.
+`SuppliedAnswer` is one such numeric reference and is always literal. `/help`
+and `/cancel` are exact commands; quote a command with a backslash, and double
+a leading backslash. Identified paste is literal; unframed paste cannot be
+distinguished from typing. EOF never accepts a partial command or answer.
+### SearchSelect
+
+`SearchSelect<T>(label, choices, defaultValue: ...)` returns one enabled choice
+identity. By default it searches choice labels with case-insensitive substring
+matching in source order. Source numbers identify choices throughout the prompt,
+including across filters and pages. Rich Enter or an arrow enters results from
+query editing without accepting; Enter in results accepts the focused enabled
+choice. Tab traverses query, results, and the Cancel action; typing from results
+or the action returns to query editing. Linear interaction begins with a query,
+then accepts a result reference; `/search` edits the query, `/list` reviews the
+page, and `/next` and `/previous` page through results. `/help` and `/cancel`
+are exact commands. Quoted commands and identified paste are literal; unframed
+paste cannot be distinguished from typing.
+
+An optional `search` callback replaces the default matching policy; applications
+must describe their policy to users. It may return a `List<Choice<T>>` or a
+future of one. Returned identities must be unique and already exist in the
+configured choices; labels and disabled reasons may be updated. Results are
+shown in original source order with the original references. Pending, failed and
+obsolete searches cannot be accepted. If a previously focused result disappears
+or becomes unavailable, rich interaction explains it and requires navigation
+before selecting another result. Supplied references are unavailable with a
+custom search because dynamic availability cannot be verified without a query.
