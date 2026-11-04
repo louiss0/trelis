@@ -71,7 +71,14 @@ void main() {
     final result = await TextInput('Name').prompt(
       source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer(), supportsRich: false));
     expect(result, isA<Cancelled<String>>());
+  });  test('linear instructions disclose required status and quoting', () async {
+    final output = StringBuffer();
+    await TextInput('Name', required: true).prompt(source: ScriptedInput(Stream.value('ok\r'), output), mode: PromptMode.linear);
+    expect(output.toString(), contains('Required'));
+    expect(output.toString(), contains('/cancel'));
+    expect(output.toString(), contains('backslash'));
   });}
+
 
 
 

@@ -101,7 +101,11 @@ final class TextInput {
       return Unavailable('Rich interaction unavailable; use linear or automatic mode.');
     }
     if (mode == PromptMode.automatic) mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
-    scripted.output.writeln(label);
+    scripted.output.writeln('$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).');
+    scripted.output.writeln('Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.');
+    if (mode == PromptMode.linear) {
+      scripted.output.writeln(r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.');
+    }
     final keys = Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
