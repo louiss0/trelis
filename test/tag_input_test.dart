@@ -4,6 +4,21 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'canonical length validation retains the draft for correction',
+    () async {
+      final output = StringBuffer();
+      final result = await TagInput('Tags', maxLength: 5).prompt(
+        source: ScriptedInput(
+          Stream.value('HelloWorld\r\x7f\x7f\x7f\x7f\x7f\r/done\r'),
+          output,
+        ),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<List<String>>).value, ['hello']);
+      expect(output.toString(), contains('Maximum 5'));
+    },
+  );
   test('overlapping sessions on the same prompt are rejected', () async {
     final input = StreamController<String>();
     final prompt = TagInput('Tags');

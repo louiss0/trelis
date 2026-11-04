@@ -2964,9 +2964,14 @@ final class TreeSelect<T> {
 enum TagStyle { kebabCase, snakeCase }
 
 final class TagInput {
-  TagInput(this.label, {this.style = TagStyle.kebabCase});
+  TagInput(this.label, {this.style = TagStyle.kebabCase, this.maxLength}) {
+    if (maxLength != null && maxLength! < 0) {
+      throw ArgumentError.value(maxLength, 'maxLength');
+    }
+  }
   final String label;
   final TagStyle style;
+  final int? maxLength;
   bool _active = false;
 
   String _canonical(String text) {
@@ -3087,6 +3092,11 @@ final class TagInput {
         final canonical = style == TagStyle.snakeCase
             ? value.replaceAll('-', '_')
             : value;
+        if (maxLength != null && canonical.characters.length > maxLength!) {
+          input.output.writeln('Maximum $maxLength graphemes; edit the draft.');
+          draft = result.value;
+          continue;
+        }
         if (tags.asMap().entries.any(
           (entry) => entry.key != editing && entry.value == canonical,
         )) {
