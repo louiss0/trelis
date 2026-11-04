@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 
 part 'autocomplete.dart';
+part 'search_select.dart';
 
 sealed class PromptResult<T> {}
 
