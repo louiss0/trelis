@@ -4,10 +4,17 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('rich slash command text remains a literal draft', () async {
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(Stream.value('/done\r\x03'), StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    expect(result, isA<Interrupted<List<String>>>());
+  });
   test('automatic mode previews drafts on rich-capable source', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags')
-        .prompt(source: ScriptedInput(Stream.value('NewTag\r/done\r'), output));
+        .prompt(source: ScriptedInput(Stream.value('NewTag\r\t\r'), output));
     expect((result as Accepted<List<String>>).value, ['new-tag']);
     expect(output.toString(), contains('Preview: new-tag'));
   });
@@ -84,7 +91,7 @@ void main() {
   test('rich mode previews canonical draft without rewriting input', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
-      source: ScriptedInput(Stream.value('NewTag\r/done\r'), output),
+      source: ScriptedInput(Stream.value('NewTag\r\t\r'), output),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<List<String>>).value, ['new-tag']);

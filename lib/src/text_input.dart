@@ -3287,8 +3287,8 @@ final class TagInput {
           keys,
           draft,
           input.output,
-          linear: true,
-          sequential: true,
+          linear: mode == PromptMode.linear,
+          sequential: mode == PromptMode.linear,
           extraCommands: const {'/done', '/list', '/edit', '/remove'},
           intercept: mode == PromptMode.rich
               ? (key, text) {
