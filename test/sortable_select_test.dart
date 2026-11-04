@@ -71,4 +71,60 @@ void main() {
       );
     },
   );
+  test(
+    'rich locked anchors are focusable but cannot be moved or crossed',
+    () async {
+      final out = StringBuffer();
+      final result =
+          await SortableSelect<String>('Order', [
+            Choice('a', 'A'),
+            Choice('x', 'X', disabledReason: 'protected'),
+            Choice('b', 'B'),
+          ]).prompt(
+            source: ScriptedInput(Stream.value(' \x1b[B \x1b[B \r'), out),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<List<String>>).value, ['a', 'x', 'b']);
+      expect(out.toString(), contains('Cannot cross a locked anchor'));
+      expect(out.toString(), contains('Locked: protected'));
+    },
+  );
+  test(
+    'outcomes distinguish cancellation interruption and input end',
+    () async {
+      final prompt = SortableSelect<String>('Order', [Choice('a', 'A')]);
+      expect(
+        await prompt.prompt(
+          source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<Cancelled<List<String>>>(),
+      );
+      expect(
+        await prompt.prompt(
+          source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+          mode: PromptMode.rich,
+        ),
+        isA<Interrupted<List<String>>>(),
+      );
+      expect(
+        await prompt.prompt(
+          source: ScriptedInput(Stream.value('/move\r1\r'), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<InputEnded<List<String>>>(),
+      );
+      expect(
+        await prompt.prompt(
+          source: ScriptedInput(
+            Stream.value(''),
+            StringBuffer(),
+            supportsRich: false,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Unavailable<List<String>>>(),
+      );
+    },
+  );
 }
