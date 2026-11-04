@@ -1,4 +1,4 @@
-param([string]$Scenario = 'rich', [string]$Report = (Join-Path $env:TEMP 'prompty-probe-report.txt'))
+param([string]$Scenario = 'rich', [string]$Target = 'port', [string]$Report = (Join-Path $env:TEMP 'prompty-probe-report.txt'))
 $ErrorActionPreference = 'Stop'
 Remove-Item $Report -Force -ErrorAction SilentlyContinue
 Add-Type @"
@@ -38,7 +38,7 @@ public static class NativeProbe {
 $root = Split-Path $PSScriptRoot -Parent
 $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
-$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/network_input_native_app.dart $Scenario > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/network_input_native_app.dart $Scenario $Target > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -53,7 +53,8 @@ try {
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
- [NativeProbe]::Text("443`r")
+ $expected = if ($Target -eq 'ip') { 'fe80::1%eth0/64' } else { '443' }
+ [NativeProbe]::Text("$expected`r")
 
  for($n=0;$n -lt 100;$n++){if((Test-Path $file) -and (Get-Item $file).Length -gt 0){break}; Start-Sleep -Milliseconds 100}
 
@@ -61,10 +62,9 @@ try {
  if (!(Test-Path "$file.done")) { throw "probe process did not exit" }
  $actual=(Get-Content $file -Raw).Trim()
  $after=''; for($n=0;$n -lt 100;$n++){ $after=[NativeProbe]::State(); if($after -eq $before){break}; Start-Sleep -Milliseconds 100 }
- $expected = '443'
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($before -ne $after){throw "console state changed: $before -> $after"}
- Set-Content $Report "network input PASS result=$actual state=$before -> $during -> $after"
+ Set-Content $Report "network input $Target $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "network input FAIL $_"; throw }
 finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
 

@@ -1,8 +1,18 @@
 import 'package:prompty/prompty.dart';
 
 Future<void> main(List<String> args) async {
-  final result = await PortInput(
-    'Port',
-  ).prompt(mode: args.first == 'linear' ? PromptMode.linear : PromptMode.rich);
-  print(result is Accepted<int> ? result.value : 'failure');
+  final mode = args.first == 'linear' ? PromptMode.linear : PromptMode.rich;
+  if (args[1] == 'ip') {
+    final result = await IPAddressInput(
+      'Address',
+      cidr: true,
+      scoped: true,
+    ).prompt(mode: mode);
+    print(
+      result is Accepted<IPAddressValue> ? result.value.spelling : 'failure',
+    );
+  } else {
+    final result = await PortInput('Port').prompt(mode: mode);
+    print(result is Accepted<int> ? result.value : 'failure');
+  }
 }
