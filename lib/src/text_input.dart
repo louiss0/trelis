@@ -2057,10 +2057,12 @@ final class TagInput {
           input.output,
           linear: true,
           sequential: true,
+          extraCommands: const {'/done', '/list', '/edit', '/remove'},
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
-        if (result.action != 'submit') return InputEnded();
+        if (result.action != 'submit' && result.action != 'command')
+          return InputEnded();
         if (selectingRemoval || selectingEdit) {
           final index = int.tryParse(result.value);
           if (index == null || index < 1 || index > tags.length) {
@@ -2077,10 +2079,12 @@ final class TagInput {
           }
           continue;
         }
-        if (result.value == '/done') return Accepted(tags);
-        if (result.value == '/list' ||
-            result.value == '/remove' ||
-            result.value == '/edit') {
+        if (result.action == 'command' && result.value == '/done')
+          return Accepted(tags);
+        if (result.action == 'command' &&
+            (result.value == '/list' ||
+                result.value == '/remove' ||
+                result.value == '/edit')) {
           for (var i = 0; i < tags.length; i++) {
             input.output.writeln('${i + 1}. ${tags[i]}');
           }

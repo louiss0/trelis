@@ -2,6 +2,21 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'pasted finish command is literal and cannot finish collection',
+    () async {
+      final output = StringBuffer();
+      final result = await TagInput('Tags').prompt(
+        source: ScriptedInput(
+          Stream.value('\x1b[200~/done\x1b[201~\r\x03'),
+          output,
+        ),
+        mode: PromptMode.linear,
+      );
+      expect(result, isA<Interrupted<List<String>>>());
+      expect(output.toString(), contains('punctuation'));
+    },
+  );
   test('combining marks remain attached across camel boundaries', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
