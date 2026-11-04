@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
@@ -11,7 +12,7 @@ void main() {
         'Count',
         convention: NumericConvention.ascii(),
       ).prompt(source: SuppliedAnswer('123'));
-      expect((result as Accepted<String?>).value, '123');
+      expect((result as Accepted<NumericAnswer?>).value?.spelling, '123');
     },
   );
 
@@ -24,7 +25,10 @@ void main() {
     final result = await input.prompt(
       source: SuppliedAnswer('9007199254740993.0123456789'),
     );
-    expect((result as Accepted<String?>).value, '9007199254740993.0123456789');
+    expect(
+      (result as Accepted<NumericAnswer?>).value?.spelling,
+      '9007199254740993.0123456789',
+    );
     expect(
       await input.prompt(source: SuppliedAnswer('1e3')),
       isA<Unavailable>(),
@@ -43,7 +47,7 @@ void main() {
     expect(
       (await input.prompt(
         source: SuppliedAnswer('9007199254740993.02'),
-      ) as Accepted<String?>).value,
+      ) as Accepted<NumericAnswer?>).value?.spelling,
       '9007199254740993.02',
     );
     for (final value in [
@@ -99,7 +103,7 @@ void main() {
         'Count',
         convention: NumericConvention.ascii(),
       ).prompt(source: ScriptedInput(Stream.value('12\r'), output), mode: mode);
-      expect((result as Accepted<String?>).value, '12');
+      expect((result as Accepted<NumericAnswer?>).value?.spelling, '12');
     }
   });
 
@@ -110,7 +114,7 @@ void main() {
       required: false,
     );
     final result = await input.prompt(source: SuppliedAnswer(''));
-    expect((result as Accepted<String?>).value, isNull);
+    expect((result as Accepted<NumericAnswer?>).value?.spelling, isNull);
   });
 
   test('overlapping sessions on one input are rejected', () async {
@@ -124,7 +128,7 @@ void main() {
       throwsStateError,
     );
     stream.add('1\r');
-    expect((await pending as Accepted<String?>).value, '1');
+    expect((await pending as Accepted<NumericAnswer?>).value?.spelling, '1');
     await stream.close();
     expect(await input.prompt(source: SuppliedAnswer('2')), isA<Accepted>());
   });
@@ -156,6 +160,104 @@ void main() {
       ).prompt(source: SuppliedAnswer('123')),
       isA<Unavailable>(),
     );
+  });
+
+  test('ambiguous or nonnumeric conventions are rejected at construction', () {
+    for (final digits in ['abcdefghij', '012345678a']) {
+      expect(
+        () => NumericConvention(
+          decimalSeparator: '.',
+          groupingSeparator: ',',
+          grouping: [3],
+          nativeDigits: digits,
+        ),
+        throwsArgumentError,
+      );
+    }
+    expect(
+      () => NumericConvention(
+        decimalSeparator: '-',
+        groupingSeparator: ',',
+        grouping: [3],
+        nativeDigits: '0123456789',
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => NumericConvention(
+        decimalSeparator: '.',
+        groupingSeparator: '1',
+        grouping: [3],
+        nativeDigits: '٠١٢٣٤٥٦٧٨٩',
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test(
+    'accepted answer exposes spelling separately from exact decimal meaning',
+    () async {
+      final result = await NumberInput(
+        'Amount',
+        convention: NumericConvention(
+          decimalSeparator: ',',
+          groupingSeparator: '.',
+          grouping: [3],
+          nativeDigits: '٠١٢٣٤٥٦٧٨٩',
+        ),
+        decimal: true,
+      ).prompt(source: SuppliedAnswer('١.٢٣٤,٥٠'));
+      final answer = (result as Accepted<NumericAnswer?>).value!;
+      expect(answer.spelling, '١.٢٣٤,٥٠');
+      expect(answer.coefficient, BigInt.from(123450));
+      expect(answer.scale, 2);
+    },
+  );
+
+  test(
+    'configured trailing negative sign is required for negative numbers',
+    () async {
+      final convention = NumericConvention(
+        decimalSeparator: '.',
+        groupingSeparator: ',',
+        grouping: [3],
+        nativeDigits: '0123456789',
+        negativeSign: '~',
+        negativePattern: NumericNegativePattern.trailing,
+      );
+      final input = NumberInput('Count', convention: convention);
+      final answer = (await input.prompt(
+        source: SuppliedAnswer('123~'),
+      ) as Accepted<NumericAnswer?>).value!;
+      expect(answer.coefficient, BigInt.from(-123));
+      for (final text in ['-123', '~123', '123-', '123~~']) {
+        expect(
+          await input.prompt(source: SuppliedAnswer(text)),
+          isA<Unavailable>(),
+        );
+      }
+    },
+  );
+
+  test('Windows default resolves effective system numeric settings', () async {
+    if (!Platform.isWindows) return;
+    final result = await NumberInput('Count')
+        .prompt(source: SuppliedAnswer('123'));
+    expect(
+      (result as Accepted<NumericAnswer?>).value!.coefficient,
+      BigInt.from(123),
+    );
+  });
+
+  test('editing discloses the active convention and an example', () async {
+    final output = StringBuffer();
+    await NumberInput('Count', convention: NumericConvention.ascii()).prompt(
+      source: ScriptedInput(Stream.value('12\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect(output.toString(), contains('decimal separator .'));
+    expect(output.toString(), contains('grouping separator ,'));
+    expect(output.toString(), contains('negative example -123'));
   });
 
   test('integer input rejects decimal and non-base-ten forms', () async {
