@@ -238,3 +238,21 @@ obsolete searches cannot be accepted. If a previously focused result disappears
 or becomes unavailable, rich interaction explains it and requires navigation
 before selecting another result. Supplied references are unavailable with a
 custom search because dynamic availability cannot be verified without a query.
+
+### SortableSelect
+
+`SortableSelect<T>(label, choices)` returns every supplied identity in the
+chosen order. Choice identities must be unique. A choice with `disabledReason`
+is a locked anchor: it remains in the result at its original position and other
+items cannot cross it. Its reason remains visible.
+
+In rich interaction, Space picks up or drops an item; Up/Down move it while
+picked up, and Enter drops it before a second Enter submits. Escape reverts the
+current move, then cancels at the root. In linear interaction, `/move` asks
+for the stable original choice reference and then the destination position;
+`/done` submits. References do not change when positions change. `/help` and
+`/cancel` are exact commands. A backslash quotes an active command or a leading
+backslash; other backslashes remain literal (for example `C:\work` and a UNC
+path entered with its leading backslash doubled). Identified paste is literal.
+A supplied answer is a comma-separated complete permutation of original numeric
+references, subject to the same anchor rules; an empty list uses an empty string.

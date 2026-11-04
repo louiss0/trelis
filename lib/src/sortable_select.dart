@@ -31,8 +31,9 @@ final class SortableSelect<T> {
           applicationPreference ??
           PromptMode.automatic;
       if (source == null) {
-        if (_terminalActive)
+        if (_terminalActive) {
           throw StateError('A terminal session is already active.');
+        }
         _terminalActive = true;
         try {
           return await _terminal<List<T>>(
@@ -59,15 +60,18 @@ final class SortableSelect<T> {
     bool validOrder(List<int> candidate) {
       if (candidate.length != choices.length ||
           candidate.toSet().length != choices.length ||
-          candidate.any((i) => i < 0 || i >= choices.length))
+          candidate.any((i) => i < 0 || i >= choices.length)) {
         return false;
+      }
       for (var i = 0; i < choices.length; i++) {
-        if (choices[i].disabledReason != null && candidate[i] != i)
+        if (choices[i].disabledReason != null && candidate[i] != i) {
           return false;
+        }
         for (var a = 0; a < choices.length; a++) {
           if (choices[a].disabledReason != null &&
-              ((i < a) != (candidate.indexOf(i) < a)))
+              ((i < a) != (candidate.indexOf(i) < a))) {
             return false;
+          }
         }
       }
       return true;
@@ -78,20 +82,23 @@ final class SortableSelect<T> {
       final parts = source.value.isEmpty ? <String>[] : source.value.split(',');
       final refs = parts.map(int.tryParse).toList();
       if (refs.any((n) => n == null) ||
-          !validOrder([for (final n in refs) n! - 1]))
+          !validOrder([for (final n in refs) n! - 1])) {
         return Unavailable(
           'Supply a complete permutation of choice references respecting locked anchors.',
         );
+      }
       order.setAll(0, [for (final n in refs) n! - 1]);
       return Accepted(answer());
     }
     final input = source as ScriptedInput;
-    if (mode == PromptMode.rich && !input.supportsRich)
+    if (mode == PromptMode.rich && !input.supportsRich) {
       return Unavailable(
         'Rich interaction unavailable; use linear or automatic mode.',
       );
-    if (mode == PromptMode.automatic)
+    }
+    if (mode == PromptMode.automatic) {
       mode = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
     final out = input.output;
     var focus = 0;
     var moving = false;
@@ -138,11 +145,12 @@ final class SortableSelect<T> {
     try {
       if (mode == PromptMode.linear) {
         var stage = 0;
+        var entry = '';
         int? ref;
         while (true) {
           final r = await _edit(
             keys,
-            '',
+            entry,
             out,
             linear: true,
             sequential: true,
@@ -151,6 +159,7 @@ final class SortableSelect<T> {
           if (r.action == 'cancel') return Cancelled();
           if (r.action == 'interrupt') return Interrupted();
           if (r.action == 'command') {
+            entry = '';
             if (r.value == '/done') {
               out.writeln('Accepted order.');
               return Accepted(answer());
@@ -162,7 +171,8 @@ final class SortableSelect<T> {
             continue;
           }
           if (r.action != 'submit') return InputEnded();
-          final n = int.tryParse(r.value);
+          entry = r.value;
+          final n = int.tryParse(entry);
           if (stage == 1) {
             if (n == null || n < 1 || n > choices.length) {
               out.writeln('Enter a valid choice reference.');
@@ -174,6 +184,7 @@ final class SortableSelect<T> {
               continue;
             }
             stage = 2;
+            entry = '';
             out.writeln('Enter destination position (1 to ${order.length}):');
           } else if (stage == 2) {
             if (n == null || n < 1 || n > order.length) {
@@ -182,6 +193,7 @@ final class SortableSelect<T> {
             }
             move(order.indexOf(ref!), n - 1);
             stage = 0;
+            entry = '';
             show();
           } else {
             out.writeln('Use /move or /done.');
@@ -200,8 +212,9 @@ final class SortableSelect<T> {
             continue;
           }
           if (moving) {
+            final item = order[focus];
             order.setAll(0, moveStart!);
-            focus = order.indexOf(order[focus]);
+            focus = order.indexOf(item);
             moving = false;
             out.writeln('Move reverted.');
             show();
