@@ -4,6 +4,17 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'supplied tag collection returns validated canonical ordered values',
+    () async {
+      final result = await TagInput('Tags')
+          .prompt(source: SuppliedTags(['My Tag', 'HTTPServer']));
+      expect((result as Accepted<List<String>>).value, [
+        'my-tag',
+        'http-server',
+      ]);
+    },
+  );
   test('rich draft must be explicitly discarded before finish', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(

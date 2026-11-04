@@ -37,6 +37,11 @@ final class Unavailable<T> extends PromptResult<T> {
 
 sealed class PromptSource {}
 
+final class SuppliedTags extends PromptSource {
+  SuppliedTags(List<String> values) : values = List.unmodifiable(values);
+  final List<String> values;
+}
+
 final class SuppliedAnswer extends PromptSource {
   SuppliedAnswer(this.value);
   final String value;
@@ -3268,8 +3273,29 @@ final class TagInput {
     PromptMode mode, {
     void Function()? beforeClose,
   }) async {
+    if (source is SuppliedTags) {
+      final tags = <String>[];
+      for (final draft in source.values) {
+        if (!RegExp(
+          r'^(?:[\p{L}\p{Nd}]\p{M}*|[\s_-])*$',
+          unicode: true,
+        ).hasMatch(draft)) {
+          return Unavailable('Invalid tag characters.');
+        }
+        final canonical = _canonical(draft);
+        if (canonical.isEmpty ||
+            (maxLength != null && canonical.characters.length > maxLength!) ||
+            tags.contains(canonical)) {
+          return Unavailable('Invalid or duplicate canonical tag.');
+        }
+        final error = validate?.call(canonical);
+        if (error != null) return Unavailable(error);
+        tags.add(canonical);
+      }
+      return Accepted(tags);
+    }
     if (source is SuppliedAnswer) {
-      return Unavailable('A tag collection requires an interactive source.');
+      return Unavailable('Supply a collection using SuppliedTags.');
     }
     final input = source as ScriptedInput;
     if (mode == PromptMode.rich && !input.supportsRich) {
