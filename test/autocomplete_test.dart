@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
@@ -46,4 +48,18 @@ void main() {
       expect((result as Accepted<String>).value, 'Ada');
     },
   );
+  test('linear free text can submit while suggestions are pending', () async {
+    final pending = Completer<List<String>>();
+    final result =
+        await Autocomplete('Name', suggestions: (_) => pending.future)
+            .prompt(
+              source: ScriptedInput(
+                Stream.value('Grace\r/submit\r'),
+                StringBuffer(),
+              ),
+              mode: PromptMode.linear,
+            )
+            .timeout(const Duration(seconds: 1));
+    expect((result as Accepted<String>).value, 'Grace');
+  });
 }

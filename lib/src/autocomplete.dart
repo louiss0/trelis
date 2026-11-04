@@ -71,6 +71,8 @@ final class Autocomplete {
     var pending = '';
     var editing = true;
     var candidates = <String>[];
+    var generation = 0;
+    var closed = false;
     try {
       while (true) {
         final result = await _edit(
@@ -85,16 +87,36 @@ final class Autocomplete {
         if (result.action != 'submit') return InputEnded();
         if (editing) {
           pending = result.value;
-          out.writeln('Loading suggestions.');
-          try {
-            candidates = await suggestions(pending);
-          } catch (_) {
-            candidates = [];
-            out.writeln('Suggestions unavailable.');
+          candidates = [];
+          final request = ++generation;
+          void apply(List<String> items) {
+            if (closed || request != generation) return;
+            candidates = items
+                .where((item) => !item.runes.any((r) => r < 32 || r == 127))
+                .toList();
+            out.writeln('${candidates.length} suggestions.');
+            for (var i = 0; i < candidates.length; i++) {
+              out.writeln('${i + 1}. ${candidates[i]}');
+            }
           }
-          out.writeln('${candidates.length} suggestions.');
-          for (var i = 0; i < candidates.length; i++) {
-            out.writeln('${i + 1}. ${candidates[i]}');
+
+          try {
+            final response = suggestions(pending);
+            if (response is List<String>) {
+              apply(response);
+            } else {
+              out.writeln('Loading suggestions.');
+              Future<List<String>>.value(response).then(
+                apply,
+                onError: (Object error) {
+                  if (!closed && request == generation) {
+                    out.writeln('Suggestions unavailable.');
+                  }
+                },
+              );
+            }
+          } catch (_) {
+            out.writeln('Suggestions unavailable.');
           }
           out.writeln(
             'Pending answer: $pending. Choose a number or /submit, /edit, /help, /cancel.',
@@ -103,6 +125,8 @@ final class Autocomplete {
         } else if (result.value == '/submit') {
           return Accepted(pending);
         } else if (result.value == '/edit') {
+          generation++;
+          candidates = [];
           editing = true;
         } else {
           final index = int.tryParse(result.value);
@@ -119,6 +143,8 @@ final class Autocomplete {
         }
       }
     } finally {
+      closed = true;
+      generation++;
       try {
         beforeClose?.call();
       } finally {
