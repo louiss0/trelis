@@ -415,6 +415,7 @@ class Keys {
   late final StreamIterator<String> _iterator;
   String _buffer = '';
   bool _discardPaste = false;
+  bool _afterCarriageReturn = false;
   Timer? _timer;
   Keys(Stream<List<int>> source) {
     _iterator = StreamIterator(_controller.stream);
@@ -487,8 +488,19 @@ class Keys {
     }
   }
 
-  Future<String?> next() async =>
-      await _iterator.moveNext() ? _iterator.current : null;
+  Future<String?> next() async {
+    while (await _iterator.moveNext()) {
+      final key = _iterator.current;
+      if (_afterCarriageReturn && key == '\n') {
+        _afterCarriageReturn = false;
+        continue;
+      }
+      _afterCarriageReturn = key == '\r';
+      return key;
+    }
+    return null;
+  }
+
   Future<void> close() async {
     _timer?.cancel();
     unawaited(_subscription.cancel());

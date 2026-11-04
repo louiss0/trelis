@@ -182,4 +182,20 @@ void main() {
     );
     expect((result as Accepted<String>).value, 'a');
   });
+  test('CRLF is one submission when validation retains the draft', () async {
+    final output = StringBuffer();
+    final result =
+        await TextInput(
+          'Name',
+          validate: (value) => value == 'ab' ? null : 'Enter ab',
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('a\r\nb\r\n'),
+            output,
+            supportsRich: false,
+          ),
+        );
+    expect((result as Accepted<String>).value, 'ab');
+    expect(RegExp('Enter ab').allMatches(output.toString()).length, 1);
+  });
 }
