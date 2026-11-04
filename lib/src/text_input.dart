@@ -3192,7 +3192,12 @@ final class TimeInput {
 enum TagStyle { kebabCase, snakeCase }
 
 final class TagInput {
-  TagInput(this.label, {this.style = TagStyle.kebabCase, this.maxLength}) {
+  TagInput(
+    this.label, {
+    this.style = TagStyle.kebabCase,
+    this.maxLength,
+    this.validate,
+  }) {
     if (maxLength != null && maxLength! < 0) {
       throw ArgumentError.value(maxLength, 'maxLength');
     }
@@ -3200,6 +3205,7 @@ final class TagInput {
   final String label;
   final TagStyle style;
   final int? maxLength;
+  final String? Function(String)? validate;
   bool _active = false;
 
   String _canonical(String text) {
@@ -3411,6 +3417,12 @@ final class TagInput {
             : value;
         if (maxLength != null && canonical.characters.length > maxLength!) {
           input.output.writeln('Maximum $maxLength graphemes; edit the draft.');
+          draft = result.value;
+          continue;
+        }
+        final validationError = validate?.call(canonical);
+        if (validationError != null) {
+          input.output.writeln(validationError);
           draft = result.value;
           continue;
         }

@@ -4,6 +4,25 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'caller validates canonical tags and rejected drafts remain editable',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await TagInput(
+            'Tags',
+            validate: (value) => value == 'new-tag' ? 'Not allowed' : null,
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('NewTag\r\x7f\x7f\x7fOne\r/done\r'),
+              output,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<List<String>>).value, ['new-one']);
+      expect(output.toString(), contains('Not allowed'));
+    },
+  );
   test('rich navigation edits an earlier tag without reordering', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
