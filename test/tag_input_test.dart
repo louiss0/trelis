@@ -4,6 +4,13 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('automatic mode previews drafts on rich-capable source', () async {
+    final output = StringBuffer();
+    final result = await TagInput('Tags')
+        .prompt(source: ScriptedInput(Stream.value('NewTag\r/done\r'), output));
+    expect((result as Accepted<List<String>>).value, ['new-tag']);
+    expect(output.toString(), contains('Preview: new-tag'));
+  });
   test('native prompt without a terminal reports unavailable', () async {
     final result = await TagInput('Tags').prompt();
     expect(result, isA<Unavailable<List<String>>>());

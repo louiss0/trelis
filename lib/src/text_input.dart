@@ -3267,6 +3267,9 @@ final class TagInput {
         'Rich interaction unavailable; use linear or automatic mode.',
       );
     }
+    if (mode == PromptMode.automatic) {
+      mode = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
     final keys = _Keys(input.input.transform(utf8.encoder));
     final tags = <String>[];
     var draft = '';
