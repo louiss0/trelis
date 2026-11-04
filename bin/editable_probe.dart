@@ -4,6 +4,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:characters/characters.dart';
 
 Future<void> main(List<String> args) async {
   final linear = args.contains('--linear');
@@ -22,7 +23,10 @@ Future<void> main(List<String> args) async {
   }
   final api = Platform.isWindows && !testStream ? Console() : null;
   final mode = calloc<Uint32>();
+  final outputMode = calloc<Uint32>();
   final input = api?.getHandle(-10) ?? 0;
+  final output = api?.getHandle(-12) ?? 0;
+  final keys = Keys(stdin);
   try {
     if (api != null &&
         (api.getMode(input, mode) == 0 ||
@@ -31,30 +35,44 @@ Future<void> main(List<String> args) async {
       exitCode = 2;
       return;
     }
+    if (api != null &&
+        (api.getMode(output, outputMode) == 0 ||
+            api.setMode(output, outputMode.value | 4) == 0)) {
+      api.setMode(input, mode.value);
+      stderr.writeln('interaction unavailable: cannot enable VT output');
+      exitCode = 2;
+      return;
+    }
     stderr.write('\x1b[?2004h');
-    final keys = Keys(stdin);
     try {
       final outcome = await runProbe(keys, linear, initial);
       stdout.writeln(outcome);
     } finally {
       await keys.close();
       stderr.write('\x1b[?2004l\n');
-      if (api != null && api.setMode(input, mode.value) == 0)
-        throw StateError('failed to restore console input mode');
+      if (api != null) {
+        final restoredInput = api.setMode(input, mode.value);
+        final restoredOutput = api.setMode(output, outputMode.value);
+        if (restoredInput == 0 || restoredOutput == 0) {
+          throw StateError('failed to restore console mode');
+        }
+      }
     }
   } finally {
     calloc.free(mode);
+    calloc.free(outputMode);
   }
 }
 
 Future<String> runProbe(Keys keys, bool linear, String initial) async {
   stderr.writeln(
-    'Editable probe (${linear ? 'linear' : 'plain-rich'}). Required text; edit the actual initial value. Left/Right, Home/End, Backspace/Delete; Enter submits. Escape cancels; Ctrl+C interrupts.',
+    'Editable probe (${linear ? 'linear' : 'plain-rich'}). Required text; edit the actual initial value. Left/Right, Home/End, Backspace/Delete; Enter submits. Ctrl+T opens help; Escape dismisses help or cancels; Ctrl+C interrupts.',
   );
-  if (linear)
+  if (linear) {
     stderr.writeln(
       r'Exact /help and /cancel are commands. Quote commands with \; double an initial \ to enter one. Identified paste is literal.',
     );
+  }
   var value = initial;
   while (true) {
     final result = await edit(keys, value, linear: linear);
@@ -65,10 +83,11 @@ Future<String> runProbe(Keys keys, bool linear, String initial) async {
       continue;
     }
     value = result.value;
+    stderr.writeln('Validation 1/2: text accepted.');
     break;
   }
   stderr.writeln(
-    'Text accepted. Hidden secret entry: no echo. Enter opens actions; Escape cancels; Ctrl+C interrupts.',
+    'Text accepted. Hidden secret entry: no echo. Enter opens actions; Ctrl+T opens help; Escape dismisses help or cancels; Ctrl+C interrupts.',
   );
   var secret = '';
   while (true) {
@@ -85,8 +104,8 @@ Future<String> runProbe(Keys keys, bool linear, String initial) async {
             stderr.writeln('Secret required; choose edit or clear.');
             continue;
           }
-          stderr.writeln('Checking: started.');
-          stderr.writeln('Checking: complete.');
+          stderr.writeln('Validation 2/2: secret accepted.');
+          stderr.writeln('Validation complete.');
           return 'text:$value;secret:accepted';
         case 'edit':
           break;
@@ -110,15 +129,16 @@ Future<({String action, String value})> edit(
   bool linear = false,
   bool secret = false,
 }) async {
-  var chars = initial.runes.map(String.fromCharCode).toList();
+  var chars = initial.characters.toList();
   var pos = chars.length;
-  var pasted = false;
+  var provenance = List<bool>.filled(chars.length, false, growable: true);
   var synthetic = false;
   if (linear &&
       (initial == '/cancel' ||
           initial == '/help' ||
           initial.startsWith('\\'))) {
     chars.insert(0, '\\');
+    provenance.insert(0, false);
     pos++;
     synthetic = true;
   }
@@ -130,17 +150,32 @@ Future<({String action, String value})> edit(
   }
 
   display();
+  var help = false;
   while (true) {
     final key = await keys.next();
     if (key == null || key == '\x1a') return (action: 'eof', value: '');
     if (key == '\x03') return (action: 'interrupt', value: '');
-    if (key == '\x1b') return (action: 'cancel', value: '');
+    if (key == '\x1b') {
+      if (!help) return (action: 'cancel', value: '');
+      help = false;
+      stderr.writeln('Help dismissed.');
+      display();
+      continue;
+    }
+    if (key == '\x14') {
+      help = true;
+      stderr.writeln(
+        'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
+      );
+      continue;
+    }
+    if (help) continue;
     if (key == '\r' || key == '\n') {
       stderr.writeln();
       var text = chars.join();
-      if (synthetic && text.startsWith('\\'))
+      if (synthetic && text.startsWith('\\')) {
         text = text.substring(1);
-      else if (linear && !pasted) {
+      } else if (linear && !provenance.contains(true)) {
         if (text == '/help') {
           stderr.writeln(
             r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
@@ -149,8 +184,11 @@ Future<({String action, String value})> edit(
           continue;
         }
         if (text == '/cancel') return (action: 'cancel', value: '');
-        if (text == r'\/cancel' || text == r'\/help' || text.startsWith(r'\\'))
+        if (text == r'\/cancel' ||
+            text == r'\/help' ||
+            text.startsWith(r'\\')) {
           text = text.substring(1);
+        }
       }
       return (action: 'submit', value: text);
     }
@@ -166,20 +204,36 @@ Future<({String action, String value})> edit(
       if (pos > 0) {
         pos--;
         chars.removeAt(pos);
+        provenance.removeAt(pos);
         if (pos == 0) synthetic = false;
       }
     } else if (key == '\x1b[3~') {
       if (pos < chars.length) {
         chars.removeAt(pos);
+        provenance.removeAt(pos);
         if (pos == 0) synthetic = false;
       }
     } else if (key.startsWith('\x1b[200~')) {
       final data = key.substring(6, key.length - 6);
-      chars.insertAll(pos, data.runes.map(String.fromCharCode));
-      pos += data.runes.length;
-      pasted = true;
+      if (data.runes.any((r) => r < 32 || r == 127)) {
+        stderr.writeln('Paste rejected: single-line printable text only.');
+        display();
+        continue;
+      }
+      final added = data.characters.toList();
+      chars.insertAll(pos, added);
+      provenance.insertAll(pos, List<bool>.filled(added.length, true));
+      pos += added.length;
     } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
-      chars.insert(pos++, key);
+      final before = chars.take(pos).join() + key;
+      final after = chars.skip(pos).join();
+      final newChars = (before + after).characters.toList();
+      final newPos = before.characters.length;
+      if (newChars.length > chars.length) {
+        provenance.insert(pos, false);
+      }
+      chars = newChars;
+      pos = newPos;
     }
     display();
   }
@@ -244,8 +298,8 @@ class Keys {
       await _iterator.moveNext() ? _iterator.current : null;
   Future<void> close() async {
     _timer?.cancel();
-    await _subscription.cancel();
-    await _iterator.cancel();
+    unawaited(_subscription.cancel());
+    unawaited(_iterator.cancel());
   }
 }
 
