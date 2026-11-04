@@ -147,3 +147,35 @@ final class Progress {
     );
   }
 }
+
+/// Feedback for activity whose total work is unknown.
+final class Spinner {
+  Spinner(this.label);
+  final String label;
+  StringSink? _output;
+  String _state = 'running';
+  bool _finished = false;
+
+  void start({StringSink? output}) {
+    if (_output != null) throw StateError('Already started');
+    _output = output ?? stderr;
+    _output!.writeln('${_safe(label)}: $_state');
+  }
+
+  void update(String state) {
+    if (_finished) return;
+    if (_output == null) throw StateError('Not started');
+    if (state == _state) return;
+    _state = state;
+    _output!.writeln('${_safe(label)}: ${_safe(state)}');
+  }
+
+  void finish(FeedbackOutcome outcome, {String? detail}) {
+    if (_finished) return;
+    if (_output == null) throw StateError('Not started');
+    _finished = true;
+    _output!.writeln(
+      '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
+    );
+  }
+}

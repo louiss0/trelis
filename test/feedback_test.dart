@@ -63,4 +63,17 @@ void main() {
       expect(out.toString(), contains('Build: interrupted'));
     },
   );
+  test('spinner presents actual activity and explicit final state without heartbeat', () {
+    final out = StringBuffer();
+    final spinner = Spinner('Index');
+    spinner.start(output: out);
+    spinner.update('waiting for disk');
+    spinner.update('waiting for disk');
+    spinner.finish(FeedbackOutcome.failed, detail: 'disk error');
+    spinner.update('running');
+    expect(
+      out.toString(),
+      'Index: running\nIndex: waiting for disk\nIndex: failed: disk error\n',
+    );
+  });
 }
