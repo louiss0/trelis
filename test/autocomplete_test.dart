@@ -18,4 +18,21 @@ void main() {
       expect(calls, 0);
     },
   );
+  test(
+    'linear candidate acceptance requires explicit final submission',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await Autocomplete(
+            'Name',
+            suggestions: (_) async => ['Ada', 'Grace'],
+          ).prompt(
+            source: ScriptedInput(Stream.value('A\r2\r/submit\r'), output),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'Grace');
+      expect(output.toString(), contains('1. Ada'));
+      expect(output.toString(), contains('2. Grace'));
+    },
+  );
 }

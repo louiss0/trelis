@@ -7,6 +7,8 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 
+part 'autocomplete.dart';
+
 sealed class PromptResult<T> {}
 
 final class Accepted<T> extends PromptResult<T> {
