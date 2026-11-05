@@ -207,6 +207,22 @@ void main() {
       }
     },
   );
+  test(
+    'preview rejects oversized zone identifiers before provider loading',
+    () {
+      expect(
+        () => CronPreviewConfig(
+          zone: 'A' * 256,
+          reference: DateTime.utc(2024),
+          start: DateTime.utc(2024),
+          end: DateTime.utc(2025),
+          count: 1,
+          budget: 1,
+        ),
+        throwsArgumentError,
+      );
+    },
+  );
   test('Quartz rejects two specified days and two unspecified days', () async {
     for (final expression in ['0 0 12 1 * MON', '0 0 12 ? * ?']) {
       final result = await CronInput(

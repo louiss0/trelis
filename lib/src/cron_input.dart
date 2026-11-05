@@ -330,6 +330,9 @@ bool Function(DateTime) _compileUnix(List<String> fields) {
 
 /// All instants are explicit UTC values. The work budget counts candidates.
 final class CronPreviewConfig {
+  /// Maximum zone identifier length in UTF-16 code units.
+  static const maxZoneLength = 255;
+
   CronPreviewConfig({
     required this.zone,
     required this.reference,
@@ -340,6 +343,7 @@ final class CronPreviewConfig {
     this.isCancelled = _neverCancelled,
   }) {
     if (zone.isEmpty ||
+        zone.length > maxZoneLength ||
         !reference.isUtc ||
         !start.isUtc ||
         !end.isUtc ||
