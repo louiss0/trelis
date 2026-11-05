@@ -275,11 +275,26 @@ final class EmailInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
-  }) => _input.prompt(
-    source: source,
-    mode: mode,
-    userPreference: userPreference,
-    applicationPreference: applicationPreference,
-    output: output,
-  );
+  }) async {
+    final result = await _input.prompt(
+      source: source,
+      mode: mode,
+      userPreference: userPreference,
+      applicationPreference: applicationPreference,
+      output: output,
+    );
+    if (result is Accepted<String> && source is! SuppliedAnswer) {
+      final domain = result.value.substring(result.value.lastIndexOf('@') + 1);
+      final sink = source is ScriptedInput ? source.output : output ?? stderr;
+      if (domain.startsWith('[')) {
+        sink.writeln('Transport address literal: $domain.');
+      } else {
+        final idna = IcuIdna.uts46();
+        sink.writeln(
+          'Domain interpretation — Unicode: ${idna.toUnicode(domain)}; ASCII: ${idna.toAscii(domain)}.',
+        );
+      }
+    }
+    return result;
+  }
 }

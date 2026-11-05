@@ -2,6 +2,18 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'linear email entry displays labeled IDNA domain interpretation',
+    () async {
+      final out = StringBuffer();
+      final result = await EmailInput('Email').prompt(
+        source: ScriptedInput(Stream.value('Case@faß.de\n'), out),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<String>).value, 'Case@faß.de');
+      expect(out.toString(), contains('Unicode: faß.de; ASCII: xn--fa-hia.de'));
+    },
+  );
   test('SMTP grammar, IDNA, SMTPUTF8 and transport limits', () async {
     final ascii = EmailInput('Email');
     for (final value in [
