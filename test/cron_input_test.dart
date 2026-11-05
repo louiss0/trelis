@@ -87,6 +87,29 @@ void main() {
       expect(preview.instants, [DateTime.utc(2024, 3, 11, 6, 30)]);
     },
   );
+  test('preview distinguishes exhausted work budget from horizon', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('0 0 * * *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    CronPreviewConfig config(int budget) => CronPreviewConfig(
+      zone: 'Etc/UTC',
+      reference: DateTime.utc(2024),
+      start: DateTime.utc(2024),
+      end: DateTime.utc(2024, 1, 1, 0, 2),
+      count: 1,
+      budget: budget,
+    );
+    expect(
+      (await expression.preview(config(1))).status,
+      CronPreviewStatus.budgetExhausted,
+    );
+    expect(
+      (await expression.preview(config(3))).status,
+      CronPreviewStatus.horizonReached,
+    );
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

@@ -47,7 +47,12 @@ final class CronExpression {
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
       instant = instant.add(const Duration(minutes: 1));
     }
-    return CronPreview(List.unmodifiable(matches));
+    final status = matches.length == config.count
+        ? CronPreviewStatus.complete
+        : instant.isAfter(config.end)
+        ? CronPreviewStatus.horizonReached
+        : CronPreviewStatus.budgetExhausted;
+    return CronPreview._(List.unmodifiable(matches), status);
   }
 }
 
@@ -145,9 +150,12 @@ final class CronPreviewConfig {
   final int budget;
 }
 
+enum CronPreviewStatus { complete, horizonReached, budgetExhausted }
+
 final class CronPreview {
-  CronPreview(this.instants);
+  CronPreview._(this.instants, this.status);
   final List<DateTime> instants;
+  final CronPreviewStatus status;
 }
 
 /// Cron expression entry. The current implementation only supports a subset of
