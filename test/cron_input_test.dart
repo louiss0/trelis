@@ -413,6 +413,7 @@ void main() {
       );
       expect(output.toString(), contains('2024-01-01 00:01:00.000Z'));
       expect(output.toString(), contains('count 1; budget 3'));
+      expect(output.toString(), contains('tzdata 2026e'));
     },
   );
   test('rich review navigates preview then submit actions', () async {
