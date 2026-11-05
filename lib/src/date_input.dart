@@ -3,18 +3,23 @@ part of 'text_input.dart';
 /// Field order for an explicit proleptic Gregorian, full-year override.
 enum DateFieldOrder { dayMonthYear, monthDayYear, yearMonthDay }
 
+/// Explicit calendar interpretation for supplied answers.
+enum DateCalendar { gregorian, buddhist }
+
 /// A proleptic Gregorian date without a time or time zone.
 final class CivilDate {
-  CivilDate._(this.year, this.month, this.day);
+  CivilDate._(this.year, this.month, this.day, this.inputYear, this.calendar);
   final int year;
   final int month;
   final int day;
+  final int inputYear;
+  final DateCalendar calendar;
 }
 
 /// Date entry. Automatic system resolution and interactive entry are not yet
 /// available; they fail closed rather than guessing a calendar or convention.
 final class DateInput {
-  DateInput(this.label, {this.order}) {
+  DateInput(this.label, {this.order, this.calendar = DateCalendar.gregorian}) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -22,6 +27,7 @@ final class DateInput {
 
   final String label;
   final DateFieldOrder? order;
+  final DateCalendar calendar;
 
   CivilDate? _parse(String text, DateFieldOrder order) {
     final parts = text.split('/');
@@ -32,7 +38,12 @@ final class DateInput {
       if (!RegExp(pattern).hasMatch(parts[i])) return null;
     }
     final fields = parts.map(int.parse).toList();
-    final year = fields[yearIndex];
+    final inputYear = fields[yearIndex];
+    final year = calendar == DateCalendar.buddhist
+        ? inputYear - 543
+        : inputYear;
+    // Restrict the Buddhist profile to the modern January-based era.
+    if (calendar == DateCalendar.buddhist && year < 1941) return null;
     final month =
         fields[switch (order) {
           DateFieldOrder.dayMonthYear => 1,
@@ -62,7 +73,7 @@ final class DateInput {
       31,
     ];
     if (day > days[month - 1]) return null;
-    return CivilDate._(year, month, day);
+    return CivilDate._(year, month, day, inputYear, calendar);
   }
 
   Future<PromptResult<CivilDate>> prompt({
@@ -84,7 +95,8 @@ final class DateInput {
       );
     }
     final value = _parse(source.value, resolvedOrder);
-    if (value == null) return Unavailable('Invalid proleptic Gregorian date.');
+    if (value == null)
+      return Unavailable('Invalid date for the explicit calendar profile.');
     return Accepted(value);
   }
 }

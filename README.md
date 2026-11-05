@@ -491,3 +491,12 @@ prints a summary with unfinished tasks still waiting or running; it does not
 claim success. Output is literal-safe and static in rich and linear modes, and
 redirected output remains reviewable text. Mode selection and explicit output
 use the same `start` arguments as other feedback components.
+
+The supplied-answer-only DateInput prototype accepts explicit Gregorian or
+Buddhist profiles with ASCII numeric fields and four-digit years. Buddhist
+conversion uses the modern January-based range 2484–9999 BE. Its year offset
+is informed by ICU 76.1 source `icu4c/source/i18n/buddhcal.cpp` (release-76-1),
+which maps Buddhist year to extended Gregorian year by subtracting 543. This
+is an independent arithmetic implementation, not an ICU provider or a
+qualification of ICU behavior. System preferences, native digits, interactive
+editing and review are not implemented; these paths return unavailable.
