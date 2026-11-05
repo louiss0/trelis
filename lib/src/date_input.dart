@@ -213,6 +213,18 @@ _macOSDateProfile() {
   }
 }
 
+({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+_systemDateProfile() {
+  if (Platform.isWindows) return _windowsDateProfile();
+  if (Platform.isLinux) return _linuxDateProfile();
+  if (!Platform.isMacOS) return null;
+  // A formatter and number formatter are separate Foundation objects. Reject
+  // changed effective profiles rather than combining two preference states.
+  final first = _macOSDateProfile();
+  final second = _macOSDateProfile();
+  return first != null && first == second ? first : null;
+}
+
 /// A proleptic Gregorian date without a time or time zone.
 final class CivilDate {
   CivilDate._(this.year, this.month, this.day, this.inputYear, this.calendar);
@@ -350,13 +362,7 @@ final class DateInput {
     try {
       final resolvedOrder = order;
       if (resolvedOrder == null) {
-        final profile = Platform.isWindows
-            ? _windowsDateProfile()
-            : Platform.isLinux
-            ? _linuxDateProfile()
-            : Platform.isMacOS
-            ? _macOSDateProfile()
-            : null;
+        final profile = _systemDateProfile();
         if (profile == null) {
           return Unavailable(
             'System date preferences are unsupported or unresolved; specify a calendar and field order.',
