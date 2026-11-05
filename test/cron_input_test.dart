@@ -2,6 +2,45 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('preview is strictly after the reference and stays in bounds', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('* * * * *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024, 1, 1),
+        start: DateTime.utc(2024, 1, 1),
+        end: DateTime.utc(2024, 1, 1, 0, 3),
+        count: 2,
+        budget: 3,
+      ),
+    );
+    expect(preview.instants, [
+      DateTime.utc(2024, 1, 1, 0, 1),
+      DateTime.utc(2024, 1, 1, 0, 2),
+    ]);
+  });
+  test('preview rounds negative reference instants forward', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('* * * * *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(1969, 12, 31, 23, 58, 30),
+        start: DateTime.utc(1969, 12, 31, 23, 58),
+        end: DateTime.utc(1970),
+        count: 1,
+        budget: 1,
+      ),
+    );
+    expect(preview.instants, [DateTime.utc(1969, 12, 31, 23, 59)]);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

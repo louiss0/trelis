@@ -8,6 +8,74 @@ final class CronExpression {
   CronExpression._(this.expression, this.profile);
   final String expression;
   final CronProfile profile;
+
+  /// A bounded preview. At present only the UTC Unix every-minute expression
+  /// is implemented; other schedules fail closed rather than return guesses.
+  Future<CronPreview> preview(CronPreviewConfig config) async {
+    if (profile != CronProfile.unix ||
+        expression != '* * * * *' ||
+        config.zone != 'Etc/UTC') {
+      throw UnsupportedError(
+        'Preview is not supported for this expression or zone.',
+      );
+    }
+    final referenceMicros = config.reference.microsecondsSinceEpoch;
+    final startMicros = config.start.microsecondsSinceEpoch;
+    const minuteMicros = Duration.microsecondsPerMinute;
+    final strictlyAfter =
+        referenceMicros - referenceMicros % minuteMicros + minuteMicros;
+    final startMinute =
+        startMicros -
+        startMicros % minuteMicros +
+        (startMicros % minuteMicros == 0 ? 0 : minuteMicros);
+    var instant = DateTime.fromMicrosecondsSinceEpoch(
+      strictlyAfter > startMinute ? strictlyAfter : startMinute,
+      isUtc: true,
+    );
+    final matches = <DateTime>[];
+    var work = 0;
+    while (!instant.isAfter(config.end) &&
+        work < config.budget &&
+        matches.length < config.count) {
+      matches.add(instant);
+      work++;
+      instant = instant.add(const Duration(minutes: 1));
+    }
+    return CronPreview(List.unmodifiable(matches));
+  }
+}
+
+/// All instants are explicit UTC values. The work budget counts candidates.
+final class CronPreviewConfig {
+  CronPreviewConfig({
+    required this.zone,
+    required this.reference,
+    required this.start,
+    required this.end,
+    required this.count,
+    required this.budget,
+  }) {
+    if (zone.isEmpty ||
+        !reference.isUtc ||
+        !start.isUtc ||
+        !end.isUtc ||
+        end.isBefore(start) ||
+        count <= 0 ||
+        budget <= 0) {
+      throw ArgumentError('Invalid preview configuration.');
+    }
+  }
+  final String zone;
+  final DateTime reference;
+  final DateTime start;
+  final DateTime end;
+  final int count;
+  final int budget;
+}
+
+final class CronPreview {
+  CronPreview(this.instants);
+  final List<DateTime> instants;
 }
 
 /// Cron expression entry. The current implementation only supports a subset of
