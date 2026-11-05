@@ -13,10 +13,15 @@ final class CronExpression {
   /// Unix searches beginning with sub-minute offsets use second candidates.
   Future<CronPreview> preview(CronPreviewConfig config) async {
     late final timezone.Location location;
+    final zone = config.zone;
     try {
-      timezone_data.initializeTimeZones();
-      location = timezone.getLocation(config.zone);
+      location = await Isolate.run(() {
+        timezone_data.initializeTimeZones();
+        return timezone.getLocation(zone);
+      });
     } on timezone.LocationNotFoundException {
+      return CronPreview._(const [], CronPreviewStatus.providerError);
+    } on timezone.TimeZoneInitException {
       return CronPreview._(const [], CronPreviewStatus.providerError);
     }
     if (profile == CronProfile.quartz &&

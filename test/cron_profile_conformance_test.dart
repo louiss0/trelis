@@ -1,4 +1,6 @@
 import 'package:prompty/prompty.dart';
+import 'package:timezone/data/latest_all.dart' as timezone_data;
+import 'package:timezone/timezone.dart' as timezone;
 import 'package:test/test.dart';
 
 Future<CronPreview> preview(
@@ -153,6 +155,26 @@ void main() {
       expect(resultPreview.instants, isEmpty);
     },
   );
+  test('preview does not change caller timezone package local zone', () async {
+    timezone_data.initializeTimeZones();
+    timezone.setLocalLocation(timezone.getLocation('America/New_York'));
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('* * * * *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024),
+        start: DateTime.utc(2024),
+        end: DateTime.utc(2024, 1, 1, 0, 1),
+        count: 1,
+        budget: 1,
+      ),
+    );
+    expect(timezone.local.name, 'America/New_York');
+  });
   test('Quartz rejects two specified days and two unspecified days', () async {
     for (final expression in ['0 0 12 1 * MON', '0 0 12 ? * ?']) {
       final result = await CronInput(
