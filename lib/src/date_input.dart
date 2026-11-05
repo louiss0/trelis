@@ -401,6 +401,15 @@ final class DateInput {
     out.writeln(
       '$label. ${calendar.name} calendar; $format; ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
     );
+    final sampleYear = calendar == DateCalendar.buddhist ? '2567' : '2024';
+    final example = switch (order) {
+      DateFieldOrder.dayMonthYear => '29/2/$sampleYear',
+      DateFieldOrder.monthDayYear => '2/29/$sampleYear',
+      DateFieldOrder.yearMonthDay => '$sampleYear/2/29',
+    };
+    out.writeln(
+      'Year is ${calendar == DateCalendar.buddhist ? 'Buddhist era 2484-9999' : 'CE 0001-9999'}; Gregorian-derived months, no leap-month context. Example: $example. Arithmetic profile; date only, no timezone.',
+    );
     out.writeln('Enter a date, then review. /cancel cancels in linear mode.');
     try {
       while (true) {
