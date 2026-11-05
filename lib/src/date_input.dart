@@ -6,6 +6,9 @@ enum DateFieldOrder { dayMonthYear, monthDayYear, yearMonthDay }
 /// Explicit calendar interpretation for supplied answers.
 enum DateCalendar { gregorian, buddhist }
 
+/// Explicit decimal digit repertoire; ASCII is always accepted.
+enum DateDigits { ascii, thai, arabicIndic }
+
 /// A proleptic Gregorian date without a time or time zone.
 final class CivilDate {
   CivilDate._(this.year, this.month, this.day, this.inputYear, this.calendar);
@@ -19,7 +22,12 @@ final class CivilDate {
 /// Date entry. Automatic system resolution and interactive entry are not yet
 /// available; they fail closed rather than guessing a calendar or convention.
 final class DateInput {
-  DateInput(this.label, {this.order, this.calendar = DateCalendar.gregorian}) {
+  DateInput(
+    this.label, {
+    this.order,
+    this.calendar = DateCalendar.gregorian,
+    this.digits = DateDigits.ascii,
+  }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -28,17 +36,40 @@ final class DateInput {
   final String label;
   final DateFieldOrder? order;
   final DateCalendar calendar;
+  final DateDigits digits;
   bool _active = false;
 
   CivilDate? _parse(String text, DateFieldOrder order) {
     final parts = text.split('/');
     if (parts.length != 3) return null;
     final yearIndex = order == DateFieldOrder.yearMonthDay ? 0 : 2;
+    final fields = <int>[];
+    final nativeZero = switch (digits) {
+      DateDigits.ascii => 0x30,
+      DateDigits.thai => 0x0e50,
+      DateDigits.arabicIndic => 0x0660,
+    };
     for (var i = 0; i < 3; i++) {
-      final pattern = i == yearIndex ? r'^[0-9]{4}$' : r'^[0-9]{1,2}$';
-      if (!RegExp(pattern).hasMatch(parts[i])) return null;
+      final runes = parts[i].runes.toList();
+      if (runes.isEmpty ||
+          runes.length > (i == yearIndex ? 4 : 2) ||
+          (i == yearIndex && runes.length != 4)) {
+        return null;
+      }
+      int? repertoire;
+      var number = 0;
+      for (final rune in runes) {
+        final base = rune >= 0x30 && rune <= 0x39
+            ? 0x30
+            : rune >= nativeZero && rune <= nativeZero + 9
+            ? nativeZero
+            : -1;
+        if (base < 0 || (repertoire != null && repertoire != base)) return null;
+        repertoire = base;
+        number = number * 10 + rune - base;
+      }
+      fields.add(number);
     }
-    final fields = parts.map(int.parse).toList();
     final inputYear = fields[yearIndex];
     final year = calendar == DateCalendar.buddhist
         ? inputYear - 543
@@ -150,7 +181,7 @@ final class DateInput {
     };
     var draft = '';
     out.writeln(
-      '$label. ${calendar.name} calendar; $format; ASCII digits; four-digit year, one or two digit month and day. Slash separators.',
+      '$label. ${calendar.name} calendar; $format; ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
     );
     out.writeln('Enter a date, then review. /cancel cancels in linear mode.');
     try {
