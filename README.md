@@ -399,3 +399,43 @@ color spaces are excluded. No value is silently repaired.
 Both rich and linear entry show textual sRGB, alpha, and normalized HSL hue as
 valid drafts are entered. Rounded hex is explicitly an approximate preview and
 never replaces the answer. No color perception is needed.
+
+### Key capture
+
+`Keypress` captures one logical gesture; `KeyChordInput` captures a nonempty
+ordered sequence. In rich mode, `c` arms one capture, `d` declares, `r`
+removes the last gesture, `x` clears, and Enter submits. In linear mode use
+`/capture`, `/declare`, `/remove`, `/clear`, and `/done`; `/cancel` cancels.
+Every capture returns to review: it never submits automatically. Escape exits
+armed capture before cancelling the prompt; Ctrl+C interrupts. These two
+reserved gestures cannot be captured live.
+
+Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`);
+for supplied `KeyChordInput` answers, separate gestures with commas. Modifiers
+are `Ctrl`, `Alt`, `Shift`, and `Meta`, each at most once. Keys are ASCII
+letters or digits, `F1` through `F12`, `Enter`, `Tab`, `Escape`, `Space`,
+`Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`, and
+`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`. Declarations are unverified;
+`KeyGesture.warnings` identifies this and reserved declarations. They do not
+prove future delivery or absence of conflicts. `requireObservation` rejects
+declarations and ambiguous stream captures.
+
+On the Windows console, key-down records supply virtual key and modifier state;
+repeated key-down records for a held key do not create additional captures.
+Only the bounded vocabulary above is represented. Windows-key state is tracked
+while this prompt owns the console; a Meta key already held before the prompt
+started may not be reported, so its absence is not proof it was not held.
+Terminal and OS interception, keyboard layouts, AltGr, and remote transports
+can change what arrives; this is not
+physical-key identification or global hotkey registration. Legacy byte-stream
+captures are marked `ambiguous` because the stream does not reliably identify
+all modifiers. Their empty modifier set must not be interpreted as proof that
+no modifier was held.
+
+### DurationInput
+
+Select `DurationInputMode.elapsed` or `DurationInputMode.calendarRelative` when constructing the input; entry never changes the mode. Supply one or more space-separated, case-sensitive tokens such as `1h 30m` or `1y 2mo 0.5s`. Amounts use ASCII digits and optional dot fractions, with no grouping; units cannot repeat. A sign is permitted only with `signed: true`, and applies to the entire expression. The original spelling is retained in `DurationValue.draft`.
+
+Elapsed tokens are `w d h m s ms us`. A day is exactly 24 hours and a week seven days. Calendar-relative mode additionally accepts `y mo`; its `y mo w d` amounts must be whole and remain unapplied components. Sub-day amounts are elapsed quantities. No date, zone, application order, DST policy, endpoint or total is inferred for a period.
+
+Fractions must convert exactly to integer microseconds; there is no rounding. The maximum magnitude is 9223372036854775807 for the elapsed total and for each calendar component, and drafts are limited to 1024 characters. The default is nonnegative, with zero accepted. `signed: true` permits a global sign; `minimumMicroseconds` optionally bounds elapsed values. `allowZero: false` rejects an all-zero value in either mode; calendar periods have no arbitrary built-in ordering or elapsed minimum. Microsecond resolution does not promise scheduler accuracy. Rich and linear input both show a textual interpretation while editing; invalid drafts remain editable.
