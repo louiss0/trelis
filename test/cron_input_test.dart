@@ -323,6 +323,24 @@ void main() {
     );
     expect(preview.instants, [DateTime.utc(1908, 7, 1, 0, 0, 25)]);
   });
+  test('Quartz previews named month and stepped minute range', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer('0 0-30/15 12 ? JAN MON'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024, 1, 1, 12, 14, 59),
+        start: DateTime.utc(2024, 1, 1, 12, 14, 59),
+        end: DateTime.utc(2024, 1, 1, 12, 15, 1),
+        count: 1,
+        budget: 2,
+      ),
+    );
+    expect(preview.instants, [DateTime.utc(2024, 1, 1, 12, 15)]);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

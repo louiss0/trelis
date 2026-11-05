@@ -85,6 +85,21 @@ final class CronExpression {
   }
 }
 
+const _quartzMonths = [
+  'JAN',
+  'FEB',
+  'MAR',
+  'APR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AUG',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DEC',
+];
+
 bool _quartzMatches(List<String> fields, DateTime civil) {
   const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   int weekdayNumber(String text) {
@@ -97,9 +112,13 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
     for (final item in field.split(',')) {
       if (item.contains('/')) {
         final parts = item.split('/');
-        final first = int.parse(parts[0]);
+        final range = parts[0].split('-');
+        final first = int.parse(range[0]);
+        final last = range.length == 2 ? int.parse(range[1]) : 59;
         final step = int.parse(parts[1]);
-        if (value >= first && (value - first) % step == 0) return true;
+        if (value >= first && value <= last && (value - first) % step == 0) {
+          return true;
+        }
         continue;
       }
       final range = item.split('-');
@@ -167,7 +186,12 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
       numeric(fields[1], civil.minute) &&
       numeric(fields[2], civil.hour) &&
       dayOfMonth() &&
-      numeric(fields[4], civil.month) &&
+      numeric(
+        _quartzMonths.contains(fields[4].toUpperCase())
+            ? '${_quartzMonths.indexOf(fields[4].toUpperCase()) + 1}'
+            : fields[4],
+        civil.month,
+      ) &&
       dayOfWeek() &&
       (fields.length == 6 || numeric(fields[6], civil.year));
 }
@@ -311,6 +335,21 @@ final class CronInput {
       const minimum = [0, 0, 0, 1, 1, 1, 1970];
       const maximum = [59, 59, 23, 31, 12, 7, 2199];
       for (final i in [0, 1, 2, 4]) {
+        if (i == 4 && _quartzMonths.contains(fields[i].toUpperCase())) continue;
+        if (i == 1 && RegExp(r'^[0-9]+-[0-9]+/[0-9]+$').hasMatch(fields[i])) {
+          final numbers = fields[i]
+              .split(RegExp(r'[-/]'))
+              .map(int.tryParse)
+              .toList();
+          if (numbers.any((n) => n == null) ||
+              numbers[0]! > numbers[1]! ||
+              numbers[1]! > 59 ||
+              numbers[2]! < 1 ||
+              numbers[2]! > 59) {
+            return false;
+          }
+          continue;
+        }
         if (i == 0 && RegExp(r'^[0-9]+/[0-9]+$').hasMatch(fields[i])) {
           final parts = fields[i].split('/').map(int.tryParse).toList();
           if (parts[0] == null ||
