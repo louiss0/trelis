@@ -76,7 +76,7 @@ void main() {
       '--1s',
       '1,5s',
       '.5s',
-      'Ù¡s',
+      'Ã™Â¡s',
       '1e3s',
       '1h30m',
       '1 s',
@@ -245,4 +245,53 @@ void main() {
       throwsArgumentError,
     );
   });
+  test(
+    'unit prefixes distinguish minutes milliseconds microseconds and months',
+    () async {
+      final elapsed =
+          (await DurationInput(
+                    'Duration',
+                    durationMode: DurationInputMode.elapsed,
+                  ).prompt(source: SuppliedAnswer('1m 1ms 1us'))
+                  as Accepted<DurationValue>)
+              .value;
+      expect(elapsed.microseconds, BigInt.from(60001001));
+      final calendar =
+          (await DurationInput(
+                    'Period',
+                    durationMode: DurationInputMode.calendarRelative,
+                  ).prompt(source: SuppliedAnswer('1mo 1m'))
+                  as Accepted<DurationValue>)
+              .value;
+      expect(calendar.components['mo'], BigInt.one);
+      expect(calendar.microseconds, BigInt.from(60000000));
+    },
+  );
+  test(
+    'overflow checks include sums and calendar component magnitude',
+    () async {
+      final elapsed = DurationInput(
+        'Duration',
+        durationMode: DurationInputMode.elapsed,
+      );
+      expect(
+        await elapsed.prompt(
+          source: SuppliedAnswer('9223372036854775807us 1ms'),
+        ),
+        isA<Unavailable>(),
+      );
+      final calendar = DurationInput(
+        'Period',
+        durationMode: DurationInputMode.calendarRelative,
+      );
+      expect(
+        await calendar.prompt(source: SuppliedAnswer('9223372036854775808y')),
+        isA<Unavailable>(),
+      );
+      expect(
+        await calendar.prompt(source: SuppliedAnswer('9223372036854775807y')),
+        isA<Accepted<DurationValue>>(),
+      );
+    },
+  );
 }

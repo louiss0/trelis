@@ -132,7 +132,7 @@ final class DurationInput {
     _active = true;
     try {
       final description = durationMode == DurationInputMode.elapsed
-          ? 'elapsed; units w d h m s ms us; minimum ${minimumMicroseconds?.toString() ?? (signed ? "none" : "0")} microseconds'
+          ? 'elapsed; units w d h m s ms us; d is 24 hours, w is 7 days; minimum ${minimumMicroseconds?.toString() ?? (signed ? "none" : "0")} microseconds'
           : 'calendar-relative; whole y mo w d and elapsed h m s ms us; unapplied period';
       final sink = source is ScriptedInput
           ? source.output
@@ -157,7 +157,7 @@ final class DurationInput {
 
       final result =
           await TextInput._(
-            '$label ($description; ${signed ? 'global sign allowed' : 'nonnegative'}; ; maximum 1024 characters; maximum magnitude 9223372036854775807)',
+            '$label ($description; ${signed ? 'global sign allowed' : 'nonnegative'}; ${allowZero ? 'zero allowed unless below minimum' : 'zero forbidden'}; ASCII amounts with dot fractions, space-separated tokens, no grouping; exact integer microseconds; maximum 1024 characters; maximum magnitude 9223372036854775807)',
             onChanged: review,
             required: true,
             initialValue: initialValue ?? '',
