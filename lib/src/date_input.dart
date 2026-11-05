@@ -466,8 +466,9 @@ final class DateInput {
 
   String _dateError(String draft, DateFieldOrder order) {
     final parts = draft.split('/');
-    if (parts.length != 3)
+    if (parts.length != 3) {
       return 'Invalid date: enter all three slash-separated fields.';
+    }
     final labels = switch (order) {
       DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
       DateFieldOrder.monthDayYear => ['month', 'day', 'year'],
@@ -489,8 +490,9 @@ final class DateInput {
     if (year < (calendar == DateCalendar.buddhist ? 2484 : 1)) {
       return 'Invalid date: year is outside the supported calendar range.';
     }
-    if (month < 1 || month > 12)
+    if (month < 1 || month > 12) {
       return 'Invalid date: month must be 1 through 12.';
+    }
     return 'Invalid date: day does not exist in the selected month and year.';
   }
 
