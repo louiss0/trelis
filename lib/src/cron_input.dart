@@ -31,8 +31,15 @@ final class CronExpression {
       config.start,
       location,
     ).timeZoneOffset;
-    final minuteMicros =
-        profile == CronProfile.unix && initialOffset.inSeconds % 60 == 0
+    final hasSubMinuteOffset =
+        initialOffset.inSeconds % 60 != 0 ||
+        location.transitionAt.any(
+          (at) =>
+              at >= config.start.millisecondsSinceEpoch &&
+              at <= config.end.millisecondsSinceEpoch &&
+              location.timeZone(at).offset.inSeconds % 60 != 0,
+        );
+    final minuteMicros = profile == CronProfile.unix && !hasSubMinuteOffset
         ? Duration.microsecondsPerMinute
         : Duration.microsecondsPerSecond;
     final strictlyAfter =

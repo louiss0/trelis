@@ -305,6 +305,24 @@ void main() {
     expect(preview.status, CronPreviewStatus.unsupportedRange);
     expect(preview.instants, isEmpty);
   });
+  test('Unix preview handles transitions into sub-minute offsets', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('* * * * *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Africa/Lagos',
+        reference: DateTime.utc(1908, 6, 30, 23, 59, 59),
+        start: DateTime.utc(1908, 6, 30, 23, 59, 59),
+        end: DateTime.utc(1908, 7, 1, 0, 1),
+        count: 1,
+        budget: 61,
+      ),
+    );
+    expect(preview.instants, [DateTime.utc(1908, 7, 1, 0, 0, 25)]);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
