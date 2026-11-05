@@ -430,7 +430,7 @@ class _Keys {
   bool _discardPaste = false;
   bool _afterCarriageReturn = false;
   Timer? _timer;
-  _Keys(Stream<List<int>> source) {
+  _Keys(Stream<List<int>> source, {bool flushEscapeOnEnd = false}) {
     _iterator = StreamIterator(_controller.stream);
     _subscription = source
         .transform(utf8.decoder)
@@ -442,6 +442,10 @@ class _Keys {
           onError: _controller.addError,
           onDone: () {
             _timer?.cancel();
+            if (flushEscapeOnEnd && _buffer == '\x1b') {
+              _controller.add('\x1b');
+              _buffer = '';
+            }
             _controller.close();
           },
         );
@@ -550,11 +554,20 @@ class _Console {
 
 // Read from the already-authorized console handle without subscribing to stdin:
 // cancelling Dart's stdin subscription closes the process handle on Windows.
-Stream<String> _consoleInput(_Console console, int handle) {
+final class _CaptureControl {
+  bool armed = false;
+}
+
+Stream<String> _consoleInput(
+  _Console console,
+  int handle, [
+  _CaptureControl? capture,
+]) {
   late StreamController<String> controller;
   Timer? timer;
   StreamSubscription<ProcessSignal>? signals;
   int? highSurrogate;
+  final held = <int>{};
   final count = calloc<Uint32>();
   final read = calloc<Uint32>();
   final records = calloc<Uint8>(20 * 64);
@@ -572,12 +585,39 @@ Stream<String> _consoleInput(_Console console, int handle) {
     final bytes = ByteData.sublistView(records.asTypedList(20 * read.value));
     for (var i = 0; i < read.value; i++) {
       final base = i * 20;
-      if (bytes.getUint16(base, Endian.little) != 1 ||
-          bytes.getInt32(base + 4, Endian.little) == 0) {
+      if (bytes.getUint16(base, Endian.little) != 1) continue;
+      final vk = bytes.getUint16(base + 10, Endian.little);
+      if (bytes.getInt32(base + 4, Endian.little) == 0) {
+        held.remove(vk);
         continue;
       }
+      final firstDown = held.add(vk);
       final code = bytes.getUint16(base + 14, Endian.little);
-      final vk = bytes.getUint16(base + 10, Endian.little);
+      final state =
+          bytes.getUint32(base + 16, Endian.little) |
+          (held.contains(0x5b) || held.contains(0x5c) ? 0x1000000 : 0);
+      if (capture != null && !firstDown) continue;
+      if (capture != null &&
+          ((vk == 0x43 && (state & 0x0c) != 0) || code == 3)) {
+        controller.add('\x03');
+        continue;
+      }
+      if (capture?.armed == true) {
+        if (vk == 0x10 ||
+            vk == 0x11 ||
+            vk == 0x12 ||
+            vk == 0x5b ||
+            vk == 0x5c) {
+          continue;
+        }
+        capture!.armed = false;
+        if (vk == 0x1b) {
+          controller.add('\x1b');
+        } else {
+          controller.add('\x1b[901;$vk;$code;$state~');
+        }
+        continue;
+      }
       if (code >= 0xd800 && code <= 0xdbff) {
         highSurrogate = code;
         continue;
@@ -629,8 +669,9 @@ Future<PromptResult<T>> _terminal<T>(
   PromptMode mode,
   Stdout outputStream,
   Future<PromptResult<T>> Function(ScriptedInput, PromptMode, void Function())
-  run,
-) async {
+  run, {
+  _CaptureControl? capture,
+}) async {
   if (!Platform.isWindows || !stdin.hasTerminal) {
     return Unavailable(
       'Interactive console input is unavailable; supply an explicit input source.',
@@ -692,7 +733,7 @@ Future<PromptResult<T>> _terminal<T>(
     }
     return await run(
       ScriptedInput(
-        _consoleInput(console, input),
+        _consoleInput(console, input, capture),
         outputStream,
         supportsRich: outputStream.hasTerminal,
       ),
@@ -3192,6 +3233,3 @@ final class TimeInput {
     }
   }
 }
-
-
-

@@ -341,3 +341,35 @@ checking reachability. Set `cidr: true` to require an address and prefix;
 zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
 interface existence. Brackets and URL escaping are not interpreted.
+
+### Key capture
+
+`Keypress` captures one logical gesture; `KeyChordInput` captures a nonempty
+ordered sequence. In rich mode, `c` arms one capture, `d` declares, `r`
+removes the last gesture, `x` clears, and Enter submits. In linear mode use
+`/capture`, `/declare`, `/remove`, `/clear`, and `/done`; `/cancel` cancels.
+Every capture returns to review: it never submits automatically. Escape exits
+armed capture before cancelling the prompt; Ctrl+C interrupts. These two
+reserved gestures cannot be captured live.
+
+Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`);
+for supplied `KeyChordInput` answers, separate gestures with commas. Modifiers
+are `Ctrl`, `Alt`, `Shift`, and `Meta`, each at most once. Keys are ASCII
+letters or digits, `F1` through `F12`, `Enter`, `Tab`, `Escape`, `Space`,
+`Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`, and
+`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`. Declarations are unverified;
+`KeyGesture.warnings` identifies this and reserved declarations. They do not
+prove future delivery or absence of conflicts. `requireObservation` rejects
+declarations and ambiguous stream captures.
+
+On the Windows console, key-down records supply virtual key and modifier state;
+repeated key-down records for a held key do not create additional captures.
+Only the bounded vocabulary above is represented. Windows-key state is tracked
+while this prompt owns the console; a Meta key already held before the prompt
+started may not be reported, so its absence is not proof it was not held.
+Terminal and OS interception, keyboard layouts, AltGr, and remote transports
+can change what arrives; this is not
+physical-key identification or global hotkey registration. Legacy byte-stream
+captures are marked `ambiguous` because the stream does not reliably identify
+all modifiers. Their empty modifier set must not be interpreted as proof that
+no modifier was held.
