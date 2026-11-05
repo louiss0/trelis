@@ -281,10 +281,16 @@ final class DateInput {
   DateInput(
     this.label, {
     this.order,
-    this.calendar = DateCalendar.gregorian,
-    this.digits = DateDigits.ascii,
+    DateCalendar? calendar,
+    DateDigits? digits,
     this.initialValue,
-  }) {
+  }) : calendar = calendar ?? DateCalendar.gregorian,
+       digits = digits ?? DateDigits.ascii {
+    if (order == null && (calendar != null || digits != null)) {
+      throw ArgumentError(
+        'A calendar or digit override requires an explicit field order.',
+      );
+    }
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
