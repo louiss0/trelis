@@ -22,6 +22,20 @@ jobs:
       - run: dart analyze
       - run: dart test --reporter expanded
 
+  posix-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.2
+      - run: dart pub get
+      - run: python3 test/posix_terminal_pty.py
+
   windows-native:
     runs-on: windows-latest
     steps:
