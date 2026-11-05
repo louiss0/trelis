@@ -88,6 +88,40 @@ final class CivilDate {
   final DateCalendar calendar;
 }
 
+// Date-only conversion boundary. The supported Buddhist profile is the modern
+// January-based interval, with no leap-month or era ambiguity in this range.
+final class _ArithmeticDateProvider {
+  _ArithmeticDateProvider(this.calendar);
+  final DateCalendar calendar;
+
+  CivilDate? convert(int inputYear, int month, int day) {
+    final year = calendar == DateCalendar.buddhist
+        ? inputYear - 543
+        : inputYear;
+    if (calendar == DateCalendar.buddhist && year < 1941) return null;
+    if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1) {
+      return null;
+    }
+    final leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    final days = <int>[
+      31,
+      leap ? 29 : 28,
+      31,
+      30,
+      31,
+      30,
+      31,
+      31,
+      30,
+      31,
+      30,
+      31,
+    ];
+    if (day > days[month - 1]) return null;
+    return CivilDate._(year, month, day, inputYear, calendar);
+  }
+}
+
 /// Date entry with an explicit calendar and field order. Automatic system
 /// resolution is not yet available and fails closed rather than guessing.
 final class DateInput {
@@ -148,11 +182,6 @@ final class DateInput {
       fields.add(number);
     }
     final inputYear = fields[yearIndex];
-    final year = calendar == DateCalendar.buddhist
-        ? inputYear - 543
-        : inputYear;
-    // Restrict the Buddhist profile to the modern January-based era.
-    if (calendar == DateCalendar.buddhist && year < 1941) return null;
     final month =
         fields[switch (order) {
           DateFieldOrder.dayMonthYear => 1,
@@ -165,24 +194,7 @@ final class DateInput {
           DateFieldOrder.monthDayYear => 1,
           DateFieldOrder.yearMonthDay => 2,
         }];
-    if (year < 1 || month < 1 || month > 12 || day < 1) return null;
-    final leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    final days = <int>[
-      31,
-      leap ? 29 : 28,
-      31,
-      30,
-      31,
-      30,
-      31,
-      31,
-      30,
-      31,
-      30,
-      31,
-    ];
-    if (day > days[month - 1]) return null;
-    return CivilDate._(year, month, day, inputYear, calendar);
+    return _ArithmeticDateProvider(calendar).convert(inputYear, month, day);
   }
 
   Future<PromptResult<CivilDate>> prompt({
@@ -249,6 +261,29 @@ final class DateInput {
     }
   }
 
+  int get _nativeZero => switch (digits) {
+    DateDigits.ascii => 0x30,
+    DateDigits.thai => 0x0e50,
+    DateDigits.arabicIndic => 0x0660,
+  };
+
+  int? _segmentNumber(String value) {
+    if (value.isEmpty) return null;
+    int? base;
+    var result = 0;
+    for (final rune in value.runes) {
+      final current = rune >= 0x30 && rune <= 0x39
+          ? 0x30
+          : rune >= _nativeZero && rune <= _nativeZero + 9
+          ? _nativeZero
+          : -1;
+      if (current < 0 || (base != null && base != current)) return null;
+      base = current;
+      result = result * 10 + rune - current;
+    }
+    return result;
+  }
+
   Future<({String action, String value})> _editSegments(
     _Keys keys,
     String draft,
@@ -272,12 +307,17 @@ final class DateInput {
         keys,
         segments[focus],
         out,
+        maxLength: name == 'year' ? 4 : 2,
         intercept: (key, text) {
+          if (key.startsWith('\x1b[200~') && key.contains('/')) {
+            out.writeln('Paste only one numeric segment at a time.');
+            return 'handled';
+          }
           if (key == '\t') return 'next';
           if (key == '\x1b[Z') return 'previous';
           if (key == '/') {
             final valid =
-                text.isNotEmpty &&
+                _segmentNumber(text) != null &&
                 text.runes.length <= (name == 'year' ? 4 : 2) &&
                 (name != 'year' || text.runes.length == 4);
             if (valid && focus < 2) return 'next';
@@ -296,9 +336,9 @@ final class DateInput {
       }
       segments[focus] = edit.value;
       if (edit.action == 'increase' || edit.action == 'decrease') {
-        final number = int.tryParse(edit.value);
+        final number = _segmentNumber(edit.value);
         if (number == null) {
-          out.writeln('Enter an ASCII segment before adjustment.');
+          out.writeln('Enter a numeric segment before adjustment.');
         } else {
           final next = number + (edit.action == 'increase' ? 1 : -1);
           final max = name == 'year'
@@ -307,7 +347,12 @@ final class DateInput {
               ? 12
               : 31;
           if (next >= 1 && next <= max) {
-            segments[focus] = next.toString().padLeft(edit.value.length, '0');
+            final ascii = next.toString().padLeft(edit.value.runes.length, '0');
+            final first = edit.value.runes.first;
+            final base = first >= 0x30 && first <= 0x39 ? 0x30 : _nativeZero;
+            segments[focus] = String.fromCharCodes(
+              ascii.runes.map((r) => r - 0x30 + base),
+            );
           }
         }
         continue;

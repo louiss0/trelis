@@ -500,6 +500,9 @@ range 2484-9999 BE. Its year offset is informed by ICU 76.1 source
 `icu4c/source/i18n/buddhcal.cpp` (release-76-1), which maps Buddhist year to
 extended Gregorian year by subtracting 543. This is an independent arithmetic
 implementation, not an ICU provider or a qualification of ICU behavior.
-System-preference resolution and segmented rich controls are not implemented;
-without an explicit field order the prompt returns unavailable. The shared
-native terminal backend currently accepts interactive input only on Windows.
+Windows automatic resolution supports a narrow full-year numeric short-date
+profile, Gregorian or Buddhist calendar, and ASCII, Thai or Arabic-Indic digits.
+Other profiles and other platforms require an explicit override. Rich entry
+has numeric segments and linear entry uses a slash body. The shared native
+terminal backend currently accepts interactive input only on Windows. This
+prototype has not completed calendar-provider or accessibility qualification.
