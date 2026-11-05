@@ -36,10 +36,21 @@ limited to 4096 UTF-16 code units; supplied answers exceeding that limit are
 rejected before field parsing. Zone identifiers are limited to 255 UTF-16 code
 units before provider loading. Field sets are compiled once per preview; each
 candidate uses set lookups and bounded civil-day calculations. The preview's
-work budget counts candidate instants, not parsing, provider initialization,
-or elapsed time. `cron_large_step_test.dart` uses a separate process with a
-timeout to verify that a maximum integer Unix step does not wrap into an
-infinite expansion. This is not a hard wall-clock guarantee.
+work budget counts candidate instants. Parsing is bounded by the 4096-code-unit
+expression limit and finite field domains: each expanded field has at most 230
+values per list element, and fields are compiled once per preview.
+`cron_large_step_test.dart` uses a separate process with a timeout to verify
+that a maximum integer Unix step does not wrap into an infinite expansion.
+The caller must explicitly supply a positive `providerTimeout`; on timeout or
+cancellation the provider worker isolate is sent an immediate kill request,
+and the preview waits for the worker's exit notification before returning.
+`providerTimedOut` is distinct from candidate-budget exhaustion. Dart timers
+are scheduled events, not hard real-time deadlines: a blocked main isolate,
+delayed isolate creation, or delayed exit acknowledgement can extend elapsed
+time past the configured timeout. Killing the worker also cannot undo side
+effects performed by an injected initializer. Initializers must be
+isolate-transferable and must not spawn independent work or perform
+irreversible side effects.
 
 ## Profile sources and checked examples
 
@@ -60,8 +71,9 @@ an exact pinned Cronie or Quartz engine. Known qualification gaps include a
 complete syntax and boundary corpus, provider failures other than an unknown
 zone, and worst-case wall-clock responsiveness. Initialization's documented
 `TimeZoneInitException` and unknown-zone `LocationNotFoundException` are mapped
-to provider-error outcomes; the initialization failure is not injected by the
-current tests. The package initializer clears and repopulates its isolate's
+to provider-error outcomes. `cron_provider_bounds_test.dart` injects an
+initialization exception, checks draft preservation, and exercises a hung
+initializer's timeout and cancellation paths. The package initializer clears and repopulates its isolate's
 global database and sets its local zone to UTC. A regression fixture verifies
 that preview leaves the caller isolate's local zone unchanged; it does not
 qualify all possible interactions with other timezone consumers. Interactive preview

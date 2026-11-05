@@ -10,6 +10,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024, 1, 1),
         start: DateTime.utc(2024, 1, 1),
@@ -31,6 +32,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(1969, 12, 31, 23, 58, 30),
         start: DateTime.utc(1969, 12, 31, 23, 58),
@@ -51,6 +53,7 @@ void main() {
       final expression = (result as Accepted<CronExpression>).value;
       final preview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'Etc/UTC',
           reference: DateTime.utc(2023, 12, 31),
           start: DateTime.utc(2024),
@@ -76,6 +79,7 @@ void main() {
       final expression = (result as Accepted<CronExpression>).value;
       final preview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'America/New_York',
           reference: DateTime.utc(2024, 3, 10, 5),
           start: DateTime.utc(2024, 3, 10, 5),
@@ -94,6 +98,7 @@ void main() {
     ).prompt(source: SuppliedAnswer('0 0 * * *'));
     final expression = (result as Accepted<CronExpression>).value;
     CronPreviewConfig config(int budget) => CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),
@@ -118,6 +123,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'America/New_York',
         reference: DateTime.utc(2024, 11, 3, 4),
         start: DateTime.utc(2024, 11, 3, 4),
@@ -139,6 +145,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024, 2, 28, 23, 59),
         start: DateTime.utc(2024, 2, 28, 23, 59),
@@ -161,6 +168,7 @@ void main() {
     });
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024),
         start: DateTime.utc(2024),
@@ -183,6 +191,7 @@ void main() {
       final expression = (result as Accepted<CronExpression>).value;
       final preview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'Invalid/Zone',
           reference: DateTime.utc(2024),
           start: DateTime.utc(2024),
@@ -203,6 +212,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024, 1, 1),
         start: DateTime.utc(2024, 1, 1),
@@ -233,6 +243,7 @@ void main() {
       final start = entry.value.subtract(const Duration(seconds: 2));
       final preview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'Etc/UTC',
           reference: start,
           start: start,
@@ -254,6 +265,7 @@ void main() {
       final expression = (result as Accepted<CronExpression>).value;
       final preview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'Africa/Monrovia',
           reference: DateTime.utc(1950, 1, 1),
           start: DateTime.utc(1950, 1, 1),
@@ -273,6 +285,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024, 1, 1),
         start: DateTime.utc(2024, 1, 1),
@@ -294,6 +307,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2200),
         start: DateTime.utc(2200),
@@ -313,6 +327,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Africa/Lagos',
         reference: DateTime.utc(1908, 6, 30, 23, 59, 59),
         start: DateTime.utc(1908, 6, 30, 23, 59, 59),
@@ -331,6 +346,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024, 1, 1, 12, 14, 59),
         start: DateTime.utc(2024, 1, 1, 12, 14, 59),
@@ -351,6 +367,7 @@ void main() {
       final expression = (result as Accepted<CronExpression>).value;
       final preview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'Etc/UTC',
           reference: DateTime.utc(2024, 1, 1),
           start: DateTime.utc(2024, 1, 1),
@@ -373,6 +390,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     final preview = await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024, 1, 1, 11, 59, 59),
         start: DateTime.utc(2024, 1, 1, 11, 59, 59),
@@ -388,6 +406,7 @@ void main() {
     () async {
       final output = StringBuffer();
       final config = CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024),
         start: DateTime.utc(2024),
@@ -419,6 +438,7 @@ void main() {
   test('rich review navigates preview then submit actions', () async {
     final output = StringBuffer();
     final config = CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),
@@ -443,6 +463,7 @@ void main() {
     () async {
       final output = StringBuffer();
       final config = CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Invalid/Zone',
         reference: DateTime.utc(2024),
         start: DateTime.utc(2024),
@@ -471,6 +492,7 @@ void main() {
   );
   test('linear review can cancel without submitting', () async {
     final config = CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),

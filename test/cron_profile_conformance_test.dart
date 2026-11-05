@@ -18,6 +18,7 @@ Future<CronPreview> preview(
   final reference = at.subtract(const Duration(seconds: 1));
   return value.preview(
     CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: reference,
       start: reference,
@@ -145,6 +146,7 @@ void main() {
       );
       final resultPreview = await expression.preview(
         CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'Etc/UTC',
           reference: maximum,
           start: maximum,
@@ -167,6 +169,7 @@ void main() {
     final expression = (result as Accepted<CronExpression>).value;
     await expression.preview(
       CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
         zone: 'Etc/UTC',
         reference: DateTime.utc(2024),
         start: DateTime.utc(2024),
@@ -191,6 +194,7 @@ void main() {
         final expression = (result as Accepted<CronExpression>).value;
         final preview = await expression.preview(
           CronPreviewConfig(
+            providerTimeout: const Duration(seconds: 5),
             zone: 'Etc/UTC',
             reference: DateTime.utc(2024),
             start: DateTime.utc(2024),
@@ -212,6 +216,7 @@ void main() {
     () {
       expect(
         () => CronPreviewConfig(
+          providerTimeout: const Duration(seconds: 5),
           zone: 'A' * 256,
           reference: DateTime.utc(2024),
           start: DateTime.utc(2024),

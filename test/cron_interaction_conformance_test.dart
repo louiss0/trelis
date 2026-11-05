@@ -4,6 +4,7 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 CronPreviewConfig config() => CronPreviewConfig(
+  providerTimeout: const Duration(seconds: 5),
   zone: 'Etc/UTC',
   reference: DateTime.utc(2024),
   start: DateTime.utc(2024),
@@ -17,6 +18,7 @@ void main() {
     final input = StreamController<String>();
     final output = StringBuffer();
     final longConfig = CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),
@@ -47,6 +49,7 @@ void main() {
     final input = StreamController<String>();
     final output = StringBuffer();
     final longConfig = CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),
@@ -78,6 +81,7 @@ void main() {
     final input = StreamController<String>();
     final output = StringBuffer();
     final longConfig = CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),
@@ -113,6 +117,7 @@ void main() {
     final input = StreamController<String>();
     final output = StringBuffer();
     final longConfig = CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2024),
       start: DateTime.utc(2024),

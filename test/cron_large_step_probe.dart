@@ -8,6 +8,7 @@ Future<void> main() async {
   final expression = (accepted as Accepted<CronExpression>).value;
   final result = await expression.preview(
     CronPreviewConfig(
+      providerTimeout: const Duration(seconds: 5),
       zone: 'Etc/UTC',
       reference: DateTime.utc(2023, 12, 31, 23, 59),
       start: DateTime.utc(2023, 12, 31, 23, 59),

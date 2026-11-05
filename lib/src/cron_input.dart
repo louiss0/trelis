@@ -12,15 +12,9 @@ final class CronExpression {
   /// A bounded civil-time preview using timezone 0.11.2 / tzdata 2026e.
   /// Unix searches beginning with sub-minute offsets use second candidates.
   Future<CronPreview> preview(CronPreviewConfig config) async {
-    late final timezone.Location location;
-    final zone = config.zone;
-    try {
-      location = await _loadCronZone(zone);
-    } on timezone.LocationNotFoundException {
-      return CronPreview._(const [], CronPreviewStatus.providerError);
-    } on timezone.TimeZoneInitException {
-      return CronPreview._(const [], CronPreviewStatus.providerError);
-    }
+    final loaded = await _loadCronZone(config);
+    final location = loaded.location;
+    if (location == null) return CronPreview._(const [], loaded.status);
     if (profile == CronProfile.quartz &&
         (timezone.TZDateTime.from(config.start, location).year < 1970 ||
             timezone.TZDateTime.from(config.end, location).year > 2199)) {
@@ -97,10 +91,80 @@ final class CronExpression {
   }
 }
 
-Future<timezone.Location> _loadCronZone(String zone) => Isolate.run(() {
-  timezone_data.initializeTimeZones();
-  return timezone.getLocation(zone);
-});
+void _cronProviderWorker((SendPort, String, void Function()?) request) {
+  final (port, zone, initializer) = request;
+  try {
+    initializer?.call();
+    timezone_data.initializeTimeZones();
+    port.send(timezone.getLocation(zone));
+  } catch (_) {
+    port.send(null);
+  }
+}
+
+Future<({timezone.Location? location, CronPreviewStatus status})> _loadCronZone(
+  CronPreviewConfig config,
+) async {
+  final port = ReceivePort();
+  final exitPort = ReceivePort();
+  final exited = exitPort.first;
+  final done =
+      Completer<({timezone.Location? location, CronPreviewStatus status})>();
+  Isolate? worker;
+  void finish(timezone.Location? location, CronPreviewStatus status) {
+    if (done.isCompleted) return;
+    worker?.kill(priority: Isolate.immediate);
+    done.complete((location: location, status: status));
+  }
+
+  final deadline = Timer(
+    config.providerTimeout,
+    () => finish(null, CronPreviewStatus.providerTimedOut),
+  );
+  final cancellation = Timer.periodic(const Duration(milliseconds: 10), (_) {
+    if (config.isCancelled()) finish(null, CronPreviewStatus.cancelled);
+  });
+  final subscription = port.listen((message) {
+    if (message is timezone.Location) {
+      finish(message, CronPreviewStatus.complete);
+    } else {
+      finish(null, CronPreviewStatus.providerError);
+    }
+  }, onError: (_) => finish(null, CronPreviewStatus.providerError));
+  try {
+    final spawned =
+        Isolate.spawn(
+          _cronProviderWorker,
+          (port.sendPort, config.zone, config.providerInitializer),
+          onError: port.sendPort,
+          onExit: exitPort.sendPort,
+        ).then<Isolate?>(
+          (isolate) {
+            worker = isolate;
+            if (done.isCompleted) isolate.kill(priority: Isolate.immediate);
+            return isolate;
+          },
+          onError: (Object error, StackTrace stack) {
+            finish(null, CronPreviewStatus.providerError);
+            return null;
+          },
+        );
+    final result = await done.future;
+    final isolate = await spawned;
+    if (isolate != null) {
+      isolate.kill(priority: Isolate.immediate);
+      await exited;
+    }
+    return result;
+  } finally {
+    deadline.cancel();
+    cancellation.cancel();
+    await subscription.cancel();
+    port.close();
+    exitPort.close();
+    worker?.kill(priority: Isolate.immediate);
+  }
+}
 
 const _quartzMonths = [
   'JAN',
@@ -340,6 +404,8 @@ final class CronPreviewConfig {
     required this.end,
     required this.count,
     required this.budget,
+    required this.providerTimeout,
+    this.providerInitializer,
     this.isCancelled = _neverCancelled,
   }) {
     if (zone.isEmpty ||
@@ -349,7 +415,8 @@ final class CronPreviewConfig {
         !end.isUtc ||
         end.isBefore(start) ||
         count <= 0 ||
-        budget <= 0) {
+        budget <= 0 ||
+        providerTimeout <= Duration.zero) {
       throw ArgumentError('Invalid preview configuration.');
     }
   }
@@ -359,6 +426,13 @@ final class CronPreviewConfig {
   final DateTime end;
   final int count;
   final int budget;
+
+  /// Maximum provider initialization time; the worker isolate is killed on expiry.
+  final Duration providerTimeout;
+
+  /// Optional isolate-safe hook invoked before provider initialization.
+  /// Useful for provider setup and testing. It must be transferable to an isolate.
+  final void Function()? providerInitializer;
   final bool Function() isCancelled;
 }
 
@@ -370,6 +444,7 @@ enum CronPreviewStatus {
   budgetExhausted,
   cancelled,
   providerError,
+  providerTimedOut,
   unsupportedRange,
 }
 
@@ -685,6 +760,8 @@ final class CronInput {
               end: config.end,
               count: config.count,
               budget: config.budget,
+              providerTimeout: config.providerTimeout,
+              providerInitializer: config.providerInitializer,
               isCancelled: () =>
                   interrupted || cancelled || config.isCancelled(),
             );
@@ -700,7 +777,7 @@ final class CronInput {
             if (interrupted) return Interrupted();
             if (cancelled) return Cancelled();
             out.writeln(
-              'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; gaps skipped, folds included; not scheduler execution.',
+              'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
               out.writeln(instant);

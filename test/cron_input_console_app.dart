@@ -6,6 +6,7 @@ Future<void> main(List<String> args) async {
       ? PromptMode.linear
       : PromptMode.rich;
   final config = CronPreviewConfig(
+    providerTimeout: const Duration(seconds: 5),
     zone: 'Etc/UTC',
     reference: DateTime.utc(2024),
     start: DateTime.utc(2024),
