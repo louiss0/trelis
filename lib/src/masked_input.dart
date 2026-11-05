@@ -27,7 +27,8 @@ final class MaskTemplate {
 
 /// The selected template, raw slot data, and formatted representation.
 final class MaskedValue {
-  MaskedValue(this.template, this.slots, this.formatted);
+  MaskedValue(this.template, List<String> slots, this.formatted)
+    : slots = List.unmodifiable(slots);
   final String template;
   final List<String> slots;
   final String formatted;
@@ -35,10 +36,54 @@ final class MaskedValue {
 }
 
 final class MaskedInput {
-  MaskedInput(this.label, {required List<MaskTemplate> templates})
-    : templates = List.unmodifiable(templates);
+  MaskedInput(
+    this.label, {
+    required List<MaskTemplate> templates,
+    this.initialValue,
+  }) : templates = List.unmodifiable(templates) {
+    if (label.trim().isEmpty ||
+        label.runes.any((c) => c < 32 || c == 127) ||
+        templates.isEmpty ||
+        templates.map((t) => t.name).toSet().length != templates.length) {
+      throw ArgumentError('Invalid label or templates.');
+    }
+    for (final template in templates) {
+      if (template.name.trim().isEmpty ||
+          template.name.runes.any((c) => c < 32 || c == 127) ||
+          template.elements.whereType<MaskSlot>().isEmpty) {
+        throw ArgumentError('Invalid template.');
+      }
+    }
+    if (initialValue != null) {
+      final matching = templates.where((t) => t.name == initialValue!.template);
+      if (matching.length != 1) {
+        throw ArgumentError.value(initialValue, 'initialValue');
+      }
+      final template = matching.single;
+      final rules = template.elements.whereType<MaskSlot>().toList();
+      final slots = initialValue!.slots;
+      if (slots.length != rules.length ||
+          slots.indexed.any(
+            (e) =>
+                e.$2.isNotEmpty &&
+                (e.$2.characters.length != 1 ||
+                    e.$2.runes.any((c) => c < 32 || c == 127) ||
+                    !rules[e.$1].accepts(e.$2)),
+          )) {
+        throw ArgumentError.value(initialValue, 'initialValue');
+      }
+      var i = 0;
+      final formatted = template.elements
+          .map((e) => e is MaskLiteral ? e.text : slots[i++])
+          .join();
+      if (formatted != initialValue!.formatted) {
+        throw ArgumentError.value(initialValue, 'initialValue');
+      }
+    }
+  }
   final String label;
   final List<MaskTemplate> templates;
+  final MaskedValue? initialValue;
 
   bool _active = false;
 
@@ -146,12 +191,13 @@ final class MaskedInput {
     PromptMode mode,
     void Function()? beforeClose,
   ) async {
-    if (mode == PromptMode.rich && templates.length == 1) {
-      return _richFixed(source, beforeClose);
+    if (templates.length == 1) {
+      if (mode == PromptMode.rich) return _richFixed(source, beforeClose);
+      return _linearFixed(source, beforeClose);
     }
     final keys = _Keys(source.input.transform(utf8.encoder));
     final out = source.output;
-    var draft = '';
+    var draft = initialValue?.formatted ?? '';
     out.writeln(
       '$label: Enter raw or formatted value. Escape cancels; Ctrl+C interrupts.',
     );
@@ -187,10 +233,13 @@ final class MaskedInput {
   ) async {
     final template = templates.single;
     final rules = template.elements.whereType<MaskSlot>().toList();
-    final slots = List<String>.filled(rules.length, '');
+    final slots = initialValue == null
+        ? List<String>.filled(rules.length, '')
+        : List<String>.of(initialValue!.slots);
     final keys = _Keys(source.input.transform(utf8.encoder));
     final out = source.output;
-    var focus = 0;
+    var focus = initialValue == null ? 0 : slots.length;
+    int? lastTyped;
     void show() {
       out.writeln('$label. Template: ${template.name}.');
       for (var i = 0; i < slots.length; i++) {
@@ -207,6 +256,28 @@ final class MaskedInput {
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') return Cancelled();
+        if (key == '\x1b[999~') {
+          out.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
+          continue;
+        }
+        if (key.startsWith('\x1b[200~')) {
+          final paste = key.substring(6, key.length - 6);
+          if (paste.runes.any((c) => c < 32 || c == 127)) {
+            out.writeln('Paste rejected: single-line printable text only.');
+            continue;
+          }
+          final result = await _run(SuppliedAnswer(paste), PromptMode.rich);
+          if (result is Accepted<MaskedValue>) {
+            slots.setAll(0, result.value.slots);
+            focus = slots.length;
+            lastTyped = null;
+          } else {
+            out.writeln('Paste requires resolution: $paste');
+          }
+          show();
+          continue;
+        }
+        if (key.runes.first < 32 || key == '\x7f') lastTyped = null;
         if (key == '\x1b[D' && focus > 0) focus--;
         if (key == '\x1b[C' && focus < slots.length) focus++;
         if ((key == '\x7f' || key == '\x08') && focus > 0) slots[--focus] = '';
@@ -225,16 +296,141 @@ final class MaskedInput {
               MaskedValue(template.name, List.unmodifiable(slots), formatted),
             );
           }
-        } else if (!key.startsWith('\x1b') &&
-            key.runes.first >= 32 &&
-            focus < slots.length) {
-          if (rules[focus].accepts(key)) {
-            slots[focus++] = key;
+        } else if (!key.startsWith('\x1b') && key.runes.first >= 32) {
+          final prior = lastTyped;
+          if (prior != null && (slots[prior] + key).characters.length == 1) {
+            final combined = slots[prior] + key;
+            if (rules[prior].accepts(combined)) {
+              slots[prior] = combined;
+            } else {
+              out.writeln('Slot does not accept that grapheme.');
+            }
+          } else if (focus < slots.length && rules[focus].accepts(key)) {
+            slots[focus] = key;
+            lastTyped = focus++;
           } else {
+            lastTyped = null;
             out.writeln('Slot does not accept that grapheme.');
           }
         }
         show();
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+
+  Future<PromptResult<MaskedValue>> _linearFixed(
+    ScriptedInput source,
+    void Function()? beforeClose,
+  ) async {
+    final template = templates.single;
+    final rules = template.elements.whereType<MaskSlot>().toList();
+    var slots = initialValue == null
+        ? List<String>.filled(rules.length, '')
+        : List<String>.of(initialValue!.slots);
+    final out = source.output;
+    final keys = _Keys(source.input.transform(utf8.encoder));
+    String formatted() {
+      var index = 0;
+      return template.elements
+          .map((e) => e is MaskLiteral ? e.text : slots[index++])
+          .join();
+    }
+
+    void show() {
+      out.writeln(
+        '$label. Template: ${template.name}. Raw: ${slots.join()}. Formatted: ${formatted()}.',
+      );
+      for (var i = 0; i < slots.length; i++) {
+        out.writeln(
+          'Slot ${i + 1}: ${slots[i].isEmpty ? "empty" : slots[i]} (${rules[i].description}).',
+        );
+      }
+    }
+
+    Future<({String action, String value})> edit([
+      String initial = '',
+      Set<String> commands = const {},
+    ]) => _edit(
+      keys,
+      initial,
+      out,
+      linear: true,
+      sequential: true,
+      extraCommands: commands,
+    );
+    try {
+      out.writeln(
+        r'/edit corrects a slot; /value edits the formatted value; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+      );
+      show();
+      while (true) {
+        final command = await edit('', {'/edit', '/value', '/done', '/review'});
+        if (command.action == 'cancel') return Cancelled();
+        if (command.action == 'interrupt') return Interrupted();
+        if (command.action != 'submit' && command.action != 'command') {
+          return InputEnded();
+        }
+        if (command.action == 'command' && command.value == '/review') {
+          show();
+          continue;
+        }
+        if (command.action == 'command' && command.value == '/done') {
+          if (slots.indexed.any((e) => rules[e.$1].required && e.$2.isEmpty)) {
+            out.writeln('Required slots are incomplete.');
+            continue;
+          }
+          return Accepted(
+            MaskedValue(template.name, List.unmodifiable(slots), formatted()),
+          );
+        }
+        if (command.action == 'command' && command.value == '/edit') {
+          out.writeln('Slot number:');
+          final number = await edit();
+          if (number.action == 'cancel') return Cancelled();
+          if (number.action == 'interrupt') return Interrupted();
+          if (number.action != 'submit') return InputEnded();
+          final index = int.tryParse(number.value);
+          if (index == null || index < 1 || index > slots.length) {
+            out.writeln('Invalid slot number.');
+            continue;
+          }
+          out.writeln('Enter replacement grapheme, or empty to clear:');
+          final replacement = await edit();
+          if (replacement.action == 'cancel') return Cancelled();
+          if (replacement.action == 'interrupt') return Interrupted();
+          if (replacement.action != 'submit') return InputEnded();
+          if (replacement.value.isNotEmpty &&
+              (replacement.value.characters.length != 1 ||
+                  !rules[index - 1].accepts(replacement.value))) {
+            out.writeln('Invalid slot value.');
+            continue;
+          }
+          slots[index - 1] = replacement.value;
+          show();
+          continue;
+        }
+        var value = command.value;
+        if (command.action == 'command' && command.value == '/value') {
+          out.writeln('Edit formatted value:');
+          final entry = await edit(formatted());
+          if (entry.action == 'cancel') return Cancelled();
+          if (entry.action == 'interrupt') return Interrupted();
+          if (entry.action != 'submit') return InputEnded();
+          value = entry.value;
+        }
+        final result = await _run(SuppliedAnswer(value), PromptMode.linear);
+        if (result is Accepted<MaskedValue>) {
+          slots = List.of(result.value.slots);
+          show();
+        } else {
+          out.writeln('Invalid or ambiguous value; draft: $value');
+        }
       }
     } finally {
       try {

@@ -1,4 +1,5 @@
 import 'package:prompty/prompty.dart';
+import 'package:characters/characters.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -58,5 +59,89 @@ void main() {
     );
     expect((result as Accepted<MaskedValue>).value.formatted, '1-93');
     expect(out.toString(), contains('Slot 3: 3'));
+  });
+  test('accepted default is editable in rich and linear modes', () async {
+    final templates = [
+      MaskTemplate('code', [
+        MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        MaskLiteral('-'),
+        MaskSlot('digit', (s) => '0123456789'.contains(s)),
+      ]),
+    ];
+    final input = MaskedInput(
+      'Code',
+      templates: templates,
+      initialValue: MaskedValue('code', ['1', '2'], '1-2'),
+    );
+    for (final mode in [PromptMode.rich, PromptMode.linear]) {
+      final result = await input.prompt(
+        source: ScriptedInput(
+          Stream.value(
+            mode == PromptMode.rich ? '\x7f3\r' : '/value\r\x7f3\r/done\r',
+          ),
+          StringBuffer(),
+        ),
+        mode: mode,
+      );
+      expect((result as Accepted<MaskedValue>).value.formatted, '1-3');
+    }
+  });
+  test('linear slot correction preserves other slots', () async {
+    final templates = [
+      MaskTemplate('code', [
+        MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        MaskLiteral('-'),
+        MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        MaskSlot('digit', (s) => '0123456789'.contains(s)),
+      ]),
+    ];
+    final input = MaskedInput(
+      'Code',
+      templates: templates,
+      initialValue: MaskedValue('code', ['1', '2', '3'], '1-23'),
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('/edit\r2\r9\r/done\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<MaskedValue>).value.formatted, '1-93');
+    expect(out.toString(), contains('Slot 3: 3'));
+  });
+  test('rich combining mark joins the prior grapheme slot', () async {
+    final input = MaskedInput(
+      'Text',
+      templates: [
+        MaskTemplate('text', [
+          MaskSlot('grapheme', (s) => s.characters.length == 1),
+          MaskSlot('grapheme', (s) => s.characters.length == 1),
+        ]),
+      ],
+    );
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('e\u0301x\r'), StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.slots, ['e\u0301', 'x']);
+  });
+  test('rich formatted paste fills slots atomically', () async {
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskLiteral('-'),
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        ]),
+      ],
+    );
+    final result = await input.prompt(
+      source: ScriptedInput(
+        Stream.value('\x1b[200~1-2\x1b[201~\r'),
+        StringBuffer(),
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.raw, '12');
   });
 }
