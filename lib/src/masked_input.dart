@@ -661,7 +661,16 @@ final class MaskedInput {
             out.writeln('Required slots are incomplete.');
           } else {
             if (edited && templates.length > 1) {
-              final matches = _decode(slots.join(), as: MaskInterpretation.raw);
+              late final List<MaskedValue> matches;
+              try {
+                matches = _decode(slots.join(), as: MaskInterpretation.raw);
+              } on _MaskWorkLimit {
+                out.writeln(
+                  'Mask decoding work limit exceeded; slots preserved for correction.',
+                );
+                show();
+                continue;
+              }
               if (matches.length > 1) {
                 out.writeln(
                   'Ambiguity reopened; draft preserved: ${slots.join()}',
@@ -728,12 +737,20 @@ final class MaskedInput {
           }
         }
         if (edited && templates.length > 1) {
-          final ambiguous =
-              _decode(slots.join(), as: MaskInterpretation.raw).length > 1;
-          if (ambiguous && !ambiguityAnnounced) {
-            out.writeln('Ambiguity reopened; draft preserved: ${slots.join()}');
+          try {
+            final ambiguous =
+                _decode(slots.join(), as: MaskInterpretation.raw).length > 1;
+            if (ambiguous && !ambiguityAnnounced) {
+              out.writeln(
+                'Ambiguity reopened; draft preserved: ${slots.join()}',
+              );
+            }
+            ambiguityAnnounced = ambiguous;
+          } on _MaskWorkLimit {
+            out.writeln(
+              'Mask decoding work limit exceeded; slots preserved for correction.',
+            );
           }
-          ambiguityAnnounced = ambiguous;
         }
         show();
       }

@@ -593,6 +593,32 @@ void main() {
     expect(out.toString(), contains('work limit'));
   });
 
+  test('rich adaptive work limit keeps edited slots correctable', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('many', [
+          MaskLiteral('#'),
+          MaskSlot('digit', digit),
+          for (var i = 0; i < 17; i++)
+            MaskSlot('optional', digit, required: false),
+        ]),
+        MaskTemplate('letter', [MaskSlot('letter', (s) => s == 'x')]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(
+        Stream.value('#1\r${'\x1b[D' * 17}23456789${'\x7f' * 8}\r'),
+        out,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.raw, '1');
+    expect(out.toString(), contains('work limit'));
+  });
+
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(
       'Code',

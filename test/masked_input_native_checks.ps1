@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $probe = Join-Path $PSScriptRoot 'masked_input_windows.ps1'
-foreach ($target in @('masked')) {
+foreach ($target in @('masked', 'adaptive', 'paste')) {
   foreach ($scenario in @('rich', 'linear')) {
     $report = Join-Path $env:TEMP ("network-probe-" + [guid]::NewGuid() + '.txt')
     try {
@@ -14,7 +14,7 @@ foreach ($target in @('masked')) {
       }
       if (!(Test-Path $report)) { throw "$target $scenario probe produced no report" }
       $result = (Get-Content $report -Raw).Trim()
-      if ($process.ExitCode -ne 0 -or $result -notmatch '^masked input (rich|linear) PASS ') {
+      if ($process.ExitCode -ne 0 -or $result -notmatch '^masked input (masked|adaptive|paste) (rich|linear) PASS ') {
         throw "$target $scenario probe failed: $result (exit $($process.ExitCode))"
       }
       Write-Output $result

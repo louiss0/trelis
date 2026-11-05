@@ -49,7 +49,7 @@ public static class NativeProbe {
 $root = Split-Path $PSScriptRoot -Parent
 $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
-$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/masked_input_native_app.dart $Scenario > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/masked_input_native_app.dart $Scenario $Target > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -64,15 +64,24 @@ try {
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
-  $expected = '1-2'
- $review = 'Slot 2:'
- [NativeProbe]::Text('12')
- if ($Scenario -eq 'linear') { [NativeProbe]::Text("`r") }
- $found=$false
- for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains($review) }
- if(!$found){throw "native review missing: $review"}
- [NativeProbe]::Text("`r")
- if ($Scenario -eq 'linear') { [NativeProbe]::Text("/done`r") }
+ $expected = '1-2'
+ if ($Target -eq 'adaptive') {
+   [NativeProbe]::Text("12`r")
+   if ($Scenario -eq 'linear') { [NativeProbe]::Text("/template`r2`r/done`r") }
+   else { [NativeProbe]::Text("2`r") }
+ } elseif ($Target -eq 'paste') {
+   [NativeProbe]::Text("$([char]27)[200~1-2$([char]27)[201~")
+   [NativeProbe]::Text("`r")
+   if ($Scenario -eq 'linear') { [NativeProbe]::Text("/done`r") }
+ } else {
+   [NativeProbe]::Text('12')
+   if ($Scenario -eq 'linear') { [NativeProbe]::Text("`r") }
+   $found=$false
+   for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains('Slot 2:') }
+   if(!$found){throw 'native review missing: Slot 2:'}
+   if ($Scenario -eq 'linear') { [NativeProbe]::Text("/done`r") }
+   else { [NativeProbe]::Text("`r") }
+ }
 
  for($n=0;$n -lt 100;$n++){if((Test-Path $file) -and (Get-Item $file).Length -gt 0){break}; Start-Sleep -Milliseconds 100}
 
@@ -82,8 +91,6 @@ try {
  $after=''; for($n=0;$n -lt 100;$n++){ $after=[NativeProbe]::State(); if($after -eq $before){break}; Start-Sleep -Milliseconds 100 }
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($before -ne $after){throw "console state changed: $before -> $after"}
- Set-Content $Report "masked input $Scenario PASS result=$actual state=$before -> $during -> $after"
+ Set-Content $Report "masked input $Target $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "masked input FAIL $_"; throw }
 finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
-
-
