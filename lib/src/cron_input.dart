@@ -10,14 +10,8 @@ final class CronExpression {
   final CronProfile profile;
 
   /// A bounded civil-time preview using timezone 0.11.2 / tzdata 2025c.
-  /// Quartz preview is limited to the last-day expression; historical
-  /// sub-minute offsets are not yet supported.
+  /// Historical sub-minute offsets are not yet supported for Unix previews.
   Future<CronPreview> preview(CronPreviewConfig config) async {
-    if (profile == CronProfile.quartz && expression != '0 0 0 L * ?') {
-      throw UnsupportedError(
-        'Preview is not supported for this expression or zone.',
-      );
-    }
     late final timezone.Location location;
     try {
       timezone_data.initializeTimeZones();
@@ -53,10 +47,7 @@ final class CronExpression {
       }
       final matchesExpression = profile == CronProfile.unix
           ? _unixMatches(fields, civil)
-          : civil.second == 0 &&
-                civil.minute == 0 &&
-                civil.hour == 0 &&
-                civil.day == DateTime.utc(civil.year, civil.month + 1, 0).day;
+          : _quartzMatches(fields, civil);
       if (matchesExpression) matches.add(instant);
       work++;
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
@@ -71,6 +62,86 @@ final class CronExpression {
         : CronPreviewStatus.budgetExhausted;
     return CronPreview._(List.unmodifiable(matches), status);
   }
+}
+
+bool _quartzMatches(List<String> fields, DateTime civil) {
+  const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  int weekdayNumber(String text) {
+    final name = weekdays.indexOf(text.toUpperCase());
+    return name < 0 ? int.parse(text) : name + 1;
+  }
+
+  bool numeric(String field, int value) {
+    if (field == '*') return true;
+    for (final item in field.split(',')) {
+      final range = item.split('-');
+      final first = int.parse(range[0]);
+      final last = range.length == 1 ? first : int.parse(range[1]);
+      if (value >= first && value <= last) return true;
+    }
+    return false;
+  }
+
+  final lastDay = DateTime.utc(civil.year, civil.month + 1, 0).day;
+  bool dayOfMonth() {
+    final field = fields[3];
+    if (field == '?') return true;
+    if (field == 'L') return civil.day == lastDay;
+    if (field == 'LW') {
+      final lastWeekday = DateTime.utc(
+        civil.year,
+        civil.month,
+        lastDay,
+      ).weekday;
+      final day =
+          lastDay -
+          (lastWeekday == 6
+              ? 1
+              : lastWeekday == 7
+              ? 2
+              : 0);
+      return civil.day == day;
+    }
+    if (field.startsWith('L-')) {
+      return civil.day == lastDay - int.parse(field.substring(2));
+    }
+    if (field.endsWith('W')) {
+      final day = int.parse(field.substring(0, field.length - 1));
+      if (day > lastDay) return false;
+      final weekday = DateTime.utc(civil.year, civil.month, day).weekday;
+      final nearest = weekday == 6
+          ? (day == 1 ? day + 2 : day - 1)
+          : weekday == 7
+          ? (day == lastDay ? day - 2 : day + 1)
+          : day;
+      return civil.day == nearest;
+    }
+    return numeric(field, civil.day);
+  }
+
+  bool dayOfWeek() {
+    final field = fields[5].toUpperCase();
+    if (field == '?' || field == '*') return true;
+    final weekday = civil.weekday % 7 + 1;
+    if (field.contains('#')) {
+      final parts = field.split('#');
+      return weekday == weekdayNumber(parts[0]) &&
+          (civil.day - 1) ~/ 7 + 1 == int.parse(parts[1]);
+    }
+    if (field.endsWith('L')) {
+      return weekday == weekdayNumber(field.substring(0, field.length - 1)) &&
+          civil.day + 7 > lastDay;
+    }
+    return weekday == weekdayNumber(field);
+  }
+
+  return numeric(fields[0], civil.second) &&
+      numeric(fields[1], civil.minute) &&
+      numeric(fields[2], civil.hour) &&
+      dayOfMonth() &&
+      numeric(fields[4], civil.month) &&
+      dayOfWeek() &&
+      (fields.length == 6 || numeric(fields[6], civil.year));
 }
 
 bool _unixMatches(List<String> fields, DateTime civil) {

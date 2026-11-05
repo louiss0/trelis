@@ -195,6 +195,55 @@ void main() {
       expect(preview.instants, isEmpty);
     },
   );
+  test('Quartz preview matches seconds lists and named weekdays', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer('5,10 * * ? * MON'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024, 1, 1),
+        start: DateTime.utc(2024, 1, 1),
+        end: DateTime.utc(2024, 1, 1, 0, 1),
+        count: 2,
+        budget: 60,
+      ),
+    );
+    expect(preview.instants, [
+      DateTime.utc(2024, 1, 1, 0, 0, 5),
+      DateTime.utc(2024, 1, 1, 0, 0, 10),
+    ]);
+  });
+  test('Quartz preview evaluates day special tokens', () async {
+    final examples = <String, DateTime>{
+      '0 0 0 L-1 * ?': DateTime.utc(2024, 2, 28),
+      '0 0 0 LW * ?': DateTime.utc(2024, 8, 30),
+      '0 0 0 1W * ?': DateTime.utc(2024, 6, 3),
+      '0 0 0 ? * MON#1': DateTime.utc(2024, 7, 1),
+      '0 0 0 ? * 6L': DateTime.utc(2024, 6, 28),
+    };
+    for (final entry in examples.entries) {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.quartz,
+      ).prompt(source: SuppliedAnswer(entry.key));
+      final expression = (result as Accepted<CronExpression>).value;
+      final start = entry.value.subtract(const Duration(seconds: 2));
+      final preview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'Etc/UTC',
+          reference: start,
+          start: start,
+          end: entry.value,
+          count: 1,
+          budget: 2,
+        ),
+      );
+      expect(preview.instants, [entry.value], reason: entry.key);
+    }
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
