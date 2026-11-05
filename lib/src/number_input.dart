@@ -285,7 +285,7 @@ final class NumberInput {
         NumericNegativePattern.parentheses => '(123)',
       };
       final description =
-          '$label (${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}; native digits ${resolved.nativeDigits}; negative example $negativeExample)';
+          '$label (${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}; native digits ${resolved.nativeDigits}; negative example $negativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'})';
       final result =
           await TextInput(
             description,

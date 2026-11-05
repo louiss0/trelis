@@ -260,6 +260,25 @@ void main() {
     expect(output.toString(), contains('negative example -123'));
   });
 
+  test('format and exact constraints are stated before editing', () async {
+    final output = StringBuffer();
+    await NumberInput(
+      'Amount',
+      convention: NumericConvention.ascii(),
+      decimal: true,
+      minimum: '0.01',
+      maximum: '10.00',
+      precision: 2,
+    ).prompt(
+      source: ScriptedInput(Stream.value('1\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect(output.toString(), contains('decimal mode'));
+    expect(output.toString(), contains('minimum 0.01'));
+    expect(output.toString(), contains('maximum 10.00'));
+    expect(output.toString(), contains('maximum 2 decimal places'));
+  });
+
   test('integer input rejects decimal and non-base-ten forms', () async {
     final input = NumberInput('Count', convention: NumericConvention.ascii());
     for (final value in ['1.0', '1e3', '0xff', 'NaN', 'Infinity', '2%', '']) {
