@@ -273,12 +273,13 @@ final class MultiSpinner {
     this.interval = const Duration(seconds: 5),
   }) {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
+    final displayNames = <String>{};
     for (final task in tasks) {
-      if (task.isEmpty || _tasks.containsKey(task)) {
+      if (task.isEmpty || !displayNames.add(_safe(task))) {
         throw ArgumentError.value(
           task,
           'tasks',
-          'Names must be nonempty and unique',
+          'Names must be nonempty and visually distinct',
         );
       }
       _tasks[task] = _GroupTask();

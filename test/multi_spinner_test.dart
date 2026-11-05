@@ -105,6 +105,7 @@ void main() {
     () {
       expect(() => MultiSpinner([]), throwsArgumentError);
       expect(() => MultiSpinner(['a', 'a']), throwsArgumentError);
+      expect(() => MultiSpinner(['\x1b', r'\u001b']), throwsArgumentError);
       expect(() => MultiSpinner(['']), throwsArgumentError);
       expect(
         () => MultiSpinner(['a'], interval: const Duration(seconds: -1)),
