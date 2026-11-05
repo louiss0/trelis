@@ -68,22 +68,27 @@ try {
  $beforeParts=$before.Split(':')
  if ([int]$parts[0] -ne ([int]$beforeParts[0] -band (-bnot 0x207))) {throw "input mode not acquired: $before -> $during"}
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
- $expected = '* * * * *'
- [NativeProbe]::Text("* * * * *`r")
+ $cancelling = $Scenario.EndsWith('-cancel')
+ $expression = if ($cancelling) { '0 0 31 2 *' } else { '* * * * *' }
+ $expected = if ($cancelling) { 'cancelled' } else { $expression }
+ [NativeProbe]::Text("$expression`r")
  $found=$false
- for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains('Review: * * * * *') }
+ for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains("Review: $expression") }
  if(!$found){throw 'native cron review missing'}
  if(Test-Path "$file.done"){throw 'cron accepted before explicit review submission'}
- if ($Scenario -eq 'rich') {
+ if ($Scenario.StartsWith('rich')) {
   [NativeProbe]::Key([char]9, 9, 0)
   [NativeProbe]::Key([char]13, 13, 0)
  } else {
   [NativeProbe]::Text("/preview`r")
  }
  $found=$false
- for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains('Matching preview: complete') }
- if(!$found){throw 'native cron matching preview missing'}
- if ($Scenario -eq 'rich') {
+ $marker = if ($cancelling) { 'Calculating preview;' } else { 'Matching preview: complete' }
+ for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains($marker) }
+ if(!$found){throw "native cron preview marker missing: $marker"}
+ if ($cancelling) {
+  if ($Scenario.StartsWith('rich')) { [NativeProbe]::Key([char]27, 27, 0) } else { [NativeProbe]::Text("/cancel`r") }
+ } elseif ($Scenario.StartsWith('rich')) {
   [NativeProbe]::Key([char]9, 9, 0)
   [NativeProbe]::Key([char]13, 13, 0)
  } else {
