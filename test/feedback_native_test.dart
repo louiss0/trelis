@@ -17,6 +17,10 @@ void main() {
       expect(err, contains('running, 20%'));
       expect(err, contains('failed: network unavailable'));
       expect(err, contains('Connection: skipped'));
+      expect(
+        err,
+        contains('Summary:\nbuild: completed\ntest: failed: test failure'),
+      );
       expect(err, isNot(contains('\x1b')));
       expect(err, isNot(contains('\r')));
     },
