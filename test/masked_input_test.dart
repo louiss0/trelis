@@ -477,6 +477,122 @@ void main() {
     },
   );
 
+  test('linear decoding work limit retains draft for correction', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          for (var i = 0; i < 18; i++)
+            MaskSlot('digit', digit, required: false),
+        ]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(
+        Stream.value('123456789\r/value\r${'\x7f' * 9}1\r1\r/done\r'),
+        out,
+      ),
+      mode: PromptMode.linear,
+    );
+    expect(result, isA<Accepted<MaskedValue>>());
+    expect((result as Accepted<MaskedValue>).value.raw, '1');
+    expect(out.toString(), contains('work limit'));
+    expect(out.toString(), contains('123456789'));
+  });
+
+  test('linear work limit cannot submit stale mask value', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          for (var i = 0; i < 18; i++)
+            MaskSlot('digit', digit, required: false),
+        ]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('123456789\r/done\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect(result, isA<InputEnded<MaskedValue>>());
+    expect(out.toString(), contains('Resolve the preserved draft'));
+  });
+
+  test(
+    'adaptive linear work limit keeps draft available for correction',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('many', [
+            for (var i = 0; i < 18; i++)
+              MaskSlot('digit', digit, required: false),
+          ]),
+          MaskTemplate('letter', [MaskSlot('letter', (s) => s == 'x')]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(
+          Stream.value('123456789\r/value\r${'\x7f' * 9}x\r/done\r'),
+          out,
+        ),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<MaskedValue>).value.raw, 'x');
+      expect(out.toString(), contains('work limit'));
+    },
+  );
+
+  test('rich paste exceeding decoding work remains editable', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('many', [
+          for (var i = 0; i < 18; i++)
+            MaskSlot('digit', digit, required: false),
+        ]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(
+        Stream.value('\x1b[200~123456789\x1b[201~${'\x7f' * 9}1\r1\r\r'),
+        out,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.raw, '1');
+    expect(out.toString(), contains('work limit'));
+  });
+
+  test('adaptive rich work limit retains draft for correction', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('many', [
+          for (var i = 0; i < 18; i++)
+            MaskSlot('digit', digit, required: false),
+        ]),
+        MaskTemplate('letter', [MaskSlot('letter', (s) => s == 'x')]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('123456789\r${'\x7f' * 9}x\r\r'), out),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.raw, 'x');
+    expect(out.toString(), contains('work limit'));
+  });
+
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(
       'Code',

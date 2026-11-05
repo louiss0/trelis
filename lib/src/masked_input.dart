@@ -259,8 +259,17 @@ final class MaskedInput {
         if (edit.action == 'interrupt') return Interrupted();
         if (edit.action != 'submit') return InputEnded();
         draft = edit.value;
-        final result = await _run(SuppliedAnswer(draft), mode);
-        if (result is Accepted<MaskedValue>) {
+        late final List<MaskedValue> matches;
+        try {
+          matches = _decode(draft);
+        } on _MaskWorkLimit {
+          out.writeln(
+            'Mask decoding work limit exceeded; draft preserved: $draft',
+          );
+          continue;
+        }
+        if (matches.length == 1) {
+          final result = Accepted(matches.single);
           out.writeln(
             'Selected template: ${result.value.template}. Raw: ${result.value.raw}. Formatted: ${result.value.formatted}.',
           );
@@ -274,7 +283,6 @@ final class MaskedInput {
             keyInput: keys,
           );
         }
-        final matches = _decode(draft);
         if (matches.length < 2) {
           out.writeln('Invalid mask; draft preserved: $draft');
           continue;
@@ -363,15 +371,21 @@ final class MaskedInput {
             draft = editResult.value;
           }
           selected = null;
-          final decoded = await _run(SuppliedAnswer(draft), PromptMode.linear);
-          if (decoded is Accepted<MaskedValue>) {
-            selected = decoded.value;
-            matches = [selected];
+          try {
+            matches = _decode(draft);
+          } on _MaskWorkLimit {
+            matches = [];
+            out.writeln(
+              'Mask decoding work limit exceeded; draft preserved: $draft',
+            );
+            continue;
+          }
+          if (matches.length == 1) {
+            selected = matches.single;
             out.writeln(
               'Template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
             );
           } else {
-            matches = _decode(draft);
             if (matches.length > 1) {
               out.writeln('Ambiguous value; choose a template with /template:');
               showTemplates();
@@ -425,7 +439,16 @@ final class MaskedInput {
                     element is MaskLiteral ? element.text : slots[index++],
               )
               .join();
-          matches = _decode(slots.join());
+          selected = null;
+          try {
+            matches = _decode(slots.join());
+          } on _MaskWorkLimit {
+            matches = [];
+            out.writeln(
+              'Mask decoding work limit exceeded; draft preserved: $draft',
+            );
+            continue;
+          }
           selected = MaskedValue(current.template, slots, draft);
           if (matches.length > 1) {
             selected = null;
@@ -533,12 +556,27 @@ final class MaskedInput {
           continue;
         }
         if (key.startsWith('\x1b[200~')) {
-          final paste = key.substring(6, key.length - 6);
+          var paste = key.substring(6, key.length - 6);
           if (paste.runes.any((c) => c < 32 || c == 127)) {
             out.writeln('Paste rejected: single-line printable text only.');
             continue;
           }
-          final matches = _decode(paste);
+          late List<MaskedValue> matches;
+          while (true) {
+            try {
+              matches = _decode(paste);
+              break;
+            } on _MaskWorkLimit {
+              out.writeln(
+                'Mask decoding work limit exceeded; edit preserved paste: $paste',
+              );
+              final correction = await _edit(keys, paste, out);
+              if (correction.action == 'cancel') return Cancelled();
+              if (correction.action == 'interrupt') return Interrupted();
+              if (correction.action != 'submit') return InputEnded();
+              paste = correction.value;
+            }
+          }
           if (matches.length > 1 ||
               (matches.length == 1 &&
                   matches.single.template != template.name)) {
@@ -721,6 +759,7 @@ final class MaskedInput {
         : List<String>.of(initialValue!.slots);
     final out = source.output;
     final keys = _Keys(source.input.transform(utf8.encoder));
+    String? pendingDraft;
     String formatted() {
       var index = 0;
       return template.elements
@@ -767,6 +806,12 @@ final class MaskedInput {
           continue;
         }
         if (command.action == 'command' && command.value == '/done') {
+          if (pendingDraft != null) {
+            out.writeln(
+              'Resolve the preserved draft with /value before submitting.',
+            );
+            continue;
+          }
           if (slots.indexed.any((e) => rules[e.$1].required && e.$2.isEmpty)) {
             out.writeln('Required slots are incomplete.');
             continue;
@@ -804,14 +849,24 @@ final class MaskedInput {
         var value = command.value;
         if (command.action == 'command' && command.value == '/value') {
           out.writeln('Edit formatted value:');
-          final entry = await edit(formatted());
+          final entry = await edit(pendingDraft ?? formatted());
           if (entry.action == 'cancel') return Cancelled();
           if (entry.action == 'interrupt') return Interrupted();
           if (entry.action != 'submit') return InputEnded();
           value = entry.value;
         }
-        final matches = _decode(value);
+        pendingDraft = value;
+        late final List<MaskedValue> matches;
+        try {
+          matches = _decode(value);
+        } on _MaskWorkLimit {
+          out.writeln(
+            'Mask decoding work limit exceeded; draft preserved: $value',
+          );
+          continue;
+        }
         if (matches.length == 1) {
+          pendingDraft = null;
           slots = List.of(matches.single.slots);
           show();
         } else if (matches.length > 1) {
@@ -836,6 +891,7 @@ final class MaskedInput {
               'Invalid interpretation number; draft preserved: $value',
             );
           } else {
+            pendingDraft = null;
             slots = List.of(matches[index - 1].slots);
             show();
           }
