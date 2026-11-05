@@ -328,8 +328,8 @@ final class CronPreview {
   final CronPreviewStatus status;
 }
 
-/// Cron expression entry. The current implementation only supports a subset of
-/// Unix and Quartz syntax; preview is not yet implemented.
+/// Cron expression entry with explicitly configured optional matching preview.
+/// Quartz syntax and provider behavior are not yet fully qualified.
 final class CronInput {
   CronInput(
     this.label, {
@@ -338,7 +338,7 @@ final class CronInput {
     this.preview,
   }) {
     _input = TextInput(
-      '$label (Unix five fields: minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7; numeric lists, ranges and steps, month and weekday names; Quartz basic subset only; preview unavailable)',
+      '$label (${profile.name} profile; matching preview is not configured)',
       initialValue: initialValue,
       required: true,
       validate: (value) => _valid(value)

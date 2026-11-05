@@ -1,0 +1,55 @@
+# Cron preview evidence (partial qualification)
+
+This is evidence for the fixtures currently run, **not** a claim of full Cronie,
+Quartz, IANA-provider, or scheduler conformance. A preview is civil-time
+matching, not execution, misfire, clock-change, or delivery emulation.
+
+## Provider identity
+
+The direct dependency in `pubspec.yaml` is exactly `timezone: 0.11.2`. The
+installed package's generated `lib/data/latest_all.dart` identifies its actual
+database as **2026e**. This generated file is authoritative for the loaded
+snapshot; the package README says 2025c and is stale for this installed copy.
+On this machine `Get-FileHash -Algorithm SHA256` reported:
+
+- `lib/data/latest_all.dart`:
+  `C50921B38ABB27B4EF4F96508A8243ADE7100E914D5F6EF443E876A7CE9A6C42`
+- `lib/src/location.dart`:
+  `8217A743B270B9FE8812071451264705A0F0091677AD1C29D7C6DA1231C0587B`
+
+Upstream: [timezone package 0.11.2](https://pub.dev/packages/timezone/versions/0.11.2),
+[IANA tz database](https://www.iana.org/time-zones). The application calls
+`initializeTimeZones` from `data/latest_all.dart`; UTC instants are mapped to
+civil time with `TZDateTime.from`, using `Location.transitionAt` and
+`Location.timeZone` when selecting second or minute candidate resolution.
+
+`test/cron_input_test.dart` checks New York's 2024 spring gap and autumn fold,
+Monrovia's 1950 sub-minute offset, and Lagos's 1908 transition into a
+sub-minute offset. These are selected examples, not an exhaustive comparison
+against the IANA transition corpus. Preview budgets count scanned candidate
+instants; a sub-minute offset anywhere in the horizon changes Unix candidate
+resolution to seconds. The exact same expression and context can therefore
+consume a different budget in different zones or horizons.
+
+## Profile sources and checked examples
+
+- Cronie [crontab(5)](https://github.com/cronie-crond/cronie/blob/master/man/crontab.5)
+  is rolling `master`, not an implementation version pinned by this project.
+  The Unix subset has five fields and excludes command lines and macros.
+  `cron_profile_conformance_test.dart` checks the leading-asterisk day-field
+  rule (including `*/2`), and Sunday as `0`, `7`, and `SUN`.
+- Quartz [2.3.0 tutorial](https://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html)
+  documents six required fields, optional year, and special day tokens.
+  The implemented preview has explicit local year bounds 1970–2199.
+  `cron_input_test.dart` exercises L, LW, L-1, W, # and weekday-L examples;
+  `cron_profile_conformance_test.dart` checks Quartz Sunday numbering and the
+  exclusive question-mark day rule.
+
+Those links describe reference semantics; neither parser was compared against
+an exact pinned Cronie or Quartz engine. Known qualification gaps include a
+complete syntax and boundary corpus, provider errors other than an unknown
+zone, bounded-work behavior under hostile inputs, and cancellation while an
+interactive preview is running. The parser does not support every Quartz
+construct: for example, standalone `L` in day-of-week and combined last-day
+offset/weekday forms such as `L-3W` are not accepted. Do not claim full Quartz
+compatibility or whole-ticket acceptance until these gaps are resolved.
