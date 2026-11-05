@@ -9,6 +9,75 @@ enum DateCalendar { gregorian, buddhist }
 /// Explicit decimal digit repertoire; ASCII is always accepted.
 enum DateDigits { ascii, thai, arabicIndic }
 
+// Windows GetLocaleInfoEx with user overrides enabled. Reject unknown patterns,
+// calendars and numeral systems instead of guessing from a locale name.
+({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+_windowsDateProfile() {
+  if (!Platform.isWindows) return null;
+  try {
+    final get = DynamicLibrary.open('kernel32.dll')
+        .lookupFunction<
+          Int32 Function(Pointer<Utf16>, Uint32, Pointer<Utf16>, Int32),
+          int Function(Pointer<Utf16>, int, Pointer<Utf16>, int)
+        >('GetLocaleInfoEx');
+    String? field(int type) {
+      final length = get(nullptr, type, nullptr, 0);
+      if (length <= 1 || length > 128) return null;
+      final buffer = calloc<Uint16>(length);
+      try {
+        if (get(nullptr, type, buffer.cast<Utf16>(), length) != length) {
+          return null;
+        }
+        return buffer.cast<Utf16>().toDartString();
+      } finally {
+        calloc.free(buffer);
+      }
+    }
+
+    List<String>? snapshot() {
+      final fields = [0x1f, 0x1009, 0x13].map(field).toList();
+      return fields.any((s) => s == null) ? null : fields.cast<String>();
+    }
+
+    final first = snapshot();
+    final second = snapshot();
+    if (first == null ||
+        second == null ||
+        first.join('\u0000') != second.join('\u0000')) {
+      return null;
+    }
+    // Full year only: reduced-year windows require additional native data.
+    final pattern = first[0];
+    final match = RegExp(r'^(M|d|yyyy)([/.-])(M|d|yyyy)\2(M|d|yyyy)$')
+        .firstMatch(pattern);
+    if (match == null) return null;
+    final fields = [match[1], match[3], match[4]].join('/');
+    final order = switch (fields) {
+      'M/d/yyyy' => DateFieldOrder.monthDayYear,
+      'd/M/yyyy' => DateFieldOrder.dayMonthYear,
+      'yyyy/M/d' => DateFieldOrder.yearMonthDay,
+      _ => null,
+    };
+    final calendar = switch (first[1]) {
+      '1' => DateCalendar.gregorian,
+      '7' => DateCalendar.buddhist,
+      _ => null,
+    };
+    final digits = switch (first[2]) {
+      '0123456789' => DateDigits.ascii,
+      '\u0e50\u0e51\u0e52\u0e53\u0e54\u0e55\u0e56\u0e57\u0e58\u0e59' =>
+        DateDigits.thai,
+      '\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669' =>
+        DateDigits.arabicIndic,
+      _ => null,
+    };
+    if (order == null || calendar == null || digits == null) return null;
+    return (order: order, calendar: calendar, digits: digits);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// A proleptic Gregorian date without a time or time zone.
 final class CivilDate {
   CivilDate._(this.year, this.month, this.day, this.inputYear, this.calendar);
@@ -128,8 +197,23 @@ final class DateInput {
     try {
       final resolvedOrder = order;
       if (resolvedOrder == null) {
-        return Unavailable(
-          'System date preferences are unresolved; specify a calendar and field order.',
+        final profile = _windowsDateProfile();
+        if (profile == null) {
+          return Unavailable(
+            'System date preferences are unsupported or unresolved; specify a calendar and field order.',
+          );
+        }
+        return await DateInput(
+          label,
+          order: profile.order,
+          calendar: profile.calendar,
+          digits: profile.digits,
+        ).prompt(
+          source: source,
+          mode: mode,
+          userPreference: userPreference,
+          applicationPreference: applicationPreference,
+          output: output,
         );
       }
       if (source is SuppliedAnswer) {
