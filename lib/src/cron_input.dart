@@ -596,7 +596,7 @@ final class CronInput {
               profile,
             ).preview(config);
             out.writeln(
-              'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2025c; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; gaps skipped, folds included; not scheduler execution.',
+              'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2025c; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
               out.writeln(instant);
