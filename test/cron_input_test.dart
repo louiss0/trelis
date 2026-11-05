@@ -71,6 +71,23 @@ void main() {
       isA<Unavailable<CronExpression>>(),
     );
   });
+  test('Quartz nearest weekday is limited to days 1 through 31', () async {
+    final input = CronInput('Schedule', profile: CronProfile.quartz);
+    for (final day in ['1W', '15W', '31W']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 $day * ?')),
+        isA<Accepted<CronExpression>>(),
+        reason: day,
+      );
+    }
+    for (final day in ['0W', '32W', '1W,2W']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 $day * ?')),
+        isA<Unavailable<CronExpression>>(),
+        reason: day,
+      );
+    }
+  });
   test('Quartz accepts last day of month', () async {
     final result = await CronInput(
       'Schedule',

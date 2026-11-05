@@ -60,9 +60,14 @@ final class CronInput {
         }
         if (!numeric.hasMatch(fields[i])) return false;
       }
+      final nearestWeekday = RegExp(r'^([0-9]+)W$').firstMatch(fields[3]);
+      final weekdayDay = nearestWeekday == null
+          ? null
+          : int.tryParse(nearestWeekday.group(1)!);
       if (fields[3] != '?' &&
           fields[3] != 'L' &&
           fields[3] != 'LW' &&
+          !(weekdayDay != null && weekdayDay >= 1 && weekdayDay <= 31) &&
           !numeric.hasMatch(fields[3])) {
         return false;
       }
