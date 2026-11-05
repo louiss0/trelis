@@ -38,6 +38,17 @@ void main() {
     ).prompt(source: SuppliedAnswer('0-10 0 12 ? * MON'));
     expect(result, isA<Accepted<CronExpression>>());
   });
+  test('Quartz accepts bounded ranges in minute and hour fields', () async {
+    final input = CronInput('Schedule', profile: CronProfile.quartz);
+    final accepted = await input.prompt(
+      source: SuppliedAnswer('0 10-20 8-17 ? * MON'),
+    );
+    expect(accepted, isA<Accepted<CronExpression>>());
+    final rejected = await input.prompt(
+      source: SuppliedAnswer('0 10-60 8 ? * MON'),
+    );
+    expect(rejected, isA<Unavailable<CronExpression>>());
+  });
   test('Quartz accepts last day of month', () async {
     final result = await CronInput(
       'Schedule',

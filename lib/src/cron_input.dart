@@ -33,13 +33,16 @@ final class CronInput {
       if (fields.length != 6 && fields.length != 7) return false;
       if ((fields[3] == '?') == (fields[5] == '?')) return false;
       final numeric = RegExp(r'^(?:\*|[0-9]+)$');
+      const minimum = [0, 0, 0, 1, 1, 1, 1970];
+      const maximum = [59, 59, 23, 31, 12, 7, 2199];
       for (final i in [0, 1, 2, 4]) {
-        if (i == 0 && RegExp(r'^[0-9]+-[0-9]+$').hasMatch(fields[i])) {
+        if (RegExp(r'^[0-9]+-[0-9]+$').hasMatch(fields[i])) {
           final bounds = fields[i].split('-').map(int.tryParse).toList();
           if (bounds[0] == null ||
               bounds[1] == null ||
+              bounds[0]! < minimum[i] ||
               bounds[0]! > bounds[1]! ||
-              bounds[1]! > 59) {
+              bounds[1]! > maximum[i]) {
             return false;
           }
           continue;
@@ -59,8 +62,6 @@ final class CronInput {
         return false;
       }
       if (fields.length == 7 && !numeric.hasMatch(fields[6])) return false;
-      const minimum = [0, 0, 0, 1, 1, 1, 1970];
-      const maximum = [59, 59, 23, 31, 12, 7, 2199];
       for (var i = 0; i < fields.length; i++) {
         final n = int.tryParse(fields[i]);
         if (n != null && (n < minimum[i] || n > maximum[i])) return false;
