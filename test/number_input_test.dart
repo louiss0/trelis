@@ -239,8 +239,8 @@ void main() {
     },
   );
 
-  test('Windows default resolves effective system numeric settings', () async {
-    if (!Platform.isWindows) return;
+  test('system default resolves effective numeric settings', () async {
+    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) return;
     final result = await NumberInput('Count')
         .prompt(source: SuppliedAnswer('123'));
     expect(
@@ -248,6 +248,38 @@ void main() {
       BigInt.from(123),
     );
   });
+
+  test(
+    'Linux resolves non-C LC_NUMERIC conventions and category precedence',
+    () async {
+      if (!Platform.isLinux) return;
+      final installed = Process.runSync('locale', ['-a']);
+      if (installed.exitCode != 0) return;
+      final locale = installed.stdout
+          .toString()
+          .split(RegExp(r'\r?\n'))
+          .firstWhere(
+            (name) =>
+                name.toLowerCase().startsWith('de_de.') ||
+                name.toLowerCase().startsWith('fr_fr.'),
+            orElse: () => '',
+          );
+      if (locale.isEmpty) return;
+      for (final environment in [
+        {'LC_ALL': locale, 'LC_NUMERIC': 'C', 'LANG': 'C'},
+        {'LC_ALL': '', 'LC_NUMERIC': locale, 'LANG': 'C'},
+      ]) {
+        final result = await Process.run(Platform.resolvedExecutable, [
+          'run',
+          'test/number_input_native_app.dart',
+          'resolve',
+          '1.234,5',
+        ], environment: environment);
+        expect(result.stderr.toString(), isEmpty);
+        expect(result.stdout.toString().trim(), '12345:1');
+      }
+    },
+  );
 
   test('editing discloses the active convention and an example', () async {
     final output = StringBuffer();
@@ -258,6 +290,53 @@ void main() {
     expect(output.toString(), contains('decimal separator .'));
     expect(output.toString(), contains('grouping separator ,'));
     expect(output.toString(), contains('negative example -123'));
+  });
+
+  test('all accepted forms and required state are disclosed with concrete examples', () async {
+    final output = StringBuffer();
+    await NumberInput(
+      'Amount',
+      convention: NumericConvention(
+        decimalSeparator: ',',
+        groupingSeparator: '.',
+        grouping: [3, 2],
+        nativeDigits: '٠١٢٣٤٥٦٧٨٩',
+        negativeSign: '−',
+        negativePattern: NumericNegativePattern.trailingSpace,
+      ),
+      decimal: true,
+      precision: 2,
+    ).prompt(
+      source: ScriptedInput(Stream.value('1234567,89\r'), output),
+      mode: PromptMode.linear,
+    );
+    final text = output.toString();
+    for (final disclosure in [
+      'required',
+      'ASCII digits 0123456789',
+      'native digits ٠١٢٣٤٥٦٧٨٩',
+      'ungrouped example 1234567,89',
+      'grouped example 12.34.567,89',
+      'native example ١٢.٣٤.٥٦٧,٨٩',
+      'positive example 1234567,89',
+      'negative example 1234567,89 −',
+      'maximum 2 decimal places',
+    ]) {
+      expect(text, contains(disclosure));
+    }
+  });
+
+  test('optional state is disclosed before editing', () async {
+    final output = StringBuffer();
+    await NumberInput(
+      'Count',
+      convention: NumericConvention.ascii(),
+      required: false,
+    ).prompt(
+      source: ScriptedInput(Stream.value('\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect(output.toString(), contains('optional'));
   });
 
   test('format and exact constraints are stated before editing', () async {

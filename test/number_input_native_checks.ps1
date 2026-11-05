@@ -23,6 +23,4 @@ foreach ($target in @('number')) {
     }
   }
 }
-
-
-
+& (Join-Path $PSScriptRoot 'number_input_preferences_windows.ps1')

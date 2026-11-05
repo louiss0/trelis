@@ -54,7 +54,14 @@ try {
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  $expected = '1234'
- [NativeProbe]::Text("$expected`r")
+ if ($Target -eq 'system-change') { $expected = '1.234,5' }
+ if ($Target -eq 'system-change') {
+  Set-ItemProperty 'HKCU:\Control Panel\International' sDecimal ';'
+  Set-ItemProperty 'HKCU:\Control Panel\International' sThousand ':'
+  [NativeProbe]::Text("$expected`r")
+ } else {
+  [NativeProbe]::Text("$expected`r")
+ }
 
  for($n=0;$n -lt 100;$n++){if((Test-Path $file) -and (Get-Item $file).Length -gt 0){break}; Start-Sleep -Milliseconds 100}
 

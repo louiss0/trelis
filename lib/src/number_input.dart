@@ -154,29 +154,314 @@ final class NumericAnswer {
   final int scale;
 }
 
-NumericConvention? _systemNumericConvention() {
-  if (Platform.isLinux) {
-    final env = Platform.environment;
-    final locale =
-        [
-          env['LC_ALL'],
-          env['LC_NUMERIC'],
-          env['LANG'],
-        ].whereType<String>().where((value) => value.isNotEmpty).firstOrNull ??
-        'C';
-    if (locale == 'C' ||
-        locale == 'POSIX' ||
-        locale.toUpperCase() == 'C.UTF-8' ||
-        locale.toUpperCase() == 'C.UTF8') {
-      return NumericConvention(
-        decimalSeparator: '.',
-        groupingSeparator: '',
-        grouping: [],
-        nativeDigits: '0123456789',
-      );
-    }
-    return null;
+final class _LConv extends Struct {
+  external Pointer<Utf8> decimalPoint;
+  external Pointer<Utf8> thousandsSeparator;
+  external Pointer<Utf8> grouping;
+  external Pointer<Utf8> internationalDecimalPoint;
+  external Pointer<Utf8> internationalThousandsSeparator;
+  external Pointer<Utf8> internationalCurrencySymbol;
+  external Pointer<Utf8> currencySymbol;
+  external Pointer<Utf8> monetaryDecimalPoint;
+  external Pointer<Utf8> monetaryThousandsSeparator;
+  external Pointer<Utf8> monetaryGrouping;
+  external Pointer<Utf8> positiveSign;
+  external Pointer<Utf8> negativeSign;
+  @Uint8()
+  external int internationalFractionDigits;
+  @Uint8()
+  external int fractionDigits;
+  @Uint8()
+  external int positiveCurrencyPrecedes;
+  @Uint8()
+  external int positiveCurrencySeparated;
+  @Uint8()
+  external int negativeCurrencyPrecedes;
+  @Uint8()
+  external int negativeCurrencySeparated;
+  @Uint8()
+  external int positiveSignPosition;
+  @Uint8()
+  external int negativeSignPosition;
+}
+
+NumericConvention? _linuxNumericConvention() {
+  final env = Platform.environment;
+  final localeName =
+      [
+        env['LC_ALL'],
+        env['LC_NUMERIC'],
+        env['LANG'],
+      ].whereType<String>().where((value) => value.isNotEmpty).firstOrNull ??
+      'C';
+  if (localeName == 'C' ||
+      localeName == 'POSIX' ||
+      localeName.toUpperCase() == 'C.UTF-8' ||
+      localeName.toUpperCase() == 'C.UTF8') {
+    return NumericConvention(
+      decimalSeparator: '.',
+      groupingSeparator: '',
+      grouping: [],
+      nativeDigits: '0123456789',
+    );
   }
+  Pointer locale = nullptr;
+  Pointer previous = nullptr;
+  try {
+    final libc = DynamicLibrary.open('libc.so.6');
+    final newlocale = libc
+        .lookupFunction<
+          Pointer Function(Int32, Pointer<Utf8>, Pointer),
+          Pointer Function(int, Pointer<Utf8>, Pointer)
+        >('newlocale');
+    final uselocale = libc
+        .lookupFunction<Pointer Function(Pointer), Pointer Function(Pointer)>(
+          'uselocale',
+        );
+    final localeconv = libc
+        .lookupFunction<Pointer<_LConv> Function(), Pointer<_LConv> Function()>(
+          'localeconv',
+        );
+    final snprintf = libc
+        .lookupFunction<
+          Int32 Function(Pointer<Utf8>, IntPtr, Pointer<Utf8>, Int32),
+          int Function(Pointer<Utf8>, int, Pointer<Utf8>, int)
+        >('snprintf');
+    final name = localeName.toNativeUtf8();
+    try {
+      locale = newlocale(2, name, nullptr);
+    } finally {
+      calloc.free(name);
+    }
+    if (locale == nullptr) return null;
+    previous = uselocale(locale);
+    if (previous == nullptr) return null;
+    final values = localeconv().ref;
+    final decimal = values.decimalPoint.toDartString();
+    final thousands = values.thousandsSeparator.toDartString();
+    final groupingBytes = values.grouping.cast<Uint8>();
+    final grouping = <int>[];
+    for (var i = 0; ; i++) {
+      final size = groupingBytes[i];
+      if (size == 0 || size == 127) break;
+      grouping.add(size);
+    }
+    final negativeSign = values.negativeSign.toDartString();
+    final separated = values.negativeCurrencySeparated != 0;
+    final negativePattern = switch (values.negativeSignPosition) {
+      0 => NumericNegativePattern.parentheses,
+      1 || 3 =>
+        separated
+            ? NumericNegativePattern.leadingSpace
+            : NumericNegativePattern.leading,
+      2 || 4 =>
+        separated
+            ? NumericNegativePattern.trailingSpace
+            : NumericNegativePattern.trailing,
+      _ => null,
+    };
+    if (negativePattern == null) return null;
+    final digits = <int>[];
+    final format = '%Id'.toNativeUtf8();
+    final buffer = calloc<Uint8>(64);
+    try {
+      for (var i = 0; i < 10; i++) {
+        final length = snprintf(buffer.cast<Utf8>(), 64, format, i);
+        if (length < 1 || length >= 64) return null;
+        final digit = buffer.cast<Utf8>().toDartString(length: length);
+        if (digit.runes.length != 1) return null;
+        digits.add(digit.runes.single);
+      }
+    } finally {
+      calloc.free(format);
+      calloc.free(buffer);
+    }
+    return NumericConvention(
+      decimalSeparator: decimal,
+      groupingSeparator: grouping.isEmpty ? '' : thousands,
+      grouping: grouping,
+      nativeDigits: String.fromCharCodes(digits),
+      negativeSign: negativeSign,
+      negativePattern: negativePattern,
+    );
+  } catch (_) {
+    return null;
+  } finally {
+    if (previous != nullptr) {
+      try {
+        final libc = DynamicLibrary.open('libc.so.6');
+        libc.lookupFunction<
+          Pointer Function(Pointer),
+          Pointer Function(Pointer)
+        >('uselocale')(previous);
+      } catch (_) {}
+    }
+    if (locale != nullptr) {
+      try {
+        final libc = DynamicLibrary.open('libc.so.6');
+        libc.lookupFunction<Void Function(Pointer), void Function(Pointer)>(
+          'freelocale',
+        )(locale);
+      } catch (_) {}
+    }
+  }
+}
+
+final class _ObjectiveC {
+  _ObjectiveC() : runtime = DynamicLibrary.open('/usr/lib/libobjc.A.dylib') {
+    DynamicLibrary.open(
+      '/System/Library/Frameworks/Foundation.framework/Foundation',
+    );
+  }
+  final DynamicLibrary runtime;
+
+  Pointer classNamed(String name) {
+    final native = name.toNativeUtf8();
+    try {
+      return runtime.lookupFunction<
+        Pointer Function(Pointer<Utf8>),
+        Pointer Function(Pointer<Utf8>)
+      >('objc_getClass')(native);
+    } finally {
+      calloc.free(native);
+    }
+  }
+
+  Pointer selector(String name) {
+    final native = name.toNativeUtf8();
+    try {
+      return runtime.lookupFunction<
+        Pointer Function(Pointer<Utf8>),
+        Pointer Function(Pointer<Utf8>)
+      >('sel_registerName')(native);
+    } finally {
+      calloc.free(native);
+    }
+  }
+
+  Pointer send(Pointer receiver, String name, [Pointer? argument]) {
+    final select = selector(name);
+    if (argument == null) {
+      return runtime.lookupFunction<
+        Pointer Function(Pointer, Pointer),
+        Pointer Function(Pointer, Pointer)
+      >('objc_msgSend')(receiver, select);
+    }
+    return runtime.lookupFunction<
+      Pointer Function(Pointer, Pointer, Pointer),
+      Pointer Function(Pointer, Pointer, Pointer)
+    >('objc_msgSend')(receiver, select, argument);
+  }
+
+  Pointer sendInteger(Pointer receiver, String name, int value) =>
+      runtime.lookupFunction<
+        Pointer Function(Pointer, Pointer, Int32),
+        Pointer Function(Pointer, Pointer, int)
+      >('objc_msgSend')(receiver, selector(name), value);
+
+  int integer(Pointer receiver, String name) =>
+      runtime.lookupFunction<
+        IntPtr Function(Pointer, Pointer),
+        int Function(Pointer, Pointer)
+      >('objc_msgSend')(receiver, selector(name));
+
+  void setInteger(Pointer receiver, String name, int value) {
+    runtime.lookupFunction<
+      Void Function(Pointer, Pointer, IntPtr),
+      void Function(Pointer, Pointer, int)
+    >('objc_msgSend')(receiver, selector(name), value);
+  }
+
+  String? string(Pointer receiver, String name) {
+    final string = send(receiver, name);
+    if (string == nullptr) return null;
+    final characters = send(string, 'UTF8String');
+    return characters == nullptr
+        ? null
+        : characters.cast<Utf8>().toDartString();
+  }
+}
+
+NumericConvention? _macOSNumericConvention() {
+  Pointer formatter = nullptr;
+  try {
+    final objc = _ObjectiveC();
+    final type = objc.classNamed('NSNumberFormatter');
+    if (type == nullptr) return null;
+    formatter = objc.send(objc.send(type, 'alloc'), 'init');
+    if (formatter == nullptr) return null;
+    final locale = objc.send(objc.classNamed('NSLocale'), 'currentLocale');
+    if (locale == nullptr) return null;
+    objc.send(formatter, 'setLocale:', locale);
+    objc.setInteger(formatter, 'setNumberStyle:', 1);
+    final decimal = objc.string(formatter, 'decimalSeparator');
+    final thousands = objc.string(formatter, 'groupingSeparator');
+    final negativeSign = objc.string(formatter, 'negativeSign');
+    final negativeFormat = objc.string(formatter, 'negativeFormat');
+    if (decimal == null ||
+        thousands == null ||
+        negativeSign == null ||
+        negativeFormat == null) {
+      return null;
+    }
+    final primary = objc.integer(formatter, 'groupingSize');
+    final secondary = objc.integer(formatter, 'secondaryGroupingSize');
+    final grouped = objc.integer(formatter, 'usesGroupingSeparator') != 0;
+    final grouping = !grouped || primary < 1
+        ? <int>[]
+        : secondary > 0 && secondary != primary
+        ? [secondary, primary]
+        : [primary];
+    final prefix = negativeFormat.split('#').first;
+    final suffix = negativeFormat.split('#').last;
+    final negativePattern =
+        negativeFormat.startsWith('(') && negativeFormat.endsWith(')')
+        ? NumericNegativePattern.parentheses
+        : prefix == negativeSign
+        ? NumericNegativePattern.leading
+        : prefix == '$negativeSign '
+        ? NumericNegativePattern.leadingSpace
+        : suffix == negativeSign
+        ? NumericNegativePattern.trailing
+        : suffix == ' $negativeSign'
+        ? NumericNegativePattern.trailingSpace
+        : null;
+    if (negativePattern == null) return null;
+    objc.setInteger(formatter, 'setUsesGroupingSeparator:', 0);
+    final number = objc.classNamed('NSNumber');
+    if (number == nullptr) return null;
+    final digits = <int>[];
+    for (var i = 0; i < 10; i++) {
+      final value = objc.sendInteger(number, 'numberWithInt:', i);
+      final text = objc.string(
+        objc.send(formatter, 'stringFromNumber:', value),
+        'description',
+      );
+      if (text == null || text.runes.length != 1) return null;
+      digits.add(text.runes.single);
+    }
+    return NumericConvention(
+      decimalSeparator: decimal,
+      groupingSeparator: grouping.isEmpty ? '' : thousands,
+      grouping: grouping,
+      nativeDigits: String.fromCharCodes(digits),
+      negativeSign: negativeSign,
+      negativePattern: negativePattern,
+    );
+  } catch (_) {
+    return null;
+  } finally {
+    if (formatter != nullptr) {
+      try {
+        _ObjectiveC().send(formatter, 'release');
+      } catch (_) {}
+    }
+  }
+}
+
+NumericConvention? _systemNumericConvention() {
+  if (Platform.isLinux) return _linuxNumericConvention();
+  if (Platform.isMacOS) return _macOSNumericConvention();
   if (!Platform.isWindows) return null;
   try {
     final get = DynamicLibrary.open('kernel32.dll')
@@ -302,15 +587,46 @@ final class NumberInput {
           'System numeric conventions could not be resolved; supply an explicit supported convention.',
         );
       }
+      const digits = '1234567';
+      final plain = '$digits${decimal ? '${resolved.decimalSeparator}89' : ''}';
+      String group() {
+        if (resolved.grouping.isEmpty) return digits;
+        final groups = <String>[];
+        var end = digits.length;
+        var index = 0;
+        while (end > 0) {
+          final size =
+              resolved.grouping[index < resolved.grouping.length
+                  ? index
+                  : resolved.grouping.length - 1];
+          final start = end - size < 0 ? 0 : end - size;
+          groups.insert(0, digits.substring(start, end));
+          end = start;
+          index++;
+        }
+        return groups.join(resolved.groupingSeparator);
+      }
+
+      final grouped =
+          '${group()}${decimal ? '${resolved.decimalSeparator}89' : ''}';
+      final nativeExample = String.fromCharCodes(
+        grouped.runes.map(
+          (r) => r >= 48 && r <= 57
+              ? resolved.nativeDigits.runes.elementAt(r - 48)
+              : r,
+        ),
+      );
       final negativeExample = switch (resolved.negativePattern) {
-        NumericNegativePattern.leading => '${resolved.negativeSign}123',
-        NumericNegativePattern.trailing => '123${resolved.negativeSign}',
-        NumericNegativePattern.leadingSpace => '${resolved.negativeSign} 123',
-        NumericNegativePattern.trailingSpace => '123 ${resolved.negativeSign}',
-        NumericNegativePattern.parentheses => '(123)',
+        NumericNegativePattern.leading => '${resolved.negativeSign}$plain',
+        NumericNegativePattern.trailing => '$plain${resolved.negativeSign}',
+        NumericNegativePattern.leadingSpace =>
+          '${resolved.negativeSign} $plain',
+        NumericNegativePattern.trailingSpace =>
+          '$plain ${resolved.negativeSign}',
+        NumericNegativePattern.parentheses => '($plain)',
       };
       final description =
-          '$label (${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; ${resolved.grouping.isEmpty ? 'grouping not supported' : 'grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}'}; native digits ${resolved.nativeDigits}; negative example $negativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'})';
+          '$label (${required ? 'required' : 'optional'}; ${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; ${resolved.grouping.isEmpty ? 'grouping not supported' : 'grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}; grouped example $grouped'}; ungrouped example $plain; positive example $plain; negative example $negativeExample; ASCII digits 0123456789; native digits ${resolved.nativeDigits}; native example $nativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'})';
       final result =
           await TextInput(
             description,
