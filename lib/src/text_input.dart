@@ -15,6 +15,7 @@ part 'cron_input.dart';
 part 'timezone_snapshot.dart';
 part 'timezone_select.dart';
 part 'path_input.dart';
+part 'filesystem_picker.dart';
 part 'autocomplete.dart';
 part 'search_select.dart';
 part 'sortable_select.dart';
