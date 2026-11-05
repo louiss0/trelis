@@ -88,6 +88,14 @@ void main() {
     expect(match.instants, [DateTime.utc(2024, 1, 6)]);
     expect(nonmatch.instants, isEmpty);
   });
+  test('oversized Quartz expression is rejected before parsing', () async {
+    final expression = '${'0,' * 2100}0 0 0 ? * MON';
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer(expression));
+    expect(result, isA<Unavailable<CronExpression>>());
+  });
   test('Quartz rejects two specified days and two unspecified days', () async {
     for (final expression in ['0 0 12 1 * MON', '0 0 12 ? * ?']) {
       final result = await CronInput(

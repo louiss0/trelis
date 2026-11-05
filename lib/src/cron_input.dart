@@ -345,6 +345,9 @@ final class CronPreview {
 /// Cron expression entry with explicitly configured optional matching preview.
 /// Quartz syntax and provider behavior are not yet fully qualified.
 final class CronInput {
+  /// Maximum expression length in UTF-16 code units.
+  static const maxExpressionLength = 4096;
+
   CronInput(
     this.label, {
     required this.profile,
@@ -352,9 +355,10 @@ final class CronInput {
     this.preview,
   }) {
     _input = TextInput(
-      '$label (${profile.name} profile; matching preview is not configured)',
+      '$label (${profile.name} profile; expression limit $maxExpressionLength UTF-16 code units; matching preview is not configured)',
       initialValue: initialValue,
       required: true,
+      maxLength: maxExpressionLength,
       validate: (value) => _valid(value)
           ? null
           : 'Invalid or unsupported cron expression for the selected profile.',
@@ -368,7 +372,8 @@ final class CronInput {
   bool _active = false;
 
   bool _valid(String value) {
-    if (value.trim() != value) return false;
+    if (value.length > maxExpressionLength || value.trim() != value)
+      return false;
     if (profile == CronProfile.quartz) {
       final fields = value.split(RegExp(r' +'));
       if (fields.length != 6 && fields.length != 7) return false;
@@ -544,7 +549,7 @@ final class CronInput {
     final keys = _Keys(source.input.transform(utf8.encoder));
     var draft = initialValue;
     out.writeln(
-      '$label. ${profile.name} profile. Enter an expression, then /preview, /edit or /submit; /cancel cancels.',
+      '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units. Enter an expression, then /preview, /edit or /submit; /cancel cancels.',
     );
     try {
       while (true) {
@@ -554,6 +559,7 @@ final class CronInput {
           out,
           linear: linear,
           sequential: linear,
+          maxLength: maxExpressionLength,
         );
         if (entry.action == 'cancel') return Cancelled();
         if (entry.action == 'interrupt') return Interrupted();
