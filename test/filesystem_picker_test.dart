@@ -170,6 +170,44 @@ void main() {
       expect(out.toString(), contains('1. child'));
     },
   );
+  test('linked directories require per-open opt-in', () async {
+    final dir = await Directory.systemTemp.createTemp('picker_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final target = await Directory('${dir.path}${Platform.pathSeparator}target')
+        .create();
+    final browser = await Directory(
+      '${dir.path}${Platform.pathSeparator}browser',
+    ).create();
+    final linked = '${browser.path}${Platform.pathSeparator}linked';
+    await _directoryLink(linked, target.path);
+    final out = StringBuffer();
+    final result = await DirectoryPicker('Directory', base: browser.path)
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('open 1\ropen 1 links\rchoose\r\r'),
+            out,
+          ),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, linked);
+    expect(out.toString(), contains('[link]'));
+    expect(out.toString(), contains('explicit'));
+    expect(out.toString(), contains('Linked traversal approved for this open'));
+  });
+  test('approved linked-directory cycles are rejected with context', () async {
+    final dir = await Directory.systemTemp.createTemp('picker_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final linked = '${dir.path}${Platform.pathSeparator}loop';
+    await _directoryLink(linked, dir.path);
+    final out = StringBuffer();
+    final result = await DirectoryPicker('Directory', base: dir.path).prompt(
+      source: ScriptedInput(Stream.value('open 1 links\rchoose\r\r'), out),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<String>).value, dir.path);
+    expect(out.toString(), contains('cycle'));
+    expect(out.toString(), contains(dir.path));
+  });
   test('linear directory browser navigates to parent', () async {
     final dir = await Directory.systemTemp.createTemp('picker_test');
     addTearDown(() => dir.delete(recursive: true));
@@ -181,6 +219,23 @@ void main() {
     );
     expect((result as Accepted<String>).value, dir.path);
   });
+}
+
+Future<void> _directoryLink(String linked, String target) async {
+  if (Platform.isWindows) {
+    final result = await Process.run('cmd', [
+      '/c',
+      'mklink',
+      '/J',
+      linked,
+      target,
+    ]);
+    if (result.exitCode != 0) {
+      throw StateError('Could not create junction: ${result.stderr}');
+    }
+  } else {
+    await Link(linked).create(target);
+  }
 }
 
 final class _HookOutput implements StringSink {

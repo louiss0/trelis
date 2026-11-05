@@ -144,11 +144,22 @@ final class _FilesystemPicker {
               .toList();
           listed.sort((a, b) => a.path.compareTo(b.path));
           for (final entry in listed) {
-            if (!showHidden && path.basename(entry.path).startsWith('.')) {
-              continue;
-            }
+            final attributes = _windowsAttributes(entry.path);
+            final hidden =
+                path.basename(entry.path).startsWith('.') ||
+                (attributes != null && attributes & 0x2 != 0);
+            if (!showHidden && hidden) continue;
             final stat = await Link(entry.path).stat();
-            entries.add(_PickerEntry(entry.path, stat.type, stat));
+            final linked =
+                stat.type == FileSystemEntityType.link ||
+                (attributes != null && attributes & 0x400 != 0);
+            entries.add(
+              _PickerEntry(
+                entry.path,
+                linked ? FileSystemEntityType.link : stat.type,
+                stat,
+              ),
+            );
           }
           for (var i = 0; i < entries.length; i++) {
             scripted.output.writeln(
@@ -184,7 +195,7 @@ final class _FilesystemPicker {
           showHidden = !showHidden;
           continue;
         }
-        final match = RegExp(r'^(open|choose)(?: ([0-9]+))?$')
+        final match = RegExp(r'^(open|choose)(?: ([0-9]+))?( links)?$')
             .firstMatch(command);
         if (match != null) {
           final reference = match[2] == null ? null : int.parse(match[2]!);
@@ -217,13 +228,52 @@ final class _FilesystemPicker {
             continue;
           }
           if (match[1] == 'open') {
-            if (entry.type != FileSystemEntityType.directory) {
+            final linked = entry.type == FileSystemEntityType.link;
+            if (linked && match[3] == null) {
               scripted.output.writeln(
-                'Cannot open ${entry.path}: not an accessible directory or is an unapproved link.',
+                'Cannot open linked directory ${entry.path} without explicit opt-in; use open $reference links.',
               );
               continue;
             }
-            current = entry.path;
+            if (!linked && match[3] != null) {
+              scripted.output.writeln('Link approval only applies to links.');
+              continue;
+            }
+            if (await FileSystemEntity.type(entry.path) !=
+                FileSystemEntityType.directory) {
+              scripted.output.writeln(
+                'Cannot open ${entry.path}: not an accessible directory.',
+              );
+              continue;
+            }
+            try {
+              final resolved = await Directory(entry.path)
+                  .resolveSymbolicLinks();
+              var ancestor = await Directory(current).resolveSymbolicLinks();
+              while (true) {
+                if (ancestor == resolved) {
+                  scripted.output.writeln(
+                    'Cannot open ${entry.path}: linked-directory cycle to $resolved; current directory retained.',
+                  );
+                  break;
+                }
+                final parent = path.dirname(ancestor);
+                if (parent == ancestor) {
+                  if (linked) {
+                    scripted.output.writeln(
+                      'Linked traversal approved for this open: ${entry.path}.',
+                    );
+                  }
+                  current = entry.path;
+                  break;
+                }
+                ancestor = parent;
+              }
+            } on FileSystemException catch (error) {
+              scripted.output.writeln(
+                'Cannot resolve linked directory ${entry.path}: ${error.message}; current directory retained.',
+              );
+            }
             continue;
           }
           if ((target == PathTarget.file &&
@@ -303,6 +353,27 @@ final class _FilesystemPicker {
     final finalError = await input._error(candidate);
     if (finalError == null) return Accepted(candidate);
     scripted.output.writeln('Cannot choose $candidate: $finalError');
+    return null;
+  }
+}
+
+int? _windowsAttributes(String candidate) {
+  if (!Platform.isWindows) return null;
+  try {
+    final kernel = DynamicLibrary.open('kernel32.dll');
+    final attributes = kernel
+        .lookupFunction<
+          Uint32 Function(Pointer<Utf16>),
+          int Function(Pointer<Utf16>)
+        >('GetFileAttributesW');
+    final name = candidate.toNativeUtf16();
+    try {
+      final result = attributes(name);
+      return result == 0xffffffff ? null : result;
+    } finally {
+      calloc.free(name);
+    }
+  } catch (_) {
     return null;
   }
 }
