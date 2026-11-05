@@ -293,8 +293,11 @@ bool Function(DateTime) _compileUnix(List<String> fields) {
           : range.length == 2
           ? number(range[1])
           : first;
-      for (var value = first; value <= last; value += increment) {
+      var value = first;
+      while (value <= last) {
         values.add(value);
+        if (increment > last - value) break;
+        value += increment;
       }
     }
     return values;
