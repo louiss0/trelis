@@ -446,6 +446,33 @@ final class DateInput {
     final segments = List.generate(3, (i) => i < split.length ? split[i] : '');
     var focus = 0;
     while (true) {
+      if (focus == 3) {
+        out.writeln(
+          'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab moves back.',
+        );
+        final action = await _edit(
+          keys,
+          '',
+          out,
+          intercept: (key, text) {
+            if (key == '\t') return 'next';
+            if (key == '\x1b[Z') return 'previous';
+            if ((key == '\r' || key == '\n') && text.isEmpty) return 'review';
+            return null;
+          },
+        );
+        if (action.action == 'cancel' ||
+            action.action == 'interrupt' ||
+            action.action == 'eof') {
+          return action;
+        }
+        if (action.action == 'review') {
+          return (action: 'submit', value: segments.join('/'));
+        }
+        if (action.action == 'previous') focus = 2;
+        if (action.action == 'next') focus = 0;
+        continue;
+      }
       final name = names[focus];
       out.writeln(
         'Focus: $name. Tab or slash moves forward; Shift-Tab moves back; Up/Down adjusts without carry. Enter advances or reviews.',
@@ -505,11 +532,11 @@ final class DateInput {
         continue;
       }
       if (edit.action == 'previous') {
-        focus = (focus + 2) % 3;
+        focus = (focus + 3) % 4;
         continue;
       }
       if (edit.action == 'next') {
-        focus = (focus + 1) % 3;
+        focus = (focus + 1) % 4;
         continue;
       }
       if (edit.action == 'submit') {
