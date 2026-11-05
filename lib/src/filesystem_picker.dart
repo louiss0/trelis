@@ -80,7 +80,9 @@ final class _FilesystemPicker {
     _active = true;
     try {
       final input = PathInput(label, base: base, target: target);
-      if (source is SuppliedAnswer) return input.prompt(source: source);
+      if (source is SuppliedAnswer) {
+        return await input.prompt(source: source);
+      }
       final selected =
           mode ??
           userPreference ??
@@ -102,7 +104,7 @@ final class _FilesystemPicker {
           _terminalActive = false;
         }
       }
-      return _browse(source, selected, input);
+      return await _browse(source, selected, input);
     } finally {
       _active = false;
     }

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as path;
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
@@ -207,6 +208,45 @@ void main() {
     expect((result as Accepted<String>).value, dir.path);
     expect(out.toString(), contains('cycle'));
     expect(out.toString(), contains(dir.path));
+  });
+  test('acceptance rechecks a selection removed during review', () async {
+    final dir = await Directory.systemTemp.createTemp('picker_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = await File('${dir.path}${Platform.pathSeparator}entry')
+        .writeAsString('original');
+    var removed = false;
+    final out = _HookOutput((text) {
+      if (!removed && text.contains('Choose ${file.path}.')) {
+        removed = true;
+        file.deleteSync();
+      }
+    });
+    final result = await FilePicker('File', base: dir.path).prompt(
+      source: ScriptedInput(Stream.value('choose 1\r\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect(result, isA<InputEnded<String>>());
+    expect(out.toString(), contains('Target must exist'));
+    expect(removed, isTrue);
+  });
+  test('parent navigation at a filesystem root remains at that root', () async {
+    final root = path.rootPrefix(Directory.current.path);
+    final result = await DirectoryPicker('Directory', base: root).prompt(
+      source: ScriptedInput(Stream.value('parent\rchoose\r\r'), StringBuffer()),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, root);
+  });
+  test('rich interaction requires a rich-capable source', () async {
+    final result = await FilePicker('File').prompt(
+      source: ScriptedInput(
+        Stream.empty(),
+        StringBuffer(),
+        supportsRich: false,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(result, isA<Unavailable<String>>());
   });
   test('linear directory browser navigates to parent', () async {
     final dir = await Directory.systemTemp.createTemp('picker_test');
