@@ -43,9 +43,23 @@ final class DirectoryPicker {
 }
 
 final class _PickerEntry {
-  _PickerEntry(this.path, this.type);
+  _PickerEntry(this.path, this.type, this.stat);
   final String path;
   final FileSystemEntityType type;
+  final FileStat stat;
+
+  bool get isCurrent {
+    try {
+      final current = Link(path).statSync();
+      return current.type == stat.type &&
+          current.mode == stat.mode &&
+          current.size == stat.size &&
+          current.changed == stat.changed &&
+          current.modified == stat.modified;
+    } on FileSystemException {
+      return false;
+    }
+  }
 }
 
 final class _FilesystemPicker {
@@ -110,6 +124,7 @@ final class _FilesystemPicker {
       mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
     }
     var current = base ?? Directory.current.path;
+    var showHidden = false;
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     try {
       while (true) {
@@ -119,6 +134,9 @@ final class _FilesystemPicker {
         scripted.output.writeln(
           'Open N opens a directory; Choose N chooses an entry${target == PathTarget.directory ? '; Choose selects the current directory' : ''}. Path enters a literal path. Parent, Refresh, Hidden toggle are available.',
         );
+        scripted.output.writeln(
+          'Hidden entries: ${showHidden ? 'shown' : 'hidden'}. Links require explicit per-open approval. The base is not a sandbox.',
+        );
         final entries = <_PickerEntry>[];
         try {
           final listed = await Directory(current)
@@ -126,11 +144,11 @@ final class _FilesystemPicker {
               .toList();
           listed.sort((a, b) => a.path.compareTo(b.path));
           for (final entry in listed) {
-            final type = await FileSystemEntity.type(
-              entry.path,
-              followLinks: false,
-            );
-            entries.add(_PickerEntry(entry.path, type));
+            if (!showHidden && path.basename(entry.path).startsWith('.')) {
+              continue;
+            }
+            final stat = await Link(entry.path).stat();
+            entries.add(_PickerEntry(entry.path, stat.type, stat));
           }
           for (var i = 0; i < entries.length; i++) {
             scripted.output.writeln(
@@ -161,7 +179,11 @@ final class _FilesystemPicker {
           current = path.dirname(current);
           continue;
         }
-        if (command == 'refresh' || command == 'hidden') continue;
+        if (command == 'refresh') continue;
+        if (command == 'hidden') {
+          showHidden = !showHidden;
+          continue;
+        }
         final match = RegExp(r'^(open|choose)(?: ([0-9]+))?$')
             .firstMatch(command);
         if (match != null) {
@@ -188,6 +210,12 @@ final class _FilesystemPicker {
             continue;
           }
           final entry = entries[reference - 1];
+          if (!entry.isCurrent) {
+            scripted.output.writeln(
+              'Entry reference $reference is stale; refreshing instead of targeting a replacement.',
+            );
+            continue;
+          }
           if (match[1] == 'open') {
             if (entry.type != FileSystemEntityType.directory) {
               scripted.output.writeln(

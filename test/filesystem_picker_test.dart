@@ -54,6 +54,75 @@ void main() {
     expect(await file.readAsString(), 'unchanged');
   });
   test(
+    'rich file browser explicitly reveals and chooses hidden entries',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('picker_test');
+      addTearDown(() => dir.delete(recursive: true));
+      final visible = await File('${dir.path}${Platform.pathSeparator}visible')
+          .writeAsString('visible');
+      final hidden = await File('${dir.path}${Platform.pathSeparator}.hidden')
+          .writeAsString('hidden');
+      final out = StringBuffer();
+      final result = await FilePicker('File', base: dir.path).prompt(
+        source: ScriptedInput(Stream.value('hidden\rchoose 1\r\r'), out),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<String>).value, hidden.path);
+      final transcript = out.toString();
+      expect(
+        transcript.indexOf('1. visible [file]'),
+        lessThan(transcript.indexOf('Hidden entries: shown')),
+      );
+      expect(transcript, contains('2. visible [file]'));
+      expect(transcript, contains('1. .hidden [file]'));
+      expect(await visible.readAsString(), 'visible');
+    },
+  );
+  test(
+    'refresh replaces displayed references with a current listing',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('picker_test');
+      addTearDown(() => dir.delete(recursive: true));
+      await File('${dir.path}${Platform.pathSeparator}before')
+          .writeAsString('a');
+      final added = File('${dir.path}${Platform.pathSeparator}later');
+      Stream<String> actions() async* {
+        yield 'refresh\r';
+        await added.writeAsString('b');
+        yield 'refresh\rchoose 2\r\r';
+      }
+
+      final out = StringBuffer();
+      final result = await FilePicker(
+        'File',
+        base: dir.path,
+      ).prompt(source: ScriptedInput(actions(), out), mode: PromptMode.linear);
+      expect((result as Accepted<String>).value, added.path);
+      expect(out.toString(), contains('2. later [file]'));
+    },
+  );
+  test('a stale listed reference cannot choose its replacement', () async {
+    final dir = await Directory.systemTemp.createTemp('picker_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = await File('${dir.path}${Platform.pathSeparator}entry')
+        .writeAsString('original');
+    var replaced = false;
+    final out = _HookOutput((text) {
+      if (!replaced && text.contains('1. entry [file]')) {
+        replaced = true;
+        file.deleteSync();
+        file.writeAsStringSync('replacement');
+      }
+    });
+    final result = await FilePicker('File', base: dir.path).prompt(
+      source: ScriptedInput(Stream.value('choose 1\rchoose 1\r\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, file.path);
+    expect(out.toString(), contains('stale'));
+    expect(await file.readAsString(), 'replacement');
+  });
+  test(
     'linear directory browser reviews and chooses its current directory',
     () async {
       final dir = await Directory.systemTemp.createTemp('picker_test');
@@ -112,4 +181,30 @@ void main() {
     );
     expect((result as Accepted<String>).value, dir.path);
   });
+}
+
+final class _HookOutput implements StringSink {
+  _HookOutput(this.onWrite);
+  final void Function(String) onWrite;
+  final StringBuffer buffer = StringBuffer();
+
+  @override
+  void write(Object? object) {
+    final text = '$object';
+    buffer.write(text);
+    onWrite(text);
+  }
+
+  @override
+  void writeAll(Iterable<dynamic> objects, [String separator = '']) =>
+      buffer.writeAll(objects, separator);
+
+  @override
+  void writeCharCode(int charCode) => write(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => write('$object\n');
+
+  @override
+  String toString() => buffer.toString();
 }
