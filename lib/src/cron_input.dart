@@ -25,6 +25,12 @@ final class CronExpression {
       return CronPreview._(const [], CronPreviewStatus.unsupportedRange);
     }
     final fields = expression.split(RegExp(r' +'));
+    final unixMatcher = profile == CronProfile.unix
+        ? _compileUnix(fields)
+        : null;
+    final quartzFields = profile == CronProfile.quartz
+        ? _compileQuartzFields(fields)
+        : null;
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
     final initialOffset = timezone.TZDateTime.from(
@@ -71,8 +77,8 @@ final class CronExpression {
         );
       }
       final matchesExpression = profile == CronProfile.unix
-          ? civil.second == 0 && _unixMatches(fields, civil)
-          : _quartzMatches(fields, civil);
+          ? civil.second == 0 && unixMatcher!(civil)
+          : _quartzMatches(fields, civil, quartzFields!);
       if (matchesExpression) matches.add(instant);
       work++;
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
@@ -149,7 +155,29 @@ Set<int>? _quartzField(
   return values.isEmpty ? null : values;
 }
 
-bool _quartzMatches(List<String> fields, DateTime civil) {
+List<Set<int>?> _compileQuartzFields(List<String> fields) {
+  final dom = fields[3];
+  final dow = fields[5].toUpperCase();
+  return [
+    _quartzField(fields[0], 0, 59),
+    _quartzField(fields[1], 0, 59),
+    _quartzField(fields[2], 0, 23),
+    dom == '?' || dom.startsWith('L') || dom.endsWith('W')
+        ? null
+        : _quartzField(dom, 1, 31),
+    _quartzField(fields[4], 1, 12, _quartzMonths),
+    dow == '?' || dow.contains('#') || dow.endsWith('L')
+        ? null
+        : _quartzField(dow, 1, 7, _quartzWeekdays),
+    fields.length == 7 ? _quartzField(fields[6], 1970, 2199) : null,
+  ];
+}
+
+bool _quartzMatches(
+  List<String> fields,
+  DateTime civil,
+  List<Set<int>?> compiled,
+) {
   const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   int weekdayNumber(String text) {
     final name = weekdays.indexOf(text.toUpperCase());
@@ -203,7 +231,7 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
           : day;
       return civil.day == nearest;
     }
-    return _quartzField(field, 1, 31)!.contains(civil.day);
+    return compiled[3]!.contains(civil.day);
   }
 
   bool dayOfWeek() {
@@ -220,20 +248,19 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
       return weekday == weekdayNumber(field.substring(0, field.length - 1)) &&
           civil.day + 7 > lastDay;
     }
-    return _quartzField(field, 1, 7, _quartzWeekdays)!.contains(weekday);
+    return compiled[5]!.contains(weekday);
   }
 
-  return _quartzField(fields[0], 0, 59)!.contains(civil.second) &&
-      _quartzField(fields[1], 0, 59)!.contains(civil.minute) &&
-      _quartzField(fields[2], 0, 23)!.contains(civil.hour) &&
+  return compiled[0]!.contains(civil.second) &&
+      compiled[1]!.contains(civil.minute) &&
+      compiled[2]!.contains(civil.hour) &&
       dayOfMonth() &&
-      _quartzField(fields[4], 1, 12, _quartzMonths)!.contains(civil.month) &&
+      compiled[4]!.contains(civil.month) &&
       dayOfWeek() &&
-      (fields.length == 6 ||
-          _quartzField(fields[6], 1970, 2199)!.contains(civil.year));
+      (fields.length == 6 || compiled[6]!.contains(civil.year));
 }
 
-bool _unixMatches(List<String> fields, DateTime civil) {
+bool Function(DateTime) _compileUnix(List<String> fields) {
   const months = [
     'JAN',
     'FEB',
@@ -249,54 +276,46 @@ bool _unixMatches(List<String> fields, DateTime civil) {
     'DEC',
   ];
   const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  bool contains(
-    String field,
-    int value,
-    int min,
-    int max,
-    List<String> names, {
-    bool sunday = false,
-  }) {
+  Set<int> parse(String field, int min, int max, List<String> names) {
     int number(String text) {
-      final name = names.indexOf(text.toUpperCase());
-      return name >= 0 ? name + min : int.parse(text);
+      final index = names.indexOf(text.toUpperCase());
+      return index < 0 ? int.parse(text) : index + min;
     }
 
-    bool matches(int v) {
-      for (final item in field.split(',')) {
-        final stepParts = item.split('/');
-        final step = stepParts.length == 2 ? int.parse(stepParts[1]) : 1;
-        final range = stepParts[0].split('-');
-        final first = range[0] == '*' ? min : number(range[0]);
-        final last = range[0] == '*'
-            ? max
-            : range.length == 2
-            ? number(range[1])
-            : first;
-        if (v >= first && v <= last && (v - first) % step == 0) return true;
+    final values = <int>{};
+    for (final item in field.split(',')) {
+      final step = item.split('/');
+      final increment = step.length == 2 ? int.parse(step[1]) : 1;
+      final range = step[0].split('-');
+      final first = range[0] == '*' ? min : number(range[0]);
+      final last = range[0] == '*'
+          ? max
+          : range.length == 2
+          ? number(range[1])
+          : first;
+      for (var value = first; value <= last; value += increment) {
+        values.add(value);
       }
-      return false;
     }
-
-    return matches(value) || (sunday && value == 0 && matches(7));
+    return values;
   }
 
-  final dom = contains(fields[2], civil.day, 1, 31, const []);
-  final dow = contains(
-    fields[4],
-    civil.weekday % 7,
-    0,
-    7,
-    weekdays,
-    sunday: true,
-  );
-  final days = fields[2].startsWith('*') || fields[4].startsWith('*')
-      ? dom && dow
-      : dom || dow;
-  return contains(fields[0], civil.minute, 0, 59, const []) &&
-      contains(fields[1], civil.hour, 0, 23, const []) &&
-      days &&
-      contains(fields[3], civil.month, 1, 12, months);
+  final minutes = parse(fields[0], 0, 59, const []);
+  final hours = parse(fields[1], 0, 23, const []);
+  final dom = parse(fields[2], 1, 31, const []);
+  final month = parse(fields[3], 1, 12, months);
+  final dow = parse(fields[4], 0, 7, weekdays);
+  final dayAnd = fields[2].startsWith('*') || fields[4].startsWith('*');
+  return (civil) {
+    final dayOfMonth = dom.contains(civil.day);
+    final weekday = civil.weekday % 7;
+    final dayOfWeek =
+        dow.contains(weekday) || (weekday == 0 && dow.contains(7));
+    return minutes.contains(civil.minute) &&
+        hours.contains(civil.hour) &&
+        month.contains(civil.month) &&
+        (dayAnd ? dayOfMonth && dayOfWeek : dayOfMonth || dayOfWeek);
+  };
 }
 
 /// All instants are explicit UTC values. The work budget counts candidates.

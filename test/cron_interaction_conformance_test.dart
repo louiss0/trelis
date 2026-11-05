@@ -74,6 +74,41 @@ void main() {
     expect(output.toString(), isNot(contains('Matching preview:')));
     await input.close();
   });
+  test('hostile valid list remains interruptible during preview', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final longConfig = CronPreviewConfig(
+      zone: 'Etc/UTC',
+      reference: DateTime.utc(2024),
+      start: DateTime.utc(2024),
+      end: DateTime.utc(2030),
+      count: 1,
+      budget: 2000000,
+    );
+    final expression = '${'59,' * 1300}59 0 31 2 *';
+    final result =
+        CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          initialValue: expression,
+          preview: longConfig,
+        ).prompt(
+          source: ScriptedInput(input.stream, output),
+          mode: PromptMode.linear,
+        );
+    final watch = Stopwatch()..start();
+    input.add('\r/preview\r');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(watch.elapsed, lessThan(const Duration(milliseconds: 750)));
+    expect(output.toString(), contains('Calculating preview'));
+    input.add('/cancel\r');
+    expect(
+      await result.timeout(const Duration(seconds: 3)),
+      isA<Cancelled<CronExpression>>(),
+    );
+    expect(output.toString(), isNot(contains('Matching preview:')));
+    await input.close();
+  });
   test('escape cancels an active rich preview', () async {
     final input = StreamController<String>();
     final output = StringBuffer();
