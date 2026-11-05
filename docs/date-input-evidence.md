@@ -50,7 +50,23 @@ digits setting and the .NET calendar vectors. Scripted interaction tests cover
 slash traversal, adjustment retaining an invalid dependent day, explicit review,
 EOF at review, and preventing identified paste from submitting review commands.
 The redirected native DateInput check verifies that a rich prompt returns
-unavailable for redirected input; it does not verify an interactive console.
-These are automated checks, not Windows Terminal or NVDA task completion.
+unavailable for redirected input. Interactive-console evidence is recorded
+below. These are automated checks, not Windows Terminal or NVDA task completion.
 The DateInput component still requires recorded human nonvisual task evidence
 in the whole-library ticket 32 gate; no accessibility qualification is claimed.
+
+
+## Windows interactive console check
+
+On Windows 10.0.26200.0 with Dart 3.13.2, the command
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File test/date_input_console_checks.ps1`
+created a real console, attached to it, and injected console key events. In
+both rich and linear modes it entered Buddhist `29/2/2567`, verified that
+`ISO date: 2024-02-29` appeared before submission, explicitly submitted the
+review, and checked the result `2024-2-29:2567:BE`. In rich mode Tab focused
+Submit and Enter activated it; in linear mode the `/submit` command was used.
+Both runs printed PASS. The recorded input-mode, output-mode, cursor-size and
+cursor-visibility state was `503:7:25:1 -> 496:7:25:1 -> 503:7:25:1`:
+the middle sample was taken after the prompt appeared and the final state
+matched the pre-prompt baseline. This automated native-console check is not a
+Windows Terminal + NVDA usability qualification.
