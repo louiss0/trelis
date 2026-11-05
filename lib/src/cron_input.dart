@@ -34,9 +34,21 @@ final class CronInput {
       if ((fields[3] == '?') == (fields[5] == '?')) return false;
       final numeric = RegExp(r'^(?:\*|[0-9]+)$');
       for (final i in [0, 1, 2, 4]) {
+        if (i == 0 && RegExp(r'^[0-9]+-[0-9]+$').hasMatch(fields[i])) {
+          final bounds = fields[i].split('-').map(int.tryParse).toList();
+          if (bounds[0] == null ||
+              bounds[1] == null ||
+              bounds[0]! > bounds[1]! ||
+              bounds[1]! > 59) {
+            return false;
+          }
+          continue;
+        }
         if (!numeric.hasMatch(fields[i])) return false;
       }
-      if (fields[3] != '?' && fields[3] != 'L' && !numeric.hasMatch(fields[3])) {
+      if (fields[3] != '?' &&
+          fields[3] != 'L' &&
+          !numeric.hasMatch(fields[3])) {
         return false;
       }
       if (fields[5] != '?' &&
