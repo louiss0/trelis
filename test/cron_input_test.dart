@@ -49,6 +49,17 @@ void main() {
     );
     expect(rejected, isA<Unavailable<CronExpression>>());
   });
+  test('Quartz accepts lists of seconds', () async {
+    final input = CronInput('Schedule', profile: CronProfile.quartz);
+    expect(
+      await input.prompt(source: SuppliedAnswer('0,15,30,45 0 12 ? * MON')),
+      isA<Accepted<CronExpression>>(),
+    );
+    expect(
+      await input.prompt(source: SuppliedAnswer('0,60 0 12 ? * MON')),
+      isA<Unavailable<CronExpression>>(),
+    );
+  });
   test('Quartz accepts last day of month', () async {
     final result = await CronInput(
       'Schedule',

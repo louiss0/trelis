@@ -36,6 +36,17 @@ final class CronInput {
       const minimum = [0, 0, 0, 1, 1, 1, 1970];
       const maximum = [59, 59, 23, 31, 12, 7, 2199];
       for (final i in [0, 1, 2, 4]) {
+        if (i == 0 && fields[i].contains(',')) {
+          final values = fields[i].split(',');
+          if (values.any(
+            (part) =>
+                !RegExp(r'^[0-9]+$').hasMatch(part) ||
+                (int.tryParse(part) ?? 60) > 59,
+          )) {
+            return false;
+          }
+          continue;
+        }
         if (RegExp(r'^[0-9]+-[0-9]+$').hasMatch(fields[i])) {
           final bounds = fields[i].split('-').map(int.tryParse).toList();
           if (bounds[0] == null ||
