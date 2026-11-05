@@ -65,8 +65,8 @@ final class URLInput {
         return error;
       }
       try {
-        IcuIdna.uts46().toAscii(host);
-      } on IcuIdnaError {
+        const Uts46().toAscii(host);
+      } on FormatException {
         return error;
       }
     }
@@ -160,7 +160,7 @@ final class URLInput {
               .first;
           if (!authority.startsWith('[')) {
             final host = authority.split(':').first;
-            final idna = IcuIdna.uts46();
+            const idna = Uts46();
             out.writeln(
               'Host interpretation — Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
             );
@@ -245,7 +245,8 @@ final class EmailInput {
     }
     if (domain.startsWith('[') && domain.endsWith(']')) {
       final raw = domain.substring(1, domain.length - 1);
-      final ipv6 = raw.startsWith('IPv6:');
+      final ipv6 =
+          raw.length >= 5 && raw.substring(0, 5).toLowerCase() == 'ipv6:';
       final address = InternetAddress.tryParse(ipv6 ? raw.substring(5) : raw);
       if (address == null ||
           address.type !=
@@ -257,12 +258,12 @@ final class EmailInput {
       }
     } else {
       try {
-        final ascii = IcuIdna.uts46().toAscii(domain);
+        final ascii = const Uts46().toAscii(domain);
         if (ascii.endsWith('.') ||
             utf8.encode(local).length + 1 + ascii.length > 254) {
           return error;
         }
-      } on IcuIdnaError {
+      } on FormatException {
         return error;
       }
     }
@@ -289,7 +290,7 @@ final class EmailInput {
       if (domain.startsWith('[')) {
         sink.writeln('Transport address literal: $domain.');
       } else {
-        final idna = IcuIdna.uts46();
+        const idna = Uts46();
         sink.writeln(
           'Domain interpretation — Unicode: ${idna.toUnicode(domain)}; ASCII: ${idna.toAscii(domain)}.',
         );

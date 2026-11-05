@@ -2,6 +2,11 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('IPv6 address literal tag is case insensitive', () async {
+    final result = await EmailInput('Email')
+        .prompt(source: SuppliedAnswer('Case@[ipv6:2001:db8::1]'));
+    expect((result as Accepted<String>).value, 'Case@[ipv6:2001:db8::1]');
+  });
   test(
     'linear email entry displays labeled IDNA domain interpretation',
     () async {

@@ -1,7 +1,28 @@
+import 'dart:isolate';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('URL and email accept concurrent IDNA prompts in isolates', () async {
+    final results = await Future.wait([
+      for (var i = 0; i < 40; i++) ...[
+        Isolate.run(
+          () => URLInput(
+            'URL',
+            allowedSchemes: {'https'},
+          ).prompt(source: SuppliedAnswer('https://faß.de/$i')),
+        ),
+        Isolate.run(
+          () =>
+              EmailInput('Email')
+                  .prompt(source: SuppliedAnswer('user$i@bücher.example')),
+        ),
+      ],
+    ]);
+    expect(results, everyElement(isA<Accepted<String>>()));
+  });
+
   test('URL displays labeled nontransitional IDNA interpretations', () async {
     final out = StringBuffer();
     final result = await URLInput('URL', allowedSchemes: {'https'}).prompt(
@@ -70,6 +91,35 @@ void main() {
       );
     },
   );
+  test(
+    'URL applies NFC and Bidi rules to Unicode and Punycode hosts',
+    () async {
+      final input = URLInput('URL', allowedSchemes: {'https'});
+      for (final value in [
+        'https://fa\u0308.de/',
+        'https://솣.example/',
+        'https://꧐Ӏ\u1BAA\u08F6.눵/',
+      ]) {
+        expect(
+          await input.prompt(source: SuppliedAnswer(value)),
+          isA<Accepted<String>>(),
+          reason: value,
+        );
+      }
+      for (final value in [
+        'https://aא.example/',
+        'https://xn--a-0hc.example/',
+        'https://0a.xn--4db/',
+      ]) {
+        expect(
+          await input.prompt(source: SuppliedAnswer(value)),
+          isA<Unavailable<String>>(),
+          reason: value,
+        );
+      }
+    },
+  );
+
   test('URL DNS names use nontransitional IDNA validation', () async {
     final input = URLInput('URL', allowedSchemes: {'https'});
     for (final value in [
