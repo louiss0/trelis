@@ -193,6 +193,7 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
     final field = fields[5].toUpperCase();
     if (field == '?' || field == '*') return true;
     final weekday = civil.weekday % 7 + 1;
+    if (field == 'L') return weekday == 7;
     if (field.contains('#')) {
       final parts = field.split('#');
       return weekday == weekdayNumber(parts[0]) &&
@@ -391,6 +392,7 @@ final class CronInput {
         caseSensitive: false,
       ).hasMatch(fields[5]);
       if (fields[5] != '?' &&
+          fields[5] != 'L' &&
           !nthWeekday &&
           !lastWeekday &&
           _quartzField(fields[5], 1, 7, _quartzWeekdays) == null) {

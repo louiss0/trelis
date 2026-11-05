@@ -60,6 +60,20 @@ void main() {
       expect(match.instants, [DateTime.utc(2024, 1, 7)], reason: weekday);
     }
   });
+  test('Quartz standalone weekday L means Saturday', () async {
+    final match = await preview(
+      '0 0 0 ? * L',
+      CronProfile.quartz,
+      DateTime.utc(2024, 1, 6),
+    );
+    final nonmatch = await preview(
+      '0 0 0 ? * L',
+      CronProfile.quartz,
+      DateTime.utc(2024, 1, 7),
+    );
+    expect(match.instants, [DateTime.utc(2024, 1, 6)]);
+    expect(nonmatch.instants, isEmpty);
+  });
   test('Quartz rejects two specified days and two unspecified days', () async {
     for (final expression in ['0 0 12 1 * MON', '0 0 12 ? * ?']) {
       final result = await CronInput(
