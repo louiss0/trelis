@@ -464,6 +464,36 @@ final class DateInput {
     return result;
   }
 
+  String _dateError(String draft, DateFieldOrder order) {
+    final parts = draft.split('/');
+    if (parts.length != 3)
+      return 'Invalid date: enter all three slash-separated fields.';
+    final labels = switch (order) {
+      DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
+      DateFieldOrder.monthDayYear => ['month', 'day', 'year'],
+      DateFieldOrder.yearMonthDay => ['year', 'month', 'day'],
+    };
+    final values = <String, int>{};
+    for (var i = 0; i < 3; i++) {
+      final label = labels[i];
+      final value = _segmentNumber(parts[i]);
+      final width = parts[i].runes.length;
+      if (value == null ||
+          (label == 'year' ? width != 4 : width < 1 || width > 2)) {
+        return 'Invalid date: $label must use the indicated width and one digit repertoire.';
+      }
+      values[label] = value;
+    }
+    final year = values['year']!;
+    final month = values['month']!;
+    if (year < (calendar == DateCalendar.buddhist ? 2484 : 1)) {
+      return 'Invalid date: year is outside the supported calendar range.';
+    }
+    if (month < 1 || month > 12)
+      return 'Invalid date: month must be 1 through 12.';
+    return 'Invalid date: day does not exist in the selected month and year.';
+  }
+
   Future<({String action, String value})> _editSegments(
     _Keys keys,
     String draft,
@@ -636,7 +666,9 @@ final class DateInput {
         draft = edit.value;
         final value = _parse(draft, order);
         if (value == null) {
-          out.writeln('Invalid date; correct the retained draft.');
+          out.writeln(
+            '${_dateError(draft, order)} Correct the retained draft.',
+          );
           continue;
         }
         final iso =
