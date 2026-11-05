@@ -137,7 +137,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('1-2\r\x7f3\r'), out),
+        source: ScriptedInput(Stream.value('1-2\r\x7f3\r2\r\r'), out),
         mode: PromptMode.rich,
       );
       expect(out.toString(), isNot(contains('Invalid')));
@@ -298,6 +298,93 @@ void main() {
       expect(out.toString(), contains('Selected template: pair'));
     },
   );
+
+  test('supplied raw value may omit an optional trailing slot', () async {
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskSlot('letter', (s) => 'abc'.contains(s), required: false),
+        ]),
+      ],
+    );
+    final result = await input.prompt(source: SuppliedAnswer('1'));
+    expect((result as Accepted<MaskedValue>).value.slots, ['1', '']);
+  });
+
+  test('supplied value may omit an optional middle slot', () async {
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskSlot('letter', (s) => 'abc'.contains(s), required: false),
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        ]),
+      ],
+    );
+    final result = await input.prompt(source: SuppliedAnswer('12'));
+    expect((result as Accepted<MaskedValue>).value.slots, ['1', '', '2']);
+  });
+
+  test('optional slot does not consume required slot data', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('optional digit', digit, required: false),
+          MaskSlot('required digit', digit),
+        ]),
+      ],
+    );
+    final result = await input.prompt(source: SuppliedAnswer('1'));
+    expect((result as Accepted<MaskedValue>).value.slots, ['', '1']);
+  });
+
+  test('ambiguous optional slot positions are not silently chosen', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('first', digit, required: false),
+          MaskSlot('second', digit, required: false),
+        ]),
+      ],
+    );
+    expect(
+      await input.prompt(source: SuppliedAnswer('1')),
+      isA<Unavailable<MaskedValue>>(),
+    );
+  });
+
+  test('adaptive rich slot edit reopens template ambiguity', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('pair', [
+          MaskSlot('digit', digit),
+          MaskSlot('digit', digit),
+        ]),
+        MaskTemplate('dash', [
+          MaskSlot('digit', digit),
+          MaskLiteral('-'),
+          MaskSlot('digit', digit),
+        ]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('1-2\r\x7f3\r1\r\r'), out),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.template, 'pair');
+    expect(result.value.raw, '13');
+    expect(out.toString(), contains('Ambiguity reopened'));
+  });
 
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(

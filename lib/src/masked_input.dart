@@ -154,55 +154,69 @@ final class MaskedInput {
         : Unavailable('Invalid or ambiguous mask.');
   }
 
-  List<MaskedValue> _decode(String text) {
+  List<MaskedValue> _decode(String text, {MaskInterpretation? as}) {
+    final activeInterpretation = as ?? interpretation;
     final matches = <MaskedValue>[];
     for (final template in templates) {
       for (final formatted in [false, true]) {
-        if ((interpretation == MaskInterpretation.raw && formatted) ||
-            (interpretation == MaskInterpretation.formatted && !formatted)) {
+        if ((activeInterpretation == MaskInterpretation.raw && formatted) ||
+            (activeInterpretation == MaskInterpretation.formatted &&
+                !formatted)) {
           continue;
         }
         final chars = text.characters.toList();
         final slots = <String>[];
-        var offset = 0;
-        var valid = true;
-        for (final element in template.elements) {
+        void decode(int elementIndex, int offset) {
+          if (elementIndex == template.elements.length) {
+            if (offset != chars.length) return;
+            var i = 0;
+            final result = template.elements
+                .map((e) => e is MaskLiteral ? e.text : slots[i++])
+                .join();
+            final value = MaskedValue(
+              template.name,
+              slots,
+              result,
+              interpretation: formatted
+                  ? MaskInterpretation.formatted
+                  : MaskInterpretation.raw,
+            );
+            if (!matches.any(
+              (m) =>
+                  m.template == value.template &&
+                  m.slots.length == value.slots.length &&
+                  m.slots.indexed.every((e) => e.$2 == value.slots[e.$1]),
+            )) {
+              matches.add(value);
+            }
+            return;
+          }
+          final element = template.elements[elementIndex];
           if (element is MaskLiteral) {
-            if (formatted) {
-              for (final c in element.text.characters) {
-                if (offset >= chars.length || chars[offset++] != c) {
-                  valid = false;
-                  break;
-                }
+            if (!formatted) {
+              decode(elementIndex + 1, offset);
+            } else {
+              final literal = element.text.characters.toList();
+              if (offset + literal.length <= chars.length &&
+                  literal.indexed.every((e) => e.$2 == chars[offset + e.$1])) {
+                decode(elementIndex + 1, offset + literal.length);
               }
             }
           } else if (element is MaskSlot) {
-            if (offset >= chars.length || !element.accepts(chars[offset])) {
-              valid = false;
-              break;
+            if (!element.required) {
+              slots.add('');
+              decode(elementIndex + 1, offset);
+              slots.removeLast();
             }
-            slots.add(chars[offset++]);
+            if (offset < chars.length && element.accepts(chars[offset])) {
+              slots.add(chars[offset]);
+              decode(elementIndex + 1, offset + 1);
+              slots.removeLast();
+            }
           }
         }
-        if (valid && offset == chars.length) {
-          var i = 0;
-          final result = template.elements
-              .map((e) => e is MaskLiteral ? e.text : slots[i++])
-              .join();
-          final value = MaskedValue(
-            template.name,
-            List.unmodifiable(slots),
-            result,
-            interpretation: formatted
-                ? MaskInterpretation.formatted
-                : MaskInterpretation.raw,
-          );
-          if (!matches.any(
-            (m) => m.template == value.template && m.raw == value.raw,
-          )) {
-            matches.add(value);
-          }
-        }
+
+        decode(0, 0);
       }
     }
     return matches;
@@ -488,6 +502,7 @@ final class MaskedInput {
     var focus = initial == null ? 0 : slots.length;
     var provenance = initial?.interpretation ?? MaskInterpretation.automatic;
     int? lastTyped;
+    var edited = false;
     void show() {
       out.writeln('$label. Template: ${template.name}.');
       for (var i = 0; i < slots.length; i++) {
@@ -579,10 +594,12 @@ final class MaskedInput {
         if (key == '\x1b[C' && focus < slots.length) focus++;
         if ((key == '\x7f' || key == '\x08') && focus > 0) {
           slots[--focus] = '';
+          edited = true;
           provenance = MaskInterpretation.automatic;
         }
         if (key == '\x1b[3~' && focus < slots.length) {
           slots[focus] = '';
+          edited = true;
           provenance = MaskInterpretation.automatic;
         }
         if ((key == '\r' || key == '\n')) {
@@ -591,6 +608,40 @@ final class MaskedInput {
           )) {
             out.writeln('Required slots are incomplete.');
           } else {
+            if (edited && templates.length > 1) {
+              final matches = _decode(slots.join(), as: MaskInterpretation.raw);
+              if (matches.length > 1) {
+                out.writeln(
+                  'Ambiguity reopened; draft preserved: ${slots.join()}',
+                );
+                for (var i = 0; i < matches.length; i++) {
+                  out.writeln(
+                    '${i + 1}. ${matches[i].template}: ${matches[i].formatted}',
+                  );
+                }
+                out.writeln('Choose a template number:');
+                final choice = await _edit(keys, '', out);
+                if (choice.action == 'cancel') return Cancelled();
+                if (choice.action == 'interrupt') return Interrupted();
+                if (choice.action != 'submit') return InputEnded();
+                final index = int.tryParse(choice.value);
+                if (index == null || index < 1 || index > matches.length) {
+                  out.writeln('Invalid template number.');
+                  continue;
+                }
+                final selected = matches[index - 1];
+                out.writeln('Selected template: ${selected.template}.');
+                return await _richFixed(
+                  source,
+                  null,
+                  selectedTemplate: templates.singleWhere(
+                    (t) => t.name == selected.template,
+                  ),
+                  initial: selected,
+                  keyInput: keys,
+                );
+              }
+            }
             var index = 0;
             final formatted = template.elements
                 .map((e) => e is MaskLiteral ? e.text : slots[index++])
@@ -610,11 +661,13 @@ final class MaskedInput {
           if (prior != null && (slots[prior] + key).characters.length == 1) {
             final combined = slots[prior] + key;
             if (rules[prior].accepts(combined)) {
+              edited = true;
               slots[prior] = combined;
             } else {
               out.writeln('Slot does not accept that grapheme.');
             }
           } else if (focus < slots.length && rules[focus].accepts(key)) {
+            edited = true;
             slots[focus] = key;
             lastTyped = focus++;
           } else {
