@@ -12,6 +12,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import 'uts46.dart';
 
+part 'masked_input.dart';
 part 'network_input.dart';
 part 'url_email_input.dart';
 part 'color_input.dart';
@@ -1412,7 +1413,7 @@ final class Multiline {
       }
       final line = chars.take(start).where((c) => c == '\n').length + 1;
       String visible(Iterable<String> part) =>
-          part.join().replaceAll('\t', 'ÃƒÂ¢Ã¢â‚¬Â¡Ã‚Â¥');
+          part.join().replaceAll('\t', 'â‡¥');
       out.write(
         '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
       );
