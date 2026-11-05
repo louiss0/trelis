@@ -279,6 +279,69 @@ void main() {
     expect(output.toString(), contains('maximum 2 decimal places'));
   });
 
+  test('preference changes do not reinterpret an active draft', () async {
+    var current = NumericConvention.ascii();
+    final input = NumberInput(
+      'Amount',
+      decimal: true,
+      conventionProvider: () => current,
+    );
+    final stream = StreamController<String>();
+    final pending = input.prompt(
+      source: ScriptedInput(stream.stream, StringBuffer()),
+      mode: PromptMode.linear,
+    );
+    stream.add('1,234');
+    await Future<void>.delayed(Duration.zero);
+    current = NumericConvention(
+      decimalSeparator: ',',
+      groupingSeparator: '.',
+      grouping: [3],
+      nativeDigits: '0123456789',
+    );
+    stream.add('\r');
+    final answer = (await pending as Accepted<NumericAnswer?>).value!;
+    expect(answer.coefficient, BigInt.from(1234));
+    expect(answer.scale, 0);
+    await stream.close();
+    final next = (await input.prompt(
+      source: SuppliedAnswer('1,234'),
+    ) as Accepted<NumericAnswer?>).value!;
+    expect(next.coefficient, BigInt.from(1234));
+    expect(next.scale, 3);
+  });
+
+  test(
+    'an ungrouped-only convention rejects all grouping separators',
+    () async {
+      final convention = NumericConvention(
+        decimalSeparator: '.',
+        groupingSeparator: '',
+        grouping: [],
+        nativeDigits: '0123456789',
+      );
+      final input = NumberInput(
+        'Amount',
+        convention: convention,
+        decimal: true,
+      );
+      expect(
+        await input.prompt(source: SuppliedAnswer('1234.5')),
+        isA<Accepted>(),
+      );
+      expect(
+        await input.prompt(source: SuppliedAnswer('1,234.5')),
+        isA<Unavailable>(),
+      );
+      final output = StringBuffer();
+      await input.prompt(
+        source: ScriptedInput(Stream.value('1\r'), output),
+        mode: PromptMode.linear,
+      );
+      expect(output.toString(), contains('grouping not supported'));
+    },
+  );
+
   test('integer input rejects decimal and non-base-ten forms', () async {
     final input = NumberInput('Count', convention: NumericConvention.ascii());
     for (final value in ['1.0', '1e3', '0xff', 'NaN', 'Infinity', '2%', '']) {

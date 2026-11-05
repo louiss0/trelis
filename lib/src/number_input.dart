@@ -48,7 +48,9 @@ final class NumericConvention {
         RegExp(r'^[0-9()]$').hasMatch(negativeSign) ||
         digits.contains(negativeSign.runes.single) ||
         decimalSeparator.runes.length != 1 ||
-        groupingSeparator.runes.length != 1 ||
+        (grouping.isEmpty
+            ? groupingSeparator.isNotEmpty
+            : groupingSeparator.runes.length != 1) ||
         unsafeSeparator(decimalSeparator) ||
         unsafeSeparator(groupingSeparator) ||
         !supportedDigitZeros.any(
@@ -62,7 +64,6 @@ final class NumericConvention {
         decimalSeparator == groupingSeparator ||
         digits.length != 10 ||
         digits.toSet().length != 10 ||
-        grouping.isEmpty ||
         grouping.any((n) => n < 1 || n > 9) ||
         digits.any(
           (r) =>
@@ -125,7 +126,9 @@ final class NumericConvention {
     if (parts.length == 2 && !RegExp(r'^[0-9]+$').hasMatch(parts[1])) {
       return null;
     }
-    final groups = parts[0].split(groupingSeparator);
+    final groups = grouping.isEmpty
+        ? [parts[0]]
+        : parts[0].split(groupingSeparator);
     if (groups.any((g) => !RegExp(r'^[0-9]+$').hasMatch(g))) return null;
     if (groups.length > 1) {
       for (var i = groups.length - 1; i >= 0; i--) {
@@ -152,6 +155,28 @@ final class NumericAnswer {
 }
 
 NumericConvention? _systemNumericConvention() {
+  if (Platform.isLinux) {
+    final env = Platform.environment;
+    final locale =
+        [
+          env['LC_ALL'],
+          env['LC_NUMERIC'],
+          env['LANG'],
+        ].whereType<String>().where((value) => value.isNotEmpty).firstOrNull ??
+        'C';
+    if (locale == 'C' ||
+        locale == 'POSIX' ||
+        locale.toUpperCase() == 'C.UTF-8' ||
+        locale.toUpperCase() == 'C.UTF8') {
+      return NumericConvention(
+        decimalSeparator: '.',
+        groupingSeparator: '',
+        grouping: [],
+        nativeDigits: '0123456789',
+      );
+    }
+    return null;
+  }
   if (!Platform.isWindows) return null;
   try {
     final get = DynamicLibrary.open('kernel32.dll')
@@ -285,7 +310,7 @@ final class NumberInput {
         NumericNegativePattern.parentheses => '(123)',
       };
       final description =
-          '$label (${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}; native digits ${resolved.nativeDigits}; negative example $negativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'})';
+          '$label (${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; ${resolved.grouping.isEmpty ? 'grouping not supported' : 'grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}'}; native digits ${resolved.nativeDigits}; negative example $negativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'})';
       final result =
           await TextInput(
             description,
