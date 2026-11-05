@@ -165,6 +165,87 @@ final class DateInput {
     }
   }
 
+  Future<({String action, String value})> _editSegments(
+    _Keys keys,
+    String draft,
+    StringSink out,
+    DateFieldOrder order,
+  ) async {
+    final names = switch (order) {
+      DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
+      DateFieldOrder.monthDayYear => ['month', 'day', 'year'],
+      DateFieldOrder.yearMonthDay => ['year', 'month', 'day'],
+    };
+    final split = draft.split('/');
+    final segments = List.generate(3, (i) => i < split.length ? split[i] : '');
+    var focus = 0;
+    while (true) {
+      final name = names[focus];
+      out.writeln(
+        'Focus: $name. Tab or slash moves forward; Shift-Tab moves back; Up/Down adjusts without carry. Enter advances or reviews.',
+      );
+      final edit = await _edit(
+        keys,
+        segments[focus],
+        out,
+        intercept: (key, text) {
+          if (key == '\t') return 'next';
+          if (key == '\x1b[Z') return 'previous';
+          if (key == '/') {
+            final valid =
+                text.isNotEmpty &&
+                text.runes.length <= (name == 'year' ? 4 : 2) &&
+                (name != 'year' || text.runes.length == 4);
+            if (valid && focus < 2) return 'next';
+            out.writeln('Slash cannot skip an incomplete field or submit.');
+            return 'handled';
+          }
+          if (key == '\x1b[A' || key == '+') return 'increase';
+          if (key == '\x1b[B' || key == '-') return 'decrease';
+          return null;
+        },
+      );
+      if (edit.action == 'cancel' ||
+          edit.action == 'interrupt' ||
+          edit.action == 'eof') {
+        return edit;
+      }
+      segments[focus] = edit.value;
+      if (edit.action == 'increase' || edit.action == 'decrease') {
+        final number = int.tryParse(edit.value);
+        if (number == null) {
+          out.writeln('Enter an ASCII segment before adjustment.');
+        } else {
+          final next = number + (edit.action == 'increase' ? 1 : -1);
+          final max = name == 'year'
+              ? 9999
+              : name == 'month'
+              ? 12
+              : 31;
+          if (next >= 1 && next <= max) {
+            segments[focus] = next.toString().padLeft(edit.value.length, '0');
+          }
+        }
+        continue;
+      }
+      if (edit.action == 'previous') {
+        focus = (focus + 2) % 3;
+        continue;
+      }
+      if (edit.action == 'next') {
+        focus = (focus + 1) % 3;
+        continue;
+      }
+      if (edit.action == 'submit') {
+        if (focus < 2) {
+          focus++;
+          continue;
+        }
+        return (action: 'submit', value: segments.join('/'));
+      }
+    }
+  }
+
   Future<PromptResult<CivilDate>> _run(
     PromptSource source,
     PromptMode mode,
@@ -194,14 +275,16 @@ final class DateInput {
     out.writeln('Enter a date, then review. /cancel cancels in linear mode.');
     try {
       while (true) {
-        final edit = await _edit(
-          keys,
-          draft,
-          out,
-          linear: linear,
-          sequential: linear,
-          maxLength: 10,
-        );
+        final edit = linear
+            ? await _edit(
+                keys,
+                draft,
+                out,
+                linear: true,
+                sequential: true,
+                maxLength: 10,
+              )
+            : await _editSegments(keys, draft, out, order);
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
         if (edit.action != 'submit') return InputEnded();
