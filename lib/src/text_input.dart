@@ -10,6 +10,8 @@ import 'package:path/path.dart' as path;
 
 part 'masked_input.dart';
 part 'network_input.dart';
+part 'color_input.dart';
+part 'color_names.dart';
 part 'timezone_snapshot.dart';
 part 'timezone_select.dart';
 part 'path_input.dart';
@@ -57,11 +59,26 @@ bool _terminalActive = false;
 
 final class TextInput {
   TextInput(
+    String label, {
+    String initialValue = '',
+    bool required = false,
+    String? Function(String)? validate,
+    int? maxLength,
+  }) : this._(
+         label,
+         initialValue: initialValue,
+         required: required,
+         validate: validate,
+         maxLength: maxLength,
+       );
+
+  TextInput._(
     this.label, {
     this.initialValue = '',
     this.required = false,
     this.validate,
     this.maxLength,
+    this._onChanged,
   }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -79,6 +96,7 @@ final class TextInput {
   final bool required;
   final int? maxLength;
   final String? Function(String)? validate;
+  final void Function(String)? _onChanged;
   bool _active = false;
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -166,6 +184,7 @@ final class TextInput {
           linear: mode == PromptMode.linear,
           sequential: mode != PromptMode.rich,
           maxLength: maxLength,
+          onChanged: _onChanged,
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
@@ -1336,7 +1355,7 @@ final class Multiline {
       }
       final line = chars.take(start).where((c) => c == '\n').length + 1;
       String visible(Iterable<String> part) =>
-          part.join().replaceAll('\t', '⇥');
+          part.join().replaceAll('\t', 'â‡¥');
       out.write(
         '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
       );
@@ -3192,7 +3211,3 @@ final class TimeInput {
     }
   }
 }
-
-
-
-
