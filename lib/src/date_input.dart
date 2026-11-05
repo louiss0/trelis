@@ -587,6 +587,12 @@ final class DateInput {
         out.writeln(
           'Type /submit to accept or /edit to return to the draft; /cancel cancels.',
         );
+        var reviewFocus = 0;
+        if (!linear) {
+          out.writeln(
+            'Review action: Edit. Tab changes action; Enter activates.',
+          );
+        }
         while (true) {
           final action = await _edit(
             keys,
@@ -595,14 +601,33 @@ final class DateInput {
             linear: true,
             sequential: linear,
             extraCommands: const {'/submit', '/edit'},
+            intercept: linear
+                ? null
+                : (key, text) {
+                    if (key == '\t' || key == '\x1b[Z') {
+                      reviewFocus = 1 - reviewFocus;
+                      out.writeln(
+                        'Review action: ${reviewFocus == 0 ? 'Edit' : 'Submit'}.',
+                      );
+                      return 'handled';
+                    }
+                    if ((key == '\r' || key == '\n') && text.isEmpty) {
+                      return reviewFocus == 0 ? 'review-edit' : 'review-submit';
+                    }
+                    return null;
+                  },
           );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
           if (action.action == 'eof') return InputEnded();
-          if (action.action == 'command' && action.value == '/submit') {
+          if (action.action == 'review-submit' ||
+              (action.action == 'command' && action.value == '/submit')) {
             return Accepted(value);
           }
-          if (action.action == 'command' && action.value == '/edit') break;
+          if (action.action == 'review-edit' ||
+              (action.action == 'command' && action.value == '/edit')) {
+            break;
+          }
           out.writeln('Use /submit or /edit.');
         }
       }
