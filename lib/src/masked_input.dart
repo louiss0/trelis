@@ -43,6 +43,8 @@ final class MaskedValue {
   String get raw => slots.join();
 }
 
+final class _MaskWorkLimit implements Exception {}
+
 final class MaskedInput {
   MaskedInput(
     this.label, {
@@ -126,6 +128,8 @@ final class MaskedInput {
       } finally {
         _terminalActive = false;
       }
+    } on _MaskWorkLimit {
+      return Unavailable('Mask decoding work limit exceeded.');
     } finally {
       _active = false;
     }
@@ -157,16 +161,20 @@ final class MaskedInput {
   List<MaskedValue> _decode(String text, {MaskInterpretation? as}) {
     final activeInterpretation = as ?? interpretation;
     final matches = <MaskedValue>[];
+    if (text.length > 4096 || templates.length > 256) throw _MaskWorkLimit();
+    final chars = text.characters.toList();
+    var work = 0;
     for (final template in templates) {
+      if (template.elements.length > 256) throw _MaskWorkLimit();
       for (final formatted in [false, true]) {
         if ((activeInterpretation == MaskInterpretation.raw && formatted) ||
             (activeInterpretation == MaskInterpretation.formatted &&
                 !formatted)) {
           continue;
         }
-        final chars = text.characters.toList();
         final slots = <String>[];
         void decode(int elementIndex, int offset) {
+          if (++work > 10000 || matches.length >= 256) throw _MaskWorkLimit();
           if (elementIndex == template.elements.length) {
             if (offset != chars.length) return;
             var i = 0;
@@ -538,8 +546,13 @@ final class MaskedInput {
               'Paste requires template or interpretation resolution. Draft preserved: $paste',
             );
             for (var i = 0; i < matches.length; i++) {
+              final positions = matches[i].slots.indexed
+                  .map(
+                    (e) => 'slot ${e.$1 + 1}: ${e.$2.isEmpty ? "empty" : e.$2}',
+                  )
+                  .join(', ');
               out.writeln(
-                '${i + 1}. ${matches[i].template}: ${matches[i].interpretation.name}, raw ${matches[i].raw}, formatted ${matches[i].formatted}',
+                '${i + 1}. ${matches[i].template}: ${matches[i].interpretation.name}, raw ${matches[i].raw}, formatted ${matches[i].formatted}; $positions',
               );
             }
             out.writeln(

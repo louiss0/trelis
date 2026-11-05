@@ -434,6 +434,49 @@ void main() {
     expect(out.toString(), contains('Choose an interpretation'));
   });
 
+  test('rich paste presents distinct optional slot choices', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('first', digit, required: false),
+          MaskSlot('second', digit, required: false),
+        ]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('\x1b[200~1\x1b[201~2\r\r'), out),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<MaskedValue>).value.slots, ['1', '']);
+    expect(out.toString(), contains('slot 1: empty, slot 2: 1'));
+    expect(out.toString(), contains('slot 1: 1, slot 2: empty'));
+  });
+
+  test(
+    'mask decoding reports exhausted work rather than partial choices',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('code', [
+            for (var i = 0; i < 18; i++)
+              MaskSlot('digit', digit, required: false),
+          ]),
+        ],
+      );
+      final result = await input.prompt(source: SuppliedAnswer('123456789'));
+      expect(result, isA<Unavailable<MaskedValue>>());
+      expect(
+        (result as Unavailable<MaskedValue>).reason,
+        contains('work limit'),
+      );
+    },
+  );
+
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(
       'Code',
