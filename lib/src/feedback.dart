@@ -303,14 +303,16 @@ final class MultiSpinner {
     PromptMode? applicationPreference,
     bool? supportsRich,
   }) {
-    if (_output != null || _closed)
+    if (_output != null || _closed) {
       throw StateError('Already started or disposed');
+    }
     final sink = output ?? stderr;
     final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
     final selected =
         mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
-    if (selected == PromptMode.rich && !capable)
+    if (selected == PromptMode.rich && !capable) {
       throw StateError('Rich output unavailable');
+    }
     _rich = capable && selected != PromptMode.linear;
     _output = sink;
     for (final entry in _tasks.entries) {
