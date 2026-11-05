@@ -341,6 +341,30 @@ void main() {
     );
     expect(preview.instants, [DateTime.utc(2024, 1, 1, 12, 15)]);
   });
+  test(
+    'Quartz accepts wildcard increments in seconds and previews them',
+    () async {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.quartz,
+      ).prompt(source: SuppliedAnswer('*/15 * * ? * MON'));
+      final expression = (result as Accepted<CronExpression>).value;
+      final preview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'Etc/UTC',
+          reference: DateTime.utc(2024, 1, 1),
+          start: DateTime.utc(2024, 1, 1),
+          end: DateTime.utc(2024, 1, 1, 0, 1),
+          count: 2,
+          budget: 60,
+        ),
+      );
+      expect(preview.instants, [
+        DateTime.utc(2024, 1, 1, 0, 0, 15),
+        DateTime.utc(2024, 1, 1, 0, 0, 30),
+      ]);
+    },
+  );
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

@@ -100,33 +100,56 @@ const _quartzMonths = [
   'DEC',
 ];
 
+const _quartzWeekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+Set<int>? _quartzField(
+  String field,
+  int min,
+  int max, [
+  List<String> names = const [],
+]) {
+  int? number(String text) {
+    final name = names.indexOf(text.toUpperCase());
+    if (name >= 0) return min + name;
+    if (!RegExp(r'^[0-9]+$').hasMatch(text)) return null;
+    final value = int.tryParse(text);
+    return value != null && value >= min && value <= max ? value : null;
+  }
+
+  final values = <int>{};
+  for (final item in field.split(',')) {
+    final parts = item.split('/');
+    if (parts.length > 2 || parts.any((part) => part.isEmpty)) return null;
+    final increment = parts.length == 2 ? int.tryParse(parts[1]) : 1;
+    if (increment == null ||
+        increment <= 0 ||
+        increment > max - min + 1 ||
+        (parts.length == 2 && !RegExp(r'^[0-9]+$').hasMatch(parts[1]))) {
+      return null;
+    }
+    final range = parts[0].split('-');
+    if (range.length > 2) return null;
+    final first = range[0] == '*' ? min : number(range[0]);
+    if (first == null || (range[0] == '*' && range.length > 1)) return null;
+    final last = range.length == 2
+        ? number(range[1])
+        : parts.length == 2 || range[0] == '*'
+        ? max
+        : first;
+    if (last == null) return null;
+    final length = (last - first) % (max - min + 1);
+    for (var offset = 0; offset <= length; offset += increment) {
+      values.add(min + (first - min + offset) % (max - min + 1));
+    }
+  }
+  return values.isEmpty ? null : values;
+}
+
 bool _quartzMatches(List<String> fields, DateTime civil) {
   const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   int weekdayNumber(String text) {
     final name = weekdays.indexOf(text.toUpperCase());
     return name < 0 ? int.parse(text) : name + 1;
-  }
-
-  bool numeric(String field, int value) {
-    if (field == '*') return true;
-    for (final item in field.split(',')) {
-      if (item.contains('/')) {
-        final parts = item.split('/');
-        final range = parts[0].split('-');
-        final first = int.parse(range[0]);
-        final last = range.length == 2 ? int.parse(range[1]) : 59;
-        final step = int.parse(parts[1]);
-        if (value >= first && value <= last && (value - first) % step == 0) {
-          return true;
-        }
-        continue;
-      }
-      final range = item.split('-');
-      final first = int.parse(range[0]);
-      final last = range.length == 1 ? first : int.parse(range[1]);
-      if (value >= first && value <= last) return true;
-    }
-    return false;
   }
 
   final lastDay = DateTime.utc(civil.year, civil.month + 1, 0).day;
@@ -163,7 +186,7 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
           : day;
       return civil.day == nearest;
     }
-    return numeric(field, civil.day);
+    return _quartzField(field, 1, 31)!.contains(civil.day);
   }
 
   bool dayOfWeek() {
@@ -179,21 +202,17 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
       return weekday == weekdayNumber(field.substring(0, field.length - 1)) &&
           civil.day + 7 > lastDay;
     }
-    return weekday == weekdayNumber(field);
+    return _quartzField(field, 1, 7, _quartzWeekdays)!.contains(weekday);
   }
 
-  return numeric(fields[0], civil.second) &&
-      numeric(fields[1], civil.minute) &&
-      numeric(fields[2], civil.hour) &&
+  return _quartzField(fields[0], 0, 59)!.contains(civil.second) &&
+      _quartzField(fields[1], 0, 59)!.contains(civil.minute) &&
+      _quartzField(fields[2], 0, 23)!.contains(civil.hour) &&
       dayOfMonth() &&
-      numeric(
-        _quartzMonths.contains(fields[4].toUpperCase())
-            ? '${_quartzMonths.indexOf(fields[4].toUpperCase()) + 1}'
-            : fields[4],
-        civil.month,
-      ) &&
+      _quartzField(fields[4], 1, 12, _quartzMonths)!.contains(civil.month) &&
       dayOfWeek() &&
-      (fields.length == 6 || numeric(fields[6], civil.year));
+      (fields.length == 6 ||
+          _quartzField(fields[6], 1970, 2199)!.contains(civil.year));
 }
 
 bool _unixMatches(List<String> fields, DateTime civil) {
@@ -331,59 +350,12 @@ final class CronInput {
       final fields = value.split(RegExp(r' +'));
       if (fields.length != 6 && fields.length != 7) return false;
       if ((fields[3] == '?') == (fields[5] == '?')) return false;
-      final numeric = RegExp(r'^(?:\*|[0-9]+)$');
-      const minimum = [0, 0, 0, 1, 1, 1, 1970];
-      const maximum = [59, 59, 23, 31, 12, 7, 2199];
-      for (final i in [0, 1, 2, 4]) {
-        if (i == 4 && _quartzMonths.contains(fields[i].toUpperCase())) continue;
-        if (i == 1 && RegExp(r'^[0-9]+-[0-9]+/[0-9]+$').hasMatch(fields[i])) {
-          final numbers = fields[i]
-              .split(RegExp(r'[-/]'))
-              .map(int.tryParse)
-              .toList();
-          if (numbers.any((n) => n == null) ||
-              numbers[0]! > numbers[1]! ||
-              numbers[1]! > 59 ||
-              numbers[2]! < 1 ||
-              numbers[2]! > 59) {
-            return false;
-          }
-          continue;
-        }
-        if (i == 0 && RegExp(r'^[0-9]+/[0-9]+$').hasMatch(fields[i])) {
-          final parts = fields[i].split('/').map(int.tryParse).toList();
-          if (parts[0] == null ||
-              parts[1] == null ||
-              parts[0]! > 59 ||
-              parts[1]! <= 0 ||
-              parts[1]! > 59) {
-            return false;
-          }
-          continue;
-        }
-        if (i == 0 && fields[i].contains(',')) {
-          final values = fields[i].split(',');
-          if (values.any(
-            (part) =>
-                !RegExp(r'^[0-9]+$').hasMatch(part) ||
-                (int.tryParse(part) ?? 60) > 59,
-          )) {
-            return false;
-          }
-          continue;
-        }
-        if (RegExp(r'^[0-9]+-[0-9]+$').hasMatch(fields[i])) {
-          final bounds = fields[i].split('-').map(int.tryParse).toList();
-          if (bounds[0] == null ||
-              bounds[1] == null ||
-              bounds[0]! < minimum[i] ||
-              bounds[0]! > bounds[1]! ||
-              bounds[1]! > maximum[i]) {
-            return false;
-          }
-          continue;
-        }
-        if (!numeric.hasMatch(fields[i])) return false;
+      if (_quartzField(fields[0], 0, 59) == null ||
+          _quartzField(fields[1], 0, 59) == null ||
+          _quartzField(fields[2], 0, 23) == null ||
+          _quartzField(fields[4], 1, 12, _quartzMonths) == null ||
+          (fields.length == 7 && _quartzField(fields[6], 1970, 2199) == null)) {
+        return false;
       }
       final nearestWeekday = RegExp(r'^([0-9]+)W$').firstMatch(fields[3]);
       final weekdayDay = nearestWeekday == null
@@ -398,7 +370,7 @@ final class CronInput {
           fields[3] != 'L' &&
           fields[3] != 'LW' &&
           !(weekdayDay != null && weekdayDay >= 1 && weekdayDay <= 31) &&
-          !numeric.hasMatch(fields[3])) {
+          _quartzField(fields[3], 1, 31) == null) {
         return false;
       }
       final nthWeekday = RegExp(
@@ -412,16 +384,8 @@ final class CronInput {
       if (fields[5] != '?' &&
           !nthWeekday &&
           !lastWeekday &&
-          !RegExp(
-            r'^(?:\*|[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)$',
-            caseSensitive: false,
-          ).hasMatch(fields[5])) {
+          _quartzField(fields[5], 1, 7, _quartzWeekdays) == null) {
         return false;
-      }
-      if (fields.length == 7 && !numeric.hasMatch(fields[6])) return false;
-      for (var i = 0; i < fields.length; i++) {
-        final n = int.tryParse(fields[i]);
-        if (n != null && (n < minimum[i] || n > maximum[i])) return false;
       }
       return true;
     }
