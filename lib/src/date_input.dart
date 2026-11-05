@@ -86,6 +86,12 @@ final class CivilDate {
   final int day;
   final int inputYear;
   final DateCalendar calendar;
+
+  /// Identity of the in-package date-only conversion rules.
+  String get provider => 'prompty-civil-arithmetic-v1';
+  String get era => calendar == DateCalendar.buddhist ? 'BE' : 'CE';
+  String get monthIdentity => 'M${month.toString().padLeft(2, '0')}';
+  bool get isLeapMonth => false;
 }
 
 // Date-only conversion boundary. The supported Buddhist profile is the modern
