@@ -75,8 +75,13 @@ final class CronInput {
         r'^(?:[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)#[1-5]$',
         caseSensitive: false,
       ).hasMatch(fields[5]);
+      final lastWeekday = RegExp(
+        r'^(?:[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)L$',
+        caseSensitive: false,
+      ).hasMatch(fields[5]);
       if (fields[5] != '?' &&
           !nthWeekday &&
+          !lastWeekday &&
           !RegExp(
             r'^(?:\*|[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)$',
             caseSensitive: false,

@@ -105,6 +105,23 @@ void main() {
       );
     }
   });
+  test('Quartz last weekday token requires a valid weekday', () async {
+    final input = CronInput('Schedule', profile: CronProfile.quartz);
+    for (final day in ['1L', '7L', 'FRIL']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 ? * $day')),
+        isA<Accepted<CronExpression>>(),
+        reason: day,
+      );
+    }
+    for (final day in ['0L', '8L', 'MONL,TUEL']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 ? * $day')),
+        isA<Unavailable<CronExpression>>(),
+        reason: day,
+      );
+    }
+  });
   test('Quartz accepts last day of month', () async {
     final result = await CronInput(
       'Schedule',
