@@ -62,6 +62,7 @@ final class CronInput {
       }
       if (fields[3] != '?' &&
           fields[3] != 'L' &&
+          fields[3] != 'LW' &&
           !numeric.hasMatch(fields[3])) {
         return false;
       }
