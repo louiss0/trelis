@@ -33,7 +33,8 @@ instants; a sub-minute offset anywhere in the horizon changes Unix candidate
 resolution to seconds. The exact same expression and context can therefore
 consume a different budget in different zones or horizons. Expression input is
 limited to 4096 UTF-16 code units; supplied answers exceeding that limit are
-rejected before field parsing. Field sets are compiled once per preview; each
+rejected before field parsing. Zone identifiers are limited to 255 UTF-16 code
+units before provider loading. Field sets are compiled once per preview; each
 candidate uses set lookups and bounded civil-day calculations. The preview's
 work budget counts candidate instants, not parsing, provider initialization,
 or elapsed time. `cron_large_step_test.dart` uses a separate process with a
