@@ -27,9 +27,16 @@ final class DateInput {
     this.order,
     this.calendar = DateCalendar.gregorian,
     this.digits = DateDigits.ascii,
+    this.initialValue,
   }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
+    }
+    final initial = initialValue;
+    final explicitOrder = order;
+    if (initial != null &&
+        (explicitOrder == null || _parse(initial, explicitOrder) == null)) {
+      throw ArgumentError.value(initial, 'initialValue');
     }
   }
 
@@ -37,6 +44,7 @@ final class DateInput {
   final DateFieldOrder? order;
   final DateCalendar calendar;
   final DateDigits digits;
+  final String? initialValue;
   bool _active = false;
 
   CivilDate? _parse(String text, DateFieldOrder order) {
@@ -179,7 +187,7 @@ final class DateInput {
       DateFieldOrder.monthDayYear => 'month/day/year',
       DateFieldOrder.yearMonthDay => 'year/month/day',
     };
-    var draft = '';
+    var draft = initialValue ?? '';
     out.writeln(
       '$label. ${calendar.name} calendar; $format; ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
     );
