@@ -78,6 +78,141 @@ _windowsDateProfile() {
   }
 }
 
+// glibc 2.x: use a separate locale object, never mutate the process locale.
+({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+_linuxDateProfile() {
+  if (!Platform.isLinux) return null;
+  Pointer locale = nullptr;
+  try {
+    final libc = DynamicLibrary.open('libc.so.6');
+    final create = libc
+        .lookupFunction<
+          Pointer Function(Int32, Pointer<Utf8>, Pointer),
+          Pointer Function(int, Pointer<Utf8>, Pointer)
+        >('newlocale');
+    final info = libc
+        .lookupFunction<
+          Pointer<Utf8> Function(Int32, Pointer),
+          Pointer<Utf8> Function(int, Pointer)
+        >('nl_langinfo_l');
+    final env = Platform.environment;
+    final name =
+        [
+          env['LC_ALL'],
+          env['LC_TIME'],
+          env['LANG'],
+        ].whereType<String>().where((s) => s.isNotEmpty).firstOrNull ??
+        'C';
+    final native = name.toNativeUtf8();
+    try {
+      locale = create(4, native, nullptr);
+    } finally {
+      calloc.free(native);
+    }
+    if (locale == nullptr) return null;
+    String? field(int index) {
+      final result = info((2 << 16) | index, locale);
+      return result == nullptr ? null : result.toDartString();
+    }
+
+    final pattern = field(41); // D_FMT
+    final era = field(46); // ERA_D_FMT
+    final alternate = field(47); // ALT_DIGITS
+    if (pattern == null ||
+        era == null ||
+        alternate == null ||
+        era.isNotEmpty ||
+        alternate.isNotEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^(%d|%m|%Y)([/.-])(%d|%m|%Y)\2(%d|%m|%Y)$')
+        .firstMatch(pattern);
+    if (match == null) return null;
+    final fields = [match[1], match[3], match[4]].join('/');
+    final order = switch (fields) {
+      '%d/%m/%Y' => DateFieldOrder.dayMonthYear,
+      '%m/%d/%Y' => DateFieldOrder.monthDayYear,
+      '%Y/%m/%d' => DateFieldOrder.yearMonthDay,
+      _ => null,
+    };
+    return order == null
+        ? null
+        : (
+            order: order,
+            calendar: DateCalendar.gregorian,
+            digits: DateDigits.ascii,
+          );
+  } catch (_) {
+    return null;
+  } finally {
+    if (locale != nullptr) {
+      try {
+        DynamicLibrary.open('libc.so.6')
+            .lookupFunction<Void Function(Pointer), void Function(Pointer)>(
+              'freelocale',
+            )(locale);
+      } catch (_) {}
+    }
+  }
+}
+
+// Foundation current locale and short-style formatter. Only numeric full-year
+// profiles with a verified calendar and decimal repertoire are mapped.
+({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+_macOSDateProfile() {
+  if (!Platform.isMacOS) return null;
+  Pointer formatter = nullptr;
+  try {
+    final objc = _ObjectiveC();
+    final type = objc.classNamed('NSDateFormatter');
+    if (type == nullptr) return null;
+    formatter = objc.send(objc.send(type, 'alloc'), 'init');
+    final locale = objc.send(objc.classNamed('NSLocale'), 'currentLocale');
+    if (formatter == nullptr || locale == nullptr) return null;
+    objc.send(formatter, 'setLocale:', locale);
+    objc.setInteger(formatter, 'setDateStyle:', 1);
+    objc.setInteger(formatter, 'setTimeStyle:', 0);
+    final pattern = objc.string(formatter, 'dateFormat');
+    final calendarObject = objc.send(formatter, 'calendar');
+    if (pattern == null || calendarObject == nullptr) return null;
+    final identifier = objc.string(calendarObject, 'calendarIdentifier');
+    final match = RegExp(r'^(M|d|yyyy)([/.-])(M|d|yyyy)\2(M|d|yyyy)$')
+        .firstMatch(pattern);
+    if (match == null) return null;
+    final fields = [match[1], match[3], match[4]].join('/');
+    final order = switch (fields) {
+      'd/M/yyyy' => DateFieldOrder.dayMonthYear,
+      'M/d/yyyy' => DateFieldOrder.monthDayYear,
+      'yyyy/M/d' => DateFieldOrder.yearMonthDay,
+      _ => null,
+    };
+    final calendar = switch (identifier) {
+      'gregorian' => DateCalendar.gregorian,
+      'buddhist' => DateCalendar.buddhist,
+      _ => null,
+    };
+    final nativeDigits = _macOSNumericConvention()?.nativeDigits;
+    final digits = switch (nativeDigits) {
+      '0123456789' => DateDigits.ascii,
+      '\u0e50\u0e51\u0e52\u0e53\u0e54\u0e55\u0e56\u0e57\u0e58\u0e59' =>
+        DateDigits.thai,
+      '\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669' =>
+        DateDigits.arabicIndic,
+      _ => null,
+    };
+    if (order == null || calendar == null || digits == null) return null;
+    return (order: order, calendar: calendar, digits: digits);
+  } catch (_) {
+    return null;
+  } finally {
+    if (formatter != nullptr) {
+      try {
+        _ObjectiveC().send(formatter, 'release');
+      } catch (_) {}
+    }
+  }
+}
+
 /// A proleptic Gregorian date without a time or time zone.
 final class CivilDate {
   CivilDate._(this.year, this.month, this.day, this.inputYear, this.calendar);
@@ -128,8 +263,8 @@ final class _ArithmeticDateProvider {
   }
 }
 
-/// Date entry with an explicit calendar and field order. Automatic system
-/// resolution is not yet available and fails closed rather than guessing.
+/// Date entry with explicit or narrowly supported system preferences.
+/// Unresolved profiles fail closed rather than guessing.
 final class DateInput {
   DateInput(
     this.label, {
@@ -215,7 +350,13 @@ final class DateInput {
     try {
       final resolvedOrder = order;
       if (resolvedOrder == null) {
-        final profile = _windowsDateProfile();
+        final profile = Platform.isWindows
+            ? _windowsDateProfile()
+            : Platform.isLinux
+            ? _linuxDateProfile()
+            : Platform.isMacOS
+            ? _macOSDateProfile()
+            : null;
         if (profile == null) {
           return Unavailable(
             'System date preferences are unsupported or unresolved; specify a calendar and field order.',
