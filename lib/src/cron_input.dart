@@ -19,6 +19,11 @@ final class CronExpression {
     } on timezone.LocationNotFoundException {
       return CronPreview._(const [], CronPreviewStatus.providerError);
     }
+    if (profile == CronProfile.quartz &&
+        (timezone.TZDateTime.from(config.start, location).year < 1970 ||
+            timezone.TZDateTime.from(config.end, location).year > 2199)) {
+      return CronPreview._(const [], CronPreviewStatus.unsupportedRange);
+    }
     final fields = expression.split(RegExp(r' +'));
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
@@ -264,6 +269,7 @@ enum CronPreviewStatus {
   budgetExhausted,
   cancelled,
   providerError,
+  unsupportedRange,
 }
 
 final class CronPreview {

@@ -286,6 +286,25 @@ void main() {
       DateTime.utc(2024, 1, 1, 0, 0, 30),
     ]);
   });
+  test('Quartz preview reports out-of-profile search range', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer('0 0 0 L * ?'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2200),
+        start: DateTime.utc(2200),
+        end: DateTime.utc(2201),
+        count: 1,
+        budget: 1,
+      ),
+    );
+    expect(preview.status, CronPreviewStatus.unsupportedRange);
+    expect(preview.instants, isEmpty);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
