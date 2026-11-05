@@ -173,6 +173,28 @@ void main() {
     expect(preview.status, CronPreviewStatus.cancelled);
     expect(preview.instants, isEmpty);
   });
+  test(
+    'unknown zone reports provider error without returning a match',
+    () async {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.unix,
+      ).prompt(source: SuppliedAnswer('* * * * *'));
+      final expression = (result as Accepted<CronExpression>).value;
+      final preview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'Invalid/Zone',
+          reference: DateTime.utc(2024),
+          start: DateTime.utc(2024),
+          end: DateTime.utc(2024, 1, 2),
+          count: 1,
+          budget: 1,
+        ),
+      );
+      expect(preview.status, CronPreviewStatus.providerError);
+      expect(preview.instants, isEmpty);
+    },
+  );
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

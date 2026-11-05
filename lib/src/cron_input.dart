@@ -18,8 +18,13 @@ final class CronExpression {
         'Preview is not supported for this expression or zone.',
       );
     }
-    timezone_data.initializeTimeZones();
-    final location = timezone.getLocation(config.zone);
+    late final timezone.Location location;
+    try {
+      timezone_data.initializeTimeZones();
+      location = timezone.getLocation(config.zone);
+    } on timezone.LocationNotFoundException {
+      return CronPreview._(const [], CronPreviewStatus.providerError);
+    }
     final fields = expression.split(RegExp(r' +'));
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
@@ -166,7 +171,13 @@ final class CronPreviewConfig {
 
 bool _neverCancelled() => false;
 
-enum CronPreviewStatus { complete, horizonReached, budgetExhausted, cancelled }
+enum CronPreviewStatus {
+  complete,
+  horizonReached,
+  budgetExhausted,
+  cancelled,
+  providerError,
+}
 
 final class CronPreview {
   CronPreview._(this.instants, this.status);
