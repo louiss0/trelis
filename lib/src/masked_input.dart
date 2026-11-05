@@ -158,6 +158,10 @@ final class MaskedInput {
         : Unavailable('Invalid or ambiguous mask.');
   }
 
+  String _slotDescriptions(MaskedValue value) => value.slots.indexed
+      .map((e) => 'slot ${e.$1 + 1}: ${e.$2.isEmpty ? "empty" : e.$2}')
+      .join(', ');
+
   List<MaskedValue> _decode(String text, {MaskInterpretation? as}) {
     final activeInterpretation = as ?? interpretation;
     final matches = <MaskedValue>[];
@@ -289,7 +293,9 @@ final class MaskedInput {
         }
         out.writeln('Ambiguous value. Draft preserved: $draft');
         for (var i = 0; i < matches.length; i++) {
-          out.writeln('${i + 1}. ${matches[i].template}');
+          out.writeln(
+            '${i + 1}. ${matches[i].template}: ${_slotDescriptions(matches[i])}',
+          );
         }
         out.writeln('Choose a template number:');
         final choice = await _edit(keys, '', out);
@@ -305,7 +311,15 @@ final class MaskedInput {
         out.writeln(
           'Selected template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
         );
-        return Accepted(selected);
+        return await _richFixed(
+          source,
+          null,
+          selectedTemplate: templates.singleWhere(
+            (candidate) => candidate.name == selected.template,
+          ),
+          initial: selected,
+          keyInput: keys,
+        );
       }
     } finally {
       try {
@@ -327,7 +341,9 @@ final class MaskedInput {
     var matches = <MaskedValue>[];
     void showTemplates() {
       for (var i = 0; i < matches.length; i++) {
-        out.writeln('${i + 1}. ${matches[i].template}');
+        out.writeln(
+          '${i + 1}. ${matches[i].template}: ${_slotDescriptions(matches[i])}',
+        );
       }
     }
 
@@ -677,7 +693,7 @@ final class MaskedInput {
                 );
                 for (var i = 0; i < matches.length; i++) {
                   out.writeln(
-                    '${i + 1}. ${matches[i].template}: ${matches[i].formatted}',
+                    '${i + 1}. ${matches[i].template}: ${matches[i].formatted}; ${_slotDescriptions(matches[i])}',
                   );
                 }
                 out.writeln('Choose a template number:');

@@ -109,7 +109,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('12\r2\r'), out),
+        source: ScriptedInput(Stream.value('12\r2\r\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
@@ -618,6 +618,60 @@ void main() {
     expect((result as Accepted<MaskedValue>).value.raw, '1');
     expect(out.toString(), contains('work limit'));
   });
+
+  test(
+    'rich adaptive ambiguity choice enters editable slots before submission',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('pair', [
+            MaskSlot('digit', digit),
+            MaskSlot('digit', digit),
+          ]),
+          MaskTemplate('dash', [
+            MaskSlot('digit', digit),
+            MaskLiteral('-'),
+            MaskSlot('digit', digit),
+          ]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(Stream.value('12\r2\r\x7f3\r2\r\r'), out),
+        mode: PromptMode.rich,
+      );
+      final value = (result as Accepted<MaskedValue>).value;
+      expect(value.formatted, '1-3');
+      expect(out.toString(), contains('Ambiguity reopened'));
+    },
+  );
+
+  test(
+    'adaptive initial rich ambiguity identifies optional slot positions',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('optional', [
+            MaskSlot('first', digit, required: false),
+            MaskSlot('second', digit, required: false),
+          ]),
+          MaskTemplate('letter', [MaskSlot('letter', (s) => s == 'x')]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(Stream.value('1\r2\r\r'), out),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<MaskedValue>).value.slots, ['1', '']);
+      expect(out.toString(), contains('slot 1: empty, slot 2: 1'));
+      expect(out.toString(), contains('slot 1: 1, slot 2: empty'));
+    },
+  );
 
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(

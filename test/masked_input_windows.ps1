@@ -68,7 +68,14 @@ try {
  if ($Target -eq 'adaptive') {
    [NativeProbe]::Text("12`r")
    if ($Scenario -eq 'linear') { [NativeProbe]::Text("/template`r2`r/done`r") }
-   else { [NativeProbe]::Text("2`r") }
+   else { [NativeProbe]::Text("2`r`r") }
+ } elseif ($Target -eq 'adaptive-paste') {
+   $expected = '34'
+   if ($Scenario -eq 'rich') {
+     [NativeProbe]::Text("1-2`r$([char]27)[200~34$([char]27)[201~1`r`r")
+   } else {
+     [NativeProbe]::Text("12`r/template`r2`r$([char]27)[200~34$([char]27)[201~`r/template`r1`r/done`r")
+   }
  } elseif ($Target -eq 'paste') {
    [NativeProbe]::Text("$([char]27)[200~1-2$([char]27)[201~")
    [NativeProbe]::Text("`r")
