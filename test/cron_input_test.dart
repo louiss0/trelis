@@ -110,6 +110,27 @@ void main() {
       CronPreviewStatus.horizonReached,
     );
   });
+  test('preview includes both instants in a New York fall overlap', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('30 1 * * *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'America/New_York',
+        reference: DateTime.utc(2024, 11, 3, 4),
+        start: DateTime.utc(2024, 11, 3, 4),
+        end: DateTime.utc(2024, 11, 3, 8),
+        count: 2,
+        budget: 240,
+      ),
+    );
+    expect(preview.instants, [
+      DateTime.utc(2024, 11, 3, 5, 30),
+      DateTime.utc(2024, 11, 3, 6, 30),
+    ]);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
