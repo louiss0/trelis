@@ -19,6 +19,10 @@ For each case the recorded before/during/after state was `503:7:25:1 -> 496:7:25
 
 `wsl --list --verbose` reported no installed distributions. Neither `docker` nor `podman` is installed or on PATH; their usual Docker Desktop and Podman installation paths were also absent. There is no configured Git remote. The workflow configures Windows, Linux, and macOS analysis and suite runs, the Windows harness, and `python3 test/posix_terminal_pty.py` on Linux and macOS. The PTY test exercises the public TextInput native path and checks terminal attributes after submit, Escape, Ctrl+C, Ctrl+D, a validation error and repeated sessions. It has not been executed on POSIX. A POSIX backend has been implemented, but its behavior and the PTY test remain unverified on Linux and macOS. Python 3.13 on Windows successfully compiled the PTY test with `python -m py_compile test/posix_terminal_pty.py`; that is only a syntax check. The workflow has not been run on GitHub Actions.
 
+## Public acceptance matrix increment
+
+`dart test test/component_acceptance_matrix_test.dart --reporter expanded` ran 16 tests on Windows: TextInput, Password, Multiline, Confirm, Checkbox, Toggle, Select and Radio each have one rich and one linear case. All 16 passed. This increment is not the complete 38-component matrix; the other 30 components do not yet have cases in this matrix file. Existing tests elsewhere are not counted as matrix cases. `dart analyze` reported no issues and the full `dart test --reporter compact` suite reported 489 passed after this increment.
+
 ## Windows native checks at `f383fdc`
 
 The following were run with `powershell -NoProfile -ExecutionPolicy Bypass -File test/<name>.ps1`. Each listed wrapper exited 0; their printed cases are listed, not extrapolated to untested scenarios:
