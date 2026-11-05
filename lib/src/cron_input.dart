@@ -173,7 +173,20 @@ bool _quartzMatches(List<String> fields, DateTime civil) {
       return civil.day == day;
     }
     if (field.startsWith('L-')) {
-      return civil.day == lastDay - int.parse(field.substring(2));
+      final nearest = field.endsWith('W');
+      final offset = int.parse(
+        field.substring(2, nearest ? field.length - 1 : field.length),
+      );
+      final day = lastDay - offset;
+      if (day < 1) return false;
+      if (!nearest) return civil.day == day;
+      final weekday = DateTime.utc(civil.year, civil.month, day).weekday;
+      final target = weekday == 6
+          ? (day == 1 ? day + 2 : day - 1)
+          : weekday == 7
+          ? (day == lastDay ? day - 2 : day + 1)
+          : day;
+      return civil.day == target;
     }
     if (field.endsWith('W')) {
       final day = int.parse(field.substring(0, field.length - 1));
@@ -371,7 +384,7 @@ final class CronInput {
       final weekdayDay = nearestWeekday == null
           ? null
           : int.tryParse(nearestWeekday.group(1)!);
-      final lastOffset = RegExp(r'^L-([0-9]+)$').firstMatch(fields[3]);
+      final lastOffset = RegExp(r'^L-([0-9]+)W?$').firstMatch(fields[3]);
       final offset = lastOffset == null
           ? null
           : int.tryParse(lastOffset.group(1)!);

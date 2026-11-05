@@ -60,6 +60,20 @@ void main() {
       expect(match.instants, [DateTime.utc(2024, 1, 7)], reason: weekday);
     }
   });
+  test('Quartz last-day offset weekday resolves nearest weekday', () async {
+    final match = await preview(
+      '0 0 0 L-2W * ?',
+      CronProfile.quartz,
+      DateTime.utc(2024, 6, 28),
+    );
+    final nonmatch = await preview(
+      '0 0 0 L-2W * ?',
+      CronProfile.quartz,
+      DateTime.utc(2024, 6, 29),
+    );
+    expect(match.instants, [DateTime.utc(2024, 6, 28)]);
+    expect(nonmatch.instants, isEmpty);
+  });
   test('Quartz standalone weekday L means Saturday', () async {
     final match = await preview(
       '0 0 0 ? * L',
