@@ -250,3 +250,147 @@ final class Spinner {
     );
   }
 }
+
+/// A task's nonterminal activity, reported by the application.
+enum TaskActivity { waiting, running }
+
+final class _GroupTask {
+  TaskActivity activity = TaskActivity.waiting;
+  String? phase;
+  FeedbackOutcome? outcome;
+  String? detail;
+  String? shown;
+
+  String get description => outcome == null
+      ? '${activity.name}${phase == null ? '' : ', ${_safe(phase!)}'}'
+      : '${outcome!.name}${detail == null ? '' : ': ${_safe(detail!)}'}';
+}
+
+/// Feedback for a stable group of uniquely named tasks.
+final class MultiSpinner {
+  MultiSpinner(
+    Iterable<String> tasks, {
+    this.interval = const Duration(seconds: 5),
+  }) {
+    if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
+    for (final task in tasks) {
+      if (task.isEmpty || _tasks.containsKey(task)) {
+        throw ArgumentError.value(
+          task,
+          'tasks',
+          'Names must be nonempty and unique',
+        );
+      }
+      _tasks[task] = _GroupTask();
+    }
+    if (_tasks.isEmpty) throw ArgumentError('At least one task is required');
+  }
+
+  final Duration interval;
+  final Map<String, _GroupTask> _tasks = {};
+  final Set<String> _pending = {};
+  final Stopwatch _clock = Stopwatch()..start();
+  Duration? _lastBatch;
+  Timer? _timer;
+  StringSink? _output;
+  bool _rich = false;
+  bool _closed = false;
+
+  void start({
+    StringSink? output,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    bool? supportsRich,
+  }) {
+    if (_output != null || _closed)
+      throw StateError('Already started or disposed');
+    final sink = output ?? stderr;
+    final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
+    final selected =
+        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+    if (selected == PromptMode.rich && !capable)
+      throw StateError('Rich output unavailable');
+    _rich = capable && selected != PromptMode.linear;
+    _output = sink;
+    for (final entry in _tasks.entries) {
+      _emit('${_safe(entry.key)}: ${entry.value.description}');
+      entry.value.shown = entry.value.description;
+    }
+  }
+
+  _GroupTask _task(String task) {
+    if (_output == null) throw StateError('Not started');
+    return _tasks[task] ??
+        (throw ArgumentError.value(task, 'task', 'Unknown task'));
+  }
+
+  void update(String task, TaskActivity activity, {String? phase}) {
+    if (_closed) return;
+    final state = _task(task);
+    if (state.outcome != null) return;
+    state.activity = activity;
+    state.phase = phase;
+    if (state.description == state.shown) {
+      _pending.remove(task);
+      return;
+    }
+    _pending.add(task);
+    final elapsed = _lastBatch == null
+        ? interval
+        : _clock.elapsed - _lastBatch!;
+    if (elapsed >= interval) {
+      _flush();
+    } else {
+      _timer ??= Timer(interval - elapsed, _flush);
+    }
+  }
+
+  void _flush() {
+    _timer?.cancel();
+    _timer = null;
+    if (_closed || _pending.isEmpty) return;
+    for (final entry in _tasks.entries) {
+      if (_pending.contains(entry.key)) {
+        _emit('${_safe(entry.key)}: ${entry.value.description}');
+        entry.value.shown = entry.value.description;
+      }
+    }
+    _pending.clear();
+    _lastBatch = _clock.elapsed;
+  }
+
+  void finishTask(String task, FeedbackOutcome outcome, {String? detail}) {
+    if (_closed) return;
+    final state = _task(task);
+    if (state.outcome != null) return;
+    state.outcome = outcome;
+    state.detail = detail;
+    _pending.remove(task);
+    _emit('${_safe(task)}: ${state.description}');
+    if (_tasks.values.every((value) => value.outcome != null)) {
+      _summary();
+      _closed = true;
+      _timer?.cancel();
+      _pending.clear();
+    }
+  }
+
+  void _summary() {
+    _emit('Summary:');
+    for (final entry in _tasks.entries) {
+      _emit('${_safe(entry.key)}: ${entry.value.description}');
+    }
+  }
+
+  void _emit(String line) => _output!.writeln(_rich ? '[status] $line' : line);
+
+  /// Stop presentation without assigning outcomes to unfinished tasks.
+  void dispose() {
+    if (_closed) return;
+    _closed = true;
+    _timer?.cancel();
+    _pending.clear();
+    if (_output != null) _summary();
+  }
+}
