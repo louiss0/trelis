@@ -505,5 +505,6 @@ profile, Gregorian or Buddhist calendar, and ASCII, Thai or Arabic-Indic digits.
 Linux glibc and macOS Foundation also attempt narrow numeric full-year
 profiles; unsupported or ambiguous settings require an explicit override.
 Rich entry has numeric segments and linear entry uses a slash body. The shared native
-terminal backend currently accepts interactive input only on Windows. This
-prototype has not completed calendar-provider or accessibility qualification.
+terminal backend currently accepts interactive input only on Windows. The arithmetic provider is qualified only for its stated bounded profiles;
+accessibility qualification has not been performed. See
+[DateInput evidence](docs/date-input-evidence.md).

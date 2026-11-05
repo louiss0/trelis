@@ -1,13 +1,13 @@
 # DateInput implementation evidence
 
-## Date-only arithmetic boundary
+## Bounded date-only arithmetic qualification
 
 `prompty-civil-arithmetic-v1` is in-package integer arithmetic, not a wrapper
 around ICU or an instant-based calendar. Its explicit Gregorian profile is
 proleptic CE 0001 through 9999; the Buddhist profile is restricted to the
-modern January-based BE 2484 through 9999. Both profiles have Gregorian month
-identity M01-M12, no intercalary month, and the conventional Gregorian leap
-rule. The latter maps BE year to proleptic Gregorian year by subtracting 543.
+modern January-based BE 2484 through 9999. For these explicitly declared profiles, the qualified rule set has Gregorian
+month identity M01-M12, no intercalary month, and the conventional Gregorian
+leap rule. The latter maps BE year to proleptic Gregorian year by subtracting 543.
 
 Source inspected: [ICU release 76.1 buddhcal.cpp](https://github.com/unicode-org/icu/blob/release-76-1/icu4c/source/i18n/buddhcal.cpp),
 `kBuddhistEraStart = -543`, `handleGetExtendedYear` and
@@ -25,7 +25,10 @@ also reject pre-2484 Buddhist years and invalid leap days. The separate
 `dart test test/date_input_windows_cycle_test.dart` check passed on this host:
 it compares the first and last day of every month in a complete 400-year
 Gregorian cycle (9,600 dates) against .NET ThaiBuddhistCalendar. This is
-bounded cross-check evidence, not an exhaustive comparison of every date.
+bounded cross-check evidence, not an exhaustive comparison of every date. The
+qualification is limited to the stated arithmetic rules and ranges; it does not
+qualify other Buddhist variants, historical Thai new-year conventions, other
+provider versions, or platform preference adapters.
 
 ## Preference adapters
 
@@ -46,6 +49,8 @@ reported `All tests passed!` for the effective M/d/yyyy, calendar 1, ASCII
 digits setting and the .NET calendar vectors. Scripted interaction tests cover
 slash traversal, adjustment retaining an invalid dependent day, explicit review,
 EOF at review, and preventing identified paste from submitting review commands.
+The redirected native DateInput check verifies that a rich prompt returns
+unavailable for redirected input; it does not verify an interactive console.
 These are automated checks, not Windows Terminal or NVDA task completion.
 The DateInput component still requires recorded human nonvisual task evidence
 in the whole-library ticket 32 gate; no accessibility qualification is claimed.
