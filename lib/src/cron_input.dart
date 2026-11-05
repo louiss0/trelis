@@ -331,7 +331,12 @@ final class CronPreview {
 /// Cron expression entry. The current implementation only supports a subset of
 /// Unix and Quartz syntax; preview is not yet implemented.
 final class CronInput {
-  CronInput(String label, {required this.profile, String initialValue = ''}) {
+  CronInput(
+    this.label, {
+    required this.profile,
+    this.initialValue = '',
+    this.preview,
+  }) {
     _input = TextInput(
       '$label (Unix five fields: minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7; numeric lists, ranges and steps, month and weekday names; Quartz basic subset only; preview unavailable)',
       initialValue: initialValue,
@@ -341,8 +346,12 @@ final class CronInput {
           : 'Invalid or unsupported cron expression for the selected profile.',
     );
   }
+  final String label;
+  final String initialValue;
+  final CronPreviewConfig? preview;
   final CronProfile profile;
   late final TextInput _input;
+  bool _active = false;
 
   bool _valid(String value) {
     if (value.trim() != value) return false;
@@ -454,6 +463,37 @@ final class CronInput {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
+    final config = preview;
+    if (config != null && source is! SuppliedAnswer) {
+      if (_active) throw StateError('A prompt session is already active.');
+      _active = true;
+      try {
+        final selected =
+            mode ??
+            userPreference ??
+            applicationPreference ??
+            PromptMode.automatic;
+        if (source == null) {
+          if (_terminalActive) {
+            throw StateError('A terminal session is already active.');
+          }
+          _terminalActive = true;
+          try {
+            return await _terminal<CronExpression>(
+              selected,
+              output ?? stderr,
+              (source, mode, restore) =>
+                  _runPreview(source, mode, config, beforeClose: restore),
+            );
+          } finally {
+            _terminalActive = false;
+          }
+        }
+        return await _runPreview(source, selected, config);
+      } finally {
+        _active = false;
+      }
+    }
     final result = await _input.prompt(
       source: source,
       mode: mode,
@@ -468,5 +508,85 @@ final class CronInput {
     if (result is Interrupted<String>) return Interrupted();
     if (result is InputEnded<String>) return InputEnded();
     return Unavailable((result as Unavailable<String>).reason);
+  }
+
+  Future<PromptResult<CronExpression>> _runPreview(
+    PromptSource source,
+    PromptMode mode,
+    CronPreviewConfig config, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is! ScriptedInput) {
+      return Unavailable('Unsupported cron input source.');
+    }
+    if (mode == PromptMode.rich && !source.supportsRich) {
+      return Unavailable('Rich interaction unavailable.');
+    }
+    final linear =
+        mode == PromptMode.linear ||
+        (mode == PromptMode.automatic && !source.supportsRich);
+    final out = source.output;
+    final keys = _Keys(source.input.transform(utf8.encoder));
+    var draft = initialValue;
+    out.writeln(
+      '$label. ${profile.name} profile. Enter an expression, then /preview, /edit or /submit; /cancel cancels.',
+    );
+    try {
+      while (true) {
+        final entry = await _edit(
+          keys,
+          draft,
+          out,
+          linear: linear,
+          sequential: linear,
+        );
+        if (entry.action == 'cancel') return Cancelled();
+        if (entry.action == 'interrupt') return Interrupted();
+        if (entry.action != 'submit') return InputEnded();
+        draft = entry.value;
+        if (!_valid(draft)) {
+          out.writeln('Invalid cron expression. Correct the retained draft.');
+          continue;
+        }
+        out.writeln('Review: $draft. /preview, /edit, or /submit.');
+        while (true) {
+          final action = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: linear,
+            extraCommands: const {'/preview', '/edit', '/submit'},
+          );
+          if (action.action == 'cancel') return Cancelled();
+          if (action.action == 'interrupt') return Interrupted();
+          if (action.action == 'eof') return InputEnded();
+          if (action.action == 'command' && action.value == '/edit') break;
+          if (action.action == 'command' && action.value == '/submit') {
+            return Accepted(CronExpression._(draft, profile));
+          }
+          if (action.action == 'command' && action.value == '/preview') {
+            final result = await CronExpression._(
+              draft,
+              profile,
+            ).preview(config);
+            out.writeln(
+              'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2025c; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; gaps skipped, folds included; not scheduler execution.',
+            );
+            for (final instant in result.instants) {
+              out.writeln(instant);
+            }
+            continue;
+          }
+          out.writeln('Use /preview, /edit, or /submit.');
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
   }
 }
