@@ -386,6 +386,54 @@ void main() {
     expect(out.toString(), contains('Ambiguity reopened'));
   });
 
+  test(
+    'adaptive rich announces reopened ambiguity before submission',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('pair', [
+            MaskSlot('digit', digit),
+            MaskSlot('digit', digit),
+          ]),
+          MaskTemplate('dash', [
+            MaskSlot('digit', digit),
+            MaskLiteral('-'),
+            MaskSlot('digit', digit),
+          ]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(Stream.value('1-2\r\x7f3'), out),
+        mode: PromptMode.rich,
+      );
+      expect(result, isA<InputEnded<MaskedValue>>());
+      expect(out.toString(), contains('Ambiguity reopened'));
+    },
+  );
+
+  test('linear fixed mask offers ambiguous optional slot placements', () async {
+    bool digit(String s) => '0123456789'.contains(s);
+    final input = MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('first', digit, required: false),
+          MaskSlot('second', digit, required: false),
+        ]),
+      ],
+    );
+    final out = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(Stream.value('1\r2\r/done\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<MaskedValue>).value.slots, ['1', '']);
+    expect(out.toString(), contains('Choose an interpretation'));
+  });
+
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(
       'Code',

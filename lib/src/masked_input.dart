@@ -503,6 +503,7 @@ final class MaskedInput {
     var provenance = initial?.interpretation ?? MaskInterpretation.automatic;
     int? lastTyped;
     var edited = false;
+    var ambiguityAnnounced = false;
     void show() {
       out.writeln('$label. Template: ${template.name}.');
       for (var i = 0; i < slots.length; i++) {
@@ -675,6 +676,14 @@ final class MaskedInput {
             out.writeln('Slot does not accept that grapheme.');
           }
         }
+        if (edited && templates.length > 1) {
+          final ambiguous =
+              _decode(slots.join(), as: MaskInterpretation.raw).length > 1;
+          if (ambiguous && !ambiguityAnnounced) {
+            out.writeln('Ambiguity reopened; draft preserved: ${slots.join()}');
+          }
+          ambiguityAnnounced = ambiguous;
+        }
         show();
       }
     } finally {
@@ -788,12 +797,37 @@ final class MaskedInput {
           if (entry.action != 'submit') return InputEnded();
           value = entry.value;
         }
-        final result = await _run(SuppliedAnswer(value), PromptMode.linear);
-        if (result is Accepted<MaskedValue>) {
-          slots = List.of(result.value.slots);
+        final matches = _decode(value);
+        if (matches.length == 1) {
+          slots = List.of(matches.single.slots);
           show();
+        } else if (matches.length > 1) {
+          out.writeln('Choose an interpretation; draft preserved: $value');
+          for (var i = 0; i < matches.length; i++) {
+            final description = matches[i].slots.indexed
+                .map(
+                  (e) => 'slot ${e.$1 + 1}: ${e.$2.isEmpty ? "empty" : e.$2}',
+                )
+                .join(', ');
+            out.writeln(
+              '${i + 1}. ${matches[i].interpretation.name}: $description',
+            );
+          }
+          final choice = await edit();
+          if (choice.action == 'cancel') return Cancelled();
+          if (choice.action == 'interrupt') return Interrupted();
+          if (choice.action != 'submit') return InputEnded();
+          final index = int.tryParse(choice.value);
+          if (index == null || index < 1 || index > matches.length) {
+            out.writeln(
+              'Invalid interpretation number; draft preserved: $value',
+            );
+          } else {
+            slots = List.of(matches[index - 1].slots);
+            show();
+          }
         } else {
-          out.writeln('Invalid or ambiguous value; draft: $value');
+          out.writeln('Invalid value; draft: $value');
         }
       }
     } finally {
