@@ -705,6 +705,145 @@ Stream<String> _consoleInput(
   return controller.stream;
 }
 
+// Use the authorized terminal descriptor directly so cancelling one session
+// does not close Dart's process-wide stdin stream before the next session.
+Stream<String> _posixInput() {
+  final libc = DynamicLibrary.process();
+  final poll = libc
+      .lookupFunction<
+        Int32 Function(Pointer<Void>, UintPtr, Int32),
+        int Function(Pointer<Void>, int, int)
+      >('poll');
+  final read = libc
+      .lookupFunction<
+        IntPtr Function(Int32, Pointer<Uint8>, UintPtr),
+        int Function(int, Pointer<Uint8>, int)
+      >('read');
+  final descriptor = calloc<Uint8>(8);
+  final data = ByteData.sublistView(descriptor.asTypedList(8));
+  data.setInt32(0, 0, Endian.host);
+  data.setInt16(4, 1, Endian.host); // POLLIN
+  final buffer = calloc<Uint8>(4096);
+  Timer? timer;
+  late StreamController<List<int>> controller;
+  controller = StreamController<List<int>>(
+    onListen: () {
+      timer = Timer.periodic(const Duration(milliseconds: 5), (_) {
+        final ready = poll(descriptor.cast(), 1, 0);
+        if (ready < 0) {
+          controller.addError(StateError('Cannot poll terminal input.'));
+          timer?.cancel();
+        } else if (ready > 0) {
+          final count = read(0, buffer, 4096);
+          if (count < 0) {
+            controller.addError(StateError('Cannot read terminal input.'));
+            timer?.cancel();
+          } else if (count == 0) {
+            timer?.cancel();
+            controller.close();
+          } else {
+            // Ctrl+D in raw mode is the conventional terminal EOF gesture.
+            controller.add([
+              for (final byte in buffer.asTypedList(count))
+                byte == 4 ? 26 : byte,
+            ]);
+          }
+        }
+      });
+    },
+    onCancel: () {
+      timer?.cancel();
+      calloc.free(descriptor);
+      calloc.free(buffer);
+    },
+  );
+  return controller.stream.transform(utf8.decoder);
+}
+
+Future<PromptResult<T>> _posixTerminal<T>(
+  PromptMode mode,
+  Stdout outputStream,
+  Future<PromptResult<T>> Function(ScriptedInput, PromptMode, void Function())
+  run,
+) async {
+  final rich =
+      mode == PromptMode.rich ||
+      (mode == PromptMode.automatic && outputStream.hasTerminal);
+  if (rich && !outputStream.hasTerminal) {
+    return Unavailable(
+      'Rich interaction unavailable on the selected output; use linear or automatic mode.',
+    );
+  }
+  final libc = DynamicLibrary.process();
+  final get = libc
+      .lookupFunction<
+        Int32 Function(Int32, Pointer<Void>),
+        int Function(int, Pointer<Void>)
+      >('tcgetattr');
+  final set = libc
+      .lookupFunction<
+        Int32 Function(Int32, Int32, Pointer<Void>),
+        int Function(int, int, Pointer<Void>)
+      >('tcsetattr');
+  final makeRaw = libc
+      .lookupFunction<
+        Void Function(Pointer<Void>),
+        void Function(Pointer<Void>)
+      >('cfmakeraw');
+  // termios is platform-specific; reserve more than its size on both supported
+  // POSIX platforms and let libc interpret the opaque storage.
+  final original = calloc<Uint64>(64);
+  final raw = calloc<Uint64>(64);
+  var acquired = false;
+  var pasteEnabled = false;
+  void restore() {
+    try {
+      if (pasteEnabled) {
+        pasteEnabled = false;
+        outputStream.write('\x1b[?2004l\n');
+      }
+    } finally {
+      if (acquired) {
+        acquired = false;
+        if (set(0, 0, original.cast()) != 0) {
+          throw StateError('Cannot restore terminal input.');
+        }
+      }
+    }
+  }
+
+  try {
+    if (get(0, original.cast()) != 0 || get(0, raw.cast()) != 0) {
+      return Unavailable('Terminal capability unavailable.');
+    }
+    makeRaw(raw.cast());
+    if (set(0, 0, raw.cast()) != 0) {
+      return Unavailable('Cannot acquire terminal input.');
+    }
+    acquired = true;
+    if (outputStream.hasTerminal) {
+      outputStream.write('\x1b[?2004h');
+      pasteEnabled = true;
+    }
+    return await run(
+      ScriptedInput(
+        _posixInput(),
+        outputStream,
+        supportsRich: outputStream.hasTerminal,
+      ),
+      rich ? PromptMode.rich : PromptMode.linear,
+      restore,
+    );
+  } finally {
+    try {
+      restore();
+    } finally {
+      calloc.free(original);
+      calloc.free(raw);
+    }
+  }
+}
+
 Future<PromptResult<T>> _terminal<T>(
   PromptMode mode,
   Stdout outputStream,
@@ -712,9 +851,17 @@ Future<PromptResult<T>> _terminal<T>(
   run, {
   _CaptureControl? capture,
 }) async {
-  if (!Platform.isWindows || !stdin.hasTerminal) {
+  if (!stdin.hasTerminal) {
     return Unavailable(
       'Interactive console input is unavailable; supply an explicit input source.',
+    );
+  }
+  if (Platform.isLinux || Platform.isMacOS) {
+    return _posixTerminal(mode, outputStream, run);
+  }
+  if (!Platform.isWindows) {
+    return Unavailable(
+      'Interactive console input is unavailable on this platform.',
     );
   }
   final rich =
