@@ -20,6 +20,7 @@ final class DurationInput {
     this.label, {
     required this.durationMode,
     this.signed = false,
+    this.allowZero = true,
     this.minimumMicroseconds,
     this.initialValue,
   }) {
@@ -37,6 +38,7 @@ final class DurationInput {
   final String label;
   final DurationInputMode durationMode;
   final bool signed;
+  final bool allowZero;
   final int? minimumMicroseconds;
   final String? initialValue;
   bool _active = false;
@@ -100,11 +102,17 @@ final class DurationInput {
       }
     }
     if (seen.isEmpty) return null;
+    if (!allowZero &&
+        total == BigInt.zero &&
+        components.values.every((n) => n == BigInt.zero)) {
+      return null;
+    }
     total *= sign;
     if (durationMode == DurationInputMode.elapsed &&
         minimumMicroseconds != null &&
-        total < BigInt.from(minimumMicroseconds!))
+        total < BigInt.from(minimumMicroseconds!)) {
       return null;
+    }
     return DurationValue._(
       text,
       durationMode,
@@ -126,25 +134,37 @@ final class DurationInput {
       final description = durationMode == DurationInputMode.elapsed
           ? 'elapsed; units w d h m s ms us; minimum ${minimumMicroseconds?.toString() ?? (signed ? "none" : "0")} microseconds'
           : 'calendar-relative; whole y mo w d and elapsed h m s ms us; unapplied period';
+      final sink = source is ScriptedInput
+          ? source.output
+          : source == null
+          ? (output ?? stderr)
+          : null;
+      void review(String draft) {
+        if (sink == null) return;
+        final value = _parse(draft);
+        if (value == null) {
+          sink.writeln('Interpretation unavailable: enter a valid duration.');
+        } else if (durationMode == DurationInputMode.elapsed) {
+          sink.writeln(
+            'Elapsed interpretation: ${value.microseconds} microseconds.',
+          );
+        } else {
+          sink.writeln(
+            'Unapplied calendar components: ${value.components}; elapsed sub-day: ${value.microseconds} microseconds.',
+          );
+        }
+      }
+
       final result =
-          await TextInput(
-            '$label ($description; ${signed ? 'global sign allowed' : 'nonnegative'}; maximum 1024 characters; maximum magnitude 9223372036854775807)',
+          await TextInput._(
+            '$label ($description; ${signed ? 'global sign allowed' : 'nonnegative'}; ; maximum 1024 characters; maximum magnitude 9223372036854775807)',
+            onChanged: review,
             required: true,
             initialValue: initialValue ?? '',
             maxLength: 1024,
-            validate: (v) {
-              final parsed = _parse(v);
-              if (parsed == null)
-                return 'Invalid duration: use unique case-sensitive unit tokens and exact microseconds within bounds.';
-              if (source is ScriptedInput) {
-                source.output.writeln(
-                  durationMode == DurationInputMode.elapsed
-                      ? 'Elapsed interpretation: ${parsed.microseconds} microseconds.'
-                      : 'Unapplied calendar components: ${parsed.components}; elapsed sub-day: ${parsed.microseconds} microseconds.',
-                );
-              }
-              return null;
-            },
+            validate: (v) => _parse(v) == null
+                ? 'Invalid duration: use unique case-sensitive unit tokens and exact microseconds within bounds.'
+                : null,
           ).prompt(
             source: source,
             mode: mode,
