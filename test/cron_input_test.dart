@@ -149,6 +149,30 @@ void main() {
     );
     expect(preview.instants, [DateTime.utc(2024, 2, 29)]);
   });
+  test('preview cancellation stops a bounded search', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
+    ).prompt(source: SuppliedAnswer('0 0 31 2 *'));
+    final expression = (result as Accepted<CronExpression>).value;
+    var cancelled = false;
+    Future<void>.delayed(Duration.zero, () {
+      cancelled = true;
+    });
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024),
+        start: DateTime.utc(2024),
+        end: DateTime.utc(2025),
+        count: 1,
+        budget: 100000,
+        isCancelled: () => cancelled,
+      ),
+    );
+    expect(preview.status, CronPreviewStatus.cancelled);
+    expect(preview.instants, isEmpty);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

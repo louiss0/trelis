@@ -40,7 +40,8 @@ final class CronExpression {
     var work = 0;
     while (!instant.isAfter(config.end) &&
         work < config.budget &&
-        matches.length < config.count) {
+        matches.length < config.count &&
+        !config.isCancelled()) {
       final civil = timezone.TZDateTime.from(instant, location);
       if (profile == CronProfile.unix && civil.second != 0) {
         throw UnsupportedError('Timezone offset has sub-minute precision.');
@@ -56,7 +57,9 @@ final class CronExpression {
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
       instant = instant.add(Duration(microseconds: minuteMicros));
     }
-    final status = matches.length == config.count
+    final status = config.isCancelled()
+        ? CronPreviewStatus.cancelled
+        : matches.length == config.count
         ? CronPreviewStatus.complete
         : instant.isAfter(config.end)
         ? CronPreviewStatus.horizonReached
@@ -140,6 +143,7 @@ final class CronPreviewConfig {
     required this.end,
     required this.count,
     required this.budget,
+    this.isCancelled = _neverCancelled,
   }) {
     if (zone.isEmpty ||
         !reference.isUtc ||
@@ -157,9 +161,12 @@ final class CronPreviewConfig {
   final DateTime end;
   final int count;
   final int budget;
+  final bool Function() isCancelled;
 }
 
-enum CronPreviewStatus { complete, horizonReached, budgetExhausted }
+bool _neverCancelled() => false;
+
+enum CronPreviewStatus { complete, horizonReached, budgetExhausted, cancelled }
 
 final class CronPreview {
   CronPreview._(this.instants, this.status);
