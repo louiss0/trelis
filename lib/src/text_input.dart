@@ -462,6 +462,11 @@ class _Keys {
   final _controller = StreamController<String>();
   late final StreamSubscription<String> _subscription;
   late final StreamIterator<String> _iterator;
+  bool Function(String)? onKey;
+  void _emit(String key) {
+    if (!(onKey?.call(key) ?? false)) _controller.add(key);
+  }
+
   String _buffer = '';
   bool _discardPaste = false;
   bool _afterCarriageReturn = false;
@@ -479,7 +484,7 @@ class _Keys {
           onDone: () {
             _timer?.cancel();
             if (flushEscapeOnEnd && _buffer == '\x1b') {
-              _controller.add('\x1b');
+              _emit('\x1b');
               _buffer = '';
             }
             _controller.close();
@@ -499,15 +504,13 @@ class _Keys {
         }
         _buffer = _buffer.substring(end + 6);
         _discardPaste = false;
-        _controller.add('\x1b[999~');
+        _emit('\x1b[999~');
         continue;
       }
       if (_buffer.startsWith('\x1b[200~')) {
         final end = _buffer.indexOf('\x1b[201~', 6);
         if (end >= 0) {
-          _controller.add(
-            end - 6 > 4096 ? '\x1b[999~' : _buffer.substring(0, end + 6),
-          );
+          _emit(end - 6 > 4096 ? '\x1b[999~' : _buffer.substring(0, end + 6));
           _buffer = _buffer.substring(end + 6);
           continue;
         }
@@ -521,13 +524,13 @@ class _Keys {
         final match = RegExp(r'^\x1b\[[0-9;]*[A-Za-z~]').firstMatch(_buffer);
         if (match != null) {
           final s = match.group(0)!;
-          _controller.add(s);
+          _emit(s);
           _buffer = _buffer.substring(s.length);
           continue;
         }
         if (_buffer == '\x1b' || _buffer.startsWith('\x1b[')) {
           _timer = Timer(const Duration(milliseconds: 80), () {
-            _controller.add('\x1b');
+            _emit('\x1b');
             _buffer = _buffer.substring(1);
             _parse();
           });
@@ -536,7 +539,7 @@ class _Keys {
       }
       final rune = _buffer.runes.first;
       final s = String.fromCharCode(rune);
-      _controller.add(s);
+      _emit(s);
       _buffer = _buffer.substring(s.length);
     }
   }

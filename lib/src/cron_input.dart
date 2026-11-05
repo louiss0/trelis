@@ -606,10 +606,55 @@ final class CronInput {
           }
           if (action.action == 'review-preview' ||
               (action.action == 'command' && action.value == '/preview')) {
-            final result = await CronExpression._(
-              draft,
-              profile,
-            ).preview(config);
+            var interrupted = false;
+            var cancelled = false;
+            var line = '';
+            keys.onKey = (key) {
+              if (key == '\x03') {
+                interrupted = true;
+                return true;
+              }
+              if (!linear && key == '\x1b') {
+                cancelled = true;
+                return true;
+              }
+              if (linear) {
+                if (key == '\r' || key == '\n') {
+                  if (line == '/cancel') {
+                    cancelled = true;
+                    return true;
+                  }
+                  line = '';
+                } else if (line.length < 16) {
+                  line += key;
+                }
+              }
+              return false;
+            };
+            out.writeln(
+              'Calculating preview; Ctrl+C interrupts${linear ? ', /cancel cancels' : ', Escape cancels'}.',
+            );
+            final cancellable = CronPreviewConfig(
+              zone: config.zone,
+              reference: config.reference,
+              start: config.start,
+              end: config.end,
+              count: config.count,
+              budget: config.budget,
+              isCancelled: () =>
+                  interrupted || cancelled || config.isCancelled(),
+            );
+            late final CronPreview result;
+            try {
+              result = await CronExpression._(
+                draft,
+                profile,
+              ).preview(cancellable);
+            } finally {
+              keys.onKey = null;
+            }
+            if (interrupted) return Interrupted();
+            if (cancelled) return Cancelled();
             out.writeln(
               'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; gaps skipped, folds included; not scheduler execution.',
             );
