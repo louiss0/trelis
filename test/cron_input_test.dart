@@ -414,6 +414,28 @@ void main() {
       expect(output.toString(), contains('2024-01-01 00:01:00.000Z'));
     },
   );
+  test('rich review navigates preview then submit actions', () async {
+    final output = StringBuffer();
+    final config = CronPreviewConfig(
+      zone: 'Etc/UTC',
+      reference: DateTime.utc(2024),
+      start: DateTime.utc(2024),
+      end: DateTime.utc(2024, 1, 1, 0, 3),
+      count: 1,
+      budget: 3,
+    );
+    final result =
+        await CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          preview: config,
+        ).prompt(
+          source: ScriptedInput(Stream.value('* * * * *\r\t\r\t\r'), output),
+          mode: PromptMode.rich,
+        );
+    expect(result, isA<Accepted<CronExpression>>());
+    expect(output.toString(), contains('2024-01-01 00:01:00.000Z'));
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

@@ -549,6 +549,13 @@ final class CronInput {
           continue;
         }
         out.writeln('Review: $draft. /preview, /edit, or /submit.');
+        var focus = 0;
+        const actions = ['Edit', 'Preview', 'Submit'];
+        if (!linear) {
+          out.writeln(
+            'Review action: Edit. Tab or Shift-Tab changes action; Enter activates.',
+          );
+        }
         while (true) {
           final action = await _edit(
             keys,
@@ -557,15 +564,33 @@ final class CronInput {
             linear: true,
             sequential: linear,
             extraCommands: const {'/preview', '/edit', '/submit'},
+            intercept: linear
+                ? null
+                : (key, text) {
+                    if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
+                      focus = (focus + (key == '\t' ? 1 : 2)) % actions.length;
+                      out.writeln('Review action: ${actions[focus]}.');
+                      return 'handled';
+                    }
+                    if ((key == '\r' || key == '\n') && text.isEmpty) {
+                      return 'review-${actions[focus].toLowerCase()}';
+                    }
+                    return null;
+                  },
           );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
           if (action.action == 'eof') return InputEnded();
-          if (action.action == 'command' && action.value == '/edit') break;
-          if (action.action == 'command' && action.value == '/submit') {
+          if (action.action == 'review-edit' ||
+              (action.action == 'command' && action.value == '/edit')) {
+            break;
+          }
+          if (action.action == 'review-submit' ||
+              (action.action == 'command' && action.value == '/submit')) {
             return Accepted(CronExpression._(draft, profile));
           }
-          if (action.action == 'command' && action.value == '/preview') {
+          if (action.action == 'review-preview' ||
+              (action.action == 'command' && action.value == '/preview')) {
             final result = await CronExpression._(
               draft,
               profile,
