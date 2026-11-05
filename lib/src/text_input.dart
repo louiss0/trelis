@@ -8,7 +8,10 @@ import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 import 'package:path/path.dart' as path;
 
+import 'uts46.dart';
+
 part 'network_input.dart';
+part 'url_email_input.dart';
 part 'color_input.dart';
 part 'color_names.dart';
 part 'timezone_snapshot.dart';

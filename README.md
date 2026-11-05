@@ -390,6 +390,15 @@ zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
 interface existence. Brackets and URL escaping are not interpreted.
 
+### URLInput and EmailInput
+
+Domain processing uses a pure-Dart UTS #46 provider with checked-in Unicode
+16.0.0 tables. It implements STD3, hyphen, Bidi, ContextJ/ContextO, NFC and
+Punycode checks, nontransitional processing and DNS-length verification
+without native libraries. The source URLs are recorded in
+`lib/src/uts46.dart`; the Unicode license is in `lib/src/uts46_LICENSE`.
+This is local syntax processing, not a DNS or reachability check.
+
 ### ColorInput
 
 `ColorInput('Color', required: false)` accepts optional absence as `null`;
