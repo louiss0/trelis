@@ -436,6 +436,60 @@ void main() {
     expect(result, isA<Accepted<CronExpression>>());
     expect(output.toString(), contains('2024-01-01 00:01:00.000Z'));
   });
+  test(
+    'linear preview provider error preserves the draft for submission',
+    () async {
+      final output = StringBuffer();
+      final config = CronPreviewConfig(
+        zone: 'Invalid/Zone',
+        reference: DateTime.utc(2024),
+        start: DateTime.utc(2024),
+        end: DateTime.utc(2024, 1, 1, 0, 3),
+        count: 1,
+        budget: 3,
+      );
+      final result =
+          await CronInput(
+            'Schedule',
+            profile: CronProfile.unix,
+            preview: config,
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('* * * * *\r/preview\r/submit\r'),
+              output,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '* * * * *',
+      );
+      expect(output.toString(), contains('providerError'));
+    },
+  );
+  test('linear review can cancel without submitting', () async {
+    final config = CronPreviewConfig(
+      zone: 'Etc/UTC',
+      reference: DateTime.utc(2024),
+      start: DateTime.utc(2024),
+      end: DateTime.utc(2024, 1, 1, 0, 3),
+      count: 1,
+      budget: 3,
+    );
+    final result =
+        await CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          preview: config,
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('* * * * *\r/cancel\r'),
+            StringBuffer(),
+          ),
+          mode: PromptMode.linear,
+        );
+    expect(result, isA<Cancelled<CronExpression>>());
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
