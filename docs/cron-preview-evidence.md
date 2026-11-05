@@ -29,7 +29,10 @@ sub-minute offset. These are selected examples, not an exhaustive comparison
 against the IANA transition corpus. Preview budgets count scanned candidate
 instants; a sub-minute offset anywhere in the horizon changes Unix candidate
 resolution to seconds. The exact same expression and context can therefore
-consume a different budget in different zones or horizons.
+consume a different budget in different zones or horizons. Expression input is
+limited to 4096 UTF-16 code units; supplied answers exceeding that limit are
+rejected before field parsing. The preview's work budget counts candidate
+instants, not parser operations or elapsed time.
 
 ## Profile sources and checked examples
 
@@ -50,6 +53,7 @@ an exact pinned Cronie or Quartz engine. Known qualification gaps include a
 complete syntax and boundary corpus, provider errors other than an unknown
 zone, and bounded-work behavior under hostile inputs. Interactive preview
 cancellation is covered for Ctrl+C, rich Escape and linear `/cancel` in
-`cron_interaction_conformance_test.dart`; these are scripted tests, not native
-cancellation qualification. Do not claim full Quartz compatibility or
+`cron_interaction_conformance_test.dart`. The Windows console probe additionally
+checks rich Escape and linear `/cancel` while a long preview is active and
+compares console state before and after. Do not claim full Quartz compatibility or
 whole-ticket acceptance until the remaining gaps are resolved.
