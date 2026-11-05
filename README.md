@@ -439,3 +439,28 @@ Select `DurationInputMode.elapsed` or `DurationInputMode.calendarRelative` when 
 Elapsed tokens are `w d h m s ms us`. A day is exactly 24 hours and a week seven days. Calendar-relative mode additionally accepts `y mo`; its `y mo w d` amounts must be whole and remain unapplied components. Sub-day amounts are elapsed quantities. No date, zone, application order, DST policy, endpoint or total is inferred for a period.
 
 Fractions must convert exactly to integer microseconds; there is no rounding. The maximum magnitude is 9223372036854775807 for the elapsed total and for each calendar component, and drafts are limited to 1024 characters. The default is nonnegative, with zero accepted. `signed: true` permits a global sign; `minimumMicroseconds` optionally bounds elapsed values. `allowZero: false` rejects an all-zero value in either mode; calendar periods have no arbitrary built-in ordering or elapsed minimum. Microsecond resolution does not promise scheduler accuracy. Rich and linear input both show a textual interpretation while editing; invalid drafts remain editable.
+
+### Concurrent task feedback
+
+`MultiSpinner` presents application-owned work without reading input, taking
+focus, or cancelling operations. Supply unique, nonempty task names in their
+stable display order, then start presentation explicitly:
+
+```dart
+final jobs = MultiSpinner(['build', 'tests']);
+jobs.start(); // stderr by default
+jobs.update('build', TaskActivity.running, phase: 'compiling');
+jobs.finishTask('tests', FeedbackOutcome.failed, detail: 'assertion failed');
+jobs.finishTask('build', FeedbackOutcome.completed);
+```
+
+Each task begins waiting. `update` reports waiting or running and an optional
+phase (which can include a meaningful progress value); updates are coalesced
+across the entire group, by default at most once every five seconds. The
+`interval` constructor argument changes this cadence. Final outcomes are
+reported immediately and cannot be overwritten by late updates. Once all tasks
+finish, the ordered summary retains every outcome and detail. Disposing earlier
+prints a summary with unfinished tasks still waiting or running; it does not
+claim success. Output is literal-safe and static in rich and linear modes, and
+redirected output remains reviewable text. Mode selection and explicit output
+use the same `start` arguments as other feedback components.
