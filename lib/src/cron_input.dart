@@ -15,10 +15,7 @@ final class CronExpression {
     late final timezone.Location location;
     final zone = config.zone;
     try {
-      location = await Isolate.run(() {
-        timezone_data.initializeTimeZones();
-        return timezone.getLocation(zone);
-      });
+      location = await _loadCronZone(zone);
     } on timezone.LocationNotFoundException {
       return CronPreview._(const [], CronPreviewStatus.providerError);
     } on timezone.TimeZoneInitException {
@@ -99,6 +96,11 @@ final class CronExpression {
     return CronPreview._(List.unmodifiable(matches), status);
   }
 }
+
+Future<timezone.Location> _loadCronZone(String zone) => Isolate.run(() {
+  timezone_data.initializeTimeZones();
+  return timezone.getLocation(zone);
+});
 
 const _quartzMonths = [
   'JAN',

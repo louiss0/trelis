@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:prompty/prompty.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
@@ -175,6 +177,36 @@ void main() {
     );
     expect(timezone.local.name, 'America/New_York');
   });
+  test(
+    'provider loading does not transfer cancellation callback state',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('cron-callback-');
+      final handle = await File('${directory.path}/probe')
+          .open(mode: FileMode.write);
+      try {
+        final result = await CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+        ).prompt(source: SuppliedAnswer('* * * * *'));
+        final expression = (result as Accepted<CronExpression>).value;
+        final preview = await expression.preview(
+          CronPreviewConfig(
+            zone: 'Etc/UTC',
+            reference: DateTime.utc(2024),
+            start: DateTime.utc(2024),
+            end: DateTime.utc(2024, 1, 1, 0, 1),
+            count: 1,
+            budget: 1,
+            isCancelled: () => handle.positionSync() < 0,
+          ),
+        );
+        expect(preview.instants, [DateTime.utc(2024, 1, 1, 0, 1)]);
+      } finally {
+        await handle.close();
+        await directory.delete(recursive: true);
+      }
+    },
+  );
   test('Quartz rejects two specified days and two unspecified days', () async {
     for (final expression in ['0 0 12 1 * MON', '0 0 12 ? * ?']) {
       final result = await CronInput(
