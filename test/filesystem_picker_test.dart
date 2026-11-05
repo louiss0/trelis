@@ -35,6 +35,24 @@ void main() {
       isA<Unavailable<String>>(),
     );
   });
+  test('linear file browser chooses a listed file after review', () async {
+    final dir = await Directory.systemTemp.createTemp('picker_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = await File('${dir.path}${Platform.pathSeparator}answer.txt')
+        .writeAsString('unchanged');
+    await Directory('${dir.path}${Platform.pathSeparator}folder').create();
+    final out = StringBuffer();
+    final result = await FilePicker('File', base: dir.path).prompt(
+      source: ScriptedInput(Stream.value('choose 1\r\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, file.path);
+    expect(out.toString(), contains('1. answer.txt [file]'));
+    expect(out.toString(), contains('2. folder [directory]'));
+    expect(out.toString(), contains('Open'));
+    expect(out.toString(), contains('Choose'));
+    expect(await file.readAsString(), 'unchanged');
+  });
   test(
     'linear directory browser reviews and chooses its current directory',
     () async {
