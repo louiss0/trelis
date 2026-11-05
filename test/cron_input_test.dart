@@ -88,6 +88,23 @@ void main() {
       );
     }
   });
+  test('Quartz nth weekday requires a valid weekday and ordinal', () async {
+    final input = CronInput('Schedule', profile: CronProfile.quartz);
+    for (final day in ['1#1', '7#5', 'MON#3']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 ? * $day')),
+        isA<Accepted<CronExpression>>(),
+        reason: day,
+      );
+    }
+    for (final day in ['0#1', '8#1', 'MON#0', 'MON#6', 'MON#2,TUE#3']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 ? * $day')),
+        isA<Unavailable<CronExpression>>(),
+        reason: day,
+      );
+    }
+  });
   test('Quartz accepts last day of month', () async {
     final result = await CronInput(
       'Schedule',

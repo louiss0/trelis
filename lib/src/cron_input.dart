@@ -71,7 +71,12 @@ final class CronInput {
           !numeric.hasMatch(fields[3])) {
         return false;
       }
+      final nthWeekday = RegExp(
+        r'^(?:[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)#[1-5]$',
+        caseSensitive: false,
+      ).hasMatch(fields[5]);
       if (fields[5] != '?' &&
+          !nthWeekday &&
           !RegExp(
             r'^(?:\*|[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)$',
             caseSensitive: false,
