@@ -96,6 +96,63 @@ void main() {
     ).prompt(source: SuppliedAnswer(expression));
     expect(result, isA<Unavailable<CronExpression>>());
   });
+  test('hostile malformed fields do not become valid schedules', () async {
+    final cases = <CronProfile, List<String>>{
+      CronProfile.unix: [
+        '*/0 * * * *',
+        '0 0 0 * *',
+        '0 0 * 13 *',
+        '0 0 * * 8',
+        '@daily',
+        '0 0 * * * command',
+        '9${'9' * 1000} 0 * * *',
+      ],
+      CronProfile.quartz: [
+        '0/0 * * ? * MON',
+        '*/999 * * ? * MON',
+        '0 0 0 L-31W * ?',
+        '0 0 0 ? * MON#6',
+        '0 0 0 ? * 8',
+        '0 0 0 ? * MON 2200',
+        '0 0 0 ? * MON extra',
+      ],
+    };
+    for (final entry in cases.entries) {
+      for (final expression in entry.value) {
+        final result = await CronInput(
+          'Schedule',
+          profile: entry.key,
+        ).prompt(source: SuppliedAnswer(expression));
+        expect(result, isA<Unavailable<CronExpression>>(), reason: expression);
+      }
+    }
+  });
+  test(
+    'empty horizon at maximum UTC instant reports horizon, not overflow',
+    () async {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.unix,
+      ).prompt(source: SuppliedAnswer('* * * * *'));
+      final expression = (result as Accepted<CronExpression>).value;
+      final maximum = DateTime.fromMicrosecondsSinceEpoch(
+        8640000000000000000,
+        isUtc: true,
+      );
+      final resultPreview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'Etc/UTC',
+          reference: maximum,
+          start: maximum,
+          end: maximum,
+          count: 1,
+          budget: 1,
+        ),
+      );
+      expect(resultPreview.status, CronPreviewStatus.horizonReached);
+      expect(resultPreview.instants, isEmpty);
+    },
+  );
   test('Quartz rejects two specified days and two unspecified days', () async {
     for (final expression in ['0 0 12 1 * MON', '0 0 12 ? * ?']) {
       final result = await CronInput(

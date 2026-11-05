@@ -48,16 +48,20 @@ final class CronExpression {
         startMicros -
         startMicros % minuteMicros +
         (startMicros % minuteMicros == 0 ? 0 : minuteMicros);
-    var instant = DateTime.fromMicrosecondsSinceEpoch(
-      strictlyAfter > startMinute ? strictlyAfter : startMinute,
-      isUtc: true,
-    );
+    var instantMicros = strictlyAfter > startMinute
+        ? strictlyAfter
+        : startMinute;
+    final endMicros = config.end.microsecondsSinceEpoch;
     final matches = <DateTime>[];
     var work = 0;
-    while (!instant.isAfter(config.end) &&
+    while (instantMicros <= endMicros &&
         work < config.budget &&
         matches.length < config.count &&
         !config.isCancelled()) {
+      final instant = DateTime.fromMicrosecondsSinceEpoch(
+        instantMicros,
+        isUtc: true,
+      );
       final civil = timezone.TZDateTime.from(instant, location);
       if (profile == CronProfile.unix &&
           minuteMicros == Duration.microsecondsPerMinute &&
@@ -72,13 +76,13 @@ final class CronExpression {
       if (matchesExpression) matches.add(instant);
       work++;
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
-      instant = instant.add(Duration(microseconds: minuteMicros));
+      instantMicros += minuteMicros;
     }
     final status = config.isCancelled()
         ? CronPreviewStatus.cancelled
         : matches.length == config.count
         ? CronPreviewStatus.complete
-        : instant.isAfter(config.end)
+        : instantMicros > endMicros
         ? CronPreviewStatus.horizonReached
         : CronPreviewStatus.budgetExhausted;
     return CronPreview._(List.unmodifiable(matches), status);
@@ -372,8 +376,9 @@ final class CronInput {
   bool _active = false;
 
   bool _valid(String value) {
-    if (value.length > maxExpressionLength || value.trim() != value)
+    if (value.length > maxExpressionLength || value.trim() != value) {
       return false;
+    }
     if (profile == CronProfile.quartz) {
       final fields = value.split(RegExp(r' +'));
       if (fields.length != 6 && fields.length != 7) return false;
