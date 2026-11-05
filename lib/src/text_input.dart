@@ -9,6 +9,8 @@ import 'package:characters/characters.dart';
 import 'package:path/path.dart' as path;
 
 part 'network_input.dart';
+part 'color_input.dart';
+part 'color_names.dart';
 part 'timezone_snapshot.dart';
 part 'timezone_select.dart';
 part 'path_input.dart';
@@ -39,6 +41,11 @@ final class Unavailable<T> extends PromptResult<T> {
 
 sealed class PromptSource {}
 
+final class SuppliedTags extends PromptSource {
+  SuppliedTags(List<String> values) : values = List.unmodifiable(values);
+  final List<String> values;
+}
+
 final class SuppliedAnswer extends PromptSource {
   SuppliedAnswer(this.value);
   final String value;
@@ -57,11 +64,26 @@ bool _terminalActive = false;
 
 final class TextInput {
   TextInput(
+    String label, {
+    String initialValue = '',
+    bool required = false,
+    String? Function(String)? validate,
+    int? maxLength,
+  }) : this._(
+         label,
+         initialValue: initialValue,
+         required: required,
+         validate: validate,
+         maxLength: maxLength,
+       );
+
+  TextInput._(
     this.label, {
     this.initialValue = '',
     this.required = false,
     this.validate,
     this.maxLength,
+    this._onChanged,
   }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -79,6 +101,7 @@ final class TextInput {
   final bool required;
   final int? maxLength;
   final String? Function(String)? validate;
+  final void Function(String)? _onChanged;
   bool _active = false;
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -166,6 +189,7 @@ final class TextInput {
           linear: mode == PromptMode.linear,
           sequential: mode != PromptMode.rich,
           maxLength: maxLength,
+          onChanged: _onChanged,
         );
         if (result.action == 'cancel') return Cancelled();
         if (result.action == 'interrupt') return Interrupted();
@@ -3193,5 +3217,305 @@ final class TimeInput {
   }
 }
 
+enum TagStyle { kebabCase, snakeCase }
 
+final class TagInput {
+  TagInput(
+    this.label, {
+    this.style = TagStyle.kebabCase,
+    this.maxLength,
+    this.validate,
+  }) {
+    if (maxLength != null && maxLength! < 0) {
+      throw ArgumentError.value(maxLength, 'maxLength');
+    }
+  }
+  final String label;
+  final TagStyle style;
+  final int? maxLength;
+  final String? Function(String)? validate;
+  bool _active = false;
 
+  String _canonical(String text) {
+    final value = text
+        .replaceAllMapped(
+          RegExp(r'(\p{Lu})(\p{Lu}\p{Ll})', unicode: true),
+          (m) => '${m[1]}-${m[2]}',
+        )
+        .replaceAllMapped(
+          RegExp(r'([\p{Ll}\p{Nd}]\p{M}*)(\p{Lu})', unicode: true),
+          (m) => '${m[1]}-${m[2]}',
+        )
+        .replaceAll(RegExp(r'[\s_-]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '')
+        .toLowerCase();
+    return style == TagStyle.snakeCase ? value.replaceAll('-', '_') : value;
+  }
+
+  Future<PromptResult<List<String>>> prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+  }) async {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<List<String>>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) =>
+                _runTags(source, mode, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _runTags(source, selected);
+    } finally {
+      _active = false;
+    }
+  }
+
+  Future<PromptResult<List<String>>> _runTags(
+    PromptSource source,
+    PromptMode mode, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is SuppliedTags) {
+      final tags = <String>[];
+      for (final draft in source.values) {
+        if (!RegExp(
+          r'^(?:[\p{L}\p{Nd}]\p{M}*|[\s_-])*$',
+          unicode: true,
+        ).hasMatch(draft)) {
+          return Unavailable('Invalid tag characters.');
+        }
+        final canonical = _canonical(draft);
+        if (canonical.isEmpty ||
+            (maxLength != null && canonical.characters.length > maxLength!) ||
+            tags.contains(canonical)) {
+          return Unavailable('Invalid or duplicate canonical tag.');
+        }
+        final error = validate?.call(canonical);
+        if (error != null) return Unavailable(error);
+        tags.add(canonical);
+      }
+      return Accepted(tags);
+    }
+    if (source is SuppliedAnswer) {
+      return Unavailable('Supply a collection using SuppliedTags.');
+    }
+    final input = source as ScriptedInput;
+    if (mode == PromptMode.rich && !input.supportsRich) {
+      return Unavailable(
+        'Rich interaction unavailable; use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+    }
+    final keys = _Keys(input.input.transform(utf8.encoder));
+    final tags = <String>[];
+    var draft = '';
+    var selectingRemoval = false;
+    var selectingEdit = false;
+    int? editing;
+    int? focused;
+    var finishFocused = false;
+    input.output.writeln(
+      '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags. Enter adds; Ctrl+X discards the draft. ${mode == PromptMode.linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}',
+    );
+    try {
+      while (true) {
+        final result = await _edit(
+          keys,
+          draft,
+          input.output,
+          linear: mode == PromptMode.linear,
+          sequential: mode == PromptMode.linear,
+          extraCommands: const {'/done', '/list', '/edit', '/remove'},
+          intercept: (key, text) {
+            if (key == '\x18' && text.isNotEmpty) {
+              return 'discard-draft';
+            }
+            if (mode != PromptMode.rich) return null;
+            if (key == '\t') {
+              finishFocused = true;
+              input.output.writeln('Finish focused; Enter submits.');
+              return 'handled';
+            }
+            if (finishFocused && (key == '\r' || key == '\n')) {
+              if (text.isNotEmpty) {
+                input.output.writeln(
+                  'Add the draft or press Ctrl+X to discard it before finishing.',
+                );
+                finishFocused = false;
+                return 'handled';
+              }
+              return 'finish';
+            }
+            if (key == '\x7f' || key == '\x08') {
+              if (text.isEmpty && tags.isNotEmpty) {
+                focused ??= tags.length - 1;
+                input.output.writeln('Focused: ${tags[focused!]}');
+                return 'handled';
+              }
+            }
+            if (text.isEmpty &&
+                focused != null &&
+                (key == '\x1b[D' || key == '\x1b[C')) {
+              focused = (focused! + (key == '\x1b[D' ? -1 : 1)).clamp(
+                0,
+                tags.length - 1,
+              );
+              input.output.writeln('Focused: ${tags[focused!]}');
+              return 'handled';
+            }
+            if ((key == '\r' || key == '\n') &&
+                text.isEmpty &&
+                focused != null) {
+              return 'edit-focused';
+            }
+            if (key == '\x1b[3~' && text.isEmpty && focused != null) {
+              input.output.writeln('Removed: ${tags.removeAt(focused!)}');
+              focused = null;
+              return 'handled';
+            }
+            finishFocused = false;
+            return null;
+          },
+          onChanged: mode == PromptMode.rich
+              ? (text) => input.output.writeln('Preview: ${_canonical(text)}')
+              : null,
+        );
+        if (result.action == 'cancel') return Cancelled();
+        if (result.action == 'interrupt') return Interrupted();
+        if (result.action == 'finish') return Accepted(tags);
+        if (result.action == 'discard-draft') {
+          draft = '';
+          editing = null;
+          finishFocused = false;
+          input.output.writeln('Draft discarded.');
+          continue;
+        }
+        if (result.action == 'edit-focused') {
+          editing = focused;
+          draft = tags[editing!];
+          input.output.writeln('Editing: $draft');
+          focused = null;
+          continue;
+        }
+        if (result.action != 'submit' && result.action != 'command') {
+          return InputEnded();
+        }
+        if (selectingRemoval || selectingEdit) {
+          final index = int.tryParse(result.value);
+          if (index == null || index < 1 || index > tags.length) {
+            input.output.writeln('Select a listed tag number.');
+            continue;
+          }
+          if (selectingRemoval) {
+            input.output.writeln('Removed: ${tags.removeAt(index - 1)}');
+            selectingRemoval = false;
+          } else {
+            editing = index - 1;
+            draft = tags[editing];
+            selectingEdit = false;
+          }
+          continue;
+        }
+        if (result.action == 'command' && result.value == '/done') {
+          return Accepted(tags);
+        }
+        if (result.action == 'command' &&
+            (result.value == '/list' ||
+                result.value == '/remove' ||
+                result.value == '/edit')) {
+          for (var i = 0; i < tags.length; i++) {
+            input.output.writeln('${i + 1}. ${tags[i]}');
+          }
+          if (result.value == '/remove' && tags.isNotEmpty) {
+            selectingRemoval = true;
+            input.output.writeln('Enter the number of the tag to remove.');
+          } else if (result.value == '/edit' && tags.isNotEmpty) {
+            selectingEdit = true;
+            input.output.writeln('Enter the number of the tag to edit.');
+          }
+          continue;
+        }
+        if (RegExp(
+          r'[^\p{L}\p{M}\p{N}\s_-]',
+          unicode: true,
+        ).hasMatch(result.value)) {
+          input.output.writeln('Unsupported punctuation; edit the draft.');
+          draft = result.value;
+          continue;
+        }
+        if (!RegExp(
+          r'^(?:[\p{L}\p{Nd}]\p{M}*|[\s_-])*$',
+          unicode: true,
+        ).hasMatch(result.value)) {
+          input.output.writeln(
+            'Combining marks must follow a letter or digit; edit the draft.',
+          );
+          draft = result.value;
+          continue;
+        }
+        final value = _canonical(result.value);
+        if (value.isEmpty) {
+          input.output.writeln('Enter a tag, or use Finish (/done).');
+          draft = result.value;
+          continue;
+        }
+        final canonical = style == TagStyle.snakeCase
+            ? value.replaceAll('-', '_')
+            : value;
+        if (maxLength != null && canonical.characters.length > maxLength!) {
+          input.output.writeln('Maximum $maxLength graphemes; edit the draft.');
+          draft = result.value;
+          continue;
+        }
+        final validationError = validate?.call(canonical);
+        if (validationError != null) {
+          input.output.writeln(validationError);
+          draft = result.value;
+          continue;
+        }
+        if (tags.asMap().entries.any(
+          (entry) => entry.key != editing && entry.value == canonical,
+        )) {
+          input.output.writeln('Duplicate tag; edit the draft.');
+          draft = result.value;
+          continue;
+        }
+        if (editing == null) {
+          tags.add(canonical);
+        } else {
+          tags[editing] = canonical;
+          editing = null;
+        }
+        draft = '';
+        input.output.writeln('Added: $canonical');
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
+  }
+}
