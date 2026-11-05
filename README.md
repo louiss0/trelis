@@ -362,15 +362,14 @@ zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
 interface existence. Brackets and URL escaping are not interpreted.
 
-### URLInput and EmailInput (work in progress)
+### URLInput and EmailInput
 
-Domain processing uses the exact `icu_kit` 0.2.0 pub package
-(archive SHA-256 `37ad65bc53eb1595243d32826a7fb179e02a6767a919be7a8b887156aed2c7ae`).
-Its vendored `ffi/capi/src/idna_processor.rs` implements the `uts46`
-mode with Rust `idna` 1.1.0, STD3, hyphen, bidi and joiner checks,
-nontransitional processing and DNS-length verification. The source is in
-https://pub.dev/api/archives/icu_kit-0.2.0.tar.gz. This is local syntax
-processing, not a DNS or reachability check.
+Domain processing uses a pure-Dart UTS #46 provider with checked-in Unicode
+16.0.0 tables. It implements STD3, hyphen, Bidi, ContextJ/ContextO, NFC and
+Punycode checks, nontransitional processing and DNS-length verification
+without native libraries. The source URLs are recorded in
+`lib/src/uts46.dart`; the Unicode license is in `lib/src/uts46_LICENSE`.
+This is local syntax processing, not a DNS or reachability check.
 
 ### ColorInput
 
