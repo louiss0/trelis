@@ -122,6 +122,23 @@ void main() {
       );
     }
   });
+  test('Quartz last day offset has bounded positive offset', () async {
+    final input = CronInput('Schedule', profile: CronProfile.quartz);
+    for (final day in ['L-1', 'L-30']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 $day * ?')),
+        isA<Accepted<CronExpression>>(),
+        reason: day,
+      );
+    }
+    for (final day in ['L-0', 'L-31', 'L--1']) {
+      expect(
+        await input.prompt(source: SuppliedAnswer('0 0 12 $day * ?')),
+        isA<Unavailable<CronExpression>>(),
+        reason: day,
+      );
+    }
+  });
   test('Quartz accepts last day of month', () async {
     final result = await CronInput(
       'Schedule',

@@ -64,7 +64,12 @@ final class CronInput {
       final weekdayDay = nearestWeekday == null
           ? null
           : int.tryParse(nearestWeekday.group(1)!);
+      final lastOffset = RegExp(r'^L-([0-9]+)$').firstMatch(fields[3]);
+      final offset = lastOffset == null
+          ? null
+          : int.tryParse(lastOffset.group(1)!);
       if (fields[3] != '?' &&
+          !(offset != null && offset >= 1 && offset <= 30) &&
           fields[3] != 'L' &&
           fields[3] != 'LW' &&
           !(weekdayDay != null && weekdayDay >= 1 && weekdayDay <= 31) &&
