@@ -328,6 +328,26 @@ path is accepted only when the platform can establish absence; unsupported
 inspection platforms fail closed. These checks are snapshots and do not grant
 permission or guarantee a subsequent filesystem operation.
 
+### Feedback
+
+`Text('Saved', kind: TextKind.success).present()` writes literal semantic text.
+`Progress('Download', total: 100)` and `Spinner('Connecting')` are explicitly
+started with `start()`, updated by the application, and finalized with
+`finish(FeedbackOutcome.completed)` or another explicit outcome. A null total
+is indeterminate; `setTotal` reports recalculation. `dispose()` releases the
+presentation without asserting success. Feedback defaults to stderr and never
+reads input or controls the operation. Linear progress defaults to ten-percent
+milestones and a five-second intermediate interval; both are configurable.
+Static rich output is available with `PromptMode.rich` on capable outputs;
+redirected output defaults to linear. No color or animation is required.
+
+Rich feedback uses a static `[status]` layout, appending each actual state
+rather than addressing a cursor. This preserves complete task names and details
+when the terminal wraps or is resized and avoids overwriting other output; it
+is not an animated display. Linear output remains milestone-throttled and
+reviewable. Select `mode`, `userPreference`, or `applicationPreference` at
+`start()`; explicit rich mode requires a capable output.
+
 ### Port and IP address entry
 
 `PortInput` accepts ASCII decimal ports 1-65535. Set `allowZero: true` only
@@ -369,3 +389,35 @@ color spaces are excluded. No value is silently repaired.
 Both rich and linear entry show textual sRGB, alpha, and normalized HSL hue as
 valid drafts are entered. Rounded hex is explicitly an approximate preview and
 never replaces the answer. No color perception is needed.
+
+### Key capture
+
+`Keypress` captures one logical gesture; `KeyChordInput` captures a nonempty
+ordered sequence. In rich mode, `c` arms one capture, `d` declares, `r`
+removes the last gesture, `x` clears, and Enter submits. In linear mode use
+`/capture`, `/declare`, `/remove`, `/clear`, and `/done`; `/cancel` cancels.
+Every capture returns to review: it never submits automatically. Escape exits
+armed capture before cancelling the prompt; Ctrl+C interrupts. These two
+reserved gestures cannot be captured live.
+
+Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`);
+for supplied `KeyChordInput` answers, separate gestures with commas. Modifiers
+are `Ctrl`, `Alt`, `Shift`, and `Meta`, each at most once. Keys are ASCII
+letters or digits, `F1` through `F12`, `Enter`, `Tab`, `Escape`, `Space`,
+`Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`, and
+`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`. Declarations are unverified;
+`KeyGesture.warnings` identifies this and reserved declarations. They do not
+prove future delivery or absence of conflicts. `requireObservation` rejects
+declarations and ambiguous stream captures.
+
+On the Windows console, key-down records supply virtual key and modifier state;
+repeated key-down records for a held key do not create additional captures.
+Only the bounded vocabulary above is represented. Windows-key state is tracked
+while this prompt owns the console; a Meta key already held before the prompt
+started may not be reported, so its absence is not proof it was not held.
+Terminal and OS interception, keyboard layouts, AltGr, and remote transports
+can change what arrives; this is not
+physical-key identification or global hotkey registration. Legacy byte-stream
+captures are marked `ambiguous` because the stream does not reliably identify
+all modifiers. Their empty modifier set must not be interpreted as proof that
+no modifier was held.
