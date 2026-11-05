@@ -356,6 +356,26 @@ is not an animated display. Linear output remains milestone-throttled and
 reviewable. Select `mode`, `userPreference`, or `applicationPreference` at
 `start()`; explicit rich mode requires a capable output.
 
+### NumberInput
+
+`NumberInput` is integer-only by default; set `decimal: true` for exact finite
+base-ten decimals. Without an explicit `convention`, it resolves the effective
+noncurrency system settings on each invocation: Windows user overrides, the
+current macOS `NSNumberFormatter` preferences, or Linux `LC_ALL`/`LC_NUMERIC`/
+`LANG` precedence. C/POSIX is a supported ungrouped ASCII convention, not an
+error. Unsupported or unstable settings return `Unavailable`; they never fall
+back to US formatting. A `convention` is an explicit override, while a
+`conventionProvider` can supply application-specific resolution. One resolved
+snapshot remains active for the whole prompt, so preference changes affect only
+the next invocation.
+
+Instructions state required/optional state, mode, separators, exact bounds and
+precision, and concrete ASCII/native, grouped/ungrouped, positive and negative
+examples before editing. Accepted `NumericAnswer` values retain the original
+`spelling` and exact base-ten `coefficient`/`scale` without binary rounding.
+Malformed grouping, mixed digit scripts, alternate signs, exponents, currency,
+percent and special values are rejected rather than normalized.
+
 ### Port and IP address entry
 
 `PortInput` accepts ASCII decimal ports 1-65535. Set `allowZero: true` only
@@ -369,6 +389,15 @@ checking reachability. Set `cidr: true` to require an address and prefix;
 zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
 interface existence. Brackets and URL escaping are not interpreted.
+
+### URLInput and EmailInput
+
+Domain processing uses a pure-Dart UTS #46 provider with checked-in Unicode
+16.0.0 tables. It implements STD3, hyphen, Bidi, ContextJ/ContextO, NFC and
+Punycode checks, nontransitional processing and DNS-length verification
+without native libraries. The source URLs are recorded in
+`lib/src/uts46.dart`; the Unicode license is in `lib/src/uts46_LICENSE`.
+This is local syntax processing, not a DNS or reachability check.
 
 ### ColorInput
 
