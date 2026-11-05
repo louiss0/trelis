@@ -116,13 +116,12 @@ scripted tests establish actual screen-reader typing behavior: terminal and
 NVDA secret entry, masking, and prefill require separate verification. Avoid
 real secrets in test transcripts and callback diagnostics.
 
-A Windows Terminal + NVDA 2026.3 agent probe at the integration revision used
-disposable input and native `SendKeys` typing. NVDA announced some typed
-characters even though the component displayed no secret; disabling
-typed-character speech did not eliminate the synthetic-input observations.
-This is not a passing secret-speech qualification. Real hardware typing and
-any required NVDA configuration still need human verification; synthetic
-injection must not be treated as proof of safe secret speech.
+A Windows Terminal + NVDA 2026.3 agent probe using synthetic `SendKeys`
+produced partial character announcements and was not accepted as qualification
+evidence. A follow-up human check with real keyboard typing at component
+revision `bee96b4` completed both Password sessions with no NVDA character or
+length disclosure. This verifies the recorded Windows Terminal/NVDA
+configuration only; it is not a broader accessibility qualification.
 
 ## Multiline
 
