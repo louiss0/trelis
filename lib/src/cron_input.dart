@@ -10,7 +10,7 @@ final class CronExpression {
   final CronProfile profile;
 
   /// A bounded civil-time preview using timezone 0.11.2 / tzdata 2025c.
-  /// Historical sub-minute offsets are not yet supported for Unix previews.
+  /// Unix searches beginning with sub-minute offsets use second candidates.
   Future<CronPreview> preview(CronPreviewConfig config) async {
     late final timezone.Location location;
     try {
@@ -22,7 +22,12 @@ final class CronExpression {
     final fields = expression.split(RegExp(r' +'));
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
-    final minuteMicros = profile == CronProfile.unix
+    final initialOffset = timezone.TZDateTime.from(
+      config.start,
+      location,
+    ).timeZoneOffset;
+    final minuteMicros =
+        profile == CronProfile.unix && initialOffset.inSeconds % 60 == 0
         ? Duration.microsecondsPerMinute
         : Duration.microsecondsPerSecond;
     final strictlyAfter =
@@ -42,11 +47,15 @@ final class CronExpression {
         matches.length < config.count &&
         !config.isCancelled()) {
       final civil = timezone.TZDateTime.from(instant, location);
-      if (profile == CronProfile.unix && civil.second != 0) {
-        throw UnsupportedError('Timezone offset has sub-minute precision.');
+      if (profile == CronProfile.unix &&
+          minuteMicros == Duration.microsecondsPerMinute &&
+          civil.second != 0) {
+        throw UnsupportedError(
+          'Timezone offset changed to sub-minute precision.',
+        );
       }
       final matchesExpression = profile == CronProfile.unix
-          ? _unixMatches(fields, civil)
+          ? civil.second == 0 && _unixMatches(fields, civil)
           : _quartzMatches(fields, civil);
       if (matchesExpression) matches.add(instant);
       work++;

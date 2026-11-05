@@ -244,6 +244,27 @@ void main() {
       expect(preview.instants, [entry.value], reason: entry.key);
     }
   });
+  test(
+    'Unix preview finds historical sub-minute timezone offset matches',
+    () async {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.unix,
+      ).prompt(source: SuppliedAnswer('* * * * *'));
+      final expression = (result as Accepted<CronExpression>).value;
+      final preview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'Africa/Monrovia',
+          reference: DateTime.utc(1950, 1, 1),
+          start: DateTime.utc(1950, 1, 1),
+          end: DateTime.utc(1950, 1, 1, 0, 1),
+          count: 1,
+          budget: 60,
+        ),
+      );
+      expect(preview.instants, [DateTime.utc(1950, 1, 1, 0, 0, 30)]);
+    },
+  );
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
