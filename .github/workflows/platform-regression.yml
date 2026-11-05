@@ -1,0 +1,41 @@
+name: Platform regression
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  dart:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.2
+      - run: dart --version
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test --reporter expanded
+
+  windows-native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.2
+      - run: dart pub get
+      - name: Public TextInput native lifecycle
+        shell: pwsh
+        run: |
+          foreach ($scenario in @('rich', 'escape', 'interrupt', 'eof', 'error', 'repeat')) {
+            $report = Join-Path $env:RUNNER_TEMP "text-input-$scenario.txt"
+            & powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario $scenario -Report $report
+            if (Test-Path $report) { Get-Content $report }
+            if ($LASTEXITCODE -ne 0) { throw "Native scenario $scenario failed with exit code $LASTEXITCODE" }
+          }
