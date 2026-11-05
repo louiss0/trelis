@@ -11,7 +11,12 @@ enum DateDigits { ascii, thai, arabicIndic }
 
 // Windows GetLocaleInfoEx with user overrides enabled. Reject unknown patterns,
 // calendars and numeral systems instead of guessing from a locale name.
-({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+({
+  DateFieldOrder order,
+  DateCalendar calendar,
+  DateDigits digits,
+  String pattern,
+})?
 _windowsDateProfile() {
   if (!Platform.isWindows) return null;
   try {
@@ -72,14 +77,19 @@ _windowsDateProfile() {
       _ => null,
     };
     if (order == null || calendar == null || digits == null) return null;
-    return (order: order, calendar: calendar, digits: digits);
+    return (order: order, calendar: calendar, digits: digits, pattern: pattern);
   } catch (_) {
     return null;
   }
 }
 
 // glibc 2.x: use a separate locale object, never mutate the process locale.
-({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+({
+  DateFieldOrder order,
+  DateCalendar calendar,
+  DateDigits digits,
+  String pattern,
+})?
 _linuxDateProfile() {
   if (!Platform.isLinux) return null;
   Pointer locale = nullptr;
@@ -141,6 +151,7 @@ _linuxDateProfile() {
             order: order,
             calendar: DateCalendar.gregorian,
             digits: DateDigits.ascii,
+            pattern: pattern,
           );
   } catch (_) {
     return null;
@@ -158,7 +169,12 @@ _linuxDateProfile() {
 
 // Foundation current locale and short-style formatter. Only numeric full-year
 // profiles with a verified calendar and decimal repertoire are mapped.
-({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+({
+  DateFieldOrder order,
+  DateCalendar calendar,
+  DateDigits digits,
+  String pattern,
+})?
 _macOSDateProfile() {
   if (!Platform.isMacOS) return null;
   Pointer formatter = nullptr;
@@ -201,7 +217,7 @@ _macOSDateProfile() {
       _ => null,
     };
     if (order == null || calendar == null || digits == null) return null;
-    return (order: order, calendar: calendar, digits: digits);
+    return (order: order, calendar: calendar, digits: digits, pattern: pattern);
   } catch (_) {
     return null;
   } finally {
@@ -213,7 +229,12 @@ _macOSDateProfile() {
   }
 }
 
-({DateFieldOrder order, DateCalendar calendar, DateDigits digits})?
+({
+  DateFieldOrder order,
+  DateCalendar calendar,
+  DateDigits digits,
+  String pattern,
+})?
 _systemDateProfile() {
   if (Platform.isWindows) return _windowsDateProfile();
   if (Platform.isLinux) return _linuxDateProfile();
@@ -375,7 +396,7 @@ final class DateInput {
           );
         }
         return await DateInput(
-          label,
+          '$label (effective system pattern ${profile.pattern}, adapted to slash)',
           order: profile.order,
           calendar: profile.calendar,
           digits: profile.digits,
