@@ -41,6 +41,31 @@ void main() {
     );
     expect(preview.instants, [DateTime.utc(1969, 12, 31, 23, 59)]);
   });
+  test(
+    'Unix restricted day fields match either day of month or weekday',
+    () async {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.unix,
+      ).prompt(source: SuppliedAnswer('0 0 2 * MON'));
+      final expression = (result as Accepted<CronExpression>).value;
+      final preview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'Etc/UTC',
+          reference: DateTime.utc(2023, 12, 31),
+          start: DateTime.utc(2024),
+          end: DateTime.utc(2024, 1, 8),
+          count: 3,
+          budget: 11000,
+        ),
+      );
+      expect(preview.instants, [
+        DateTime.utc(2024, 1, 1),
+        DateTime.utc(2024, 1, 2),
+        DateTime.utc(2024, 1, 8),
+      ]);
+    },
+  );
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

@@ -9,16 +9,15 @@ final class CronExpression {
   final String expression;
   final CronProfile profile;
 
-  /// A bounded preview. At present only the UTC Unix every-minute expression
-  /// is implemented; other schedules fail closed rather than return guesses.
+  /// A bounded preview. At present only Unix expressions in UTC are
+  /// implemented; other schedules fail closed rather than return guesses.
   Future<CronPreview> preview(CronPreviewConfig config) async {
-    if (profile != CronProfile.unix ||
-        expression != '* * * * *' ||
-        config.zone != 'Etc/UTC') {
+    if (profile != CronProfile.unix || config.zone != 'Etc/UTC') {
       throw UnsupportedError(
         'Preview is not supported for this expression or zone.',
       );
     }
+    final fields = expression.split(RegExp(r' +'));
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
     const minuteMicros = Duration.microsecondsPerMinute;
@@ -37,12 +36,79 @@ final class CronExpression {
     while (!instant.isAfter(config.end) &&
         work < config.budget &&
         matches.length < config.count) {
-      matches.add(instant);
+      if (_unixMatches(fields, instant)) matches.add(instant);
       work++;
+      if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
       instant = instant.add(const Duration(minutes: 1));
     }
     return CronPreview(List.unmodifiable(matches));
   }
+}
+
+bool _unixMatches(List<String> fields, DateTime civil) {
+  const months = [
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MAY',
+    'JUN',
+    'JUL',
+    'AUG',
+    'SEP',
+    'OCT',
+    'NOV',
+    'DEC',
+  ];
+  const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  bool contains(
+    String field,
+    int value,
+    int min,
+    int max,
+    List<String> names, {
+    bool sunday = false,
+  }) {
+    int number(String text) {
+      final name = names.indexOf(text.toUpperCase());
+      return name >= 0 ? name + min : int.parse(text);
+    }
+
+    bool matches(int v) {
+      for (final item in field.split(',')) {
+        final stepParts = item.split('/');
+        final step = stepParts.length == 2 ? int.parse(stepParts[1]) : 1;
+        final range = stepParts[0].split('-');
+        final first = range[0] == '*' ? min : number(range[0]);
+        final last = range[0] == '*'
+            ? max
+            : range.length == 2
+            ? number(range[1])
+            : first;
+        if (v >= first && v <= last && (v - first) % step == 0) return true;
+      }
+      return false;
+    }
+
+    return matches(value) || (sunday && value == 0 && matches(7));
+  }
+
+  final dom = contains(fields[2], civil.day, 1, 31, const []);
+  final dow = contains(
+    fields[4],
+    civil.weekday % 7,
+    0,
+    7,
+    weekdays,
+    sunday: true,
+  );
+  final days = fields[2].startsWith('*') || fields[4].startsWith('*')
+      ? dom && dow
+      : dom || dow;
+  return contains(fields[0], civil.minute, 0, 59, const []) &&
+      contains(fields[1], civil.hour, 0, 23, const []) &&
+      days &&
+      contains(fields[3], civil.month, 1, 12, months);
 }
 
 /// All instants are explicit UTC values. The work budget counts candidates.
