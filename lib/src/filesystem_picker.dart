@@ -51,7 +51,7 @@ final class DirectoryPicker {
     try {
       while (true) {
         source.output.writeln(
-          'Current directory: $current. Choose current directory: choose. Enter a path: path.',
+          'Current directory: $current. Choose current directory: choose. Enter a path: path. Parent directory: parent.',
         );
         List<FileSystemEntity> entries;
         try {
@@ -76,6 +76,10 @@ final class DirectoryPicker {
         if (action.action == 'cancel') return Cancelled();
         if (action.action == 'interrupt') return Interrupted();
         if (action.action != 'submit') return InputEnded();
+        if (action.value == 'parent') {
+          current = path.dirname(current);
+          continue;
+        }
         if (action.value.startsWith('open ')) {
           final reference = int.tryParse(action.value.substring(5));
           if (reference == null ||

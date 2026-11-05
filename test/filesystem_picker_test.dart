@@ -83,4 +83,15 @@ void main() {
       expect(out.toString(), contains('1. child'));
     },
   );
+  test('linear directory browser navigates to parent', () async {
+    final dir = await Directory.systemTemp.createTemp('picker_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final child = await Directory('${dir.path}${Platform.pathSeparator}child')
+        .create();
+    final result = await DirectoryPicker('Directory', base: child.path).prompt(
+      source: ScriptedInput(Stream.value('parent\rchoose\r\r'), StringBuffer()),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, dir.path);
+  });
 }
