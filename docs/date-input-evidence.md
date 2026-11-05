@@ -1,4 +1,4 @@
-﻿# DateInput implementation evidence
+# DateInput implementation evidence
 
 ## Date-only arithmetic boundary
 
@@ -21,8 +21,11 @@ provider as well as their separately encoded Gregorian civil fields.
 fields from Windows .NET `ThaiBuddhistCalendar` for 1941-01-01, 2000-02-29,
 2024-02-29, 2100-03-01 and 9456-12-31, then converts those fields through the
 public DateInput boundary and compares the resulting ISO fields. Boundary tests
-also reject pre-2484 Buddhist years and invalid leap days. This is sampled
-cross-check evidence, not exhaustive external provider qualification.
+also reject pre-2484 Buddhist years and invalid leap days. The separate
+`dart test test/date_input_windows_cycle_test.dart` check passed on this host:
+it compares the first and last day of every month in a complete 400-year
+Gregorian cycle (9,600 dates) against .NET ThaiBuddhistCalendar. This is
+bounded cross-check evidence, not an exhaustive comparison of every date.
 
 ## Preference adapters
 
