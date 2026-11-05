@@ -28,6 +28,7 @@ final class DateInput {
   final String label;
   final DateFieldOrder? order;
   final DateCalendar calendar;
+  bool _active = false;
 
   CivilDate? _parse(String text, DateFieldOrder order) {
     final parts = text.split('/');
@@ -83,20 +84,127 @@ final class DateInput {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
-    final resolvedOrder = order;
-    if (resolvedOrder == null) {
-      return Unavailable(
-        'System date preferences are not yet resolved; an explicit Gregorian field order is required.',
-      );
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final resolvedOrder = order;
+      if (resolvedOrder == null) {
+        return Unavailable(
+          'System date preferences are unresolved; specify a calendar and field order.',
+        );
+      }
+      if (source is SuppliedAnswer) {
+        final value = _parse(source.value, resolvedOrder);
+        return value == null
+            ? Unavailable('Invalid date for the explicit calendar profile.')
+            : Accepted(value);
+      }
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          return await _terminal<CivilDate>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) =>
+                _run(source, mode, resolvedOrder, beforeClose: restore),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected, resolvedOrder);
+    } finally {
+      _active = false;
     }
-    if (source is! SuppliedAnswer) {
-      return Unavailable(
-        'Interactive date entry and review are not yet available.',
-      );
+  }
+
+  Future<PromptResult<CivilDate>> _run(
+    PromptSource source,
+    PromptMode mode,
+    DateFieldOrder order, {
+    void Function()? beforeClose,
+  }) async {
+    if (source is! ScriptedInput) {
+      return Unavailable('Unsupported date input source.');
     }
-    final value = _parse(source.value, resolvedOrder);
-    if (value == null)
-      return Unavailable('Invalid date for the explicit calendar profile.');
-    return Accepted(value);
+    if (mode == PromptMode.rich && !source.supportsRich) {
+      return Unavailable('Rich interaction unavailable.');
+    }
+    final linear =
+        mode == PromptMode.linear ||
+        (mode == PromptMode.automatic && !source.supportsRich);
+    final out = source.output;
+    final keys = _Keys(source.input.transform(utf8.encoder));
+    final format = switch (order) {
+      DateFieldOrder.dayMonthYear => 'day/month/year',
+      DateFieldOrder.monthDayYear => 'month/day/year',
+      DateFieldOrder.yearMonthDay => 'year/month/day',
+    };
+    var draft = '';
+    out.writeln(
+      '$label. ${calendar.name} calendar; $format; ASCII digits; four-digit year, one or two digit month and day. Slash separators.',
+    );
+    out.writeln('Enter a date, then review. /cancel cancels in linear mode.');
+    try {
+      while (true) {
+        final edit = await _edit(
+          keys,
+          draft,
+          out,
+          linear: linear,
+          sequential: linear,
+          maxLength: 10,
+        );
+        if (edit.action == 'cancel') return Cancelled();
+        if (edit.action == 'interrupt') return Interrupted();
+        if (edit.action != 'submit') return InputEnded();
+        draft = edit.value;
+        final value = _parse(draft, order);
+        if (value == null) {
+          out.writeln('Invalid date; correct the retained draft.');
+          continue;
+        }
+        final iso =
+            '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+        out.writeln(
+          'Review: ${calendar.name} year ${value.inputYear}, month ${value.month}, day ${value.day}; ISO date: $iso.',
+        );
+        out.writeln(
+          'Type /submit to accept or /edit to return to the draft; /cancel cancels.',
+        );
+        while (true) {
+          final action = await _edit(
+            keys,
+            '',
+            out,
+            linear: true,
+            sequential: linear,
+            extraCommands: const {'/submit', '/edit'},
+          );
+          if (action.action == 'cancel') return Cancelled();
+          if (action.action == 'interrupt') return Interrupted();
+          if (action.action == 'eof') return InputEnded();
+          if (action.action == 'command' && action.value == '/submit') {
+            return Accepted(value);
+          }
+          if (action.action == 'command' && action.value == '/edit') break;
+          out.writeln('Use /submit or /edit.');
+        }
+      }
+    } finally {
+      try {
+        beforeClose?.call();
+      } finally {
+        await keys.close();
+      }
+    }
   }
 }
