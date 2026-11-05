@@ -365,6 +365,24 @@ void main() {
       ]);
     },
   );
+  test('Quartz preview matches overflowing named ranges', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer('0 0 12 ? NOV-FEB MON-FRI'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024, 1, 1, 11, 59, 59),
+        start: DateTime.utc(2024, 1, 1, 11, 59, 59),
+        end: DateTime.utc(2024, 1, 1, 12, 0, 1),
+        count: 1,
+        budget: 2,
+      ),
+    );
+    expect(preview.instants, [DateTime.utc(2024, 1, 1, 12)]);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',
