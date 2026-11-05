@@ -66,6 +66,27 @@ void main() {
       ]);
     },
   );
+  test(
+    'preview skips a nonexistent New York spring-forward civil time',
+    () async {
+      final result = await CronInput(
+        'Schedule',
+        profile: CronProfile.unix,
+      ).prompt(source: SuppliedAnswer('30 2 * * *'));
+      final expression = (result as Accepted<CronExpression>).value;
+      final preview = await expression.preview(
+        CronPreviewConfig(
+          zone: 'America/New_York',
+          reference: DateTime.utc(2024, 3, 10, 5),
+          start: DateTime.utc(2024, 3, 10, 5),
+          end: DateTime.utc(2024, 3, 11, 8),
+          count: 1,
+          budget: 2000,
+        ),
+      );
+      expect(preview.instants, [DateTime.utc(2024, 3, 11, 6, 30)]);
+    },
+  );
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

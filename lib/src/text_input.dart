@@ -7,6 +7,8 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:characters/characters.dart';
 import 'package:path/path.dart' as path;
+import 'package:timezone/data/latest_all.dart' as timezone_data;
+import 'package:timezone/timezone.dart' as timezone;
 
 import 'uts46.dart';
 

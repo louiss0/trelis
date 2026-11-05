@@ -9,14 +9,16 @@ final class CronExpression {
   final String expression;
   final CronProfile profile;
 
-  /// A bounded preview. At present only Unix expressions in UTC are
-  /// implemented; other schedules fail closed rather than return guesses.
+  /// A bounded Unix civil-time preview using timezone 0.11.2 / tzdata 2025c.
+  /// Quartz and historical sub-minute offsets are not yet supported.
   Future<CronPreview> preview(CronPreviewConfig config) async {
-    if (profile != CronProfile.unix || config.zone != 'Etc/UTC') {
+    if (profile != CronProfile.unix) {
       throw UnsupportedError(
         'Preview is not supported for this expression or zone.',
       );
     }
+    timezone_data.initializeTimeZones();
+    final location = timezone.getLocation(config.zone);
     final fields = expression.split(RegExp(r' +'));
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
@@ -36,7 +38,11 @@ final class CronExpression {
     while (!instant.isAfter(config.end) &&
         work < config.budget &&
         matches.length < config.count) {
-      if (_unixMatches(fields, instant)) matches.add(instant);
+      final civil = timezone.TZDateTime.from(instant, location);
+      if (civil.second != 0) {
+        throw UnsupportedError('Timezone offset has sub-minute precision.');
+      }
+      if (_unixMatches(fields, civil)) matches.add(instant);
       work++;
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
       instant = instant.add(const Duration(minutes: 1));
