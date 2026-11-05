@@ -131,6 +131,24 @@ void main() {
       DateTime.utc(2024, 11, 3, 6, 30),
     ]);
   });
+  test('Quartz preview matches the last day in a leap year', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer('0 0 0 L * ?'));
+    final expression = (result as Accepted<CronExpression>).value;
+    final preview = await expression.preview(
+      CronPreviewConfig(
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024, 2, 28, 23, 59),
+        start: DateTime.utc(2024, 2, 28, 23, 59),
+        end: DateTime.utc(2024, 2, 29, 0, 1),
+        count: 1,
+        budget: 61,
+      ),
+    );
+    expect(preview.instants, [DateTime.utc(2024, 2, 29)]);
+  });
   test('Unix expression retains its explicit profile and spelling', () async {
     final result = await CronInput(
       'Schedule',

@@ -9,10 +9,11 @@ final class CronExpression {
   final String expression;
   final CronProfile profile;
 
-  /// A bounded Unix civil-time preview using timezone 0.11.2 / tzdata 2025c.
-  /// Quartz and historical sub-minute offsets are not yet supported.
+  /// A bounded civil-time preview using timezone 0.11.2 / tzdata 2025c.
+  /// Quartz preview is limited to the last-day expression; historical
+  /// sub-minute offsets are not yet supported.
   Future<CronPreview> preview(CronPreviewConfig config) async {
-    if (profile != CronProfile.unix) {
+    if (profile == CronProfile.quartz && expression != '0 0 0 L * ?') {
       throw UnsupportedError(
         'Preview is not supported for this expression or zone.',
       );
@@ -22,7 +23,9 @@ final class CronExpression {
     final fields = expression.split(RegExp(r' +'));
     final referenceMicros = config.reference.microsecondsSinceEpoch;
     final startMicros = config.start.microsecondsSinceEpoch;
-    const minuteMicros = Duration.microsecondsPerMinute;
+    final minuteMicros = profile == CronProfile.unix
+        ? Duration.microsecondsPerMinute
+        : Duration.microsecondsPerSecond;
     final strictlyAfter =
         referenceMicros - referenceMicros % minuteMicros + minuteMicros;
     final startMinute =
@@ -39,13 +42,19 @@ final class CronExpression {
         work < config.budget &&
         matches.length < config.count) {
       final civil = timezone.TZDateTime.from(instant, location);
-      if (civil.second != 0) {
+      if (profile == CronProfile.unix && civil.second != 0) {
         throw UnsupportedError('Timezone offset has sub-minute precision.');
       }
-      if (_unixMatches(fields, civil)) matches.add(instant);
+      final matchesExpression = profile == CronProfile.unix
+          ? _unixMatches(fields, civil)
+          : civil.second == 0 &&
+                civil.minute == 0 &&
+                civil.hour == 0 &&
+                civil.day == DateTime.utc(civil.year, civil.month + 1, 0).day;
+      if (matchesExpression) matches.add(instant);
       work++;
       if (work % 1024 == 0) await Future<void>.delayed(Duration.zero);
-      instant = instant.add(const Duration(minutes: 1));
+      instant = instant.add(Duration(microseconds: minuteMicros));
     }
     final status = matches.length == config.count
         ? CronPreviewStatus.complete
