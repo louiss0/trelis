@@ -19,8 +19,8 @@ final class CivilDate {
   final DateCalendar calendar;
 }
 
-/// Date entry. Automatic system resolution and interactive entry are not yet
-/// available; they fail closed rather than guessing a calendar or convention.
+/// Date entry with an explicit calendar and field order. Automatic system
+/// resolution is not yet available and fails closed rather than guessing.
 final class DateInput {
   DateInput(
     this.label, {
