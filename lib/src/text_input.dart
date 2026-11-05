@@ -22,6 +22,8 @@ part 'sortable_select.dart';
 part 'command_palette.dart';
 part 'key_capture.dart';
 
+part 'duration_input.dart';
+
 sealed class PromptResult<T> {}
 
 final class Accepted<T> extends PromptResult<T> {

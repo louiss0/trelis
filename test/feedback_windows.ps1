@@ -45,7 +45,7 @@ try {
  $during = [FeedbackConsoleProbe]::Mode('CONIN$')
  if ([FeedbackConsoleProbe]::Width() -ne 30) {throw "console was not narrow"}
  $screen = [FeedbackConsoleProbe]::Screen() -replace '\s+', ' '
- foreach ($part in @('Warning: literal\u001b[31m', 'failed:', 'network', 'unavailable', 'Connection: skipped', 'application result')) {
+ foreach ($part in @('Warning: literal\u001b[31m', 'failed:', 'network', 'unavailable', 'Connection: skipped', 'Summary:', 'build: completed', 'test: failed:', 'application result')) {
    if (!$screen.Contains($part)) {throw "missing [$part] from screen: $screen"}
  }
  if ($before -ne $during) {throw "input mode changed: $before -> $during"}
@@ -55,3 +55,4 @@ try {
  if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
  Remove-Item $done -Force -ErrorAction SilentlyContinue
 }
+
