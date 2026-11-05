@@ -328,6 +328,26 @@ path is accepted only when the platform can establish absence; unsupported
 inspection platforms fail closed. These checks are snapshots and do not grant
 permission or guarantee a subsequent filesystem operation.
 
+### Feedback
+
+`Text('Saved', kind: TextKind.success).present()` writes literal semantic text.
+`Progress('Download', total: 100)` and `Spinner('Connecting')` are explicitly
+started with `start()`, updated by the application, and finalized with
+`finish(FeedbackOutcome.completed)` or another explicit outcome. A null total
+is indeterminate; `setTotal` reports recalculation. `dispose()` releases the
+presentation without asserting success. Feedback defaults to stderr and never
+reads input or controls the operation. Linear progress defaults to ten-percent
+milestones and a five-second intermediate interval; both are configurable.
+Static rich output is available with `PromptMode.rich` on capable outputs;
+redirected output defaults to linear. No color or animation is required.
+
+Rich feedback uses a static `[status]` layout, appending each actual state
+rather than addressing a cursor. This preserves complete task names and details
+when the terminal wraps or is resized and avoids overwriting other output; it
+is not an animated display. Linear output remains milestone-throttled and
+reviewable. Select `mode`, `userPreference`, or `applicationPreference` at
+`start()`; explicit rich mode requires a capable output.
+
 ### Port and IP address entry
 
 `PortInput` accepts ASCII decimal ports 1-65535. Set `allowZero: true` only
@@ -352,3 +372,30 @@ nontransitional processing and DNS-length verification. The source is in
 https://pub.dev/api/archives/icu_kit-0.2.0.tar.gz. This is local syntax
 processing, not a DNS or reachability check.
 
+### ColorInput
+
+`ColorInput('Color', required: false)` accepts optional absence as `null`;
+`transparent` instead returns transparent black. `ColorValue.source` preserves
+exact accepted spelling and can be passed as `initialValue` for re-editing.
+Its `red`, `green`, `blue`, and `alpha` fields are normalized binary64 values
+in 0�1, not 8-bit channels; HSL additionally provides normalized `hue` in
+degrees. Binary64 arithmetic and HSL conversion are approximate, while the
+source expression remains unchanged.
+
+The declared CSS Color 4 sRGB subset is ASCII only: #RGB, #RGBA, #RRGGBB,
+#RRGGBBAA (alpha last), the 148 static CSS named colors and `transparent`, and
+literal `rgb`/`rgba` and `hsl`/`hsla` functions, case-insensitively. Modern
+space-separated channels permit slash alpha and mixed RGB number/percent
+channels; legacy comma-separated RGB channels must all use the same units.
+HSL saturation and lightness require percentages. Hue accepts unitless degrees,
+`deg`, `grad`, `rad`, or `turn`, and is interpreted modulo 360 degrees. Alpha is
+0�1 or 0�100%; RGB channels are 0�255 or 0�100%; saturation/lightness are
+0�100%. Out-of-range values are rejected, not clamped. Decimal numbers use
+ASCII digits, optional sign and decimal point, with at most 12 digits per
+number; exponent notation is excluded. Outside whitespace, comments, CSS
+expressions, variables, contextual/system colors, relative colors and other
+color spaces are excluded. No value is silently repaired.
+
+Both rich and linear entry show textual sRGB, alpha, and normalized HSL hue as
+valid drafts are entered. Rounded hex is explicitly an approximate preview and
+never replaces the answer. No color perception is needed.
