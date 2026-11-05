@@ -448,7 +448,7 @@ final class DateInput {
     while (true) {
       if (focus == 3) {
         out.writeln(
-          'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab moves back.',
+          'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab or Ctrl+B moves back.',
         );
         final action = await _edit(
           keys,
@@ -456,7 +456,7 @@ final class DateInput {
           out,
           intercept: (key, text) {
             if (key == '\t') return 'next';
-            if (key == '\x1b[Z') return 'previous';
+            if (key == '\x1b[Z' || key == '\x02') return 'previous';
             if ((key == '\r' || key == '\n') && text.isEmpty) return 'review';
             return null;
           },
@@ -475,7 +475,7 @@ final class DateInput {
       }
       final name = names[focus];
       out.writeln(
-        'Focus: $name. Tab or slash moves forward; Shift-Tab moves back; Up/Down adjusts without carry. Enter advances or reviews.',
+        'Focus: $name. Tab or slash moves forward; Shift-Tab or Ctrl+B moves back; Up/Down adjusts without carry. Enter advances or reviews.',
       );
       final edit = await _edit(
         keys,
@@ -488,7 +488,7 @@ final class DateInput {
             return 'handled';
           }
           if (key == '\t') return 'next';
-          if (key == '\x1b[Z') return 'previous';
+          if (key == '\x1b[Z' || key == '\x02') return 'previous';
           if (key == '/') {
             final valid =
                 _segmentNumber(text) != null &&
@@ -617,7 +617,7 @@ final class DateInput {
         var reviewFocus = 0;
         if (!linear) {
           out.writeln(
-            'Review action: Edit. Tab changes action; Enter activates.',
+            'Review action: Edit. Tab or Ctrl+B changes action; Enter activates.',
           );
         }
         while (true) {
@@ -631,7 +631,7 @@ final class DateInput {
             intercept: linear
                 ? null
                 : (key, text) {
-                    if (key == '\t' || key == '\x1b[Z') {
+                    if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
                       reviewFocus = 1 - reviewFocus;
                       out.writeln(
                         'Review action: ${reviewFocus == 0 ? 'Edit' : 'Submit'}.',
