@@ -31,4 +31,11 @@ void main() {
       expect(result, isA<Unavailable<CronExpression>>(), reason: expression);
     }
   });
+  test('Quartz accepts last day of month', () async {
+    final result = await CronInput(
+      'Schedule',
+      profile: CronProfile.quartz,
+    ).prompt(source: SuppliedAnswer('0 0 12 L * ?'));
+    expect(result, isA<Accepted<CronExpression>>());
+  });
 }

@@ -36,7 +36,8 @@ final class CronInput {
       for (final i in [0, 1, 2, 4]) {
         if (!numeric.hasMatch(fields[i])) return false;
       }
-      if (fields[3] != '?' && !numeric.hasMatch(fields[3])) return false;
+      if (fields[3] != '?' && fields[3] != 'L' && !numeric.hasMatch(fields[3]))
+        return false;
       if (fields[5] != '?' &&
           !RegExp(
             r'^(?:\*|[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)$',
