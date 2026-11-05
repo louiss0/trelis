@@ -42,14 +42,14 @@ consume a different budget in different zones or horizons.
   documents six required fields, optional year, and special day tokens.
   The implemented preview has explicit local year bounds 1970–2199.
   `cron_input_test.dart` exercises L, LW, L-1, W, # and weekday-L examples;
-  `cron_profile_conformance_test.dart` checks Quartz Sunday numbering and the
-  exclusive question-mark day rule.
+  `cron_profile_conformance_test.dart` checks standalone weekday L (Saturday),
+  L-offset-W, Quartz Sunday numbering and the exclusive question-mark day rule.
 
 Those links describe reference semantics; neither parser was compared against
 an exact pinned Cronie or Quartz engine. Known qualification gaps include a
 complete syntax and boundary corpus, provider errors other than an unknown
-zone, bounded-work behavior under hostile inputs, and cancellation while an
-interactive preview is running. The parser does not support every Quartz
-construct: for example, standalone `L` in day-of-week and combined last-day
-offset/weekday forms such as `L-3W` are not accepted. Do not claim full Quartz
-compatibility or whole-ticket acceptance until these gaps are resolved.
+zone, and bounded-work behavior under hostile inputs. Interactive preview
+cancellation is covered for Ctrl+C, rich Escape and linear `/cancel` in
+`cron_interaction_conformance_test.dart`; these are scripted tests, not native
+cancellation qualification. Do not claim full Quartz compatibility or
+whole-ticket acceptance until the remaining gaps are resolved.
