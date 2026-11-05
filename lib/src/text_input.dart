@@ -30,6 +30,7 @@ part 'command_palette.dart';
 part 'key_capture.dart';
 
 part 'duration_input.dart';
+part 'date_input.dart';
 
 sealed class PromptResult<T> {}
 
