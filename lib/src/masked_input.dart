@@ -514,10 +514,45 @@ final class MaskedInput {
             out.writeln('Paste rejected: single-line printable text only.');
             continue;
           }
-          final result = await _run(SuppliedAnswer(paste), PromptMode.rich);
-          if (result is Accepted<MaskedValue>) {
-            slots.setAll(0, result.value.slots);
-            provenance = result.value.interpretation;
+          final matches = _decode(paste);
+          if (matches.length > 1 ||
+              (matches.length == 1 &&
+                  matches.single.template != template.name)) {
+            out.writeln(
+              'Paste requires template or interpretation resolution. Draft preserved: $paste',
+            );
+            for (var i = 0; i < matches.length; i++) {
+              out.writeln(
+                '${i + 1}. ${matches[i].template}: ${matches[i].interpretation.name}, raw ${matches[i].raw}, formatted ${matches[i].formatted}',
+              );
+            }
+            out.writeln(
+              'Choose a number, or press Enter to keep the current value:',
+            );
+            final choice = await _edit(keys, '', out);
+            if (choice.action == 'cancel') return Cancelled();
+            if (choice.action == 'interrupt') return Interrupted();
+            if (choice.action != 'submit') return InputEnded();
+            final index = int.tryParse(choice.value);
+            if (index != null && index >= 1 && index <= matches.length) {
+              final selected = matches[index - 1];
+              out.writeln('Selected template: ${selected.template}.');
+              return await _richFixed(
+                source,
+                null,
+                selectedTemplate: templates.singleWhere(
+                  (t) => t.name == selected.template,
+                ),
+                initial: selected,
+                keyInput: keys,
+              );
+            }
+            show();
+            continue;
+          }
+          if (matches.length == 1 && matches.single.template == template.name) {
+            slots.setAll(0, matches.single.slots);
+            provenance = matches.single.interpretation;
             focus = slots.length;
             lastTyped = null;
           } else {

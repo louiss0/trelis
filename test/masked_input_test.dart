@@ -205,6 +205,100 @@ void main() {
     },
   );
 
+  test(
+    'adaptive rich paste fitting another template preserves the active draft',
+    () async {
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('digits', [
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          ]),
+          MaskTemplate('letters', [
+            MaskSlot('letter', (s) => 'abc'.contains(s)),
+            MaskSlot('letter', (s) => 'abc'.contains(s)),
+            MaskSlot('letter', (s) => 'abc'.contains(s)),
+          ]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(
+          Stream.value('12\r\x1b[200~abc\x1b[201~\r\r'),
+          out,
+        ),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<MaskedValue>).value.raw, '12');
+      expect(out.toString(), contains('Draft preserved: abc'));
+    },
+  );
+
+  test(
+    'adaptive rich ambiguous paste does not silently select active template',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('pair', [
+            MaskSlot('digit', digit),
+            MaskSlot('digit', digit),
+          ]),
+          MaskTemplate('dash', [
+            MaskSlot('digit', digit),
+            MaskLiteral('-'),
+            MaskSlot('digit', digit),
+          ]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(
+          Stream.value('1-2\r\x1b[200~34\x1b[201~\r\r'),
+          out,
+        ),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<MaskedValue>).value.raw, '12');
+      expect(out.toString(), contains('Draft preserved: 34'));
+    },
+  );
+
+  test(
+    'adaptive rich ambiguous paste can select a different template',
+    () async {
+      bool digit(String s) => '0123456789'.contains(s);
+      final input = MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('pair', [
+            MaskSlot('digit', digit),
+            MaskSlot('digit', digit),
+          ]),
+          MaskTemplate('dash', [
+            MaskSlot('digit', digit),
+            MaskLiteral('-'),
+            MaskSlot('digit', digit),
+          ]),
+        ],
+      );
+      final out = StringBuffer();
+      final result = await input.prompt(
+        source: ScriptedInput(
+          Stream.value('1-2\r\x1b[200~34\x1b[201~1\r\r'),
+          out,
+        ),
+        mode: PromptMode.rich,
+      );
+      final value = (result as Accepted<MaskedValue>).value;
+      expect(value.template, 'pair');
+      expect(value.raw, '34');
+      expect(out.toString(), contains('Selected template: pair'));
+    },
+  );
+
   test('rich typing fills stable slots', () async {
     final input = MaskedInput(
       'Code',
