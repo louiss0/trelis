@@ -19,6 +19,11 @@ CronPreviewConfig config(void Function() initializer) => CronPreviewConfig(
 );
 
 void main() {
+  test('equivalent preview configurations have record value equality', () {
+    final first = config(failInitialization);
+    final second = config(failInitialization);
+    expect(first, second);
+  });
   test('provider timeout must be explicitly positive', () {
     expect(
       () => CronPreviewConfig(

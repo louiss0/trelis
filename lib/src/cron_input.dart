@@ -393,20 +393,33 @@ bool Function(DateTime) _compileUnix(List<String> fields) {
 }
 
 /// All instants are explicit UTC values. The work budget counts candidates.
-final class CronPreviewConfig {
+extension type CronPreviewConfig._(
+  ({
+    String zone,
+    DateTime reference,
+    DateTime start,
+    DateTime end,
+    int count,
+    int budget,
+    Duration providerTimeout,
+    void Function()? providerInitializer,
+    bool Function() isCancelled,
+  })
+  _value,
+) {
   /// Maximum zone identifier length in UTF-16 code units.
   static const maxZoneLength = 255;
 
-  CronPreviewConfig({
-    required this.zone,
-    required this.reference,
-    required this.start,
-    required this.end,
-    required this.count,
-    required this.budget,
-    required this.providerTimeout,
-    this.providerInitializer,
-    this.isCancelled = _neverCancelled,
+  factory CronPreviewConfig({
+    required String zone,
+    required DateTime reference,
+    required DateTime start,
+    required DateTime end,
+    required int count,
+    required int budget,
+    required Duration providerTimeout,
+    void Function()? providerInitializer,
+    bool Function() isCancelled = _neverCancelled,
   }) {
     if (zone.isEmpty ||
         zone.length > maxZoneLength ||
@@ -419,21 +432,33 @@ final class CronPreviewConfig {
         providerTimeout <= Duration.zero) {
       throw ArgumentError('Invalid preview configuration.');
     }
+    return CronPreviewConfig._((
+      zone: zone,
+      reference: reference,
+      start: start,
+      end: end,
+      count: count,
+      budget: budget,
+      providerTimeout: providerTimeout,
+      providerInitializer: providerInitializer,
+      isCancelled: isCancelled,
+    ));
   }
-  final String zone;
-  final DateTime reference;
-  final DateTime start;
-  final DateTime end;
-  final int count;
-  final int budget;
+
+  String get zone => _value.zone;
+  DateTime get reference => _value.reference;
+  DateTime get start => _value.start;
+  DateTime get end => _value.end;
+  int get count => _value.count;
+  int get budget => _value.budget;
 
   /// Maximum provider initialization time; the worker isolate is killed on expiry.
-  final Duration providerTimeout;
+  Duration get providerTimeout => _value.providerTimeout;
 
   /// Optional isolate-safe hook invoked before provider initialization.
   /// Useful for provider setup and testing. It must be transferable to an isolate.
-  final void Function()? providerInitializer;
-  final bool Function() isCancelled;
+  void Function()? get providerInitializer => _value.providerInitializer;
+  bool Function() get isCancelled => _value.isCancelled;
 }
 
 bool _neverCancelled() => false;
