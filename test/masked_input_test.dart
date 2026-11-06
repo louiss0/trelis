@@ -3,6 +3,15 @@ import 'package:characters/characters.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('template rejects invalid names and missing slots at construction', () {
+    final slot = MaskSlot('digit', (s) => true);
+    expect(() => MaskTemplate('', [slot]), throwsArgumentError);
+    expect(() => MaskTemplate('bad\nname', [slot]), throwsArgumentError);
+    expect(
+      () => MaskTemplate('literal', [MaskLiteral('-')]),
+      throwsArgumentError,
+    );
+  });
   test('fixed template accepts raw and formatted supplied values', () async {
     final input = MaskedInput(
       'Code',

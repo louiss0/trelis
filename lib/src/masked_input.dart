@@ -20,7 +20,13 @@ final class MaskLiteral extends MaskElement {
 /// A named finite arrangement of editable slots and literals.
 final class MaskTemplate {
   MaskTemplate(this.name, List<MaskElement> elements)
-    : elements = List.unmodifiable(elements);
+    : elements = List.unmodifiable(elements) {
+    if (name.trim().isEmpty ||
+        name.runes.any((c) => c < 32 || c == 127) ||
+        elements.whereType<MaskSlot>().isEmpty) {
+      throw ArgumentError('Invalid template.');
+    }
+  }
   final String name;
   final List<MaskElement> elements;
 }
@@ -57,13 +63,6 @@ final class MaskedInput {
         templates.isEmpty ||
         templates.map((t) => t.name).toSet().length != templates.length) {
       throw ArgumentError('Invalid label or templates.');
-    }
-    for (final template in templates) {
-      if (template.name.trim().isEmpty ||
-          template.name.runes.any((c) => c < 32 || c == 127) ||
-          template.elements.whereType<MaskSlot>().isEmpty) {
-        throw ArgumentError('Invalid template.');
-      }
     }
     if (initialValue != null) {
       final matching = templates.where((t) => t.name == initialValue!.template);
