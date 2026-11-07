@@ -9,8 +9,9 @@ final class CronExpression {
   final String expression;
   final CronProfile profile;
 
-  /// A bounded civil-time preview using timezone 0.11.2 / tzdata 2026e.
-  /// Unix searches beginning with sub-minute offsets use second candidates.
+  /// A bounded civil-time preview using the qualified provider snapshot
+  /// (timezone 0.11.2 / tzdata 2026e). Unix searches beginning with sub-minute
+  /// offsets use second candidates.
   Future<CronPreview> preview(CronPreviewConfig config) async {
     final loaded = await _loadCronZone(config);
     final location = loaded.location;
@@ -802,7 +803,7 @@ final class CronInput {
             }
             if (interrupted) return Interrupted();
             out.writeln(
-              'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
+              'Matching preview: ${result.status.name}; zone ${config.zone}; qualified provider snapshot timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
               out.writeln(instant);

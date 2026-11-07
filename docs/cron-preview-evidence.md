@@ -6,8 +6,9 @@ matching, not execution, misfire, clock-change, or delivery emulation.
 
 ## Provider identity
 
-The direct dependency in `pubspec.yaml` is exactly `timezone: 0.11.2`. The
-installed package's generated `lib/data/latest_all.dart` identifies its actual
+The direct dependency in `pubspec.yaml` is the range `timezone: ^0.11.2`, which
+resolves to 0.11.2 here. The installed package's generated
+`lib/data/latest_all.dart` identifies its actual
 database as **2026e**. This generated file is authoritative for the loaded
 snapshot; the package README says 2025c and is stale for this installed copy.
 On this machine `Get-FileHash -Algorithm SHA256` reported:
@@ -18,7 +19,11 @@ On this machine `Get-FileHash -Algorithm SHA256` reported:
   `8217A743B270B9FE8812071451264705A0F0091677AD1C29D7C6DA1231C0587B`
 
 Upstream: [timezone package 0.11.2](https://pub.dev/packages/timezone/versions/0.11.2),
-[IANA tz database](https://www.iana.org/time-zones). A separate isolate calls
+[IANA tz database](https://www.iana.org/time-zones). The preview output discloses
+the qualified provider snapshot (`timezone 0.11.2 / tzdata 2026e`). The declared
+range allows other 0.11.x patch releases, whose bundled data is outside this
+evidence; re-record the hashes and the disclosed snapshot if a different copy is
+qualified. A separate isolate calls
 `initializeTimeZones` from `data/latest_all.dart` and returns the selected
 location, keeping package-global database changes out of the caller isolate;
 UTC instants are mapped to
