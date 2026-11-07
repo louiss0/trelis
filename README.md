@@ -389,6 +389,17 @@ draft. Both review the parsed date and its ISO spelling before `/submit` or
 `/edit` accepts or returns to the draft, and `/cancel` cancels. Errors name the
 offending field, width, repertoire or calendar range and keep the draft.
 
+Automatic resolution is narrow: Windows reports one full-year numeric short-date
+profile, Gregorian or Buddhist, with ASCII, Thai or Arabic-Indic digits, and the
+Linux and macOS attempts cover the same narrow numeric full-year profiles. Any
+unsupported or ambiguous system setting requires an explicit override. Buddhist
+conversion is an independent arithmetic implementation informed by ICU 76.1
+`icu4c/source/i18n/buddhcal.cpp` (release-76-1), which maps Buddhist to extended
+Gregorian year by subtracting 543; it is not an ICU provider or a qualification
+of ICU behavior. The provider is qualified only for its stated bounded profiles,
+and accessibility qualification has not been performed. See
+[DateInput evidence](docs/date-input-evidence.md).
+
 ## CronInput
 
 `CronInput('Schedule', profile: CronProfile.unix)` requires an explicit dialect:
@@ -638,19 +649,6 @@ claim success. Output is literal-safe and static in rich and linear modes, and
 redirected output remains reviewable text. Mode selection and explicit output
 use the same `start` arguments as other feedback components.
 
-The DateInput prototype accepts explicit Gregorian or Buddhist profiles in
-supplied, rich and linear entry. Entry is followed by explicit review. ASCII,
-Thai or Arabic-Indic decimal repertoires can be selected explicitly; each field
-must use one repertoire. Buddhist conversion uses the modern January-based
-range 2484-9999 BE. Its year offset is informed by ICU 76.1 source
-`icu4c/source/i18n/buddhcal.cpp` (release-76-1), which maps Buddhist year to
-extended Gregorian year by subtracting 543. This is an independent arithmetic
-implementation, not an ICU provider or a qualification of ICU behavior.
-Windows automatic resolution supports a narrow full-year numeric short-date
-profile, Gregorian or Buddhist calendar, and ASCII, Thai or Arabic-Indic digits.
-Linux glibc and macOS Foundation also attempt narrow numeric full-year
-profiles; unsupported or ambiguous settings require an explicit override.
-Rich entry has numeric segments and linear entry uses a slash body. The shared native
-terminal backend currently accepts interactive input only on Windows. The arithmetic provider is qualified only for its stated bounded profiles;
-accessibility qualification has not been performed. See
-[DateInput evidence](docs/date-input-evidence.md).
+## License
+
+MIT; see [LICENSE](LICENSE).
