@@ -9,7 +9,10 @@ void main() {
       'test/cron_large_step_probe.dart',
     ]);
     try {
-      final code = await process.exitCode.timeout(const Duration(seconds: 10));
+      // Covers the cold JIT compile of the probe script on a loaded runner; the
+      // bounded work itself finishes immediately because the budget is one
+      // candidate.
+      final code = await process.exitCode.timeout(const Duration(seconds: 90));
       final output = await process.stdout
           .transform(systemEncoding.decoder)
           .join();
