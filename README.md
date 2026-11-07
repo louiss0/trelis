@@ -126,6 +126,37 @@ revision `bee96b4` completed both Password sessions with no NVDA character or
 length disclosure. This verifies the recorded Windows Terminal/NVDA
 configuration only; it is not a broader accessibility qualification.
 
+## Confirm, Checkbox and Toggle
+
+`Confirm('Deploy?')`, `Checkbox('Accept terms')` and `Toggle('Cache')` share one
+boolean contract. Each takes an optional `initialValue` (default `false`) and
+returns `PromptResult<bool>`. The opening line states the default and the current
+draft in the kind's own words: `Yes`/`No`, `checked`/`unchecked` or `on`/`off`.
+
+In rich mode `Y` and `N` change a Confirm draft while Space toggles a Checkbox or
+Toggle; Enter submits, Ctrl+T opens help, Escape dismisses help before it
+cancels, and Ctrl+C interrupts. In linear mode enter `yes`/`y` or `no`/`n`, or
+submit an empty line to take the displayed default. An unparseable answer
+restates the guidance and keeps the draft. `/help` and `/cancel` are exact
+commands under the shared quoting rules, and no shortcut submits a draft. A
+`SuppliedAnswer` accepts only yes/y/no/n and is otherwise unavailable.
+
+## Select and Radio
+
+`Select<T>('Choice', choices)` and `Radio<T>('Choice', choices)` take a required
+list of `Choice(value, label, {disabledReason})` with unique identities and safe,
+nonempty labels, plus an optional `defaultValue` that must be one of them. Both
+return the chosen identity; `Radio` changes only how the list is presented.
+
+Rich mode lists every choice with `[focused]`, `[default]` and
+`[unavailable: reason]` markers. Up/Down move between choices, Enter accepts the
+focused enabled choice, Ctrl+T opens help, Escape cancels and Ctrl+C interrupts.
+Linear mode pages the list ten at a time, announces `Page n of m`, and accepts a
+stable choice number, with `/next` and `/previous` for pages. A disabled or
+out-of-range reference keeps the listing and explains why, and an accepted
+answer prints `Accepted: <label>`. A `SuppliedAnswer` is a stable choice number
+for an enabled choice; anything else is unavailable.
+
 ## Multiline
 
 `Multiline('Notes').prompt()` starts a fresh session. In rich mode Enter adds
@@ -165,6 +196,26 @@ submit it. Quoted commands and identified paste are literal data. Unframed
 paste cannot be distinguished from typing. `initialValue`, `required`,
 `maxLength` (graphemes), and `validate` configure the answer constraints.
 
+## TagInput
+
+`TagInput('Tags')` collects canonical tags and returns
+`PromptResult<List<String>>` in entry order. `style` selects kebab-case (the
+default) or snake_case, `maxLength` limits each canonical tag in grapheme
+clusters, and `validate` receives the canonical tag and returns an error string
+or null. Every draft is canonicalised before it is added: camelCase, spaces,
+underscores and surrounding separators all collapse to `new-tag`, and rich mode
+prints `Preview: <canonical>` while you type. `SuppliedTags([...])` validates a
+whole collection at once, rejecting invalid characters, duplicates and invalid
+canonical forms.
+
+In rich mode Enter adds the draft and Ctrl+X discards it. On an empty draft
+Backspace focuses the last tag, Left/Right move between tags, Enter edits the
+focused tag and Delete removes it. Tab focuses Finish and Enter then submits; a
+leftover draft must be added or discarded first. Linear mode adds the entered
+text, and `/list`, `/edit`, `/remove` and `/done` review, edit, remove and finish.
+Empty, too long, punctuated, misplaced combining-mark, duplicate and
+custom-validator failures each keep the draft and state the reason.
+
 ## MultiSelect
 
 `MultiSelect<T>` returns selected identities in the original choice order. Empty
@@ -181,6 +232,29 @@ A `SuppliedAnswer` is the complete selection as comma-separated stable choice
 numbers, for example `2,1`; an empty string means the empty set. References
 must be unique and enabled, without whitespace, and satisfy count constraints.
 Supplied answers are literal and do not interpret prompt commands.
+
+## MaskedInput
+
+`MaskedInput` fills structured formats. A `MaskTemplate('code', [...])` names a
+format built from `MaskSlot(description, accepts, {required})` and
+`MaskLiteral(text)`; several templates make an input adaptive, and `initialValue`
+is a validated `MaskedValue(template, slots, formatted, {interpretation})`. The
+accepted value exposes `template`, `slots`, `formatted`, `raw` and the
+interpretation used, and `interpretation` (`automatic`, `raw` or `formatted`)
+states how the entered text should be read.
+
+With one template, rich mode edits slot by slot and announces each slot's
+description, content and focus; Escape cancels and Ctrl+C interrupts. Linear mode
+offers `/edit` for one slot, `/value` for the whole formatted value, `/review`
+and `/done`. With several templates an ambiguous value is listed with its slot
+contents and the template is chosen by number, or through `/template` in linear
+mode. Paste is accepted as single-line printable text and is rejected when it
+exceeds the template capacity or the 4096-code-unit frame bound; a paste that
+needs template resolution is listed rather than guessed. Decoding has a bounded
+work limit, and exceeding it preserves the draft for correction.
+
+MaskedInput is a format prompt, not a secret prompt: slot contents are shown.
+Use `Password` for secrets.
 
 ### Slider and RangeSlider
 
@@ -290,6 +364,51 @@ identities, including availability. Results are displayed in source order, not
 callback order; pending, failed, obsolete, unknown or duplicate results cannot
 be accepted. Supplied answers are source references and are unavailable when
 using dynamic search because availability cannot be verified.
+
+## DateInput
+
+`DateInput('Date', order: DateFieldOrder.dayMonthYear)` returns a `CivilDate`
+with `year`, `month`, `day`, the entered `inputYear`, `calendar`, `era` and
+`monthIdentity`. `order` must be given whenever `calendar` or `digits` is
+overridden, because the system profile is used only when no explicit order is
+supplied; an unresolved or unsupported system profile returns `Unavailable`
+instead of guessing. Supported profiles are Gregorian CE 0001-9999 and Buddhist
+era 2484-9999 with Gregorian-derived months, ASCII plus `thai` or
+`arabicIndic` digits (one repertoire per field), a four-digit year, one or two
+digit month and day, and slash separators. Values are date-only civil
+arithmetic: no timezone, instant or leap-month context is implied.
+
+Rich mode edits three labeled segments. Tab or slash moves forward, Shift-Tab or
+Ctrl+B moves back, Up/Down or `+`/`-` adjust the focused segment without carry,
+and Enter advances or reviews. Linear mode edits the whole slash-separated
+draft. Both review the parsed date and its ISO spelling before `/submit` or
+`/edit` accepts or returns to the draft, and `/cancel` cancels. Errors name the
+offending field, width, repertoire or calendar range and keep the draft.
+
+## CronInput
+
+`CronInput('Schedule', profile: CronProfile.unix)` requires an explicit dialect:
+five fields for `unix`, six or seven for `quartz`, including Quartz day-of-month
+and day-of-week rules, `L`, `LW`, `L-n`, `W`, `#` and weekday `L`. Expressions are
+limited to 4096 UTF-16 code units, must have no leading or trailing space, and
+are validated before review; Quartz years are bounded to 1970-2199. Invalid
+input keeps the draft for correction.
+
+An optional `preview` adds matching-preview review. `CronPreviewConfig` requires
+a zone, a UTC `reference` and `start`/`end` horizon, a `count`, a `budget` and a
+positive `providerTimeout`; an out-of-range configuration is rejected at
+construction. After an expression is entered, rich review offers Edit, Preview
+and Submit and re-announces the current action after every preview round, while
+linear review uses `/edit`, `/preview` and `/submit`. A preview reports its
+status (`complete`, `horizonReached`, `budgetExhausted`, `cancelled`,
+`providerError`, `providerTimedOut` or `unsupportedRange`) with the zone,
+reference, horizon, count, budget, provider timeout and the instants it found.
+Ctrl+C interrupts; Escape in rich mode or `/cancel` in linear cancels the preview
+and returns to the retained expression, where a second cancellation ends the
+prompt. A preview is civil-time matching, not scheduler execution. Provider
+identity, work bounds and the unqualified dialect gaps are recorded in
+[docs/cron-preview-evidence.md](docs/cron-preview-evidence.md).
+
 ### TimeInput
 
 `TimeInput('Start')` accepts strict 24-hour `HH:mm` time-of-day values.
@@ -338,6 +457,26 @@ errors as errors rather than assuming the path is absent. A prospective typed
 path is accepted only when the platform can establish absence; unsupported
 inspection platforms fail closed. These checks are snapshots and do not grant
 permission or guarantee a subsequent filesystem operation.
+
+## FilePicker and DirectoryPicker
+
+`FilePicker('File', base: path)` returns the absolute path of an existing file
+and `DirectoryPicker('Directory', base: path)` of an existing directory. `base`
+is the starting directory and defaults to `Directory.current.path`; it is not a
+sandbox, so `parent` and `path` can leave it. Nothing is opened, changed or
+created.
+
+Both prompts are command-driven in rich and linear modes: `open <n>` enters a
+listed directory, `choose <n>` chooses a listed entry, `path` enters a literal
+path, and `parent`, `refresh` and `hidden` change the listing context. Entries
+are listed with their type. A listing failure keeps the current context and a
+choice is reviewed before it is returned; entering anything at that review
+returns to the listing. A replaced entry is detected as stale and refreshes
+instead of targeting the replacement. Linked directories need an explicit
+`open <n> links` approval, linked cycles and unresolvable links retain the
+current directory, and path validation errors are reported without losing
+context. For `DirectoryPicker`, `choose` without a number chooses the current
+directory.
 
 ### Feedback
 
