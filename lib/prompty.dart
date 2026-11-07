@@ -1,12 +1,16 @@
-/// Support for doing something awesome.
+/// Accessible, nonvisually reviewable terminal prompts for Dart.
 ///
-/// More dartdocs go here.
+/// The package exposes one prompt-session seam: every component returns a
+/// sealed [PromptResult] of `Accepted`, `Cancelled`, `Interrupted`,
+/// `InputEnded` or `Unavailable`, and every component supports a rich
+/// in-place interaction and a sequential linear one.
+///
+/// See the `README.md` sections per component for keys, linear commands and
+/// validation rules, and `docs/editable-probe.md` plus
+/// `docs/ticket-31-regression-evidence.md` for the executed evidence and the
+/// recorded limits. Accessibility qualification of the whole library remains
+/// blocked pending the human Windows Terminal + NVDA baseline.
 library;
 
-export 'src/prompty_base.dart';
-
-// TODO: Export any libraries intended for clients of this package.
-
 export 'src/text_input.dart';
-
 export 'src/feedback.dart';

@@ -102,6 +102,10 @@ dart test
 Windows native console regressions can also be run with the PowerShell scripts
 in `test/`, including `text_input_windows.ps1`.
 
+`dart run example/prompty_example.dart` runs a short interactive flow across
+several components; add `--scripted` to replay it from a fixed stream without a
+terminal, or `--linear` to force sequential interaction.
+
 ## Password
 
 `Password('Password').prompt()` starts a fresh secret session. Enter ends
