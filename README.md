@@ -130,7 +130,8 @@ an LF; Tab cycles Edit, Finish and Insert tab, and Enter activates the focused
 action. Arrow keys move between graphemes and lines, Home/End move to line
 boundaries, and Ctrl+T opens help. Escape dismisses help or an action before
 cancelling; Ctrl+C interrupts. The focused line is displayed in place, with
-literal tab characters shown as `?`.
+literal tabs shown as `\t` and backslashes escaped as `\\` so the draft remains
+unambiguous in the plain ASCII profile.
 
 In linear mode, Enter appends a logical line, including an empty line. `/list`
 reviews lines; `/edit`, `/insert` and `/remove` ask for a line number in a
