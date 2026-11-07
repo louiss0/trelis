@@ -42,4 +42,17 @@ The following were run with `powershell -NoProfile -ExecutionPolicy Bypass -File
 
 Additionally, each of `autocomplete`, `command_palette`, `cron_input`, `date_input`, `editable_probe`, `key_capture`, `multiline`, `multi_select`, `password`, `path_input`, `search_select`, `slider`, `sortable_select`, `tag_input`, `tag_input_edit`, `tag_input_remove`, `terminal_probe`, `timezone_select`, `time_input`, and `tree_select` was run once with its `test/<name>_windows.ps1` default scenario and an explicit temporary `-Report`; all exited 0 and reported PASS. These are default scenarios only, not every scenario supported by those scripts. They inject console records; the paste cases do not access the system clipboard. The filesystem picker wrapper writes its five PASS results to its report file, which was inspected.
 
-Linux/macOS native interactive lifecycle, real terminal rendering, clipboard, IME and keyboard layouts remain unexecuted. POSIX interactive support is implemented but has not been validated on either platform. The requested 38-component public acceptance matrix, actual Windows terminal EOF beyond the injected Ctrl+Z record, and complete native platform coverage remain outstanding. None of these gaps is a pass.
+Linux/macOS native interactive lifecycle, real terminal rendering, clipboard, IME and keyboard layouts remain unexecuted. POSIX interactive support is implemented but has not been validated on either platform. The 38-component public acceptance matrix is recorded in the increment above; actual Windows terminal EOF beyond the injected Ctrl+Z record and complete native platform coverage remain outstanding. None of these gaps is a pass.
+
+## Native reruns after the plain-ASCII and review-retention fixes
+
+At integration revision `2857fb7` `dart analyze` reported no issues and `dart test --reporter compact` reported `550: All tests passed!`. That increment renders Multiline tabs as `\t` with escaped backslashes instead of a non-ASCII glyph, and returns a cancelled cron preview to the retained-expression review instead of ending the prompt. The affected paths were re-checked natively:
+
+| Check | Observed cases |
+| --- | --- |
+| `multiline_windows` | rich PASS, result `61,a,62` |
+| `cron_input_windows` | rich and linear PASS, result `* * * * *`; `rich-cancel` and `linear-cancel` PASS, result `cancelled` |
+| `text_input_windows` | default repeat scenario PASS, result `alpha,alpha` |
+| `url_email_native_checks` | URL and email each PASS in rich and linear |
+
+Every case above ends with the input mode, output mode and cursor state it started from (`503:7:25:1`) and every wrapper exited 0. The rich URL and email cases never leave the initial input mode mid-session; the other cases record `496:7:25:1` while the prompt owns the console. These remain injected-console-record checks: they are not real keyboard, clipboard, IME, rendering or NVDA evidence, and the POSIX runs stay unexecuted.
