@@ -41,7 +41,13 @@ void main() {
       final base = Directory.current.path;
       final result = await PathInput('Path', base: base, allowNonexistent: true)
           .prompt(
-            source: ScriptedInput(Stream.value(r'\/cancel' '\r\r'), out),
+            source: ScriptedInput(
+              Stream.value(
+                r'\/cancel'
+                '\r\r',
+              ),
+              out,
+            ),
             mode: PromptMode.linear,
           );
       expect(

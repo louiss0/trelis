@@ -19,6 +19,7 @@ jobs:
           sdk: 3.13.2
       - run: dart --version
       - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze
       - run: dart test --reporter expanded
 

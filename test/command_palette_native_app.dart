@@ -18,4 +18,3 @@ Future<void> main(List<String> args) async {
     Unavailable<String>(:final reason) => 'unavailable:$reason',
   });
 }
-

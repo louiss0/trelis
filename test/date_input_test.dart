@@ -7,9 +7,8 @@ void main() {
   });
 
   test('malformed supplied date is never accepted', () async {
-    final result = await DateInput('Date').prompt(
-      source: SuppliedAnswer('not a date'),
-    );
+    final result = await DateInput('Date')
+        .prompt(source: SuppliedAnswer('not a date'));
     expect(result, isA<Unavailable>());
   });
 }

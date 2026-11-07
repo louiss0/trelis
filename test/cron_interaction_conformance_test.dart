@@ -45,40 +45,43 @@ void main() {
     );
     await input.close();
   });
-  test('linear preview cancellation retains review before root cancellation', () async {
-    final input = StreamController<String>();
-    final output = StringBuffer();
-    final longConfig = CronPreviewConfig(
-      providerTimeout: const Duration(seconds: 5),
-      zone: 'Etc/UTC',
-      reference: DateTime.utc(2024),
-      start: DateTime.utc(2024),
-      end: DateTime.utc(2030),
-      count: 1,
-      budget: 2000000,
-    );
-    final result =
-        CronInput(
-          'Schedule',
-          profile: CronProfile.unix,
-          preview: longConfig,
-        ).prompt(
-          source: ScriptedInput(input.stream, output),
-          mode: PromptMode.linear,
-        );
-    input.add('0 0 31 2 *\r/preview\r');
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    expect(output.toString(), contains('Calculating preview'));
-    input.add('/cancel\r');
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(output.toString(), contains('Matching preview: cancelled'));
-    input.add('/cancel\r');
-    expect(
-      await result.timeout(const Duration(seconds: 3)),
-      isA<Cancelled<CronExpression>>(),
-    );
-    await input.close();
-  });
+  test(
+    'linear preview cancellation retains review before root cancellation',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final longConfig = CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024),
+        start: DateTime.utc(2024),
+        end: DateTime.utc(2030),
+        count: 1,
+        budget: 2000000,
+      );
+      final result =
+          CronInput(
+            'Schedule',
+            profile: CronProfile.unix,
+            preview: longConfig,
+          ).prompt(
+            source: ScriptedInput(input.stream, output),
+            mode: PromptMode.linear,
+          );
+      input.add('0 0 31 2 *\r/preview\r');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(output.toString(), contains('Calculating preview'));
+      input.add('/cancel\r');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(output.toString(), contains('Matching preview: cancelled'));
+      input.add('/cancel\r');
+      expect(
+        await result.timeout(const Duration(seconds: 3)),
+        isA<Cancelled<CronExpression>>(),
+      );
+      await input.close();
+    },
+  );
   test('hostile valid list remains interruptible during preview', () async {
     final input = StreamController<String>();
     final output = StringBuffer();
@@ -117,40 +120,43 @@ void main() {
     );
     await input.close();
   });
-  test('rich preview cancellation retains review before root cancellation', () async {
-    final input = StreamController<String>();
-    final output = StringBuffer();
-    final longConfig = CronPreviewConfig(
-      providerTimeout: const Duration(seconds: 5),
-      zone: 'Etc/UTC',
-      reference: DateTime.utc(2024),
-      start: DateTime.utc(2024),
-      end: DateTime.utc(2030),
-      count: 1,
-      budget: 2000000,
-    );
-    final result =
-        CronInput(
-          'Schedule',
-          profile: CronProfile.unix,
-          preview: longConfig,
-        ).prompt(
-          source: ScriptedInput(input.stream, output),
-          mode: PromptMode.rich,
-        );
-    input.add('0 0 31 2 *\r\t\r');
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    expect(output.toString(), contains('Calculating preview'));
-    input.add('\x1b');
-    await Future<void>.delayed(const Duration(milliseconds: 150));
-    expect(output.toString(), contains('Matching preview: cancelled'));
-    input.add('\x1b');
-    expect(
-      await result.timeout(const Duration(seconds: 3)),
-      isA<Cancelled<CronExpression>>(),
-    );
-    await input.close();
-  });
+  test(
+    'rich preview cancellation retains review before root cancellation',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final longConfig = CronPreviewConfig(
+        providerTimeout: const Duration(seconds: 5),
+        zone: 'Etc/UTC',
+        reference: DateTime.utc(2024),
+        start: DateTime.utc(2024),
+        end: DateTime.utc(2030),
+        count: 1,
+        budget: 2000000,
+      );
+      final result =
+          CronInput(
+            'Schedule',
+            profile: CronProfile.unix,
+            preview: longConfig,
+          ).prompt(
+            source: ScriptedInput(input.stream, output),
+            mode: PromptMode.rich,
+          );
+      input.add('0 0 31 2 *\r\t\r');
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(output.toString(), contains('Calculating preview'));
+      input.add('\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(output.toString(), contains('Matching preview: cancelled'));
+      input.add('\x1b');
+      expect(
+        await result.timeout(const Duration(seconds: 3)),
+        isA<Cancelled<CronExpression>>(),
+      );
+      await input.close();
+    },
+  );
   test('invalid linear draft remains editable and can be submitted', () async {
     final output = StringBuffer();
     final result =
