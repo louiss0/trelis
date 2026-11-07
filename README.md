@@ -64,16 +64,19 @@ python example/prototype-themes/serve.py
 
 Then visit <http://127.0.0.1:8765/structures.html>.
 
-## Terminal backend and patch
+## Terminal backend
 
-The validated implementation direction is **Dart TUI (`dart_tui`)**, rather
-than combining it with or extending the `dart_console` prototype backend.
+Trelis uses its in-repo terminal/session backend with Dart FFI. For this
+library's contract, it is a better fit than the evaluated Dart TUI 3.0.0
+adapter: it owns the selected streams independently, exposes explicit EOF and
+cancellation outcomes, checks and restores exact native state, supports repeated
+sessions, and shares component semantics across rich and linear modes without a
+patched general-purpose TUI runtime.
 
-**Important: the successful Windows trials used a local patch to Dart TUI
-3.0.0.** Unmodified 3.0.0 failed exact echo/line-input restoration. Main records
-the decision but does not install either backend or carry the patched package.
-
-Read [the backend relationship, patch details and archived evidence](doc/terminal-backend.md).
+This is not a claim of universal superiority or completed accessibility. Dart
+TUI retains general rendering and stock-model advantages; POSIX execution and
+the whole-library NVDA baseline retain their recorded evidence gates. Read
+[the requirements-based comparison, limitations and archived patch evidence](doc/terminal-backend.md).
 
 ## Components used to make the themes
 
