@@ -1,0 +1,4 @@
+# The contrast raster sheets are repository reference material, not part of the
+# published library. The atlas pages and tables use the SVG sheets, which stay
+# in the archive.
+example/prototype-themes/sheets/*.png
