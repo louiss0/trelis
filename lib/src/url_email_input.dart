@@ -162,7 +162,7 @@ final class URLInput {
             final host = authority.split(':').first;
             const idna = Uts46();
             out.writeln(
-              'Host interpretation — Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
+              'Host interpretation -- Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
             );
           }
           out.writeln('Accepted URL: $value');
@@ -292,7 +292,7 @@ final class EmailInput {
       } else {
         const idna = Uts46();
         sink.writeln(
-          'Domain interpretation — Unicode: ${idna.toUnicode(domain)}; ASCII: ${idna.toAscii(domain)}.',
+          'Domain interpretation -- Unicode: ${idna.toUnicode(domain)}; ASCII: ${idna.toAscii(domain)}.',
         );
       }
     }

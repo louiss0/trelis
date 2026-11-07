@@ -99,6 +99,32 @@ void main() {
       );
       expect((result as Accepted<String>).value, 'a\tb');
       expect(output.toString(), contains('Insert tab'));
+      expect(output.toString(), contains(r'a\tb'));
+      expect(output.toString(), isNot(contains('a?b')));
+      expect(output.toString(), isNot(contains('â‡¥')));
+    },
+  );
+  test(
+    'plain rich review distinguishes tabs question marks and backslashes',
+    () async {
+      Future<String> render(String initial) async {
+        final output = StringBuffer();
+        final result = await Multiline('Notes', initialValue: initial).prompt(
+          source: ScriptedInput(Stream.value('\x1a'), output),
+          mode: PromptMode.rich,
+        );
+        expect(result, isA<InputEnded<String>>());
+        return output.toString();
+      }
+
+      final tab = await render('a\tb');
+      final question = await render('a?b');
+      final backslash = await render(r'a\tb');
+      expect(tab, contains(r'a\tb'));
+      expect(question, contains('a?b'));
+      expect(backslash, contains(r'a\\tb'));
+      expect(tab, isNot(question));
+      expect(tab, isNot(backslash));
     },
   );
   test('linear help advertises all commands and quoting', () async {
