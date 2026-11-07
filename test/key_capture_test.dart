@@ -1,7 +1,41 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'key capture instances reject overlapping sessions and can be reused',
+    () async {
+      for (final chord in [false, true]) {
+        final input = StreamController<String>();
+        final key = Keypress('Key');
+        final sequence = KeyChordInput('Sequence');
+        final pending = chord
+            ? sequence.prompt(
+                source: ScriptedInput(input.stream, StringBuffer()),
+              )
+            : key.prompt(source: ScriptedInput(input.stream, StringBuffer()));
+        if (chord) {
+          await expectLater(
+            sequence.prompt(source: SuppliedAnswer('A')),
+            throwsStateError,
+          );
+        } else {
+          await expectLater(
+            key.prompt(source: SuppliedAnswer('A')),
+            throwsStateError,
+          );
+        }
+        await input.close();
+        await pending;
+        final result = chord
+            ? await sequence.prompt(source: SuppliedAnswer('A'))
+            : await key.prompt(source: SuppliedAnswer('A'));
+        expect(result, isA<Accepted>());
+      }
+    },
+  );
   test('key capture rejects unsafe labels', () {
     expect(() => Keypress('\x1b[2J'), throwsArgumentError);
     expect(() => KeyChordInput('  '), throwsArgumentError);

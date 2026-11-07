@@ -56,3 +56,26 @@ At integration revision `2857fb7` `dart analyze` reported no issues and `dart te
 | `url_email_native_checks` | URL and email each PASS in rich and linear |
 
 Every case above ends with the input mode, output mode and cursor state it started from (`503:7:25:1`) and every wrapper exited 0. The rich URL and email cases never leave the initial input mode mid-session; the other cases record `496:7:25:1` while the prompt owns the console. These remain injected-console-record checks: they are not real keyboard, clipboard, IME, rendering or NVDA evidence, and the POSIX runs stay unexecuted.
+
+## Native reruns for the TERM=dumb and signal-interruption increment
+
+With the capability and signal changes in place, the TextInput native harness ran
+every scenario on Windows: `rich`, `escape`, `interrupt`, `eof`, `error`,
+`repeat`, `concurrent`, `redirected`, `stdout`, `paste`, `unicode`, and the new
+`dumb-auto` and `dumb-rich` cases. All exited 0 and ended with the console state
+they started from (`503:7:25:1`). `dumb-rich` returned `unavailable:Rich
+interaction unavailable on the selected output; use linear or automatic mode.`
+without entering raw input mode; `dumb-auto` stayed linear and returned `alpha`.
+
+One earlier `rich` run returned `alphac` and exited 1; three immediate repeats
+returned `alpha` and passed. That single failure is recorded rather than silently
+dropped: it did not reproduce, and its cause is unexplained. The scenario is
+reported only for the repeats actually observed.
+
+`test/posix_terminal_pty.py` now also covers Ctrl+C delivered as `SIGINT` and
+`TERM=dumb` in automatic and explicit-rich modes, and the POSIX reader watches
+for SIGINT instead of relying on the input byte alone. Those cases have not been
+executed: no Linux or macOS host, WSL distribution, container runtime or Git
+remote is available here. Only `python -m py_compile test/posix_terminal_pty.py`
+was run, which is a syntax check and not a pass. Real rendering, clipboard, IME,
+keyboard layouts and NVDA remain unverified.

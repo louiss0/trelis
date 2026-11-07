@@ -29,6 +29,7 @@ final class Keypress {
   }
   final String label;
   final bool requireObservation;
+  bool _active = false;
 
   Future<PromptResult<KeyGesture>> prompt({
     PromptSource? source,
@@ -37,43 +38,49 @@ final class Keypress {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
-    if (source is SuppliedAnswer) {
-      if (requireObservation) {
-        return Unavailable(
-          'A declared gesture does not satisfy the observation requirement.',
-        );
-      }
-      final parts = source.value.split('+');
-      final modifiers = <KeyModifier>{};
-      for (final part in parts.take(parts.length - 1)) {
-        final modifier = switch (part) {
-          'Ctrl' => KeyModifier.control,
-          'Alt' => KeyModifier.alt,
-          'Shift' => KeyModifier.shift,
-          'Meta' => KeyModifier.meta,
-          _ => null,
-        };
-        if (modifier == null || !modifiers.add(modifier)) {
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      if (source is SuppliedAnswer) {
+        if (requireObservation) {
+          return Unavailable(
+            'A declared gesture does not satisfy the observation requirement.',
+          );
+        }
+        final parts = source.value.split('+');
+        final modifiers = <KeyModifier>{};
+        for (final part in parts.take(parts.length - 1)) {
+          final modifier = switch (part) {
+            'Ctrl' => KeyModifier.control,
+            'Alt' => KeyModifier.alt,
+            'Shift' => KeyModifier.shift,
+            'Meta' => KeyModifier.meta,
+            _ => null,
+          };
+          if (modifier == null || !modifiers.add(modifier)) {
+            return Unavailable('Invalid logical gesture declaration.');
+          }
+        }
+        final key = parts.last;
+        if (!RegExp(
+          r'^(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Enter|Tab|Escape|Space|Backspace|Delete|Insert|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$',
+        ).hasMatch(key)) {
           return Unavailable('Invalid logical gesture declaration.');
         }
+        return Accepted(
+          KeyGesture._(key, modifiers, KeyGestureProvenance.declared),
+        );
       }
-      final key = parts.last;
-      if (!RegExp(
-        r'^(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Enter|Tab|Escape|Space|Backspace|Delete|Insert|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$',
-      ).hasMatch(key)) {
-        return Unavailable('Invalid logical gesture declaration.');
-      }
-      return Accepted(
-        KeyGesture._(key, modifiers, KeyGestureProvenance.declared),
+      return await _singleInteractive(
+        label,
+        requireObservation,
+        source,
+        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
+        output,
       );
+    } finally {
+      _active = false;
     }
-    return _singleInteractive(
-      label,
-      requireObservation,
-      source,
-      mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
-      output,
-    );
   }
 }
 
@@ -84,6 +91,7 @@ final class KeyChordInput {
   }
   final String label;
   final bool requireObservation;
+  bool _active = false;
 
   Future<PromptResult<List<KeyGesture>>> prompt({
     PromptSource? source,
@@ -92,28 +100,34 @@ final class KeyChordInput {
     PromptMode? applicationPreference,
     Stdout? output,
   }) async {
-    if (source is SuppliedAnswer) {
-      final gestures = <KeyGesture>[];
-      for (final declaration in source.value.split(',')) {
-        final result = await Keypress(
-          label,
-          requireObservation: requireObservation,
-        ).prompt(source: SuppliedAnswer(declaration));
-        if (result is Unavailable<KeyGesture>) {
-          return Unavailable(result.reason);
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      if (source is SuppliedAnswer) {
+        final gestures = <KeyGesture>[];
+        for (final declaration in source.value.split(',')) {
+          final result = await Keypress(
+            label,
+            requireObservation: requireObservation,
+          ).prompt(source: SuppliedAnswer(declaration));
+          if (result is Unavailable<KeyGesture>) {
+            return Unavailable(result.reason);
+          }
+          gestures.add((result as Accepted<KeyGesture>).value);
         }
-        gestures.add((result as Accepted<KeyGesture>).value);
+        return Accepted(List.unmodifiable(gestures));
       }
-      return Accepted(List.unmodifiable(gestures));
+      return await _sequenceInteractive(
+        label,
+        requireObservation,
+        source,
+        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
+        output,
+        single: false,
+      );
+    } finally {
+      _active = false;
     }
-    return _sequenceInteractive(
-      label,
-      requireObservation,
-      source,
-      mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
-      output,
-      single: false,
-    );
   }
 }
 
