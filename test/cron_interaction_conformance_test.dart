@@ -45,7 +45,7 @@ void main() {
     );
     await input.close();
   });
-  test('linear cancel command cancels an active preview', () async {
+  test('linear preview cancellation retains review before root cancellation', () async {
     final input = StreamController<String>();
     final output = StringBuffer();
     final longConfig = CronPreviewConfig(
@@ -70,11 +70,13 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 40));
     expect(output.toString(), contains('Calculating preview'));
     input.add('/cancel\r');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(output.toString(), contains('Matching preview: cancelled'));
+    input.add('/cancel\r');
     expect(
       await result.timeout(const Duration(seconds: 3)),
       isA<Cancelled<CronExpression>>(),
     );
-    expect(output.toString(), isNot(contains('Matching preview:')));
     await input.close();
   });
   test('hostile valid list remains interruptible during preview', () async {
@@ -106,14 +108,16 @@ void main() {
     expect(watch.elapsed, lessThan(const Duration(milliseconds: 750)));
     expect(output.toString(), contains('Calculating preview'));
     input.add('/cancel\r');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(output.toString(), contains('Matching preview: cancelled'));
+    input.add('/cancel\r');
     expect(
       await result.timeout(const Duration(seconds: 3)),
       isA<Cancelled<CronExpression>>(),
     );
-    expect(output.toString(), isNot(contains('Matching preview:')));
     await input.close();
   });
-  test('escape cancels an active rich preview', () async {
+  test('rich preview cancellation retains review before root cancellation', () async {
     final input = StreamController<String>();
     final output = StringBuffer();
     final longConfig = CronPreviewConfig(
@@ -137,6 +141,9 @@ void main() {
     input.add('0 0 31 2 *\r\t\r');
     await Future<void>.delayed(const Duration(milliseconds: 40));
     expect(output.toString(), contains('Calculating preview'));
+    input.add('\x1b');
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    expect(output.toString(), contains('Matching preview: cancelled'));
     input.add('\x1b');
     expect(
       await result.timeout(const Duration(seconds: 3)),

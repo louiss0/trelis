@@ -88,6 +88,12 @@ try {
  if(!$found){throw "native cron preview marker missing: $marker"}
  if ($cancelling) {
   if ($Scenario.StartsWith('rich')) { [NativeProbe]::Key([char]27, 27, 0) } else { [NativeProbe]::Text("/cancel`r") }
+  $found=$false
+  for($n=0;$n -lt 100 -and !$found;$n++){ Start-Sleep -Milliseconds 100; $found=[NativeProbe]::Screen().Contains('Matching preview: cancelled') }
+  if(!$found){throw 'native cron cancelled preview did not return to review'}
+  # Preview cancellation dismisses only the transient preview. A second root
+  # cancellation is required to leave the retained expression review.
+  if ($Scenario.StartsWith('rich')) { [NativeProbe]::Key([char]27, 27, 0) } else { [NativeProbe]::Text("/cancel`r") }
  } elseif ($Scenario.StartsWith('rich')) {
   [NativeProbe]::Key([char]9, 9, 0)
   [NativeProbe]::Key([char]13, 13, 0)

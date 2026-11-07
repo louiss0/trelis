@@ -457,6 +457,9 @@ void main() {
         );
     expect(result, isA<Accepted<CronExpression>>());
     expect(output.toString(), contains('2024-01-01 00:01:00.000Z'));
+    // The current review action is announced again after each preview round so
+    // retained focus is never implicit for a nonvisual reviewer.
+    expect('Review action: Preview.'.allMatches(output.toString()).length, 2);
   });
   test(
     'linear preview provider error preserves the draft for submission',

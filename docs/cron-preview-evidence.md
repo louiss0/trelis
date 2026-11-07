@@ -78,7 +78,10 @@ global database and sets its local zone to UTC. A regression fixture verifies
 that preview leaves the caller isolate's local zone unchanged; it does not
 qualify all possible interactions with other timezone consumers. Interactive preview
 cancellation is covered for Ctrl+C, rich Escape and linear `/cancel` in
-`cron_interaction_conformance_test.dart`. The Windows console probe additionally
+`cron_interaction_conformance_test.dart`. A cancelled or completed preview
+returns to the retained-expression review instead of ending the prompt; in rich
+mode the current review action is announced again after each preview round so
+the retained focus is never implicit. The Windows console probe additionally
 checks rich Escape and linear `/cancel` while a long preview is active and
 compares console state before and after. Do not claim full Quartz compatibility or
 whole-ticket acceptance until the remaining gaps are resolved.

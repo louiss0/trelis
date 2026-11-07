@@ -739,14 +739,15 @@ final class CronInput {
               }
               if (linear) {
                 if (key == '\r' || key == '\n') {
-                  if (line == '/cancel') {
-                    cancelled = true;
-                    return true;
-                  }
+                  if (line == '/cancel') cancelled = true;
                   line = '';
                 } else if (line.length < 16) {
                   line += key;
                 }
+                // While a linear preview is active, only /cancel is meaningful.
+                // Do not leak the cancelled command or other keystrokes into
+                // the review editor that resumes after the preview.
+                return true;
               }
               return false;
             };
@@ -775,12 +776,16 @@ final class CronInput {
               keys.onKey = null;
             }
             if (interrupted) return Interrupted();
-            if (cancelled) return Cancelled();
             out.writeln(
               'Matching preview: ${result.status.name}; zone ${config.zone}; timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
               out.writeln(instant);
+            }
+            if (!linear) {
+              // Review state must never be implicit after a preview round: keep
+              // the reviewer's action position and announce it again.
+              out.writeln('Review action: ${actions[focus]}.');
             }
             continue;
           }
