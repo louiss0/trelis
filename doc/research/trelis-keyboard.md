@@ -2,7 +2,7 @@
 
 - **Ticket:** Terminal keyboard capabilities and cross-platform conflicts
 - **Project:** Trelis
-- **Report path:** `docs/research/trelis-keyboard.md`
+- **Report path:** `doc/research/trelis-keyboard.md`
 - **Research date:** 2026-11-03 (host local date, UTC−05:00).
 - **Status:** Primary-source research complete; implementation and platform validation not performed.
 - **Scope:** Keyboard interaction for Windows, macOS and Linux, legacy and modern terminals, including keyboard and screen-reader usability across the 39 in-scope atlas specimens. StepperForm is excluded. This report proposes candidates, not final interaction requirements.
@@ -274,7 +274,7 @@ These tiers describe **candidate input capability groupings**, not increasing ac
 
 ## 10. Existing repository evidence and its limits
 
-The inspected `docs/terminal-backend.md` states that:
+The inspected `doc/terminal-backend.md` states that:
 
 - Dart TUI is an implementation direction, not an unqualified cross-platform guarantee.
 - The evaluated dependency was **locally patched Dart TUI 3.0.0**.
@@ -385,4 +385,4 @@ All external references below are primary sources. Moving documentation pages we
 17. **Microsoft, KEY_EVENT_RECORD** — native Windows keyboard-event structure.  
     <https://learn.microsoft.com/en-us/windows/console/key-event-record-str>
 
-**[L1] Local repository documentation:** `docs/terminal-backend.md`, read from `C:/Users/bvlou/projects/prompty`. Its historical test and patch claims were not independently reproduced.
+**[L1] Local repository documentation:** `doc/terminal-backend.md`, read from `C:/Users/bvlou/projects/prompty`. Its historical test and patch claims were not independently reproduced.

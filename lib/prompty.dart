@@ -6,8 +6,8 @@
 /// in-place interaction and a sequential linear one.
 ///
 /// See the `README.md` sections per component for keys, linear commands and
-/// validation rules, and `docs/editable-probe.md` plus
-/// `docs/ticket-31-regression-evidence.md` for the executed evidence and the
+/// validation rules, and `doc/editable-probe.md` plus
+/// `doc/ticket-31-regression-evidence.md` for the executed evidence and the
 /// recorded limits. Accessibility qualification of the whole library remains
 /// blocked pending the human Windows Terminal + NVDA baseline.
 library;

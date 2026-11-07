@@ -24,5 +24,5 @@ Regex research predates its removal and is explicitly historical/out of scope; d
 - Worker: b338845a-f074-4fa
 - Worktree: C:/Users/bvlou/projects/trelis-research-mask-pattern-duration-cron (created from bd5a19f)
 - Research branch: research/trelis-mask-pattern-duration-cron
-- Completed report: [Evidence for masks, durations and cron, with adaptive/calendar addendum](../../../docs/research/trelis-mask-pattern-duration-cron.md)
+- Completed report: [Evidence for masks, durations and cron, with adaptive/calendar addendum](../../../doc/research/trelis-mask-pattern-duration-cron.md)
 - Exact report commit: 609eddedd1cc8fa16ea4fdbe9ec83f077068439c on research/trelis-mask-pattern-duration-cron. Parent saved the full report/addendum with an explicit historical-regex scope note and committed only that report; worktree is clean.

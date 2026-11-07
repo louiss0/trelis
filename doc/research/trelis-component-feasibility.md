@@ -5,7 +5,7 @@
 - **Project:** Trelis, a Dart terminal prompt library
 - **Baseline:** `bd5a19f`
 - **Scope:** All 39 atlas specimens other than `StepperForm`; research only, not component implementation or public API design.
-- **Prepared for:** `docs/research/trelis-component-feasibility.md`
+- **Prepared for:** `doc/research/trelis-component-feasibility.md`
 - **Evidence status:** Local atlas and backend decision inspected; selected archived files inspected through parent-extracted copies; live web searches performed against primary sources. No platform, terminal, clipboard, or assistive-technology tests performed during this research.
 
 ## Executive findings

@@ -14,6 +14,6 @@
   streams, check and restore native console state, reject concurrent sessions
   and refuse rich output on non-capable terminals such as `TERM=dumb`.
 - Accessibility status: component-level automated and native checks are
-  recorded in `docs/ticket-31-regression-evidence.md`; the whole-library
-  Windows Terminal + NVDA baseline in `docs/nvda-inventory.md` has not been
+  recorded in `doc/ticket-31-regression-evidence.md`; the whole-library
+  Windows Terminal + NVDA baseline in `doc/nvda-inventory.md` has not been
   performed, so no accessibility qualification is claimed.

@@ -10,7 +10,7 @@
 
 **Archived experiments:** `prototype/cli-theme-atlas`, commit `8483a5a343bb595fdbeb3b3b5881e5233c285e90`, preserves the runnable terminal trials, tests and local Dart TUI patch. Only the visual-reference folder and decision documentation were brought onto `main`; no experimental Dart dependencies or vendored code were carried over. No originating implementation issue was supplied, so this document is the context pointer.
 
-**Backend direction:** use Dart TUI instead of building terminal interaction around `dart_console`. The successful trial used **locally patched Dart TUI 3.0.0**, not the unmodified upstream release. See [backend relationship and patch details](../../docs/terminal-backend.md), followed by the [exact 40-component inventory](../../docs/theme-components.md).
+**Backend direction:** use Dart TUI instead of building terminal interaction around `dart_console`. The successful trial used **locally patched Dart TUI 3.0.0**, not the unmodified upstream release. See [backend relationship and patch details](../../doc/terminal-backend.md), followed by the [exact 40-component inventory](../../doc/theme-components.md).
 
 ## Open it
 

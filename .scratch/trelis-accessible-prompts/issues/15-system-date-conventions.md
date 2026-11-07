@@ -24,5 +24,5 @@ The active specialized-input ticket must decide calendar/digit scope, adaptation
 - Worker: 94f71cee-0050-47a
 - Worktree: C:/Users/bvlou/projects/trelis-research-system-date-conventions (created from bd5a19f)
 - Research branch: research/trelis-system-date-conventions
-- Completed report: [System date conventions for slash-based DateInput](../../../docs/research/trelis-system-date-conventions.md)
+- Completed report: [System date conventions for slash-based DateInput](../../../doc/research/trelis-system-date-conventions.md)
 - Exact report commit: 4dcba120c24854ef4404d87413a61e0f045d8369 on research/trelis-system-date-conventions. Parent saved/committed only the full report; research worktree is clean.

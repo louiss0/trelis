@@ -24,6 +24,6 @@ The human's actual-editable-default requirement remains intact; report interacti
 - Worker: cb5d69cd-4c6b-40e
 - Worktree: C:/Users/bvlou/projects/trelis-research-editable-defaults (created from bd5a19f)
 - Research branch: research/trelis-editable-defaults
-- Completed report: [Editable initial defaults in Trelis terminal prompts](../../../docs/research/trelis-editable-defaults.md)
+- Completed report: [Editable initial defaults in Trelis terminal prompts](../../../doc/research/trelis-editable-defaults.md)
 - Exact report commit: 4b54ff62dd884d055456ff5b7c2409a2ade4a6a3 on research/trelis-editable-defaults; parent saved and committed only this report, and the worktree is clean.
 - Actual platform and assistive-technology validation remains separate.

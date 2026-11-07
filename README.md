@@ -47,7 +47,7 @@ backslash to enter one. Identified bracketed paste is literal; unframed paste
 cannot be distinguished from typing. Paste frames are bounded to 4096 UTF-16
 code units and oversized frames are rejected as a unit. Character limits count
 grapheme clusters. Accessibility is not qualified by the automated tests;
-see [the editable probe](docs/editable-probe.md) for evidence and limitations.
+see [the editable probe](doc/editable-probe.md) for evidence and limitations.
 
 ## Visual reference
 
@@ -73,12 +73,12 @@ than combining it with or extending the `dart_console` prototype backend.
 3.0.0.** Unmodified 3.0.0 failed exact echo/line-input restoration. Main records
 the decision but does not install either backend or carry the patched package.
 
-Read [the backend relationship, patch details and archived evidence](docs/terminal-backend.md).
+Read [the backend relationship, patch details and archived evidence](doc/terminal-backend.md).
 
 ## Components used to make the themes
 
 The atlas depicts **40 named components** across 45 themes. See the
-[complete component-name inventory](docs/theme-components.md), sourced directly
+[complete component-name inventory](doc/theme-components.md), sourced directly
 from the atlas generator. The structures page compares four of those components
 across fifteen structures; neither inventory is a claim of implemented APIs.
 
@@ -398,7 +398,7 @@ conversion is an independent arithmetic implementation informed by ICU 76.1
 Gregorian year by subtracting 543; it is not an ICU provider or a qualification
 of ICU behavior. The provider is qualified only for its stated bounded profiles,
 and accessibility qualification has not been performed. See
-[DateInput evidence](docs/date-input-evidence.md).
+[DateInput evidence](doc/date-input-evidence.md).
 
 ## CronInput
 
@@ -422,7 +422,7 @@ Ctrl+C interrupts; Escape in rich mode or `/cancel` in linear cancels the previe
 and returns to the retained expression, where a second cancellation ends the
 prompt. A preview is civil-time matching, not scheduler execution. Provider
 identity, work bounds and the unqualified dialect gaps are recorded in
-[docs/cron-preview-evidence.md](docs/cron-preview-evidence.md).
+[doc/cron-preview-evidence.md](doc/cron-preview-evidence.md).
 
 ### TimeInput
 

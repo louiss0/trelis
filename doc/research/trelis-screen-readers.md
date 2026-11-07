@@ -32,7 +32,7 @@ External research used live web search against primary documentation. Some sourc
 
 Local context reviewed:
 
-- `docs/theme-components.md`: 40 named atlas specimens, of which `StepperForm` is excluded here; runtime trials covered only Input/TextInput, Select, and MultiSelect.
+- `doc/theme-components.md`: 40 named atlas specimens, of which `StepperForm` is excluded here; runtime trials covered only Input/TextInput, Select, and MultiSelect.
 - `.scratch/trelis-accessible-prompts/map.md`: research precedes design; broad compatibility, keyboard and screen-reader usability are required; no interaction decision is already resolved.
 
 The atlas's static HTML and visual specimens are not evidence of terminal accessibility. Existing backend direction and restoration-patch history must not be treated as shipped accessibility functionality.
