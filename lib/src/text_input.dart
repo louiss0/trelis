@@ -725,9 +725,13 @@ Stream<String> _posixInput() {
   data.setInt16(4, 1, Endian.host); // POLLIN
   final buffer = calloc<Uint8>(4096);
   Timer? timer;
+  StreamSubscription<ProcessSignal>? signals;
   late StreamController<List<int>> controller;
   controller = StreamController<List<int>>(
     onListen: () {
+      signals = ProcessSignal.sigint.watch().listen((_) {
+        if (!controller.isClosed) controller.add([3]);
+      });
       timer = Timer.periodic(const Duration(milliseconds: 5), (_) {
         final ready = poll(descriptor.cast(), 1, 0);
         if (ready < 0) {
@@ -751,8 +755,9 @@ Stream<String> _posixInput() {
         }
       });
     },
-    onCancel: () {
+    onCancel: () async {
       timer?.cancel();
+      await signals?.cancel();
       calloc.free(descriptor);
       calloc.free(buffer);
     },
@@ -766,10 +771,11 @@ Future<PromptResult<T>> _posixTerminal<T>(
   Future<PromptResult<T>> Function(ScriptedInput, PromptMode, void Function())
   run,
 ) async {
+  final capable =
+      outputStream.hasTerminal && Platform.environment['TERM'] != 'dumb';
   final rich =
-      mode == PromptMode.rich ||
-      (mode == PromptMode.automatic && outputStream.hasTerminal);
-  if (rich && !outputStream.hasTerminal) {
+      mode == PromptMode.rich || (mode == PromptMode.automatic && capable);
+  if (rich && !capable) {
     return Unavailable(
       'Rich interaction unavailable on the selected output; use linear or automatic mode.',
     );
@@ -821,16 +827,12 @@ Future<PromptResult<T>> _posixTerminal<T>(
       return Unavailable('Cannot acquire terminal input.');
     }
     acquired = true;
-    if (outputStream.hasTerminal) {
+    if (rich) {
       outputStream.write('\x1b[?2004h');
       pasteEnabled = true;
     }
     return await run(
-      ScriptedInput(
-        _posixInput(),
-        outputStream,
-        supportsRich: outputStream.hasTerminal,
-      ),
+      ScriptedInput(_posixInput(), outputStream, supportsRich: capable),
       rich ? PromptMode.rich : PromptMode.linear,
       restore,
     );
@@ -864,10 +866,11 @@ Future<PromptResult<T>> _terminal<T>(
       'Interactive console input is unavailable on this platform.',
     );
   }
+  final capable =
+      outputStream.hasTerminal && Platform.environment['TERM'] != 'dumb';
   final rich =
-      mode == PromptMode.rich ||
-      (mode == PromptMode.automatic && outputStream.hasTerminal);
-  if (rich && !outputStream.hasTerminal) {
+      mode == PromptMode.rich || (mode == PromptMode.automatic && capable);
+  if (rich && !capable) {
     return Unavailable(
       'Rich interaction unavailable on the selected output; use linear or automatic mode.',
     );
@@ -903,15 +906,14 @@ Future<PromptResult<T>> _terminal<T>(
 
   try {
     if (console.getMode(input, inputMode) == 0 ||
-        (outputStream.hasTerminal &&
-            console.getMode(output, outputMode) == 0)) {
+        (rich && console.getMode(output, outputMode) == 0)) {
       return Unavailable('Console capability unavailable.');
     }
     if (console.setMode(input, inputMode.value & ~0x207) == 0) {
       return Unavailable('Cannot acquire console input.');
     }
     inputAcquired = true;
-    if (outputStream.hasTerminal) {
+    if (rich) {
       if (console.setMode(output, outputMode.value | 4) == 0) {
         return Unavailable('Cannot enable rich console output.');
       }
@@ -922,7 +924,7 @@ Future<PromptResult<T>> _terminal<T>(
       ScriptedInput(
         _consoleInput(console, input, capture),
         outputStream,
-        supportsRich: outputStream.hasTerminal,
+        supportsRich: capable,
       ),
       rich ? PromptMode.rich : PromptMode.linear,
       restore,

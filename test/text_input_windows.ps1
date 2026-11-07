@@ -39,7 +39,8 @@ $root = Split-Path $PSScriptRoot -Parent
 $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
 $redirect = if ($Scenario -eq 'redirected') { "2> '$file.stderr'" } else { '' }
-$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/text_input_native_app.dart $Scenario $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$term = if ($Scenario -like 'dumb-*') { "`$env:TERM='dumb';" } else { "" }
+$line = "$term Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/text_input_native_app.dart $Scenario $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -61,6 +62,8 @@ try {
   'escape' { [NativeProbe]::Key([char]27,27,0) }
   'concurrent' { [NativeProbe]::Text("`r") }
   'rich' { [NativeProbe]::Text("`r") }
+  'dumb-auto' { [NativeProbe]::Text("`r") }
+  'dumb-rich' { }
   'redirected' { [NativeProbe]::Text("`r") }
   'stdout' { [NativeProbe]::Text("`r") }
   'paste' { [NativeProbe]::Text("$([char]27)[200~/cancel$([char]27)[201~`r") }
@@ -78,7 +81,7 @@ try {
   if ($actual.Contains([char]27) -or !$actual.Contains('Name')) { throw 'unstable stdout transcript' }
   $actual = ($actual -split "`r?`n")[-1]
  }
- $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
+ $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($Scenario -eq 'redirected') {
   $transcript = Get-Content "$file.stderr" -Raw

@@ -43,3 +43,26 @@ The following were run with `powershell -NoProfile -ExecutionPolicy Bypass -File
 Additionally, each of `autocomplete`, `command_palette`, `cron_input`, `date_input`, `editable_probe`, `key_capture`, `multiline`, `multi_select`, `password`, `path_input`, `search_select`, `slider`, `sortable_select`, `tag_input`, `tag_input_edit`, `tag_input_remove`, `terminal_probe`, `timezone_select`, `time_input`, and `tree_select` was run once with its `test/<name>_windows.ps1` default scenario and an explicit temporary `-Report`; all exited 0 and reported PASS. These are default scenarios only, not every scenario supported by those scripts. They inject console records; the paste cases do not access the system clipboard. The filesystem picker wrapper writes its five PASS results to its report file, which was inspected.
 
 Linux/macOS native interactive lifecycle, real terminal rendering, clipboard, IME and keyboard layouts remain unexecuted. POSIX interactive support is implemented but has not been validated on either platform. The public acceptance matrix is covered by the 76 tests reported above; actual Windows terminal EOF beyond the injected Ctrl+Z record and complete native platform coverage remain outstanding. None of these gaps is a pass.
+
+## Native reruns for the TERM=dumb and signal-interruption increment
+
+With the capability and signal changes in place, the TextInput native harness ran
+every scenario on Windows: `rich`, `escape`, `interrupt`, `eof`, `error`,
+`repeat`, `concurrent`, `redirected`, `stdout`, `paste`, `unicode`, and the new
+`dumb-auto` and `dumb-rich` cases. All exited 0 and ended with the console state
+they started from (`503:7:25:1`). `dumb-rich` returned `unavailable:Rich
+interaction unavailable on the selected output; use linear or automatic mode.`
+without entering raw input mode; `dumb-auto` stayed linear and returned `alpha`.
+
+One earlier `rich` run returned `alphac` and exited 1; three immediate repeats
+returned `alpha` and passed. That single failure is recorded rather than silently
+dropped: it did not reproduce, and its cause is unexplained. The scenario is
+reported only for the repeats actually observed.
+
+`test/posix_terminal_pty.py` now also covers Ctrl+C delivered as `SIGINT` and
+`TERM=dumb` in automatic and explicit-rich modes, and the POSIX reader watches
+for SIGINT instead of relying on the input byte alone. Those cases have not been
+executed: no Linux or macOS host, WSL distribution, container runtime or Git
+remote is available here. Only `python -m py_compile test/posix_terminal_pty.py`
+was run, which is a syntax check and not a pass. Real rendering, clipboard, IME,
+keyboard layouts and NVDA remain unverified.

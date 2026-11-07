@@ -43,7 +43,11 @@ Future<void> main(List<String> args) async {
     final results = <String>[];
     for (var i = 0; i < (scenario == 'repeat' ? 2 : 1); i++) {
       final result = await prompt.prompt(
-        mode: scenario == 'rich' ? PromptMode.rich : PromptMode.linear,
+        mode: switch (scenario) {
+          'rich' || 'dumb-rich' => PromptMode.rich,
+          'dumb-auto' => PromptMode.automatic,
+          _ => PromptMode.linear,
+        },
         output: scenario == 'stdout' ? stdout : null,
       );
       results.add(switch (result) {
