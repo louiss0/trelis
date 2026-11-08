@@ -11,18 +11,32 @@ public static class NativeProbe {
   [FieldOffset(14)] public char Char; [FieldOffset(16)] public uint State;
  }
  [StructLayout(LayoutKind.Sequential)] public struct Cursor { public uint Size; public int Visible; }
+ [StructLayout(LayoutKind.Sequential)] public struct Coord { public short X; public short Y; }
+ [StructLayout(LayoutKind.Sequential)] public struct Rect { public short Left; public short Top; public short Right; public short Bottom; }
+ [StructLayout(LayoutKind.Sequential)] public struct BufferInfo { public Coord Size; public Coord Position; public ushort Attributes; public Rect Window; public Coord Maximum; }
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool FreeConsole();
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool AttachConsole(uint id);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr CreateFile(string name,uint access,uint share,IntPtr security,uint creation,uint flags,IntPtr template);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool CloseHandle(IntPtr h);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleMode(IntPtr h,out uint mode);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleCursorInfo(IntPtr h,out Cursor info);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleScreenBufferInfo(IntPtr h,out BufferInfo info);
+ [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool ReadConsoleOutputCharacter(IntPtr h,[Out] ushort[] text,uint length,Coord position,out uint read);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool WriteConsoleInput(IntPtr h,Input[] records,uint length,out uint written);
  public static string State() {
   var i=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   var o=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   try { uint im,om; Cursor c; if(!GetConsoleMode(i,out im)||!GetConsoleMode(o,out om)||!GetConsoleCursorInfo(o,out c)) throw new Exception("console state error " + Marshal.GetLastWin32Error()); return im+":"+om+":"+c.Size+":"+c.Visible; }
   finally { CloseHandle(i); CloseHandle(o); }
+ }
+ public static string EditorState() {
+  var h=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
+  try {
+   BufferInfo info; if(!GetConsoleScreenBufferInfo(h,out info)) throw new Exception("buffer state error " + Marshal.GetLastWin32Error());
+   var text=new ushort[info.Size.X]; uint read;
+   if(!ReadConsoleOutputCharacter(h,text,(uint)info.Size.X,new Coord{X=0,Y=info.Position.Y},out read)) throw new Exception("buffer read error " + Marshal.GetLastWin32Error());
+   return info.Position.X+":"+info.Position.Y+":"+new string(Array.ConvertAll(text,c=>(char)c),0,(int)read).TrimEnd();
+  } finally { CloseHandle(h); }
  }
  public static void Text(string text) {
   var h=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
@@ -40,22 +54,65 @@ $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
 $redirect = if ($Scenario -eq 'redirected') { "2> '$file.stderr'" } else { '' }
 $term = if ($Scenario -like 'dumb-*') { "`$env:TERM='dumb';" } else { "" }
-$line = "$term Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/text_input_native_app.dart $Scenario $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$line = "$term Set-Location '$root'; while (!(Test-Path '$file.ready')) { Start-Sleep -Milliseconds 50 }; & '$dart' run test/text_input_native_app.dart $Scenario $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
  $p=Start-Process powershell.exe -WindowStyle Normal -ArgumentList '-NoProfile','-EncodedCommand',$encoded -PassThru
+ # Let Windows Terminal finish console delegation before attaching the probe.
+ Start-Sleep -Seconds 3
  [void][NativeProbe]::FreeConsole()
  $attached=$false
  for($n=0;$n -lt 100 -and !$attached;$n++){ $attached=[NativeProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
  if(!$attached){throw 'AttachConsole failed'}
  # The Dart launcher itself enables VT output; preserve its normal console baseline.
  $before=[NativeProbe]::State()
+ Set-Content "$file.ready" ready
  Start-Sleep -Seconds 7
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  switch ($Scenario) {
+  'linear-cursor' {
+   if([int]$parts[3] -eq 0){throw "active editor cursor is hidden: $during"}
+   $initial=[NativeProbe]::EditorState()
+   if($initial -notmatch '^7:([0-9]+):> alpha$'){throw "initial cursor is not after the editable default: $initial"}
+   $row=$Matches[1]
+   [NativeProbe]::Key([char]0,0x24,0)
+   Start-Sleep -Milliseconds 300
+   $atHome=[NativeProbe]::EditorState()
+   if($atHome -ne "2:${row}:> alpha"){throw "Home misplaced the cursor: $atHome"}
+   [NativeProbe]::Key([char]0,0x23,0)
+   Start-Sleep -Milliseconds 300
+   $end=[NativeProbe]::EditorState()
+   if($end -ne $initial){throw "End redrew onto another line or misplaced the cursor: $end"}
+   [NativeProbe]::Key([char]0,0x25,0)
+   [NativeProbe]::Text('X')
+   Start-Sleep -Milliseconds 300
+   $edited=[NativeProbe]::EditorState()
+   if($edited -ne "7:${row}:> alphXa"){throw "insertion misplaced the cursor: $edited"}
+   [NativeProbe]::Text("`r")
+  }
+  'linear-long' {
+   if([int]$parts[3] -eq 0){throw "active editor cursor is hidden: $during"}
+   $initial=[NativeProbe]::EditorState()
+   if($initial -notmatch '^([0-9]+):([0-9]+):> <[0-9]+89$'){throw "long default is not clipped onto one editable line: $initial"}
+   $row=$Matches[2]
+   [NativeProbe]::Key([char]0,0x24,0)
+   Start-Sleep -Milliseconds 300
+   $atHome=[NativeProbe]::EditorState()
+   if($atHome -notmatch "^2:${row}:> 0123456789[0-9]+>$"){throw "Home left the long editor row or stale text: $atHome"}
+   [NativeProbe]::Key([char]0,0x23,0)
+   Start-Sleep -Milliseconds 300
+   $end=[NativeProbe]::EditorState()
+   if($end -ne $initial){throw "End moved or corrupted the long editor: $end"}
+   [NativeProbe]::Key([char]0,0x25,0)
+   [NativeProbe]::Text('X')
+   Start-Sleep -Milliseconds 300
+   $edited=[NativeProbe]::EditorState()
+   if($edited -notmatch "^[0-9]+:${row}:> <[0-9]+8X9$"){throw "long-line insertion left stale or wrapped text: $edited"}
+   [NativeProbe]::Text("`r")
+  }
   'repeat' { [NativeProbe]::Text("`r`r") }
   'error' { [NativeProbe]::Text("`r`r") }
   'eof' { [NativeProbe]::Key([char]26,90,8) }
@@ -81,7 +138,7 @@ try {
   if ($actual.Contains([char]27) -or !$actual.Contains('Name')) { throw 'unstable stdout transcript' }
   $actual = ($actual -split "`r?`n")[-1]
  }
- $expected = switch ($Scenario) { 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
+ $expected = switch ($Scenario) { 'linear-cursor' { 'alphXa' } 'linear-long' { ('0123456789' * 29) + '012345678X9' } 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($Scenario -eq 'redirected') {
   $transcript = Get-Content "$file.stderr" -Raw
@@ -90,5 +147,4 @@ try {
  if($before -ne $after){throw "console state changed: $before -> $after"}
  Set-Content $Report "text input $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "text input $Scenario FAIL $_"; throw }
-finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
-
+finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.ready","$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }

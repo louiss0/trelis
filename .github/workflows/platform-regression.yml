@@ -49,7 +49,7 @@ jobs:
       - name: Public TextInput native lifecycle
         shell: pwsh
         run: |
-          foreach ($scenario in @('rich', 'escape', 'interrupt', 'eof', 'error', 'repeat')) {
+          foreach ($scenario in @('rich', 'linear-cursor', 'linear-long', 'redirected', 'dumb-auto', 'escape', 'interrupt', 'eof', 'error', 'repeat')) {
             $report = Join-Path $env:RUNNER_TEMP "text-input-$scenario.txt"
             & powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario $scenario -Report $report
             if (Test-Path $report) { Get-Content $report }

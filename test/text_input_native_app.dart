@@ -8,7 +8,11 @@ Future<void> main(List<String> args) async {
     final scenario = args.isEmpty ? 'repeat' : args.first;
     final prompt = TextInput(
       'Name',
-      initialValue: scenario == 'paste' || scenario == 'unicode' ? '' : 'alpha',
+      initialValue: switch (scenario) {
+        'paste' || 'unicode' => '',
+        'linear-long' => '0123456789' * 30,
+        _ => 'alpha',
+      },
     );
     if (scenario == 'error') {
       final failing = TextInput(

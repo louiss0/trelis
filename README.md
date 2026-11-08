@@ -30,10 +30,16 @@ Construction does not acquire the terminal. Each invocation starts a new
 session; overlapping sessions on the same prompt or console are rejected.
 Interactive console input currently requires Windows. Prompt output defaults to
 stderr; pass `output: stdout` to select stdout. Redirected output is sequential,
-without cursor addressing. Explicit rich mode requires a rich-capable terminal
-output and fails rather than falling back. A terminal declared `TERM=dumb` is not
-rich-capable even when it reports a terminal, so explicit rich mode returns an
-unavailable outcome instead of emitting escape sequences. Mode precedence is
+without cursor addressing. On a cursor-capable terminal, linear TextInput keeps
+the active answer on one editable line with the visible cursor at its editing
+position; instructions and completed exchanges remain in the transcript.
+Long answers scroll horizontally; `<` and `>` indicate hidden text on either side.
+Without that capability, it prints sequential text and cursor-position reports.
+Linear command quoting and validation are unchanged. Explicit rich mode requires
+a rich-capable terminal output and fails rather than falling back. A terminal
+declared `TERM=dumb` is not rich-capable even when it reports a terminal, so
+explicit rich mode returns an unavailable outcome instead of emitting escape
+sequences. Mode precedence is
 `mode`, `userPreference`, `applicationPreference`, then automatic capability
 selection.
 

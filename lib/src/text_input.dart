@@ -200,7 +200,7 @@ final class TextInput {
           value,
           scripted.output,
           linear: mode == PromptMode.linear,
-          sequential: mode != PromptMode.rich,
+          sequential: mode != PromptMode.rich && !scripted.supportsRich,
           maxLength: maxLength,
           onChanged: _onChanged,
         );
@@ -263,6 +263,11 @@ Future<({String action, String value})> _edit(
     pos++;
     synthetic = 0;
   }
+  void notice(String text) {
+    if (!sequential && !secret) output.writeln();
+    output.writeln(text);
+  }
+
   void insert(String data, bool isPaste) {
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
@@ -276,9 +281,7 @@ Future<({String action, String value})> _edit(
               ('\\$command').startsWith(candidate),
         );
     if (limit != null && count > limit && !commandPrefix) {
-      output.writeln(
-        'Insertion rejected: character limit is $limit graphemes.',
-      );
+      notice('Insertion rejected: character limit is $limit graphemes.');
       return;
     }
     final added = data.characters.toList();
@@ -318,13 +321,36 @@ Future<({String action, String value})> _edit(
       output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
       return;
     }
+    var start = 0;
+    var end = chars.length;
+    if (linear && output is Stdout && output.hasTerminal) {
+      // Leave room for the prompt, clipping indicators and the caret. A
+      // conservative upper bound avoids guessing emoji/combining cell widths;
+      // the terminal still positions the actual caret via save/restore.
+      final budget = (output.terminalColumns - 5).clamp(0, 1 << 30);
+      int cells(String grapheme) => grapheme.runes.fold(
+        0,
+        (width, rune) => width + (rune >= 32 && rune < 127 ? 1 : 2),
+      );
+      final prefixBudget = pos < chars.length
+          ? (budget - cells(chars[pos])).clamp(0, budget)
+          : budget;
+      var used = chars.take(pos).fold(0, (sum, char) => sum + cells(char));
+      while (start < pos && used > prefixBudget) {
+        used -= cells(chars[start++]);
+      }
+      end = pos;
+      while (end < chars.length && used + cells(chars[end]) <= budget) {
+        used += cells(chars[end++]);
+      }
+    }
     output.write(
-      '\r\x1b[2K> ${chars.take(pos).join()}\x1b[s${chars.skip(pos).join()}\x1b[u',
+      '\r\x1b[2K> ${start > 0 ? '<' : ''}${chars.sublist(start, pos).join()}\x1b[s${chars.sublist(pos, end).join()}${end < chars.length ? '>' : ''}\x1b[u',
     );
   }
 
-  display();
   onChanged?.call(chars.join());
+  display();
   var help = false;
   while (true) {
     final key = await keys.next();
@@ -347,13 +373,16 @@ Future<({String action, String value})> _edit(
     }
     if (key == '\x14') {
       help = true;
-      output.writeln(
+      notice(
         'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
       );
       continue;
     }
     if (help) continue;
     if (key == '\r' || key == '\n') {
+      if (linear && !sequential && !secret) {
+        output.write('\r\x1b[2K> ${chars.join()}');
+      }
       output.writeln();
       var text = chars.join();
       final literal =
@@ -437,7 +466,7 @@ Future<({String action, String value})> _edit(
         }
       }
     } else if (key == '\x1b[999~') {
-      output.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
+      notice('Paste rejected: exceeds 4096 UTF-16 code units.');
     } else if (key.startsWith('\x1b[200~')) {
       var data = key.substring(6, key.length - 6);
       if (multilinePaste) {
@@ -446,7 +475,7 @@ Future<({String action, String value})> _edit(
       if (data.runes.any(
         (r) => (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
       )) {
-        output.writeln('Paste rejected: single-line printable text only.');
+        notice('Paste rejected: single-line printable text only.');
         display();
         continue;
       }
@@ -454,8 +483,9 @@ Future<({String action, String value})> _edit(
     } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
       insert(key, false);
     }
-    display();
+    if (onChanged != null && !sequential && !secret) output.writeln();
     onChanged?.call(chars.join());
+    display();
   }
 }
 
@@ -866,9 +896,9 @@ Future<PromptResult<T>> _terminal<T>(
       'Interactive console input is unavailable on this platform.',
     );
   }
-  final capable =
+  var capable =
       outputStream.hasTerminal && Platform.environment['TERM'] != 'dumb';
-  final rich =
+  var rich =
       mode == PromptMode.rich || (mode == PromptMode.automatic && capable);
   if (rich && !capable) {
     return Unavailable(
@@ -905,20 +935,25 @@ Future<PromptResult<T>> _terminal<T>(
   }
 
   try {
-    if (console.getMode(input, inputMode) == 0 ||
-        (rich && console.getMode(output, outputMode) == 0)) {
+    if (console.getMode(input, inputMode) == 0) {
       return Unavailable('Console capability unavailable.');
     }
     if (console.setMode(input, inputMode.value & ~0x207) == 0) {
       return Unavailable('Cannot acquire console input.');
     }
     inputAcquired = true;
-    if (rich) {
-      if (console.setMode(output, outputMode.value | 4) == 0) {
-        return Unavailable('Cannot enable rich console output.');
+    if (capable) {
+      if (console.getMode(output, outputMode) == 0 ||
+          console.setMode(output, outputMode.value | 4) == 0) {
+        if (mode == PromptMode.rich) {
+          return Unavailable('Cannot enable terminal cursor addressing.');
+        }
+        capable = false;
+        rich = false;
+      } else {
+        outputAcquired = true;
+        outputStream.write('\x1b[?2004h');
       }
-      outputAcquired = true;
-      outputStream.write('\x1b[?2004h');
     }
     return await run(
       ScriptedInput(
