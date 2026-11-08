@@ -66,7 +66,7 @@ try {
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  $beforeParts=$before.Split(':')
- if ([int]$parts[0] -ne ([int]$beforeParts[0] -band (-bnot 0x207))) {throw "input mode not acquired: $before -> $during"}
+ if ([int]$parts[0] -ne (([int]$beforeParts[0] -band (-bnot 0x207)) -bor 0x200)) {throw "input mode not acquired: $before -> $during"}
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  $expected = '2024-2-29:2567:BE'
  [NativeProbe]::Text("29/2/2567`r")
@@ -95,5 +95,4 @@ try {
  Set-Content $Report "date input $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "date input FAIL $_"; throw }
 finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
-
 

@@ -158,6 +158,20 @@ void main() {
     );
     expect(result, isA<InputEnded<String>>());
   });
+  test('split VT navigation edits without function keys cancelling', () async {
+    for (final mode in [PromptMode.linear, PromptMode.rich]) {
+      final result = await TextInput('Name', initialValue: 'abx').prompt(
+        source: ScriptedInput(
+          Stream.fromIterable(
+            '\x1bOP\x1bOH\x1bOC\x1bOC\x1b[3~c\x1bOF!\x1bOD\x1b[3~\r'.split(''),
+          ),
+          StringBuffer(),
+        ),
+        mode: mode,
+      );
+      expect((result as Accepted<String>).value, 'abc');
+    }
+  });
   test('control C interrupts while help is open', () async {
     final result = await TextInput('Name').prompt(
       source: ScriptedInput(Stream.value('draft\x14\x03'), StringBuffer()),

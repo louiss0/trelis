@@ -66,7 +66,7 @@ try {
  $during=[NativeProbe]::State()
  $parts=$during.Split(':')
  $beforeParts=$before.Split(':')
- if ([int]$parts[0] -ne ([int]$beforeParts[0] -band (-bnot 0x207))) {throw "input mode not acquired: $before -> $during"}
+ if ([int]$parts[0] -ne (([int]$beforeParts[0] -band (-bnot 0x207)) -bor 0x200)) {throw "input mode not acquired: $before -> $during"}
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  $cancelling = $Scenario.EndsWith('-cancel')
  $expression = if ($cancelling) { '0 0 31 2 *' } else { '* * * * *' }
@@ -111,6 +111,5 @@ try {
  Set-Content $Report "cron input $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "cron input FAIL $_"; throw }
 finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
-
 
 

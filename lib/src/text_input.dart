@@ -577,14 +577,21 @@ class _Keys {
         return;
       }
       if (_buffer.startsWith('\x1b')) {
-        final match = RegExp(r'^\x1b\[[0-9;]*[A-Za-z~]').firstMatch(_buffer);
+        final match = RegExp(r'^\x1b(?:\[[0-9;]*[A-Za-z~]|O[A-Za-z])')
+            .firstMatch(_buffer);
         if (match != null) {
           final s = match.group(0)!;
-          _emit(s);
+          _emit(
+            s.startsWith('\x1bO') && 'ABCDHF'.contains(s[2])
+                ? '\x1b[${s[2]}'
+                : s,
+          );
           _buffer = _buffer.substring(s.length);
           continue;
         }
-        if (_buffer == '\x1b' || _buffer.startsWith('\x1b[')) {
+        if (_buffer == '\x1b' ||
+            _buffer == '\x1bO' ||
+            _buffer.startsWith('\x1b[')) {
           _timer = Timer(const Duration(milliseconds: 80), () {
             _emit('\x1b');
             _buffer = _buffer.substring(1);
@@ -977,6 +984,12 @@ Future<PromptResult<T>> _terminal<T>(
         rich = false;
       } else {
         outputAcquired = true;
+        // ConPTY strips bracketed-paste markers unless VT input is enabled.
+        // Gesture capture still needs native virtual-key and modifier records.
+        if (capture == null) {
+          // If unsupported, retain native input and the unframed-paste grammar.
+          console.setMode(input, (inputMode.value & ~0x207) | 0x200);
+        }
         outputStream.write('\x1b[?2004h');
       }
     }

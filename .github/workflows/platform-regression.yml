@@ -55,3 +55,8 @@ jobs:
             if (Test-Path $report) { Get-Content $report }
             if ($LASTEXITCODE -ne 0) { throw "Native scenario $scenario failed with exit code $LASTEXITCODE" }
           }
+      - name: Multiline paste through the Windows pseudoconsole
+        shell: pwsh
+        run: |
+          & powershell -NoProfile -ExecutionPolicy Bypass -File test/multiline_conpty_windows.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Multiline pseudoconsole regression failed with exit code $LASTEXITCODE" }
