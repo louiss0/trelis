@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:prompty/prompty.dart';
@@ -5,6 +6,122 @@ import 'package:test/test.dart';
 
 void main() {
   for (final mode in [PromptMode.rich, PromptMode.linear]) {
+    final sessions =
+        <
+          String,
+          Future<PromptResult<Object?>> Function({
+            PromptSource? source,
+            PromptMode? mode,
+          })
+        >{
+          'TextInput': TextInput('Name').prompt,
+          'Password': Password('Password').prompt,
+          'Multiline': Multiline('Notes').prompt,
+          'Autocomplete': Autocomplete(
+            'Name',
+            suggestions: (_) => ['Ada'],
+          ).prompt,
+          'TagInput': TagInput('Tags').prompt,
+          'Confirm': Confirm('Confirm').prompt,
+          'Checkbox': Checkbox('Checkbox').prompt,
+          'Toggle': Toggle('Toggle').prompt,
+          'Select': Select('Choice', [Choice('a', 'A')]).prompt,
+          'Radio': Radio('Choice', [Choice('a', 'A')]).prompt,
+          'MultiSelect': MultiSelect('Choices', [Choice('a', 'A')]).prompt,
+          'SearchSelect': SearchSelect('Search', [Choice('a', 'A')]).prompt,
+          'CommandPalette': CommandPalette('Command', [
+            Choice('a', 'A'),
+          ]).prompt,
+          'TimezoneSelect': TimezoneSelect('Zone').prompt,
+          'TreeSelect': TreeSelect('Tree', [TreeNode('a', 'A')]).prompt,
+          'SortableSelect': SortableSelect('Order', [Choice('a', 'A')]).prompt,
+          'Slider': Slider(
+            'Volume',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+          ).prompt,
+          'RangeSlider': RangeSlider(
+            'Range',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+          ).prompt,
+          'TimeInput': TimeInput('Time').prompt,
+          'PathInput': PathInput('Path').prompt,
+          'FilePicker': FilePicker('File').prompt,
+          'DirectoryPicker': DirectoryPicker('Directory').prompt,
+          'Keypress': Keypress('Key').prompt,
+          'KeyChordInput': KeyChordInput('Sequence').prompt,
+          'NumberInput': NumberInput(
+            'Number',
+            convention: NumericConvention.ascii(),
+          ).prompt,
+          'PortInput': PortInput('Port').prompt,
+          'IPAddressInput': IPAddressInput('Address').prompt,
+          'URLInput': URLInput('URL', allowedSchemes: {'https'}).prompt,
+          'EmailInput': EmailInput('Email').prompt,
+          'ColorInput': ColorInput('Color').prompt,
+          'MaskedInput': MaskedInput(
+            'Code',
+            templates: [
+              MaskTemplate('digit', [
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+              ]),
+            ],
+          ).prompt,
+          'DurationInput': DurationInput(
+            'Span',
+            durationMode: DurationInputMode.elapsed,
+          ).prompt,
+          'DateInput': DateInput(
+            'Date',
+            order: DateFieldOrder.dayMonthYear,
+          ).prompt,
+          'CronInput': CronInput('Schedule', profile: CronProfile.unix).prompt,
+        };
+    for (final entry in sessions.entries) {
+      test('${entry.key} / ${mode.name}: reject overlap and recover', () async {
+        final input = StreamController<String>();
+        addTearDown(input.close);
+        final pending = entry.value(
+          source: ScriptedInput(input.stream, StringBuffer()),
+          mode: mode,
+        );
+        await expectLater(
+          entry.value(
+            source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+            mode: mode,
+          ),
+          throwsStateError,
+        );
+        final failure = StateError('input failed');
+        final failed = expectLater(pending, throwsA(same(failure)));
+        input.addError(failure);
+        await failed;
+        expect(
+          await entry.value(
+            source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
+            mode: mode,
+          ),
+          isA<InputEnded<Object?>>(),
+        );
+        expect(
+          await entry.value(
+            source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+            mode: mode,
+          ),
+          isA<Interrupted<Object?>>(),
+        );
+        expect(
+          await entry.value(
+            source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
+            mode: mode,
+          ),
+          isA<InputEnded<Object?>>(),
+        );
+      });
+    }
     test('TextInput / ${mode.name}: submit an edited answer', () async {
       final out = StringBuffer();
       final result = await TextInput(

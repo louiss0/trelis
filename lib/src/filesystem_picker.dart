@@ -2,9 +2,11 @@ part of 'text_input.dart';
 
 /// Selects an existing file without opening or changing it.
 final class FilePicker {
-  FilePicker(this.label, {this.base});
+  FilePicker(this.label, {this.base})
+    : _picker = _FilesystemPicker(label, base, PathTarget.file);
   final String label;
   final String? base;
+  final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -12,7 +14,7 @@ final class FilePicker {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
-  }) => _FilesystemPicker(label, base, PathTarget.file).prompt(
+  }) => _picker.prompt(
     source: source,
     mode: mode,
     userPreference: userPreference,
@@ -23,9 +25,11 @@ final class FilePicker {
 
 /// Selects an existing directory without opening or changing it.
 final class DirectoryPicker {
-  DirectoryPicker(this.label, {this.base});
+  DirectoryPicker(this.label, {this.base})
+    : _picker = _FilesystemPicker(label, base, PathTarget.directory);
   final String label;
   final String? base;
+  final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -33,7 +37,7 @@ final class DirectoryPicker {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
-  }) => _FilesystemPicker(label, base, PathTarget.directory).prompt(
+  }) => _picker.prompt(
     source: source,
     mode: mode,
     userPreference: userPreference,

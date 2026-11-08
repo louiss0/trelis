@@ -5,6 +5,56 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  for (final mode in [PromptMode.rich, PromptMode.linear]) {
+    for (final directory in [false, true]) {
+      test(
+        '${directory ? 'DirectoryPicker' : 'FilePicker'} / ${mode.name}: reuse resets browsing state',
+        () async {
+          final base = await Directory.systemTemp.createTemp('picker-reuse-');
+          addTearDown(() => base.delete(recursive: true));
+          final child = await Directory(path.join(base.path, 'child')).create();
+          final rootFile = await File(path.join(base.path, 'answer.txt'))
+              .writeAsString('root');
+          final childFile = await File(path.join(child.path, 'answer.txt'))
+              .writeAsString('child');
+          for (final folder in [base, child]) {
+            await File(path.join(folder.path, '.hidden'))
+                .writeAsString('hidden');
+          }
+          final prompt = directory
+              ? DirectoryPicker('Directory', base: base.path).prompt
+              : FilePicker('File', base: base.path).prompt;
+          final first = await prompt(
+            source: ScriptedInput(
+              Stream.value(
+                'open 2\rhidden\r${directory ? 'choose' : 'choose 2'}\r\r',
+              ),
+              StringBuffer(),
+            ),
+            mode: mode,
+          );
+          expect(
+            (first as Accepted<String>).value,
+            directory ? child.path : childFile.path,
+          );
+          final output = StringBuffer();
+          final second = await prompt(
+            source: ScriptedInput(
+              Stream.value('${directory ? 'choose' : 'choose 1'}\r\r'),
+              output,
+            ),
+            mode: mode,
+          );
+          expect(
+            (second as Accepted<String>).value,
+            directory ? base.path : rootFile.path,
+          );
+          expect(output.toString(), contains('Hidden entries: hidden'));
+          expect(output.toString(), isNot(contains('.hidden')));
+        },
+      );
+    }
+  }
   test('supplied file selection requires an existing file', () async {
     final dir = await Directory.systemTemp.createTemp('picker_test');
     addTearDown(() => dir.delete(recursive: true));
