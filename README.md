@@ -43,6 +43,14 @@ sequences. Mode precedence is
 `mode`, `userPreference`, `applicationPreference`, then automatic capability
 selection.
 
+For TextInput and Password, Ctrl+T opens temporary help in either mode on
+VT-enabled Windows consoles and recognized xterm/screen/tmux/rxvt terminals.
+Escape removes that help and restores the previous input view and caret;
+a second Escape cancels. Interruption, EOF and input errors also close the
+temporary help screen. Redirected, incapable or unrecognized outputs retain
+help text in the transcript instead. Typed `/help` and Password action help
+remain transcript responses, not temporary screens.
+
 Redirected stdin is never consumed implicitly. Supply a literal value with
 `source: SuppliedAnswer(value)`, or explicitly opt into a stream with
 `ScriptedInput(stream, sink, supportsRich: false)`. Supplied answers are literal

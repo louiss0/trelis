@@ -14,6 +14,26 @@ Future<void> main(List<String> args) async {
         _ => 'alpha',
       },
     );
+    if (scenario.startsWith('help-')) {
+      final mode = scenario.endsWith('rich')
+          ? PromptMode.rich
+          : PromptMode.linear;
+      final result = scenario.contains('password')
+          ? await Password('Synthetic password').prompt(mode: mode)
+          : await prompt.prompt(mode: mode);
+      // Never print the hidden answer, even for a synthetic native test.
+      print(switch (result) {
+        Accepted<String>(:final value) =>
+          scenario.contains('password')
+              ? (value == 'secret' ? 'accepted' : 'wrong')
+              : value,
+        Interrupted<String>() => 'interrupt',
+        Cancelled<String>() => 'cancel',
+        InputEnded<String>() => 'eof',
+        _ => 'failed',
+      });
+      return;
+    }
     if (scenario == 'error') {
       final failing = TextInput(
         'Failure',

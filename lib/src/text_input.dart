@@ -69,6 +69,14 @@ final class ScriptedInput extends PromptSource {
   final Stream<String> input;
   final StringSink output;
   final bool supportsRich;
+
+  // Cursor addressing alone does not imply an alternate screen (for example,
+  // the Linux virtual console). Unknown POSIX terminals retain transcript help.
+  bool get _supportsTemporaryHelp =>
+      supportsRich &&
+      (Platform.isWindows ||
+          RegExp(r'^(xterm|screen|tmux|rxvt)(-|$)')
+              .hasMatch(Platform.environment['TERM'] ?? ''));
 }
 
 enum PromptMode { rich, linear, automatic }
@@ -201,6 +209,7 @@ final class TextInput {
           scripted.output,
           linear: mode == PromptMode.linear,
           sequential: mode != PromptMode.rich && !scripted.supportsRich,
+          transientHelp: scripted._supportsTemporaryHelp,
           maxLength: maxLength,
           onChanged: _onChanged,
         );
@@ -237,6 +246,7 @@ Future<({String action, String value})> _edit(
   StringSink output, {
   bool linear = false,
   bool sequential = false,
+  bool transientHelp = false,
   bool secret = false,
   bool mask = false,
   bool clearHelpCommand = false,
@@ -352,140 +362,155 @@ Future<({String action, String value})> _edit(
   onChanged?.call(chars.join());
   display();
   var help = false;
-  while (true) {
-    final key = await keys.next();
-    if (key == null || key == '\x1a') return (action: 'eof', value: '');
-    if (key == '\x03') return (action: 'interrupt', value: '');
-    if (!help) {
-      final action = intercept?.call(key, chars.join());
-      if (action == 'handled') {
-        display();
-        continue;
-      }
-      if (action != null) return (action: action, value: chars.join());
-    }
-    if (key == '\x1b') {
-      if (!help) return (action: 'cancel', value: '');
-      help = false;
-      output.writeln('Help dismissed.');
-      display();
-      continue;
-    }
-    if (key == '\x14') {
-      help = true;
-      notice(
-        'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
-      );
-      continue;
-    }
-    if (help) continue;
-    if (key == '\r' || key == '\n') {
-      if (linear && !sequential && !secret) {
-        output.write('\r\x1b[2K> ${chars.join()}');
-      }
-      output.writeln();
-      var text = chars.join();
-      final literal =
-          synthetic >= 0 ||
-          provenance.contains(true) ||
-          (linear &&
-              (text.startsWith(r'\\') ||
-                  (text.startsWith(r'\') &&
-                      {
-                        '/cancel',
-                        '/help',
-                        ...extraCommands,
-                      }.contains(text.substring(1)))));
-      if (synthetic >= 0) {
-        final answer = chars.toList();
-        answer[synthetic] = answer[synthetic].substring(1);
-        text = answer.join();
-      } else if (linear && !provenance.contains(true)) {
-        if (text == '/help') {
-          if (extraCommands.isNotEmpty) {
-            output.writeln(
-              'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
-            );
-          } else {
-            output.writeln(
-              r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
-            );
-          }
-          if (clearHelpCommand || extraCommands.isNotEmpty) {
-            chars.clear();
-            provenance.clear();
-            pos = 0;
-          }
+  try {
+    while (true) {
+      final key = await keys.next();
+      if (key == null || key == '\x1a') return (action: 'eof', value: '');
+      if (key == '\x03') return (action: 'interrupt', value: '');
+      if (!help) {
+        final action = intercept?.call(key, chars.join());
+        if (action == 'handled') {
           display();
           continue;
         }
-        if (text == '/cancel') return (action: 'cancel', value: '');
-        if (extraCommands.contains(text)) {
-          return (action: 'command', value: text);
-        }
-        if (text.startsWith(r'\\') ||
-            (text.startsWith(r'\') &&
-                ({
-                  '/cancel',
-                  '/help',
-                  ...extraCommands,
-                }).contains(text.substring(1)))) {
-          text = text.substring(1);
-        }
+        if (action != null) return (action: action, value: chars.join());
       }
-      onSubmit?.call(literal);
-      return (action: 'submit', value: text);
-    }
-    if (key == '\x1b[D') {
-      if (pos > 0) pos--;
-    } else if (key == '\x1b[C') {
-      if (pos < chars.length) pos++;
-    } else if (key == '\x1b[H' || key == '\x01') {
-      pos = 0;
-    } else if (key == '\x1b[F' || key == '\x05') {
-      pos = chars.length;
-    } else if (key == '\x7f' || key == '\x08') {
-      if (pos > 0) {
-        pos--;
-        chars.removeAt(pos);
-        provenance.removeAt(pos);
-        if (pos == synthetic) {
-          synthetic = -1;
-        } else if (pos < synthetic) {
-          synthetic--;
+      if (key == '\x1b') {
+        if (!help) return (action: 'cancel', value: '');
+        help = false;
+        if (transientHelp) {
+          output.write('\x1b[?1049l');
+        } else {
+          output.writeln('Help dismissed.');
+          display();
         }
-      }
-    } else if (key == '\x1b[3~') {
-      if (pos < chars.length) {
-        chars.removeAt(pos);
-        provenance.removeAt(pos);
-        if (pos == synthetic) {
-          synthetic = -1;
-        } else if (pos < synthetic) {
-          synthetic--;
-        }
-      }
-    } else if (key == '\x1b[999~') {
-      notice('Paste rejected: exceeds 4096 UTF-16 code units.');
-    } else if (key.startsWith('\x1b[200~')) {
-      var data = key.substring(6, key.length - 6);
-      if (multilinePaste) {
-        data = data.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-      }
-      if (data.runes.any(
-        (r) => (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
-      )) {
-        notice('Paste rejected: single-line printable text only.');
-        display();
         continue;
       }
-      insert(data, true);
-    } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
-      insert(key, false);
+      if (key == '\x14') {
+        if (help) continue;
+        help = true;
+        if (transientHelp) {
+          output.write('\x1b[?1049h\x1b[H');
+        } else if (!sequential && !secret) {
+          output.writeln();
+        }
+        output.writeln(
+          'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
+        );
+        continue;
+      }
+      if (help) continue;
+      if (key == '\r' || key == '\n') {
+        if (linear && !sequential && !secret) {
+          output.write('\r\x1b[2K> ${chars.join()}');
+        }
+        output.writeln();
+        var text = chars.join();
+        final literal =
+            synthetic >= 0 ||
+            provenance.contains(true) ||
+            (linear &&
+                (text.startsWith(r'\\') ||
+                    (text.startsWith(r'\') &&
+                        {
+                          '/cancel',
+                          '/help',
+                          ...extraCommands,
+                        }.contains(text.substring(1)))));
+        if (synthetic >= 0) {
+          final answer = chars.toList();
+          answer[synthetic] = answer[synthetic].substring(1);
+          text = answer.join();
+        } else if (linear && !provenance.contains(true)) {
+          if (text == '/help') {
+            if (extraCommands.isNotEmpty) {
+              output.writeln(
+                'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+              );
+            } else {
+              output.writeln(
+                r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
+              );
+            }
+            if (clearHelpCommand || extraCommands.isNotEmpty) {
+              chars.clear();
+              provenance.clear();
+              pos = 0;
+            }
+            display();
+            continue;
+          }
+          if (text == '/cancel') return (action: 'cancel', value: '');
+          if (extraCommands.contains(text)) {
+            return (action: 'command', value: text);
+          }
+          if (text.startsWith(r'\\') ||
+              (text.startsWith(r'\') &&
+                  ({
+                    '/cancel',
+                    '/help',
+                    ...extraCommands,
+                  }).contains(text.substring(1)))) {
+            text = text.substring(1);
+          }
+        }
+        onSubmit?.call(literal);
+        return (action: 'submit', value: text);
+      }
+      if (key == '\x1b[D') {
+        if (pos > 0) pos--;
+      } else if (key == '\x1b[C') {
+        if (pos < chars.length) pos++;
+      } else if (key == '\x1b[H' || key == '\x01') {
+        pos = 0;
+      } else if (key == '\x1b[F' || key == '\x05') {
+        pos = chars.length;
+      } else if (key == '\x7f' || key == '\x08') {
+        if (pos > 0) {
+          pos--;
+          chars.removeAt(pos);
+          provenance.removeAt(pos);
+          if (pos == synthetic) {
+            synthetic = -1;
+          } else if (pos < synthetic) {
+            synthetic--;
+          }
+        }
+      } else if (key == '\x1b[3~') {
+        if (pos < chars.length) {
+          chars.removeAt(pos);
+          provenance.removeAt(pos);
+          if (pos == synthetic) {
+            synthetic = -1;
+          } else if (pos < synthetic) {
+            synthetic--;
+          }
+        }
+      } else if (key == '\x1b[999~') {
+        notice('Paste rejected: exceeds 4096 UTF-16 code units.');
+      } else if (key.startsWith('\x1b[200~')) {
+        var data = key.substring(6, key.length - 6);
+        if (multilinePaste) {
+          data = data.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+        }
+        if (data.runes.any(
+          (r) =>
+              (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
+        )) {
+          notice('Paste rejected: single-line printable text only.');
+          display();
+          continue;
+        }
+        insert(data, true);
+      } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
+        insert(key, false);
+      }
+      if (onChanged != null && !sequential && !secret) output.writeln();
+      onChanged?.call(chars.join());
+      display();
     }
-    if (onChanged != null && !sequential && !secret) output.writeln();
-    onChanged?.call(chars.join());
-    display();
+  } finally {
+    if (help && transientHelp) output.write('\x1b[?1049l');
   }
 }
 
@@ -1087,6 +1112,7 @@ final class Password {
           scripted.output,
           secret: true,
           mask: mask,
+          transientHelp: scripted._supportsTemporaryHelp,
         );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
@@ -1096,7 +1122,13 @@ final class Password {
           scripted.output.writeln(
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
           );
-          final action = await _edit(keys, '', scripted.output, secret: true);
+          final action = await _edit(
+            keys,
+            '',
+            scripted.output,
+            secret: true,
+            transientHelp: scripted._supportsTemporaryHelp,
+          );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
           if (action.action != 'submit') return InputEnded();
