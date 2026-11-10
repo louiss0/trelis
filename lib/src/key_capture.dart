@@ -8,6 +8,12 @@ enum KeyGestureProvenance { observed, declared, ambiguous }
 final class KeyGesture {
   KeyGesture._(this.key, Set<KeyModifier> modifiers, this.provenance)
     : modifiers = Set.unmodifiable(modifiers);
+
+  /// The key spelling supplied by the source, without case normalization.
+  ///
+  /// Declarations retain their spelling, legacy letter input retains the
+  /// received character, and Windows observations use uppercase virtual-key
+  /// letters regardless of Shift.
   final String key;
   final Set<KeyModifier> modifiers;
   final KeyGestureProvenance provenance;

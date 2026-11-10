@@ -281,4 +281,115 @@ void main() {
     expect((result as Accepted<String>).value, 'apple');
     expect(output.toString(), contains('1. Apple'));
   });
+  test('failed search remains distinct from empty results on list', () async {
+    final out = StringBuffer();
+    final result =
+        await SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ], search: (_) => throw StateError('offline')).prompt(
+          source: ScriptedInput(Stream.value('x\r/list\r/cancel\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect(result, isA<Cancelled<String>>());
+    expect(
+      'Search unavailable; edit the query to retry.'
+          .allMatches(out.toString())
+          .length,
+      greaterThanOrEqualTo(2),
+    );
+    expect(out.toString(), isNot(contains('No matching choices')));
+  });
+  test(
+    'invalid identities fail and edited query recovers source order',
+    () async {
+      for (final invalid in [
+        <Choice<String>>[Choice('z', 'Unknown')],
+        <Choice<String>>[Choice('a', 'First'), Choice('a', 'Again')],
+      ]) {
+        final out = StringBuffer();
+        final result =
+            await SearchSelect(
+              'Fruit',
+              [Choice('a', 'Apple'), Choice('b', 'Banana')],
+              search: (q) => q == 'x'
+                  ? invalid
+                  : [Choice('b', 'Renamed B'), Choice('a', 'Renamed A')],
+            ).prompt(
+              source: ScriptedInput(
+                Stream.value('x\r/list\r1\r/search\r\x7fy\r2\r'),
+                out,
+              ),
+              mode: PromptMode.linear,
+            );
+        expect((result as Accepted<String>).value, 'b');
+        expect(out.toString(), contains('unknown or duplicate identities'));
+        expect(
+          out.toString(),
+          contains('Search unavailable; edit the query to retry.'),
+        );
+        expect(out.toString(), contains('Choose a current result reference.'));
+        expect(out.toString(), contains('1. Renamed A'));
+        expect(out.toString(), contains('2. Renamed B'));
+        expect(
+          out.toString().indexOf('1. Renamed A'),
+          lessThan(out.toString().indexOf('2. Renamed B')),
+        );
+      }
+    },
+  );
+  test(
+    'rich obsolete success and error do not disturb current results',
+    () async {
+      final requests = <String, Completer<List<Choice<String>>>>{};
+      final input = StreamController<String>();
+      final out = StringBuffer();
+      final result = SearchSelect(
+        'Fruit',
+        [Choice('a', 'Apple'), Choice('b', 'Banana')],
+        search: (q) =>
+            requests.putIfAbsent(q, Completer<List<Choice<String>>>.new).future,
+      ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.rich);
+      input.add('a');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      input.add('b');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      input.add('c\r');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      requests['abc']!.complete([Choice('b', 'Fresh')]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      requests['ab']!.completeError(StateError('stale'));
+      requests['a']!.complete([Choice('a', 'Stale')]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      input.add('\r');
+      expect((await result as Accepted<String>).value, 'b');
+      expect(out.toString(), isNot(contains('Search unavailable')));
+      expect(out.toString(), isNot(contains('Stale')));
+      await input.close();
+    },
+  );
+  test('async failure persists on list and edited query recovers', () async {
+    final out = StringBuffer();
+    final input = StreamController<String>();
+    final pending = Completer<List<Choice<String>>>();
+    final result = SearchSelect<String>(
+      'Fruit',
+      [Choice('a', 'Apple')],
+      search: (q) =>
+          q == 'x' ? pending.future : <Choice<String>>[Choice('a', 'Apple')],
+    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    input.add('x\r');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    pending.completeError(StateError('offline'));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    input.add('/list\r1\r/search\r\x7fy\r1\r');
+    expect((await result as Accepted<String>).value, 'a');
+    expect(
+      'Search unavailable; edit the query to retry.'
+          .allMatches(out.toString())
+          .length,
+      greaterThanOrEqualTo(2),
+    );
+    expect(out.toString(), contains('Choose a current result reference.'));
+    await input.close();
+  });
 }

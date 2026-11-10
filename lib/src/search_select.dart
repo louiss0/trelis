@@ -141,6 +141,7 @@ final class SearchSelect<T> {
     const size = 10;
     var current = <int, Choice<T>>{};
     var loading = false;
+    var failed = false;
     var closed = false;
     var generation = 0;
     String? requestedQuery;
@@ -163,6 +164,8 @@ final class SearchSelect<T> {
       out.writeln('$label $_kind: ${matches.length} results for "$query".');
       if (loading) {
         out.writeln('Searching; results cannot be accepted yet.');
+      } else if (failed) {
+        out.writeln('Search unavailable; edit the query to retry.');
       } else if (matches.isEmpty) {
         out.writeln('No matching choices; edit the query.');
       }
@@ -201,6 +204,7 @@ final class SearchSelect<T> {
       final requestId = ++generation;
       current = {};
       loading = true;
+      failed = false;
       void apply(List<Choice<T>> results) {
         if (closed || requestId != generation) return;
         final next = <int, Choice<T>>{};
@@ -208,6 +212,7 @@ final class SearchSelect<T> {
           final index = choices.indexWhere((c) => c.value == candidate.value);
           if (index < 0 || next.containsKey(index)) {
             loading = false;
+            failed = true;
             out.writeln('Search returned unknown or duplicate identities.');
             return;
           }
@@ -240,6 +245,7 @@ final class SearchSelect<T> {
       void fail(Object error) {
         if (closed || requestId != generation) return;
         loading = false;
+        failed = true;
         out.writeln('Search unavailable; edit the query to retry.');
       }
 

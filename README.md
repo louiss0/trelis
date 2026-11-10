@@ -619,7 +619,11 @@ letters or digits, `F1` through `F12`, `Enter`, `Tab`, `Escape`, `Space`,
 `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`. Declarations are unverified;
 `KeyGesture.warnings` identifies this and reserved declarations. They do not
 prove future delivery or absence of conflicts. `requireObservation` rejects
-declarations and ambiguous stream captures.
+declarations and ambiguous stream captures. Key spelling is not normalized:
+letters in declarations retain their entered case, legacy byte-stream captures
+retain the received character's case, and Windows observations use uppercase
+virtual-key letters, including when Shift is reported. Compare keys with this
+source-dependent casing in mind.
 
 On the Windows console, key-down records supply virtual key and modifier state;
 repeated key-down records for a held key do not create additional captures.

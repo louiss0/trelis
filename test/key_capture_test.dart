@@ -41,6 +41,44 @@ void main() {
     expect(() => KeyChordInput('  '), throwsArgumentError);
   });
 
+  test(
+    'declarations retain letter case in single and sequence prompts',
+    () async {
+      final single = await Keypress('Shortcut')
+          .prompt(source: SuppliedAnswer('Shift+a'));
+      final gesture = (single as Accepted<KeyGesture>).value;
+      expect(gesture.key, 'a');
+      expect(gesture.modifiers, {KeyModifier.shift});
+      expect(gesture.provenance, KeyGestureProvenance.declared);
+
+      final sequence = await KeyChordInput('Sequence')
+          .prompt(source: SuppliedAnswer('Ctrl+a,Shift+A'));
+      final gestures = (sequence as Accepted<List<KeyGesture>>).value;
+      expect(gestures.map((g) => g.key), ['a', 'A']);
+      expect(gestures.map((g) => g.provenance), [
+        KeyGestureProvenance.declared,
+        KeyGestureProvenance.declared,
+      ]);
+    },
+  );
+
+  test('scripted captures retain received letter case and ambiguity', () async {
+    final result = await KeyChordInput('Sequence').prompt(
+      source: ScriptedInput(Stream.value('cacA\r'), StringBuffer()),
+      mode: PromptMode.rich,
+    );
+    final gestures = (result as Accepted<List<KeyGesture>>).value;
+    expect(gestures.map((g) => g.key), ['a', 'A']);
+    expect(gestures.map((g) => g.modifiers), [
+      <KeyModifier>{},
+      <KeyModifier>{},
+    ]);
+    expect(gestures.map((g) => g.provenance), [
+      KeyGestureProvenance.ambiguous,
+      KeyGestureProvenance.ambiguous,
+    ]);
+  });
+
   test('legacy arrow capture retains ambiguous provenance', () async {
     final result = await Keypress('Shortcut').prompt(
       source: ScriptedInput(Stream.value('c\x1b[A\r'), StringBuffer()),

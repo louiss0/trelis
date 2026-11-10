@@ -266,4 +266,87 @@ void main() {
       expect(result, isA<Cancelled<String>>());
     },
   );
+  test(
+    'rich introduction distinguishes candidate acceptance from submission',
+    () async {
+      final out = StringBuffer();
+      final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
+          .prompt(
+            source: ScriptedInput(Stream.value('Grace\r'), out),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<String>).value, 'Grace');
+      expect(
+        out.toString(),
+        contains(
+          'Tab accepts the first or active candidate; Enter accepts an active candidate or submits text',
+        ),
+      );
+    },
+  );
+  test(
+    'obsolete suggestion errors do not disturb current candidates',
+    () async {
+      final requests = <String, Completer<List<String>>>{};
+      final input = StreamController<String>();
+      final out = StringBuffer();
+      final result = Autocomplete(
+        'Name',
+        suggestions: (q) =>
+            requests.putIfAbsent(q, Completer<List<String>>.new).future,
+      ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.rich);
+      input.add('a');
+      while (!requests.containsKey('a')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      input.add('b');
+      while (!requests.containsKey('ab')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      requests['ab']!.complete(['Current']);
+      await Future<void>.delayed(Duration.zero);
+      requests['a']!.completeError(StateError('obsolete'));
+      await Future<void>.delayed(Duration.zero);
+      input.add('\t\r');
+      expect((await result as Accepted<String>).value, 'Current');
+      expect(out.toString(), isNot(contains('Suggestions unavailable.')));
+      await input.close();
+    },
+  );
+  test(
+    'pending rich suggestions cannot be accepted with Tab or Enter',
+    () async {
+      final pending = Completer<List<String>>();
+      final input = StreamController<String>();
+      final out = StringBuffer();
+      final result = Autocomplete(
+        'Name',
+        suggestions: (_) => pending.future,
+      ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.rich);
+      input.add('draft\t\r');
+      expect((await result as Accepted<String>).value, 'draft');
+      expect(out.toString(), isNot(contains('Accepted into editable text:')));
+      final snapshot = out.toString();
+      pending.complete(['Late']);
+      await Future<void>.delayed(Duration.zero);
+      expect(out.toString(), snapshot);
+      await input.close();
+    },
+  );
+  test('late suggestion error writes nothing after cancellation', () async {
+    final pending = Completer<List<String>>();
+    final input = StreamController<String>();
+    final out = StringBuffer();
+    final result = Autocomplete(
+      'Name',
+      suggestions: (_) => pending.future,
+    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    input.add('draft\r/cancel\r');
+    expect(await result, isA<Cancelled<String>>());
+    final snapshot = out.toString();
+    pending.completeError(StateError('late'));
+    await Future<void>.delayed(Duration.zero);
+    expect(out.toString(), snapshot);
+    await input.close();
+  });
 }

@@ -198,7 +198,7 @@ final class Autocomplete {
   }) async {
     final out = source.output;
     out.writeln(
-      '$label. Type text; Up/Down inspect suggestions; Tab or Enter accepts a candidate; Enter submits; Escape dismisses suggestions, then cancels.',
+      '$label. Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
     );
     final keys = _Keys(source.input.transform(utf8.encoder));
     var value = initialValue;

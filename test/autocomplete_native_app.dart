@@ -1,9 +1,32 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 
-Future<void> main() async {
+// In stale mode, type a then b: the a response is released after ab.
+Future<List<String>> Function(String) controlledSuggestions(String scenario) {
+  final old = Completer<List<String>>();
+  return (query) async {
+    if (scenario == 'failure' && query == 'fail') {
+      throw StateError('controlled search failure');
+    }
+    if (scenario == 'stale' && query == 'a') return old.future;
+    if (scenario == 'stale' && query == 'ab') {
+      Timer.run(() {
+        if (!old.isCompleted) old.complete(['Obsolete']);
+      });
+      return ['Current'];
+    }
+    return query == 'ok' ? ['Recovered'] : <String>[];
+  };
+}
+
+Future<void> main(List<String> args) async {
+  final scenario = args.firstOrNull;
   final result = await Autocomplete(
     'Name',
-    suggestions: (_) => ['Ada', 'Grace'],
+    suggestions: scenario == 'stale' || scenario == 'failure'
+        ? controlledSuggestions(scenario!)
+        : (_) => ['Ada', 'Grace'],
   ).prompt(mode: PromptMode.rich);
   print(switch (result) {
     Accepted<String>(:final value) => value,
