@@ -1,4 +1,20 @@
-# Targeted interaction gaps
+# Targeted interaction gaps — closed
+
+## Closure
+
+Status: **closed at the user's direction**.
+
+- All components have agent-executed interaction coverage, as confirmed by the
+  user; the agent performed the interactions on the user's behalf.
+- The specific async, identity/order, failure-presentation, casing and wording
+  gaps are addressed by the implementation, regression tests and native checks
+  recorded below. Analysis was clean and all 639 tests passed.
+- The user reports that NVDA works properly across all components and that they
+  found no NVDA problems. This is user-reported evidence, not a claim that the
+  agent independently assessed NVDA speech.
+- No additional physical-keyboard rerun or formal accessibility certification
+  is required to close this targeted issue. The rendering/focus observations
+  below are non-blocking follow-up notes, not unresolved acceptance gates.
 
 Scope: follow-up to existing per-component manual interaction coverage, not a
 restart of that coverage or a whole-library accessibility qualification.
@@ -115,10 +131,13 @@ are the agreed regression seams. Native injected console events are engineering
 checks, not real keyboard, rendering or nonvisual usability evidence. Existing
 manual interaction coverage is not invalidated by these targeted additions.
 
-Human/NVDA evidence stays separate and pending unless actually supplied. Record
-Windows Terminal, shell, NVDA/version/settings, keyboard/layout, locale, mode,
-input protocol, exact application/backend revision and sanitized task outcomes.
-Do not record secrets. Real clipboard/IME/layout and Linux/macOS native evidence
-are not implied by Windows or scripted passes. See
+The user's confirmation of no NVDA problems across all components is recorded
+in the closure above. A formal version-pinned accessibility qualification is a
+separate claim, not a remaining blocker for this issue. Any future qualification
+record should identify Windows Terminal, shell, NVDA/version/settings,
+keyboard/layout, locale, mode, input protocol, exact application/backend
+revision and sanitized task outcomes. Do not record secrets. Real
+clipboard/IME/layout and Linux/macOS native evidence are not implied by Windows
+or scripted passes. See
 [ticket 31 evidence](ticket-31-regression-evidence.md) and the
 [verification matrix](../.scratch/trelis-accessible-prompts/issues/11-verification-matrix.md).
