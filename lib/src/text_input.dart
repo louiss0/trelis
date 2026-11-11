@@ -11,6 +11,7 @@ import 'package:path/path.dart' as path;
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+import 'terminal_io.dart';
 import 'uts46.dart';
 
 part 'masked_input.dart';
@@ -130,6 +131,7 @@ final class TextInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
@@ -139,12 +141,33 @@ final class TextInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            try {
+              return await _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                ),
+                selected,
+              );
+            } finally {
+              lease.restore();
+            }
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,

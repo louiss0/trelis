@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'terminal_io.dart';
 import 'text_input.dart' show PromptMode;
 
 /// Semantic meaning that remains readable without color.
@@ -18,13 +19,29 @@ String _safe(String value) => value.runes.map((c) {
   return String.fromCharCode(c);
 }).join();
 
+StringSink _selectedOutput({StringSink? output, TerminalIo? terminal}) {
+  if (output != null && terminal != null) {
+    throw ArgumentError('Specify either output or terminal, not both.');
+  }
+  return output ?? terminal?.output ?? stderr;
+}
+
+bool _supportsRich({
+  required StringSink output,
+  required bool? declared,
+  required TerminalIo? terminal,
+}) =>
+    declared ??
+    terminal?.supportsRich ??
+    (output is Stdout && output.hasTerminal);
+
 /// Literal, feedback-only text.
 final class Text {
   Text(this.content, {this.kind = TextKind.ordinary});
   final String content;
   final TextKind kind;
 
-  void present({StringSink? output}) {
+  void present({StringSink? output, TerminalIo? terminal}) {
     final prefix = switch (kind) {
       TextKind.ordinary => '',
       TextKind.hint => 'Hint: ',
@@ -32,7 +49,10 @@ final class Text {
       TextKind.warning => 'Warning: ',
       TextKind.error => 'Error: ',
     };
-    (output ?? stderr).writeln('$prefix${_safe(content)}');
+    _selectedOutput(
+      output: output,
+      terminal: terminal,
+    ).writeln('$prefix${_safe(content)}');
   }
 }
 
@@ -69,14 +89,19 @@ final class Progress {
 
   void start({
     StringSink? output,
+    TerminalIo? terminal,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     bool? supportsRich,
   }) {
     if (_output != null) throw StateError('Already started');
-    final sink = output ?? stderr;
-    final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
+    final sink = _selectedOutput(output: output, terminal: terminal);
+    final capable = _supportsRich(
+      output: sink,
+      declared: supportsRich,
+      terminal: terminal,
+    );
     final selected =
         mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
     if (selected == PromptMode.rich && !capable) {
@@ -204,14 +229,19 @@ final class Spinner {
 
   void start({
     StringSink? output,
+    TerminalIo? terminal,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     bool? supportsRich,
   }) {
     if (_output != null) throw StateError('Already started');
-    final sink = output ?? stderr;
-    final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
+    final sink = _selectedOutput(output: output, terminal: terminal);
+    final capable = _supportsRich(
+      output: sink,
+      declared: supportsRich,
+      terminal: terminal,
+    );
     final selected =
         mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
     if (selected == PromptMode.rich && !capable) {
@@ -299,6 +329,7 @@ final class MultiSpinner {
 
   void start({
     StringSink? output,
+    TerminalIo? terminal,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
@@ -307,8 +338,12 @@ final class MultiSpinner {
     if (_output != null || _closed) {
       throw StateError('Already started or disposed');
     }
-    final sink = output ?? stderr;
-    final capable = supportsRich ?? (sink is Stdout && sink.hasTerminal);
+    final sink = _selectedOutput(output: output, terminal: terminal);
+    final capable = _supportsRich(
+      output: sink,
+      declared: supportsRich,
+      terminal: terminal,
+    );
     final selected =
         mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
     if (selected == PromptMode.rich && !capable) {

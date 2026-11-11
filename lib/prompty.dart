@@ -14,3 +14,4 @@ library;
 
 export 'src/text_input.dart';
 export 'src/feedback.dart';
+export 'src/terminal_io.dart';
