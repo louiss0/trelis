@@ -47,6 +47,22 @@ abstract interface class TerminalIoOutputProfile {
   OutputProfile get outputProfile;
 }
 
+/// Reports both a prompt failure and a failure while restoring its terminal.
+///
+/// The original operation error remains available to callers instead of being
+/// replaced by a cleanup error.
+final class TerminalRestorationException implements Exception {
+  TerminalRestorationException(this.operationError, this.restorationError);
+
+  final Object operationError;
+  final Object restorationError;
+
+  @override
+  String toString() =>
+      'TerminalRestorationException: prompt failed with $operationError; '
+      'terminal restoration also failed with $restorationError';
+}
+
 /// A native or synthetic terminal acquisition that must be restored.
 final class TerminalLease {
   TerminalLease(this._onRestore);
