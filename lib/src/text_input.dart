@@ -136,6 +136,24 @@ enum PromptMode { rich, linear, automatic }
 
 bool _terminalActive = false;
 
+Future<T> _restoreAfter<T>(
+  Future<T> Function() operation,
+  void Function() restore,
+) async {
+  try {
+    final result = await operation();
+    restore();
+    return result;
+  } catch (operationError, operationStackTrace) {
+    try {
+      restore();
+    } catch (restorationError) {
+      throw TerminalRestorationException(operationError, restorationError);
+    }
+    Error.throwWithStackTrace(operationError, operationStackTrace);
+  }
+}
+
 final class TextInput {
   TextInput(
     String label, {
@@ -208,8 +226,8 @@ final class TextInput {
         try {
           if (terminal != null) {
             final lease = terminal.acquire();
-            try {
-              return await _run(
+            return await _restoreAfter(
+              () => _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -218,18 +236,16 @@ final class TextInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              );
-            } finally {
-              lease.restore();
-            }
+              ),
+              lease.restore,
+            );
           }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(
+            (source, mode, _) => _run(
               source,
               mode,
-              beforeClose: restore,
               outputProfile: outputProfile,
             ),
           );
@@ -246,7 +262,6 @@ final class TextInput {
   Future<PromptResult<String>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
     OutputProfile? outputProfile,
   }) async {
     if (source is SuppliedAnswer) {
@@ -328,11 +343,7 @@ final class TextInput {
         return Accepted(value);
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      await keys.close();
     }
   }
 }
@@ -1021,15 +1032,18 @@ Future<PromptResult<T>> _posixTerminal<T>(
       pasteEnabled = true;
     }
     final profile = _nativeOutputProfile(outputStream, capable);
-    return await run(
-      ScriptedInput(
-        _posixInput(),
-        outputStream,
-        supportsRich: capable,
-        outputProfile: profile,
-        observedGeometry: profile.geometry,
+    return await _restoreAfter(
+      () => run(
+        ScriptedInput(
+          _posixInput(),
+          outputStream,
+          supportsRich: capable,
+          outputProfile: profile,
+          observedGeometry: profile.geometry,
+        ),
+        rich ? PromptMode.rich : PromptMode.linear,
+        restore,
       ),
-      rich ? PromptMode.rich : PromptMode.linear,
       restore,
     );
   } finally {
@@ -1128,15 +1142,18 @@ Future<PromptResult<T>> _terminal<T>(
       }
     }
     final profile = _nativeOutputProfile(outputStream, capable);
-    return await run(
-      ScriptedInput(
-        _consoleInput(console, input, capture),
-        outputStream,
-        supportsRich: capable,
-        outputProfile: profile,
-        observedGeometry: profile.geometry,
+    return await _restoreAfter(
+      () => run(
+        ScriptedInput(
+          _consoleInput(console, input, capture),
+          outputStream,
+          supportsRich: capable,
+          outputProfile: profile,
+          observedGeometry: profile.geometry,
+        ),
+        rich ? PromptMode.rich : PromptMode.linear,
+        restore,
       ),
-      rich ? PromptMode.rich : PromptMode.linear,
       restore,
     );
   } finally {
