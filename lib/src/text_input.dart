@@ -12,6 +12,7 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import 'output_profile.dart';
+import 'color_theme.dart';
 import 'presentation.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -152,6 +153,7 @@ final class ScriptedInput extends PromptSource {
     this.transcript,
     this.resizeObserver,
     this._observedGeometry,
+    this._hardColorDisabled = false,
   });
   final Stream<String> input;
   final StringSink output;
@@ -175,6 +177,8 @@ final class ScriptedInput extends PromptSource {
   // Native code records actual selected-output dimensions separately so an
   // invocation declaration can fill unknown facts but cannot enlarge them.
   final OutputGeometry? _observedGeometry;
+
+  final bool _hardColorDisabled;
 
   // Retained for existing component implementations. TextInput resolves the
   // declared alternate-screen fact through OutputProfile instead.
@@ -349,6 +353,8 @@ final class TerminalSession {
               _output,
               supportsRich: _terminalIo.supportsRich,
               outputProfile: _terminalOutputProfile(_terminalIo),
+              hardColorDisabled:
+                  _terminalIo.environment['NO_COLOR']?.isNotEmpty == true,
               resizeObserver: _terminalResizeObserver(_terminalIo),
             ),
             selected,
@@ -458,6 +464,7 @@ void _renderTextInputOpening(
   required int? maxLength,
   required bool linear,
   OutputProfile? outputProfile,
+  ColorTheme colors = ColorThemes.terminalDefault,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -474,7 +481,12 @@ void _renderTextInputOpening(
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
   _writeWrappedText(
     output,
-    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
+    _colorText(
+      '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
+      colors.foreground,
+      colors.background,
+      outputProfile,
+    ),
     width,
   );
   _writeWrappedText(
@@ -499,6 +511,7 @@ void _renderTextInputValidation(
   StringSink output,
   String message, {
   OutputProfile? outputProfile,
+  ColorTheme colors = ColorThemes.terminalDefault,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -513,9 +526,29 @@ void _renderTextInputValidation(
   );
   _writeWrappedText(
     output,
-    _slot(composition, PresentationSlot.validation).text!.value,
+    _colorText(
+      _slot(composition, PresentationSlot.validation).text!.value,
+      colors.error,
+      colors.background,
+      outputProfile,
+    ),
     outputProfile == null ? null : _textInputWidth(outputProfile),
   );
+}
+
+String _colorText(
+  String text,
+  TerminalColor foreground,
+  TerminalColor background,
+  OutputProfile? profile,
+) {
+  if (profile == null ||
+      profile.colorDepth == ColorDepth.none ||
+      profile.colorDepth == ColorDepth.automatic ||
+      (isTerminalDefault(foreground) && isTerminalDefault(background))) {
+    return text;
+  }
+  return '\x1b[${terminalSgr(foreground, background: false, depth: profile.colorDepth)};${terminalSgr(background, background: true, depth: profile.colorDepth)}m$text\x1b[0m';
 }
 
 bool _terminalActive = false;
@@ -545,12 +578,14 @@ final class TextInput {
     bool required = false,
     String? Function(String)? validate,
     int? maxLength,
+    ColorTheme colors = ColorThemes.terminalDefault,
   }) : this._(
          label,
          initialValue: initialValue,
          required: required,
          validate: validate,
          maxLength: maxLength,
+         colors: colors,
        );
 
   TextInput._(
@@ -559,6 +594,7 @@ final class TextInput {
     this.required = false,
     this.validate,
     this.maxLength,
+    this.colors = ColorThemes.terminalDefault,
     this._onChanged,
   }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -577,6 +613,9 @@ final class TextInput {
   final bool required;
   final int? maxLength;
   final String? Function(String)? validate;
+
+  /// Complete palette for this prompt; it never alters global terminal state.
+  final ColorTheme colors;
   final void Function(String)? _onChanged;
   bool _active = false;
   Future<PromptResult<String>> prompt({
@@ -630,6 +669,8 @@ final class TextInput {
                   terminal.output,
                   supportsRich: terminal.supportsRich,
                   outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
                   resizeObserver: _terminalResizeObserver(terminal),
                 ),
                 selected,
@@ -675,7 +716,7 @@ final class TextInput {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    final effectiveProfile = _constrainToObservedGeometry(
+    var effectiveProfile = _constrainToObservedGeometry(
       OutputProfile.resolve(
         invocation: outputProfile,
         source: scripted.outputProfile,
@@ -683,6 +724,9 @@ final class TextInput {
       ),
       scripted._observedGeometry,
     );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -700,6 +744,7 @@ final class TextInput {
       maxLength: maxLength,
       linear: mode == PromptMode.linear,
       outputProfile: effectiveProfile,
+      colors: colors,
     );
     scripted.transcript?._event(
       TextInputPresentationEventKind.opened,
@@ -723,6 +768,7 @@ final class TextInput {
           onChanged: _onChanged,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          colors: colors,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -787,6 +833,7 @@ Future<({String action, String value})> _edit(
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
   OutputProfile? outputProfile,
+  ColorTheme colors = ColorThemes.terminalDefault,
   TerminalResizeObserver? resizeObserver,
   void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
@@ -906,7 +953,7 @@ Future<({String action, String value})> _edit(
     );
     final editable = _slot(composition, PresentationSlot.body);
     output.write(
-      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_renderEditableText(editable, beforeCaret: true)}\x1b[s${_renderEditableText(editable, beforeCaret: false)}${end < chars.length ? '>' : ''}\x1b[u',
+      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
     );
   }
 
@@ -1548,6 +1595,9 @@ Future<PromptResult<T>> _posixTerminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          hardColorDisabled:
+              !outputStream.hasTerminal ||
+              Platform.environment['NO_COLOR']?.isNotEmpty == true,
         ),
         rich ? PromptMode.rich : PromptMode.linear,
         restore,
@@ -1658,6 +1708,9 @@ Future<PromptResult<T>> _terminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          hardColorDisabled:
+              !outputStream.hasTerminal ||
+              Platform.environment['NO_COLOR']?.isNotEmpty == true,
         ),
         rich ? PromptMode.rich : PromptMode.linear,
         restore,
