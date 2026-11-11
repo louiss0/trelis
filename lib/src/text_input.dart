@@ -14,6 +14,7 @@ import 'package:timezone/timezone.dart' as timezone;
 import 'output_profile.dart';
 import 'presentation.dart';
 import 'terminal_io.dart';
+import 'text_measurement.dart';
 import 'uts46.dart';
 
 part 'masked_input.dart';
@@ -318,11 +319,8 @@ final class TextInput {
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, _) => _run(
-              source,
-              mode,
-              outputProfile: outputProfile,
-            ),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
@@ -510,6 +508,7 @@ Future<({String action, String value})> _edit(
       output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
       return;
     }
+    final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
     if (linear && output is Stdout && output.hasTerminal) {
@@ -517,20 +516,17 @@ Future<({String action, String value})> _edit(
       // conservative upper bound avoids guessing emoji/combining cell widths;
       // the terminal still positions the actual caret via save/restore.
       final budget = (output.terminalColumns - 5).clamp(0, 1 << 30);
-      int cells(String grapheme) => grapheme.runes.fold(
-        0,
-        (width, rune) => width + (rune >= 32 && rune < 127 ? 1 : 2),
-      );
+      int cells(int index) => displayMap.entries[index].cellWidth;
       final prefixBudget = pos < chars.length
-          ? (budget - cells(chars[pos])).clamp(0, budget)
+          ? (budget - cells(pos)).clamp(0, budget)
           : budget;
-      var used = chars.take(pos).fold(0, (sum, char) => sum + cells(char));
+      var used = displayMap.caretCells(pos);
       while (start < pos && used > prefixBudget) {
-        used -= cells(chars[start++]);
+        used -= cells(start++);
       }
       end = pos;
-      while (end < chars.length && used + cells(chars[end]) <= budget) {
-        used += cells(chars[end++]);
+      while (end < chars.length && used + cells(end) <= budget) {
+        used += cells(end++);
       }
     }
     final composition = _composeTextInput(
@@ -538,8 +534,8 @@ Future<({String action, String value})> _edit(
         label: DisplayText.from(''),
         context: DisplayText.from(''),
         editable: TextInputEditableRegion(
-          beforeCaret: DisplayText.from(chars.sublist(start, pos).join()),
-          afterCaret: DisplayText.from(chars.sublist(pos, end).join()),
+          beforeCaret: DisplayText.from(displayMap.displayBetween(start, pos)),
+          afterCaret: DisplayText.from(displayMap.displayBetween(pos, end)),
         ),
       ),
     );
