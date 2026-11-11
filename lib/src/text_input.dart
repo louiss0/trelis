@@ -134,6 +134,94 @@ OutputProfile _constrainToObservedGeometry(
 
 enum PromptMode { rich, linear, automatic }
 
+/// Semantic content slots projected from TextInput behavior before rendering.
+///
+/// The projection deliberately contains only immutable, display-safe strings;
+/// its editable region is a value snapshot rather than the editor's mutable
+/// state. This keeps layout from acquiring editing behavior or raw text.
+enum _TextInputSlot { label, context, validation }
+
+final class _TextInputPresentation {
+  _TextInputPresentation({
+    required Map<_TextInputSlot, String> slots,
+    required this.editable,
+  }) : slots = Map.unmodifiable(slots);
+
+  final Map<_TextInputSlot, String> slots;
+  final _EditableTextRegion editable;
+}
+
+/// The sole logical caret owner in a TextInput projection.
+final class _EditableTextRegion {
+  const _EditableTextRegion(this.beforeCaret, this.afterCaret);
+
+  final String beforeCaret;
+  final String afterCaret;
+}
+
+String _displaySafeText(String text) {
+  final escaped = StringBuffer();
+  for (final rune in text.runes) {
+    final isControl =
+        (rune >= 0 && rune <= 0x1f) || (rune >= 0x7f && rune <= 0x9f);
+    final isBidi =
+        rune == 0x061c ||
+        (rune >= 0x200e && rune <= 0x200f) ||
+        (rune >= 0x202a && rune <= 0x202e) ||
+        (rune >= 0x2066 && rune <= 0x2069);
+    if (isControl || isBidi) {
+      escaped.write(r'\u{');
+      escaped.write(rune.toRadixString(16).toUpperCase().padLeft(4, '0'));
+      escaped.write('}');
+    } else {
+      escaped.writeCharCode(rune);
+    }
+  }
+  return escaped.toString();
+}
+
+void _renderTextInputOpening(
+  StringSink output,
+  String label, {
+  required bool required,
+  required int? maxLength,
+  required bool linear,
+}) {
+  final slots = <_TextInputSlot, String>{
+    _TextInputSlot.label: _displaySafeText(label),
+    _TextInputSlot.context:
+        '(${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+  };
+  output.writeln(
+    '${slots[_TextInputSlot.label]} ${slots[_TextInputSlot.context]}',
+  );
+  output.writeln(
+    'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+  );
+  if (linear) {
+    output.writeln(
+      r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
+    );
+  }
+}
+
+String _renderEditableText(
+  _TextInputPresentation presentation, {
+  required bool beforeCaret,
+}) => _displaySafeText(
+  beforeCaret
+      ? presentation.editable.beforeCaret
+      : presentation.editable.afterCaret,
+);
+
+void _renderTextInputValidation(StringSink output, String message) {
+  final presentation = _TextInputPresentation(
+    slots: {_TextInputSlot.validation: _displaySafeText(message)},
+    editable: const _EditableTextRegion('', ''),
+  );
+  output.writeln(presentation.slots[_TextInputSlot.validation]);
+}
+
 bool _terminalActive = false;
 
 final class TextInput {
@@ -282,17 +370,13 @@ final class TextInput {
           ? PromptMode.rich
           : PromptMode.linear;
     }
-    scripted.output.writeln(
-      '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+    _renderTextInputOpening(
+      scripted.output,
+      label,
+      required: required,
+      maxLength: maxLength,
+      linear: mode == PromptMode.linear,
     );
-    scripted.output.writeln(
-      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-    );
-    if (mode == PromptMode.linear) {
-      scripted.output.writeln(
-        r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
-      );
-    }
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
@@ -322,7 +406,7 @@ final class TextInput {
         }
         final error = validate?.call(value);
         if (error != null) {
-          scripted.output.writeln(error);
+          _renderTextInputValidation(scripted.output, error);
           continue;
         }
         return Accepted(value);
@@ -424,7 +508,7 @@ Future<({String action, String value})> _edit(
       return;
     }
     if (sequential) {
-      output.writeln('Current text: ${chars.join()}');
+      output.writeln('Current text: ${_displaySafeText(chars.join())}');
       output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
       return;
     }
@@ -451,8 +535,15 @@ Future<({String action, String value})> _edit(
         used += cells(chars[end++]);
       }
     }
+    final presentation = _TextInputPresentation(
+      slots: const {},
+      editable: _EditableTextRegion(
+        chars.sublist(start, pos).join(),
+        chars.sublist(pos, end).join(),
+      ),
+    );
     output.write(
-      '\r\x1b[2K> ${start > 0 ? '<' : ''}${chars.sublist(start, pos).join()}\x1b[s${chars.sublist(pos, end).join()}${end < chars.length ? '>' : ''}\x1b[u',
+      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_renderEditableText(presentation, beforeCaret: true)}\x1b[s${_renderEditableText(presentation, beforeCaret: false)}${end < chars.length ? '>' : ''}\x1b[u',
     );
   }
 
@@ -499,7 +590,7 @@ Future<({String action, String value})> _edit(
       if (help) continue;
       if (key == '\r' || key == '\n') {
         if (linear && !sequential && !secret) {
-          output.write('\r\x1b[2K> ${chars.join()}');
+          output.write('\r\x1b[2K> ${_displaySafeText(chars.join())}');
         }
         output.writeln();
         var text = chars.join();
