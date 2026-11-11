@@ -12,6 +12,7 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import 'output_profile.dart';
+import 'presentation.dart';
 import 'terminal_io.dart';
 import 'uts46.dart';
 
@@ -133,6 +134,80 @@ OutputProfile _constrainToObservedGeometry(
 }
 
 enum PromptMode { rich, linear, automatic }
+
+final _textInputDeclaration = PresentationDeclaration({
+  PresentationSlot.label,
+  PresentationSlot.context,
+  PresentationSlot.body,
+});
+
+PresentationComposition _composeTextInput(
+  TextInputPresentationContent content,
+) => const PresentationCompositor().composeTextInput(
+  content,
+  _textInputDeclaration,
+);
+
+PresentationContentNode _slot(
+  PresentationComposition composition,
+  PresentationSlot slot,
+) => [
+  ...composition.body,
+  ...composition.safetyArea,
+].singleWhere((node) => node.slot == slot);
+
+void _renderTextInputOpening(
+  StringSink output,
+  String label, {
+  required bool required,
+  required int? maxLength,
+  required bool linear,
+}) {
+  final composition = _composeTextInput(
+    TextInputPresentationContent(
+      label: DisplayText.from(label),
+      context: DisplayText.from(
+        '(${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+      ),
+      editable: TextInputEditableRegion(
+        beforeCaret: DisplayText.from(''),
+        afterCaret: DisplayText.from(''),
+      ),
+    ),
+  );
+  output.writeln(
+    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
+  );
+  output.writeln(
+    'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+  );
+  if (linear) {
+    output.writeln(
+      r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
+    );
+  }
+}
+
+String _renderEditableText(
+  PresentationContentNode node, {
+  required bool beforeCaret,
+}) => (beforeCaret ? node.editable!.beforeCaret : node.editable!.afterCaret)
+    .value;
+
+void _renderTextInputValidation(StringSink output, String message) {
+  final composition = _composeTextInput(
+    TextInputPresentationContent(
+      label: DisplayText.from(''),
+      context: DisplayText.from(''),
+      validation: DisplayText.from(message),
+      editable: TextInputEditableRegion(
+        beforeCaret: DisplayText.from(''),
+        afterCaret: DisplayText.from(''),
+      ),
+    ),
+  );
+  output.writeln(_slot(composition, PresentationSlot.validation).text!.value);
+}
 
 bool _terminalActive = false;
 
@@ -297,17 +372,13 @@ final class TextInput {
           ? PromptMode.rich
           : PromptMode.linear;
     }
-    scripted.output.writeln(
-      '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+    _renderTextInputOpening(
+      scripted.output,
+      label,
+      required: required,
+      maxLength: maxLength,
+      linear: mode == PromptMode.linear,
     );
-    scripted.output.writeln(
-      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-    );
-    if (mode == PromptMode.linear) {
-      scripted.output.writeln(
-        r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
-      );
-    }
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
@@ -337,7 +408,7 @@ final class TextInput {
         }
         final error = validate?.call(value);
         if (error != null) {
-          scripted.output.writeln(error);
+          _renderTextInputValidation(scripted.output, error);
           continue;
         }
         return Accepted(value);
@@ -435,7 +506,7 @@ Future<({String action, String value})> _edit(
       return;
     }
     if (sequential) {
-      output.writeln('Current text: ${chars.join()}');
+      output.writeln('Current text: ${DisplayText.from(chars.join()).value}');
       output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
       return;
     }
@@ -462,8 +533,19 @@ Future<({String action, String value})> _edit(
         used += cells(chars[end++]);
       }
     }
+    final composition = _composeTextInput(
+      TextInputPresentationContent(
+        label: DisplayText.from(''),
+        context: DisplayText.from(''),
+        editable: TextInputEditableRegion(
+          beforeCaret: DisplayText.from(chars.sublist(start, pos).join()),
+          afterCaret: DisplayText.from(chars.sublist(pos, end).join()),
+        ),
+      ),
+    );
+    final editable = _slot(composition, PresentationSlot.body);
     output.write(
-      '\r\x1b[2K> ${start > 0 ? '<' : ''}${chars.sublist(start, pos).join()}\x1b[s${chars.sublist(pos, end).join()}${end < chars.length ? '>' : ''}\x1b[u',
+      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_renderEditableText(editable, beforeCaret: true)}\x1b[s${_renderEditableText(editable, beforeCaret: false)}${end < chars.length ? '>' : ''}\x1b[u',
     );
   }
 
@@ -510,7 +592,7 @@ Future<({String action, String value})> _edit(
       if (help) continue;
       if (key == '\r' || key == '\n') {
         if (linear && !sequential && !secret) {
-          output.write('\r\x1b[2K> ${chars.join()}');
+          output.write('\r\x1b[2K> ${DisplayText.from(chars.join()).value}');
         }
         output.writeln();
         var text = chars.join();

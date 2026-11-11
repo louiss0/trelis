@@ -233,6 +233,59 @@ void main() {
     expect(RegExp('Enter ab').allMatches(output.toString()).length, 1);
   });
   test(
+    'rich rendering anchors the physical caret at the editable region',
+    () async {
+      final output = StringBuffer();
+      final result = await TextInput('Name').prompt(
+        source: ScriptedInput(
+          Stream.value('ab\x1b[DX\r'),
+          output,
+          outputProfile: richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+
+      expect((result as Accepted<String>).value, 'aXb');
+      expect(output.toString(), contains('> aX\x1b[sb\x1b[u'));
+    },
+  );
+  test('rich and linear output safely encodes display text without changing the accepted answer', () async {
+    const answer = 'left\u202Eright';
+    const unsafeValidation = 'unsafe \x1b[2J\u202E';
+    for (final mode in [PromptMode.rich, PromptMode.linear]) {
+      final output = StringBuffer();
+      final result =
+          await TextInput(
+            'Name\u202E',
+            validate: (value) => value == answer ? null : unsafeValidation,
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('$answer\r'),
+              output,
+              outputProfile: richProfile,
+            ),
+            mode: mode,
+          );
+
+      expect((result as Accepted<String>).value, answer);
+      expect(output.toString(), contains(r'Name\u{202E}'));
+      expect(output.toString(), contains(r'left\u{202E}right'));
+      expect(output.toString(), isNot(contains(answer)));
+
+      final invalidOutput = StringBuffer();
+      await TextInput('Name', validate: (_) => unsafeValidation).prompt(
+        source: ScriptedInput(
+          Stream.value('x\r\x03'),
+          invalidOutput,
+          outputProfile: richProfile,
+        ),
+        mode: mode,
+      );
+      expect(invalidOutput.toString(), contains(r'unsafe \u{001B}[2J\u{202E}'));
+      expect(invalidOutput.toString(), isNot(contains(unsafeValidation)));
+    }
+  });
+  test(
     'configuration rejects terminal control characters before a session',
     () {
       expect(
