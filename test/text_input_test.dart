@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test('a supplied answer is accepted without interpreting commands', () async {
     final result = await TextInput('Name')
@@ -74,7 +79,11 @@ void main() {
   test('oversized paste is rejected atomically', () async {
     final output = StringBuffer();
     final result = await TextInput('Name', maxLength: 3).prompt(
-      source: ScriptedInput(Stream.value('a\x1b[200~bcd\x1b[201~\r'), output),
+      source: ScriptedInput(
+        Stream.value('a\x1b[200~bcd\x1b[201~\r'),
+        output,
+        outputProfile: richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'a');
@@ -166,6 +175,9 @@ void main() {
             '\x1bOP\x1bOH\x1bOC\x1bOC\x1b[3~c\x1bOF!\x1bOD\x1b[3~\r'.split(''),
           ),
           StringBuffer(),
+          outputProfile: mode == PromptMode.rich
+              ? richProfile
+              : const OutputProfile(),
         ),
         mode: mode,
       );
@@ -174,7 +186,11 @@ void main() {
   });
   test('control C interrupts while help is open', () async {
     final result = await TextInput('Name').prompt(
-      source: ScriptedInput(Stream.value('draft\x14\x03'), StringBuffer()),
+      source: ScriptedInput(
+        Stream.value('draft\x14\x03'),
+        StringBuffer(),
+        outputProfile: richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect(result, isA<Interrupted<String>>());
@@ -191,7 +207,11 @@ void main() {
   });
   test('backspace deletes a full grapheme', () async {
     final result = await TextInput('Name', initialValue: 'ae\u0301').prompt(
-      source: ScriptedInput(Stream.value('\x7f\r'), StringBuffer()),
+      source: ScriptedInput(
+        Stream.value('\x7f\r'),
+        StringBuffer(),
+        outputProfile: richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'a');

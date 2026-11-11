@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'output_profile.dart';
+
 /// A replaceable terminal boundary for prompt input and selected output.
 ///
 /// A caller supplies the input stream, selected output sink, observed rich
@@ -34,6 +36,15 @@ abstract interface class TerminalIo {
   /// Implementations may throw when acquisition fails. The caller restores
   /// the returned lease after every supported invocation exit.
   TerminalLease acquire();
+}
+
+/// Optional declared output facts for a [TerminalIo] implementation.
+///
+/// Implement this alongside [TerminalIo] when an adapter owns a synthetic or
+/// otherwise explicitly declared output profile. It remains separate so
+/// existing terminal adapters keep their source-compatible contract.
+abstract interface class TerminalIoOutputProfile {
+  OutputProfile get outputProfile;
 }
 
 /// A native or synthetic terminal acquisition that must be restored.

@@ -11,6 +11,7 @@ import 'package:path/path.dart' as path;
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+import 'output_profile.dart';
 import 'terminal_io.dart';
 import 'uts46.dart';
 
@@ -66,18 +67,69 @@ final class SuppliedAnswer extends PromptSource {
 }
 
 final class ScriptedInput extends PromptSource {
-  ScriptedInput(this.input, this.output, {this.supportsRich = true});
+  ScriptedInput(
+    this.input,
+    this.output, {
+    this.supportsRich = true,
+    this.outputProfile = const OutputProfile(),
+    this._observedGeometry,
+  });
   final Stream<String> input;
   final StringSink output;
+
+  /// Legacy cursor/rich hint retained for source compatibility.
+  ///
+  /// It is not evidence of dimensions, styles, colours, glyphs, or an
+  /// alternate screen. Rich synthetic output additionally needs positive
+  /// [outputProfile] geometry or invocation geometry.
   final bool supportsRich;
 
-  // Cursor addressing alone does not imply an alternate screen (for example,
-  // the Linux virtual console). Unknown POSIX terminals retain transcript help.
+  /// Declared output facts for this scripted source.
+  final OutputProfile outputProfile;
+
+  // Native code records actual selected-output dimensions separately so an
+  // invocation declaration can fill unknown facts but cannot enlarge them.
+  final OutputGeometry? _observedGeometry;
+
+  // Retained for existing component implementations. TextInput resolves the
+  // declared alternate-screen fact through OutputProfile instead.
   bool get _supportsTemporaryHelp =>
       supportsRich &&
       (Platform.isWindows ||
           RegExp(r'^(xterm|screen|tmux|rxvt)(-|$)')
               .hasMatch(Platform.environment['TERM'] ?? ''));
+}
+
+OutputProfile _terminalOutputProfile(TerminalIo terminal) =>
+    terminal is TerminalIoOutputProfile
+    ? (terminal as TerminalIoOutputProfile).outputProfile
+    : const OutputProfile();
+
+OutputProfile _constrainToObservedGeometry(
+  OutputProfile profile,
+  OutputGeometry? observed,
+) {
+  if (observed == null ||
+      observed.isAutomatic ||
+      profile.geometry.isAutomatic) {
+    return profile;
+  }
+  return OutputProfile(
+    cursor: profile.cursor,
+    alternateScreen: profile.alternateScreen,
+    styles: profile.styles,
+    colorDepth: profile.colorDepth,
+    glyphs: profile.glyphs,
+    geometry: OutputGeometry.fixed(
+      columns: profile.geometry.columns! < observed.columns!
+          ? profile.geometry.columns!
+          : observed.columns!,
+      rows: profile.geometry.rows! < observed.rows!
+          ? profile.geometry.rows!
+          : observed.rows!,
+    ),
+    ambiguousWidth: profile.ambiguousWidth,
+  );
 }
 
 enum PromptMode { rich, linear, automatic }
@@ -132,6 +184,7 @@ final class TextInput {
     PromptMode? applicationPreference,
     Stdout? output,
     TerminalIo? terminal,
+    OutputProfile? outputProfile,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
@@ -161,8 +214,10 @@ final class TextInput {
                   terminal.input,
                   terminal.output,
                   supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
                 ),
                 selected,
+                outputProfile: outputProfile,
               );
             } finally {
               lease.restore();
@@ -171,13 +226,18 @@ final class TextInput {
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, restore) => _run(
+              source,
+              mode,
+              beforeClose: restore,
+              outputProfile: outputProfile,
+            ),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -187,6 +247,7 @@ final class TextInput {
     PromptSource source,
     PromptMode mode, {
     void Function()? beforeClose,
+    OutputProfile? outputProfile,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -203,13 +264,23 @@ final class TextInput {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    final effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     scripted.output.writeln(
       '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
@@ -231,8 +302,11 @@ final class TextInput {
           value,
           scripted.output,
           linear: mode == PromptMode.linear,
-          sequential: mode != PromptMode.rich && !scripted.supportsRich,
-          transientHelp: scripted._supportsTemporaryHelp,
+          sequential:
+              mode != PromptMode.rich &&
+              !effectiveProfile.supportsRichInteraction,
+          transientHelp:
+              effectiveProfile.alternateScreen == CapabilitySupport.supported,
           maxLength: maxLength,
           onChanged: _onChanged,
         );
@@ -850,6 +924,36 @@ Stream<String> _posixInput() {
   return controller.stream.transform(utf8.decoder);
 }
 
+OutputProfile _nativeOutputProfile(Stdout output, bool supportsRich) {
+  OutputGeometry geometry = const OutputGeometry.automatic();
+  if (output.hasTerminal) {
+    try {
+      final columns = output.terminalColumns;
+      final rows = output.terminalLines;
+      if (columns > 0 && rows > 0) {
+        geometry = OutputGeometry.fixed(columns: columns, rows: rows);
+      }
+    } on FileSystemException {
+      // Capability probing is fallible; geometry remains unknown.
+    } on UnsupportedError {
+      // Capability probing is fallible; geometry remains unknown.
+    }
+  }
+  final term = Platform.environment['TERM'] ?? '';
+  return OutputProfile(
+    cursor: supportsRich
+        ? CapabilitySupport.supported
+        : CapabilitySupport.unsupported,
+    alternateScreen:
+        supportsRich &&
+            (Platform.isWindows ||
+                RegExp(r'^(xterm|screen|tmux|rxvt)(-|$)').hasMatch(term))
+        ? CapabilitySupport.supported
+        : CapabilitySupport.unsupported,
+    geometry: geometry,
+  );
+}
+
 Future<PromptResult<T>> _posixTerminal<T>(
   PromptMode mode,
   Stdout outputStream,
@@ -916,8 +1020,15 @@ Future<PromptResult<T>> _posixTerminal<T>(
       outputStream.write('\x1b[?2004h');
       pasteEnabled = true;
     }
+    final profile = _nativeOutputProfile(outputStream, capable);
     return await run(
-      ScriptedInput(_posixInput(), outputStream, supportsRich: capable),
+      ScriptedInput(
+        _posixInput(),
+        outputStream,
+        supportsRich: capable,
+        outputProfile: profile,
+        observedGeometry: profile.geometry,
+      ),
       rich ? PromptMode.rich : PromptMode.linear,
       restore,
     );
@@ -1016,11 +1127,14 @@ Future<PromptResult<T>> _terminal<T>(
         outputStream.write('\x1b[?2004h');
       }
     }
+    final profile = _nativeOutputProfile(outputStream, capable);
     return await run(
       ScriptedInput(
         _consoleInput(console, input, capture),
         outputStream,
         supportsRich: capable,
+        outputProfile: profile,
+        observedGeometry: profile.geometry,
       ),
       rich ? PromptMode.rich : PromptMode.linear,
       restore,

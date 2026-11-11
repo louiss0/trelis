@@ -4,6 +4,23 @@ import 'dart:io';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _syntheticRichProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
+ScriptedInput scriptedInput(
+  PromptMode mode,
+  Stream<String> input,
+  StringSink output,
+) => ScriptedInput(
+  input,
+  output,
+  outputProfile: mode == PromptMode.rich
+      ? _syntheticRichProfile
+      : const OutputProfile(),
+);
+
 void main() {
   for (final mode in [PromptMode.rich, PromptMode.linear]) {
     final sessions =
@@ -85,12 +102,12 @@ void main() {
         final input = StreamController<String>();
         addTearDown(input.close);
         final pending = entry.value(
-          source: ScriptedInput(input.stream, StringBuffer()),
+          source: scriptedInput(mode, input.stream, StringBuffer()),
           mode: mode,
         );
         await expectLater(
           entry.value(
-            source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+            source: scriptedInput(mode, Stream.value('\x03'), StringBuffer()),
             mode: mode,
           ),
           throwsStateError,
@@ -101,21 +118,29 @@ void main() {
         await failed;
         expect(
           await entry.value(
-            source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
+            source: scriptedInput(
+              mode,
+              const Stream<String>.empty(),
+              StringBuffer(),
+            ),
             mode: mode,
           ),
           isA<InputEnded<Object?>>(),
         );
         expect(
           await entry.value(
-            source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+            source: scriptedInput(mode, Stream.value('\x03'), StringBuffer()),
             mode: mode,
           ),
           isA<Interrupted<Object?>>(),
         );
         expect(
           await entry.value(
-            source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
+            source: scriptedInput(
+              mode,
+              const Stream<String>.empty(),
+              StringBuffer(),
+            ),
             mode: mode,
           ),
           isA<InputEnded<Object?>>(),
@@ -124,9 +149,10 @@ void main() {
     }
     test('TextInput / ${mode.name}: submit an edited answer', () async {
       final out = StringBuffer();
-      final result = await TextInput(
-        'Name',
-      ).prompt(source: ScriptedInput(Stream.value('Ada\r'), out), mode: mode);
+      final result = await TextInput('Name').prompt(
+        source: scriptedInput(mode, Stream.value('Ada\r'), out),
+        mode: mode,
+      );
       expect((result as Accepted<String>).value, 'Ada');
       expect(out.toString(), contains('Name'));
     });
@@ -139,7 +165,8 @@ void main() {
               'Password',
               validate: (v) => v == 'secret99' ? null : 'invalid',
             ).prompt(
-              source: ScriptedInput(
+              source: scriptedInput(
+                mode,
                 Stream.value('secret\rsubmit\redit\r99\rsubmit\r'),
                 out,
               ),
@@ -152,7 +179,8 @@ void main() {
     test('Multiline / ${mode.name}: submit a line', () async {
       final out = StringBuffer();
       final result = await Multiline('Notes').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(mode == PromptMode.rich ? 'abc\t\r' : 'abc\r/done\r'),
           out,
         ),
@@ -165,7 +193,8 @@ void main() {
     for (final component in ['Confirm', 'Checkbox', 'Toggle']) {
       test('$component / ${mode.name}: choose and submit yes', () async {
         final out = StringBuffer();
-        final input = ScriptedInput(
+        final input = scriptedInput(
+          mode,
           Stream.value(
             mode == PromptMode.rich
                 ? (component == 'Confirm' ? 'y\r' : ' \r')
@@ -189,7 +218,8 @@ void main() {
     test('Autocomplete / ${mode.name}: accept suggestion', () async {
       final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
           .prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(
                 mode == PromptMode.rich ? 'A\x1b[B\r\r' : 'A\r1\r/submit\r',
               ),
@@ -205,7 +235,8 @@ void main() {
             Choice('a', 'A'),
             Choice('b', 'B'),
           ]).prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(
                 mode == PromptMode.rich ? '\x1b[B \x1b[A \r' : '2\r1\r/done\r',
               ),
@@ -217,7 +248,8 @@ void main() {
     });
     test('SearchSelect / ${mode.name}: choose a search result', () async {
       final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(mode == PromptMode.rich ? '\r\r' : '\r1\r'),
           StringBuffer(),
         ),
@@ -228,7 +260,8 @@ void main() {
     test('CommandPalette / ${mode.name}: choose command identity', () async {
       final result = await CommandPalette('Commands', [Choice('save', 'Save')])
           .prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(mode == PromptMode.rich ? 'sav\r\r' : 'sav\r1\r'),
               StringBuffer(),
             ),
@@ -238,7 +271,8 @@ void main() {
     });
     test('TimezoneSelect / ${mode.name}: resolve alias', () async {
       final result = await TimezoneSelect('Zone').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(
             mode == PromptMode.rich ? 'US/Eastern\r\r' : 'US/Eastern\r105\r',
           ),
@@ -254,14 +288,15 @@ void main() {
             'Count',
             convention: NumericConvention.ascii(),
           ).prompt(
-            source: ScriptedInput(Stream.value('12\r'), StringBuffer()),
+            source: scriptedInput(mode, Stream.value('12\r'), StringBuffer()),
             mode: mode,
           );
       expect((result as Accepted<NumericAnswer?>).value?.spelling, '12');
     });
     test('PortInput / ${mode.name}: correct an invalid port', () async {
       final result = await PortInput('Port').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value('99999\r\x7f\x7f\x7f\x7f\x7f443\r'),
           StringBuffer(),
         ),
@@ -271,7 +306,8 @@ void main() {
     });
     test('URLInput / ${mode.name}: submit URL', () async {
       final result = await URLInput('URL', allowedSchemes: {'https'}).prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value('https://example.com/\r'),
           StringBuffer(),
         ),
@@ -281,7 +317,8 @@ void main() {
     });
     test('EmailInput / ${mode.name}: submit email', () async {
       final result = await EmailInput('Email').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value('Case@example.com\r'),
           StringBuffer(),
         ),
@@ -291,7 +328,7 @@ void main() {
     });
     test('ColorInput / ${mode.name}: submit color', () async {
       final result = await ColorInput('Color', initialValue: '#fff').prompt(
-        source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+        source: scriptedInput(mode, Stream.value('\r'), StringBuffer()),
         mode: mode,
       );
       expect((result as Accepted<ColorValue?>).value?.source, '#fff');
@@ -302,7 +339,7 @@ void main() {
             'Span',
             durationMode: DurationInputMode.elapsed,
           ).prompt(
-            source: ScriptedInput(Stream.value('1s\r'), StringBuffer()),
+            source: scriptedInput(mode, Stream.value('1s\r'), StringBuffer()),
             mode: mode,
           );
       expect(
@@ -317,7 +354,8 @@ void main() {
     });
     test('Keypress / ${mode.name}: capture and review key', () async {
       final result = await Keypress('Shortcut').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(mode == PromptMode.rich ? 'ca\r' : '/capture\ra/done\r'),
           StringBuffer(),
         ),
@@ -327,7 +365,8 @@ void main() {
     });
     test('KeyChordInput / ${mode.name}: submit ordered gestures', () async {
       final result = await KeyChordInput('Sequence').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(
             mode == PromptMode.rich
                 ? 'cacb\r'
@@ -345,7 +384,8 @@ void main() {
     test('DateInput / ${mode.name}: review a leap day', () async {
       final result = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
           .prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value('29/02/2024\r/submit\r'),
               StringBuffer(),
             ),
@@ -357,7 +397,8 @@ void main() {
     test('CronInput / ${mode.name}: review schedule', () async {
       final result = await CronInput('Schedule', profile: CronProfile.unix)
           .prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(
                 mode == PromptMode.rich
                     ? '* * * * *\r\t\r\t\r'
@@ -378,7 +419,8 @@ void main() {
             TreeNode('a', 'A'),
             TreeNode('b', 'B'),
           ], defaultValue: 'b').prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(mode == PromptMode.rich ? '\r' : '/choose\r2\r'),
               StringBuffer(),
             ),
@@ -392,7 +434,8 @@ void main() {
             Choice('a', 'A'),
             Choice('b', 'B'),
           ]).prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(
                 mode == PromptMode.rich
                     ? ' \x1b[B\r\r'
@@ -430,7 +473,8 @@ void main() {
     });
     test('TagInput / ${mode.name}: submit a canonical tag', () async {
       final result = await TagInput('Tags').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(
             mode == PromptMode.rich ? 'NewTag\r\t\r' : 'NewTag\r/done\r',
           ),
@@ -449,7 +493,8 @@ void main() {
             step: '0.2',
             initialValue: '0.4',
           ).prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(
                 mode == PromptMode.rich ? '\x1b[C\t\t\r' : '\x7f\x7f\x7f0.6\r',
               ),
@@ -470,7 +515,8 @@ void main() {
             initialUpper: '5',
             minimumGap: '2',
           ).prompt(
-            source: ScriptedInput(
+            source: scriptedInput(
+              mode,
               Stream.value(
                 mode == PromptMode.rich
                     ? '\x1b[C\t\x1b[C\t\t\t\r'
@@ -487,7 +533,8 @@ void main() {
     });
     test('TimeInput / ${mode.name}: submit a time', () async {
       final result = await TimeInput('Time', initialValue: '23:59').prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(mode == PromptMode.rich ? '+\t+\t\t\r' : '\r'),
           StringBuffer(),
         ),
@@ -505,7 +552,7 @@ void main() {
             initialValue: 'draft',
             allowNonexistent: true,
           ).prompt(
-            source: ScriptedInput(Stream.value('\r\r'), StringBuffer()),
+            source: scriptedInput(mode, Stream.value('\r\r'), StringBuffer()),
             mode: mode,
           );
       expect((result as Accepted<String>).value, endsWith('draft'));
@@ -516,7 +563,11 @@ void main() {
       final file = await File('${dir.path}${Platform.pathSeparator}answer.txt')
           .writeAsString('data');
       final result = await FilePicker('File', base: dir.path).prompt(
-        source: ScriptedInput(Stream.value('choose 1\r\r'), StringBuffer()),
+        source: scriptedInput(
+          mode,
+          Stream.value('choose 1\r\r'),
+          StringBuffer(),
+        ),
         mode: mode,
       );
       expect((result as Accepted<String>).value, file.path);
@@ -525,14 +576,18 @@ void main() {
       final dir = await Directory.systemTemp.createTemp('matrix-directory-');
       addTearDown(() => dir.delete(recursive: true));
       final result = await DirectoryPicker('Directory', base: dir.path).prompt(
-        source: ScriptedInput(Stream.value('choose\r\r'), StringBuffer()),
+        source: scriptedInput(mode, Stream.value('choose\r\r'), StringBuffer()),
         mode: mode,
       );
       expect((result as Accepted<String>).value, dir.path);
     });
     test('IPAddressInput / ${mode.name}: preserve host bits', () async {
       final result = await IPAddressInput('Address', cidr: true).prompt(
-        source: ScriptedInput(Stream.value('192.0.2.7/24\r'), StringBuffer()),
+        source: scriptedInput(
+          mode,
+          Stream.value('192.0.2.7/24\r'),
+          StringBuffer(),
+        ),
         mode: mode,
       );
       final value = (result as Accepted<IPAddressValue>).value;
@@ -552,7 +607,8 @@ void main() {
         initialValue: MaskedValue('code', ['1', '2'], '1-2'),
       );
       final result = await input.prompt(
-        source: ScriptedInput(
+        source: scriptedInput(
+          mode,
           Stream.value(
             mode == PromptMode.rich ? '\x7f3\r' : '/value\r\x7f3\r/done\r',
           ),
@@ -565,7 +621,8 @@ void main() {
     for (final component in ['Select', 'Radio']) {
       test('$component / ${mode.name}: select the second identity', () async {
         final out = StringBuffer();
-        final input = ScriptedInput(
+        final input = scriptedInput(
+          mode,
           Stream.value(mode == PromptMode.rich ? '\x1b[B\r' : '2\r'),
           out,
         );
