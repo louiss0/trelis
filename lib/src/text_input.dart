@@ -215,6 +215,166 @@ OutputProfile _constrainToObservedGeometry(
 
 enum PromptMode { rich, linear, automatic }
 
+/// Coordinates sequential prompt invocations over one selected terminal.
+///
+/// A session handle is only created by [run]. Attached prompts inherit its
+/// input, output and presentation configuration; they cannot take competing
+/// ownership of those resources.
+final class TerminalSession {
+  TerminalSession._(
+    this._output,
+    this._source,
+    this._terminalIo,
+    this._mode,
+    this._userPreference,
+    this._applicationPreference,
+    this._outputProfile,
+  );
+
+  final StringSink _output;
+  final ScriptedInput? _source;
+  final TerminalIo? _terminalIo;
+  final PromptMode? _mode;
+  final PromptMode? _userPreference;
+  final PromptMode? _applicationPreference;
+  final OutputProfile? _outputProfile;
+  _Keys? _keys;
+  bool _activePrompt = false;
+  bool _closed = false;
+
+  /// Runs [callback] with a scoped terminal owner and returns its result after
+  /// releasing any session-owned scripted reader.
+  static Future<T> run<T>(
+    FutureOr<T> Function(TerminalSession session) callback, {
+    StringSink? output,
+    ScriptedInput? source,
+    TerminalIo? terminal,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    OutputProfile? outputProfile,
+  }) async {
+    if (source != null && terminal != null) {
+      throw ArgumentError('Specify either source or terminal, not both.');
+    }
+    final selectedOutput = source?.output ?? terminal?.output;
+    if (output != null &&
+        selectedOutput != null &&
+        !identical(output, selectedOutput)) {
+      throw ArgumentError(
+        'Session output must be identical to its input adapter output.',
+      );
+    }
+    final session = TerminalSession._(
+      output ?? selectedOutput ?? stderr,
+      source,
+      terminal,
+      mode,
+      userPreference,
+      applicationPreference,
+      outputProfile,
+    );
+    try {
+      return await callback(session);
+    } finally {
+      session._closed = true;
+      await session._keys?.close();
+    }
+  }
+
+  Future<PromptResult<String>> _prompt(
+    TextInput prompt, {
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+  }) async {
+    if (_closed) throw StateError('Terminal session is closed.');
+    if (source != null ||
+        output != null ||
+        terminal != null ||
+        (mode != null && mode != PromptMode.automatic) ||
+        (userPreference != null && userPreference != PromptMode.automatic) ||
+        (applicationPreference != null &&
+            applicationPreference != PromptMode.automatic) ||
+        (outputProfile != null && !_isAutomaticProfile(outputProfile))) {
+      throw ArgumentError(
+        'An attached prompt inherits session input, output, mode and profile; do not supply competing invocation configuration.',
+      );
+    }
+    if (_activePrompt) {
+      throw StateError('A terminal session already has an active prompt.');
+    }
+    _activePrompt = true;
+    try {
+      final selected =
+          _mode ??
+          _userPreference ??
+          _applicationPreference ??
+          PromptMode.automatic;
+      if (_source != null) {
+        _keys ??= _Keys(_source.input.transform(utf8.encoder));
+        return await prompt._run(
+          ScriptedInput(
+            const Stream<String>.empty(),
+            _output,
+            supportsRich: _source.supportsRich,
+            outputProfile: _source.outputProfile,
+            transcript: _source.transcript,
+          ),
+          selected,
+          outputProfile: _outputProfile,
+          keys: _keys,
+        );
+      }
+      if (_terminalIo != null) {
+        final lease = _terminalIo.acquire();
+        return await _restoreAfter(
+          () => prompt._run(
+            ScriptedInput(
+              _terminalIo.input,
+              _output,
+              supportsRich: _terminalIo.supportsRich,
+              outputProfile: _terminalOutputProfile(_terminalIo),
+            ),
+            selected,
+            outputProfile: _outputProfile,
+          ),
+          lease.restore,
+        );
+      }
+      if (_output is! Stdout) {
+        throw StateError(
+          'Native input requires a terminal output destination.',
+        );
+      }
+      return await _terminal<String>(
+        selected,
+        _output,
+        (nativeSource, nativeMode, _) => prompt._run(
+          nativeSource,
+          nativeMode,
+          outputProfile: _outputProfile,
+        ),
+      );
+    } finally {
+      _activePrompt = false;
+    }
+  }
+}
+
+bool _isAutomaticProfile(OutputProfile profile) =>
+    profile.cursor == CapabilitySupport.automatic &&
+    profile.alternateScreen == CapabilitySupport.automatic &&
+    profile.styles == CapabilitySupport.automatic &&
+    profile.colorDepth == ColorDepth.automatic &&
+    profile.glyphs == GlyphSet.automatic &&
+    profile.geometry.isAutomatic &&
+    profile.ambiguousWidth == AmbiguousWidth.automatic;
+
 final _textInputDeclaration = PresentationDeclaration({
   PresentationSlot.label,
   PresentationSlot.context,
@@ -358,7 +518,20 @@ final class TextInput {
     Stdout? output,
     TerminalIo? terminal,
     OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._prompt(
+        this,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -415,6 +588,7 @@ final class TextInput {
     PromptSource source,
     PromptMode mode, {
     OutputProfile? outputProfile,
+    _Keys? keys,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -460,12 +634,12 @@ final class TextInput {
       TextInputPresentationEventKind.opened,
       text: label,
     );
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
       while (true) {
         final result = await _edit(
-          keys,
+          inputKeys,
           value,
           scripted.output,
           linear: mode == PromptMode.linear,
@@ -513,7 +687,7 @@ final class TextInput {
         return Accepted(value);
       }
     } finally {
-      await keys.close();
+      if (keys == null) await inputKeys.close();
     }
   }
 }
