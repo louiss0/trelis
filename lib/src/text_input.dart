@@ -56,6 +56,81 @@ final class Unavailable<T> extends PromptResult<T> {
   final String reason;
 }
 
+/// The kind of a meaningful, ordered TextInput presentation occurrence.
+///
+/// Repaints and current editable views are deliberately not events.
+enum TextInputPresentationEventKind {
+  opened,
+  help,
+  validation,
+  submitted,
+  cancelled,
+  interrupted,
+  inputEnded,
+}
+
+/// An immutable current editable view. This is distinct from committed
+/// presentation history: moving the caret updates this view without adding an
+/// event to the transcript.
+final class TextInputCurrentView {
+  const TextInputCurrentView({
+    required this.text,
+    required this.caret,
+    required this.containsPaste,
+  });
+
+  final String text;
+  final int caret;
+  final bool containsPaste;
+}
+
+/// A meaningful, identified presentation occurrence in a TextInput run.
+final class TextInputPresentationEvent {
+  const TextInputPresentationEvent({
+    required this.id,
+    required this.kind,
+    this.text,
+    this.isLiteral = false,
+    this.containsPaste = false,
+  });
+
+  final int id;
+  final TextInputPresentationEventKind kind;
+  final String? text;
+  final bool isLiteral;
+  final bool containsPaste;
+}
+
+/// Public recording seam for a scripted TextInput presentation.
+///
+/// [currentView] is replaced as the editor repaints. [events] records only
+/// meaningful occurrences, in delivery order, with stable run-local ids.
+final class TextInputTranscript {
+  final List<TextInputPresentationEvent> _events = [];
+  TextInputCurrentView? _currentView;
+
+  List<TextInputPresentationEvent> get events => List.unmodifiable(_events);
+  TextInputCurrentView? get currentView => _currentView;
+
+  void _view(TextInputCurrentView view) => _currentView = view;
+  void _event(
+    TextInputPresentationEventKind kind, {
+    String? text,
+    bool isLiteral = false,
+    bool containsPaste = false,
+  }) {
+    _events.add(
+      TextInputPresentationEvent(
+        id: _events.length + 1,
+        kind: kind,
+        text: text,
+        isLiteral: isLiteral,
+        containsPaste: containsPaste,
+      ),
+    );
+  }
+}
+
 sealed class PromptSource {}
 
 final class SuppliedTags extends PromptSource {
@@ -74,6 +149,7 @@ final class ScriptedInput extends PromptSource {
     this.output, {
     this.supportsRich = true,
     this.outputProfile = const OutputProfile(),
+    this.transcript,
     this._observedGeometry,
   });
   final Stream<String> input;
@@ -88,6 +164,9 @@ final class ScriptedInput extends PromptSource {
 
   /// Declared output facts for this scripted source.
   final OutputProfile outputProfile;
+
+  /// Optional public recorder for the current view and meaningful events.
+  final TextInputTranscript? transcript;
 
   // Native code records actual selected-output dimensions separately so an
   // invocation declaration can fill unknown facts but cannot enlarge them.
@@ -377,6 +456,10 @@ final class TextInput {
       maxLength: maxLength,
       linear: mode == PromptMode.linear,
     );
+    scripted.transcript?._event(
+      TextInputPresentationEventKind.opened,
+      text: label,
+    );
     final keys = _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
@@ -393,10 +476,24 @@ final class TextInput {
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           maxLength: maxLength,
           onChanged: _onChanged,
+          transcript: scripted.transcript,
         );
-        if (result.action == 'cancel') return Cancelled();
-        if (result.action == 'interrupt') return Interrupted();
-        if (result.action != 'submit') return InputEnded();
+        if (result.action == 'cancel') {
+          scripted.transcript?._event(TextInputPresentationEventKind.cancelled);
+          return Cancelled();
+        }
+        if (result.action == 'interrupt') {
+          scripted.transcript?._event(
+            TextInputPresentationEventKind.interrupted,
+          );
+          return Interrupted();
+        }
+        if (result.action != 'submit') {
+          scripted.transcript?._event(
+            TextInputPresentationEventKind.inputEnded,
+          );
+          return InputEnded();
+        }
         value = result.value;
         if (required && value.isEmpty) {
           scripted.output.writeln(
@@ -407,6 +504,10 @@ final class TextInput {
         final error = validate?.call(value);
         if (error != null) {
           _renderTextInputValidation(scripted.output, error);
+          scripted.transcript?._event(
+            TextInputPresentationEventKind.validation,
+            text: error,
+          );
           continue;
         }
         return Accepted(value);
@@ -431,6 +532,7 @@ Future<({String action, String value})> _edit(
   int? maxLength,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  TextInputTranscript? transcript,
   void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
@@ -499,6 +601,13 @@ Future<({String action, String value})> _edit(
   }
 
   void display() {
+    transcript?._view(
+      TextInputCurrentView(
+        text: chars.join(),
+        caret: pos,
+        containsPaste: provenance.contains(true),
+      ),
+    );
     if (secret) {
       if (mask) output.writeln('*' * chars.length);
       return;
@@ -583,6 +692,7 @@ Future<({String action, String value})> _edit(
         output.writeln(
           'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
         );
+        transcript?._event(TextInputPresentationEventKind.help);
         continue;
       }
       if (help) continue;
@@ -641,6 +751,12 @@ Future<({String action, String value})> _edit(
           }
         }
         onSubmit?.call(literal);
+        transcript?._event(
+          TextInputPresentationEventKind.submitted,
+          text: text,
+          isLiteral: literal,
+          containsPaste: provenance.contains(true),
+        );
         return (action: 'submit', value: text);
       }
       if (key == '\x1b[D') {
