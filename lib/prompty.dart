@@ -14,4 +14,5 @@ library;
 
 export 'src/text_input.dart';
 export 'src/feedback.dart';
+export 'src/output_profile.dart';
 export 'src/terminal_io.dart';

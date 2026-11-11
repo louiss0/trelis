@@ -1,6 +1,11 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test('port accepts a numeric service port', () async {
     final result = await PortInput('Port')
@@ -85,6 +90,9 @@ void main() {
           source: ScriptedInput(
             Stream.fromIterable(['99999\n', '\x7f\x7f\x7f\x7f\x7f443\n']),
             output,
+            outputProfile: mode == PromptMode.rich
+                ? _richProfile
+                : const OutputProfile(),
           ),
         );
         expect((result as Accepted<int>).value, 443);

@@ -1,6 +1,11 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test('elapsed weeks and fractions have exact microsecond meaning', () async {
     final result = await DurationInput(
@@ -50,7 +55,13 @@ void main() {
             'Span',
             durationMode: DurationInputMode.elapsed,
           ).prompt(
-            source: ScriptedInput(Stream.value('1sX\x7f\r'), output),
+            source: ScriptedInput(
+              Stream.value('1sX\x7f\r'),
+              output,
+              outputProfile: mode == PromptMode.rich
+                  ? _richProfile
+                  : const OutputProfile(),
+            ),
             mode: mode,
           );
       expect(result, isA<Accepted<DurationValue>>());
@@ -188,6 +199,9 @@ void main() {
             source: ScriptedInput(
               Stream.value('1s 1s\r\x7f\x7f\x7f\r'),
               output,
+              outputProfile: mode == PromptMode.rich
+                  ? _richProfile
+                  : const OutputProfile(),
             ),
             mode: mode,
           );
@@ -209,6 +223,7 @@ void main() {
             await Future<void>.delayed(const Duration(milliseconds: 200));
           })(),
           StringBuffer(),
+          outputProfile: _richProfile,
         ),
         mode: PromptMode.rich,
       ),
@@ -216,7 +231,11 @@ void main() {
     );
     expect(
       await input.prompt(
-        source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+        source: ScriptedInput(
+          Stream.value('\x03'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       ),
       isA<Interrupted>(),
