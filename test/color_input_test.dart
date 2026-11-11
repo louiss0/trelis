@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test('invalidated draft explicitly withdraws previous preview', () async {
     final controller = StreamController<String>();
@@ -24,7 +29,11 @@ void main() {
       'Color',
     ).prompt(source: SuppliedAnswer(source)) as Accepted<ColorValue?>).value!;
     final result = await ColorInput('Color', initialValue: value.source).prompt(
-      source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+      source: ScriptedInput(
+        Stream.value('\r'),
+        StringBuffer(),
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     final again = (result as Accepted<ColorValue?>).value!;
@@ -130,6 +139,9 @@ void main() {
             'rgb(256 0 0)\r\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f#fff\r',
           ),
           out,
+          outputProfile: mode == PromptMode.rich
+              ? _richProfile
+              : const OutputProfile(),
         ),
         mode: mode,
       );
@@ -140,10 +152,20 @@ void main() {
   for (final mode in [PromptMode.rich, PromptMode.linear]) {
     test('$mode gives textual alpha and cyclic hue preview', () async {
       final out = StringBuffer();
-      final result = await ColorInput(
-        'Color',
-        initialValue: 'hsl(480deg 100% 50% / .5)',
-      ).prompt(source: ScriptedInput(Stream.value('\r'), out), mode: mode);
+      final result =
+          await ColorInput(
+            'Color',
+            initialValue: 'hsl(480deg 100% 50% / .5)',
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\r'),
+              out,
+              outputProfile: mode == PromptMode.rich
+                  ? _richProfile
+                  : const OutputProfile(),
+            ),
+            mode: mode,
+          );
       expect(result, isA<Accepted<ColorValue?>>());
       expect(out.toString(), contains('Hue: 120'));
       expect(out.toString(), contains('Alpha: 0.5'));

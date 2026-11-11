@@ -4,6 +4,11 @@ import 'dart:io';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test(
     'integer input accepts a supplied answer under an explicit convention',
@@ -99,10 +104,20 @@ void main() {
   test('rich and linear sessions use the same numeric validation', () async {
     for (final mode in [PromptMode.rich, PromptMode.linear]) {
       final output = StringBuffer();
-      final result = await NumberInput(
-        'Count',
-        convention: NumericConvention.ascii(),
-      ).prompt(source: ScriptedInput(Stream.value('12\r'), output), mode: mode);
+      final result =
+          await NumberInput(
+            'Count',
+            convention: NumericConvention.ascii(),
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('12\r'),
+              output,
+              outputProfile: mode == PromptMode.rich
+                  ? _richProfile
+                  : const OutputProfile(),
+            ),
+            mode: mode,
+          );
       expect((result as Accepted<NumericAnswer?>).value?.spelling, '12');
     }
   });
