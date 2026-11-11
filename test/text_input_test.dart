@@ -250,6 +250,53 @@ void main() {
     expect((result as Accepted<String>).value, 'ab');
     expect(RegExp('Enter ab').allMatches(output.toString()).length, 1);
   });
+  test('narrow rich TextInput scrolls Unicode defaults around caret without changing the answer', () async {
+    const defaultValue = 'ab中cdefgh';
+    final output = StringBuffer();
+    final result =
+        await TextInput(
+          'A deliberately long label',
+          initialValue: defaultValue,
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x01\x1b[C\x1b[C\x1b[C\x1b[C\x1b[C\x1b[CZ\r'),
+            output,
+            outputProfile: OutputProfile(
+              cursor: CapabilitySupport.supported,
+              geometry: OutputGeometry.fixed(columns: 10, rows: 4),
+            ),
+          ),
+          mode: PromptMode.rich,
+        );
+
+    expect((result as Accepted<String>).value, 'ab中cdeZfgh');
+    expect(output.toString(), contains('> <'));
+    expect(output.toString(), contains('>'));
+  });
+  test(
+    'narrow TextInput wraps protected safe label and validation text',
+    () async {
+      final output = StringBuffer();
+      await TextInput(
+        'Label \u202E value',
+        validate: (_) => 'Validation \u202E value',
+      ).prompt(
+        source: ScriptedInput(
+          Stream.value('x\r\x03'),
+          output,
+          outputProfile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            geometry: OutputGeometry.fixed(columns: 10, rows: 4),
+          ),
+        ),
+        mode: PromptMode.rich,
+      );
+
+      expect(output.toString(), contains(r'\u{202E}'));
+      expect(output.toString(), isNot(contains('\\u{2\n')));
+      expect(output.toString(), isNot(contains('Label \u202E value')));
+    },
+  );
   test(
     'rich rendering anchors the physical caret at the editable region',
     () async {

@@ -396,12 +396,57 @@ PresentationContentNode _slot(
   ...composition.safetyArea,
 ].singleWhere((node) => node.slot == slot);
 
+/// A prompt never claims more than this many columns, even if a remote output
+/// reports an implausibly large geometry. Narrower declared geometry wins.
+const _textInputTotalWidthCap = 120;
+
+int? _textInputWidth(OutputProfile profile) =>
+    profile.geometry.columns?.clamp(1, _textInputTotalWidthCap);
+
+void _writeWrappedText(StringSink output, String text, int? width) {
+  if (width == null) {
+    output.writeln(text);
+    return;
+  }
+  // DisplayText's visible control spelling is one protected display unit: a
+  // wrap may precede it but must not split `\\u{202E}` into misleading pieces.
+  final pieces = <({String text, int cells})>[];
+  final escape = RegExp(r'\\u\{[0-9A-F]+\}');
+  var offset = 0;
+  void addMeasured(String segment) {
+    for (final entry in TextDisplayMap(segment).entries) {
+      pieces.add((text: entry.display, cells: entry.cellWidth));
+    }
+  }
+
+  for (final match in escape.allMatches(text)) {
+    addMeasured(text.substring(offset, match.start));
+    final visibleEscape = match.group(0)!;
+    pieces.add((text: visibleEscape, cells: visibleEscape.length));
+    offset = match.end;
+  }
+  addMeasured(text.substring(offset));
+  var line = StringBuffer();
+  var cells = 0;
+  for (final piece in pieces) {
+    if (cells > 0 && cells + piece.cells > width) {
+      output.writeln(line);
+      line = StringBuffer();
+      cells = 0;
+    }
+    line.write(piece.text);
+    cells += piece.cells;
+  }
+  output.writeln(line);
+}
+
 void _renderTextInputOpening(
   StringSink output,
   String label, {
   required bool required,
   required int? maxLength,
   required bool linear,
+  OutputProfile? outputProfile,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -415,11 +460,16 @@ void _renderTextInputOpening(
       ),
     ),
   );
-  output.writeln(
+  final width = outputProfile == null ? null : _textInputWidth(outputProfile);
+  _writeWrappedText(
+    output,
     '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
+    width,
   );
-  output.writeln(
+  _writeWrappedText(
+    output,
     'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    width,
   );
   if (linear) {
     output.writeln(
@@ -434,7 +484,11 @@ String _renderEditableText(
 }) => (beforeCaret ? node.editable!.beforeCaret : node.editable!.afterCaret)
     .value;
 
-void _renderTextInputValidation(StringSink output, String message) {
+void _renderTextInputValidation(
+  StringSink output,
+  String message, {
+  OutputProfile? outputProfile,
+}) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
       label: DisplayText.from(''),
@@ -446,7 +500,11 @@ void _renderTextInputValidation(StringSink output, String message) {
       ),
     ),
   );
-  output.writeln(_slot(composition, PresentationSlot.validation).text!.value);
+  _writeWrappedText(
+    output,
+    _slot(composition, PresentationSlot.validation).text!.value,
+    outputProfile == null ? null : _textInputWidth(outputProfile),
+  );
 }
 
 bool _terminalActive = false;
@@ -629,6 +687,7 @@ final class TextInput {
       required: required,
       maxLength: maxLength,
       linear: mode == PromptMode.linear,
+      outputProfile: effectiveProfile,
     );
     scripted.transcript?._event(
       TextInputPresentationEventKind.opened,
@@ -651,6 +710,7 @@ final class TextInput {
           maxLength: maxLength,
           onChanged: _onChanged,
           transcript: scripted.transcript,
+          outputProfile: effectiveProfile,
         );
         if (result.action == 'cancel') {
           scripted.transcript?._event(TextInputPresentationEventKind.cancelled);
@@ -677,7 +737,11 @@ final class TextInput {
         }
         final error = validate?.call(value);
         if (error != null) {
-          _renderTextInputValidation(scripted.output, error);
+          _renderTextInputValidation(
+            scripted.output,
+            error,
+            outputProfile: effectiveProfile,
+          );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
             text: error,
@@ -707,6 +771,7 @@ Future<({String action, String value})> _edit(
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
+  OutputProfile? outputProfile,
   void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
@@ -794,17 +859,17 @@ Future<({String action, String value})> _edit(
     final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
-    if (linear && output is Stdout && output.hasTerminal) {
-      // Leave room for the prompt, clipping indicators and the caret. A
-      // conservative upper bound avoids guessing emoji/combining cell widths;
-      // the terminal still positions the actual caret via save/restore.
-      final budget = (output.terminalColumns - 5).clamp(0, 1 << 30);
+    final totalWidth = outputProfile == null
+        ? null
+        : _textInputWidth(outputProfile);
+    if (totalWidth != null) {
+      // `> ` is structural chrome; each truthful overflow marker consumes one
+      // cell too. Reserve both markers while centring around the actual caret,
+      // then add only whole graphemes from the display map.
+      final budget = (totalWidth - 2 - 2).clamp(0, _textInputTotalWidthCap);
       int cells(int index) => displayMap.entries[index].cellWidth;
-      final prefixBudget = pos < chars.length
-          ? (budget - cells(pos)).clamp(0, budget)
-          : budget;
       var used = displayMap.caretCells(pos);
-      while (start < pos && used > prefixBudget) {
+      while (start < pos && used > budget) {
         used -= cells(start++);
       }
       end = pos;
