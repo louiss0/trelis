@@ -205,6 +205,24 @@ void main() {
     );
     expect((result as Accepted<String>).value, '/cancel');
   });
+  test(
+    'Unicode editing preserves accepted graphemes while rendering safe formats',
+    () async {
+      const value = 'e\u0301中·🇺🇳👍🏽👩‍🔬❤️1️⃣1⃣\u200D';
+      final output = StringBuffer();
+      final result = await TextInput('Name').prompt(
+        source: ScriptedInput(
+          Stream.value('$value\r'),
+          output,
+          outputProfile: richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+
+      expect((result as Accepted<String>).value, value);
+      expect(output.toString(), contains(r'\u{200D}'));
+    },
+  );
   test('backspace deletes a full grapheme', () async {
     final result = await TextInput('Name', initialValue: 'ae\u0301').prompt(
       source: ScriptedInput(
