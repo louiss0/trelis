@@ -1,7 +1,7 @@
 # Ticket 12 — scoped sequential TextInput session evidence
 
 **Status:** pass for this tracer-bullet scope  
-**Source baseline:** `1dfc564815460fcb822052d190a2e992aeadfecc` (implementation commit recorded after validation)  
+**Source revision:** `eaac422` (this ticket implementation commit; based on `1dfc564815460fcb822052d190a2e992aeadfecc`)  
 **Date:** 2026-04-13  
 **Environment:** Windows; Dart SDK as selected by the repository; scripted streams and recording terminal adapter (no physical terminal required).
 
