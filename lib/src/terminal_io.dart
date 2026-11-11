@@ -47,6 +47,29 @@ abstract interface class TerminalIoOutputProfile {
   OutputProfile get outputProfile;
 }
 
+/// Optional live geometry observation for a selected terminal output.
+///
+/// Notifications are only hints: callers must read dimensions again and ignore
+/// unknown, zero, or otherwise incomplete results. [fallbackInterval] is a
+/// bounded polling backstop for terminals that lose a notification; it is not
+/// a promise that every terminal can report resize events.
+abstract interface class TerminalResizeObserver {
+  /// Resize notifications from the selected output, if the platform supports
+  /// them. A stream error is treated as a lost notification, not geometry.
+  Stream<void> get notifications;
+
+  /// The latest raw dimensions. Null, zero, and negative values are unusable.
+  ({int columns, int rows})? readDimensions();
+
+  /// Requested polling cadence. Prompt code bounds it before scheduling.
+  Duration get fallbackInterval;
+}
+
+/// Optional live geometry observation owned by a [TerminalIo] adapter.
+abstract interface class TerminalIoResizeObserver {
+  TerminalResizeObserver get resizeObserver;
+}
+
 /// Reports both a prompt failure and a failure while restoring its terminal.
 ///
 /// The original operation error remains available to callers instead of being

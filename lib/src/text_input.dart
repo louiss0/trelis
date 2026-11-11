@@ -150,6 +150,7 @@ final class ScriptedInput extends PromptSource {
     this.supportsRich = true,
     this.outputProfile = const OutputProfile(),
     this.transcript,
+    this.resizeObserver,
     this._observedGeometry,
   });
   final Stream<String> input;
@@ -168,6 +169,9 @@ final class ScriptedInput extends PromptSource {
   /// Optional public recorder for the current view and meaningful events.
   final TextInputTranscript? transcript;
 
+  /// Optional live selected-output geometry observation for idle rich prompts.
+  final TerminalResizeObserver? resizeObserver;
+
   // Native code records actual selected-output dimensions separately so an
   // invocation declaration can fill unknown facts but cannot enlarge them.
   final OutputGeometry? _observedGeometry;
@@ -185,6 +189,11 @@ OutputProfile _terminalOutputProfile(TerminalIo terminal) =>
     terminal is TerminalIoOutputProfile
     ? (terminal as TerminalIoOutputProfile).outputProfile
     : const OutputProfile();
+
+TerminalResizeObserver? _terminalResizeObserver(TerminalIo terminal) =>
+    terminal is TerminalIoResizeObserver
+    ? (terminal as TerminalIoResizeObserver).resizeObserver
+    : null;
 
 OutputProfile _constrainToObservedGeometry(
   OutputProfile profile,
@@ -324,6 +333,7 @@ final class TerminalSession {
             supportsRich: _source.supportsRich,
             outputProfile: _source.outputProfile,
             transcript: _source.transcript,
+            resizeObserver: _source.resizeObserver,
           ),
           selected,
           outputProfile: _outputProfile,
@@ -339,6 +349,7 @@ final class TerminalSession {
               _output,
               supportsRich: _terminalIo.supportsRich,
               outputProfile: _terminalOutputProfile(_terminalIo),
+              resizeObserver: _terminalResizeObserver(_terminalIo),
             ),
             selected,
             outputProfile: _outputProfile,
@@ -619,6 +630,7 @@ final class TextInput {
                   terminal.output,
                   supportsRich: terminal.supportsRich,
                   outputProfile: _terminalOutputProfile(terminal),
+                  resizeObserver: _terminalResizeObserver(terminal),
                 ),
                 selected,
                 outputProfile: outputProfile,
@@ -711,6 +723,9 @@ final class TextInput {
           onChanged: _onChanged,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          resizeObserver: mode == PromptMode.rich
+              ? scripted.resizeObserver
+              : null,
         );
         if (result.action == 'cancel') {
           scripted.transcript?._event(TextInputPresentationEventKind.cancelled);
@@ -772,6 +787,7 @@ Future<({String action, String value})> _edit(
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
   OutputProfile? outputProfile,
+  TerminalResizeObserver? resizeObserver,
   void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
@@ -839,6 +855,8 @@ Future<({String action, String value})> _edit(
     }
   }
 
+  var activeProfile = outputProfile;
+
   void display() {
     transcript?._view(
       TextInputCurrentView(
@@ -859,9 +877,8 @@ Future<({String action, String value})> _edit(
     final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
-    final totalWidth = outputProfile == null
-        ? null
-        : _textInputWidth(outputProfile);
+    final profile = activeProfile;
+    final totalWidth = profile == null ? null : _textInputWidth(profile);
     if (totalWidth != null) {
       // `> ` is structural chrome; each truthful overflow marker consumes one
       // cell too. Reserve both markers while centring around the actual caret,
@@ -896,6 +913,62 @@ Future<({String action, String value})> _edit(
   onChanged?.call(chars.join());
   display();
   var help = false;
+  StreamSubscription<void>? resizeSubscription;
+  Timer? resizeFallback;
+  if (resizeObserver != null) {
+    void observeResize() {
+      try {
+        final dimensions = resizeObserver.readDimensions();
+        if (dimensions == null ||
+            dimensions.columns <= 0 ||
+            dimensions.rows <= 0) {
+          return;
+        }
+        final old = activeProfile?.geometry;
+        if (old != null &&
+            !old.isAutomatic &&
+            old.columns == dimensions.columns &&
+            old.rows == dimensions.rows) {
+          return;
+        }
+        final profile = activeProfile;
+        if (profile == null) {
+          return;
+        }
+        activeProfile = OutputProfile(
+          cursor: profile.cursor,
+          alternateScreen: profile.alternateScreen,
+          styles: profile.styles,
+          colorDepth: profile.colorDepth,
+          glyphs: profile.glyphs,
+          geometry: OutputGeometry.fixed(
+            columns: dimensions.columns,
+            rows: dimensions.rows,
+          ),
+          ambiguousWidth: profile.ambiguousWidth,
+        );
+        // A resize is a repaint only: it neither edits the draft nor records
+        // a presentation occurrence. Help owns the screen until dismissed.
+        if (!help) {
+          display();
+        }
+      } catch (_) {
+        // Geometry observation is best-effort; retain the last known layout.
+      }
+    }
+
+    resizeSubscription = resizeObserver.notifications.listen(
+      (_) => observeResize(),
+      onError: (_, _) {},
+    );
+    final milliseconds = resizeObserver.fallbackInterval.inMilliseconds.clamp(
+      100,
+      30000,
+    );
+    resizeFallback = Timer.periodic(Duration(milliseconds: milliseconds), (_) {
+      observeResize();
+    });
+  }
   try {
     while (true) {
       final key = await keys.next();
@@ -1051,6 +1124,8 @@ Future<({String action, String value})> _edit(
       display();
     }
   } finally {
+    resizeFallback?.cancel();
+    await resizeSubscription?.cancel();
     if (help && transientHelp) output.write('\x1b[?1049l');
   }
 }
