@@ -150,6 +150,16 @@ final class OutputProfile {
     );
   }
 
+  OutputProfile copyWith({ColorDepth? colorDepth}) => OutputProfile(
+    cursor: cursor,
+    alternateScreen: alternateScreen,
+    styles: styles,
+    colorDepth: colorDepth ?? this.colorDepth,
+    glyphs: glyphs,
+    geometry: geometry,
+    ambiguousWidth: ambiguousWidth,
+  );
+
   /// Whether the minimum safe facts for rich synthetic output are present.
   bool get supportsRichInteraction =>
       cursor == CapabilitySupport.supported && !geometry.isAutomatic;

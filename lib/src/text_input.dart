@@ -12,6 +12,7 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
 import 'output_profile.dart';
+import 'color_theme.dart';
 import 'presentation.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -150,7 +151,9 @@ final class ScriptedInput extends PromptSource {
     this.supportsRich = true,
     this.outputProfile = const OutputProfile(),
     this.transcript,
+    this.resizeObserver,
     this._observedGeometry,
+    this._hardColorDisabled = false,
   });
   final Stream<String> input;
   final StringSink output;
@@ -168,9 +171,14 @@ final class ScriptedInput extends PromptSource {
   /// Optional public recorder for the current view and meaningful events.
   final TextInputTranscript? transcript;
 
+  /// Optional live selected-output geometry observation for idle rich prompts.
+  final TerminalResizeObserver? resizeObserver;
+
   // Native code records actual selected-output dimensions separately so an
   // invocation declaration can fill unknown facts but cannot enlarge them.
   final OutputGeometry? _observedGeometry;
+
+  final bool _hardColorDisabled;
 
   // Retained for existing component implementations. TextInput resolves the
   // declared alternate-screen fact through OutputProfile instead.
@@ -185,6 +193,11 @@ OutputProfile _terminalOutputProfile(TerminalIo terminal) =>
     terminal is TerminalIoOutputProfile
     ? (terminal as TerminalIoOutputProfile).outputProfile
     : const OutputProfile();
+
+TerminalResizeObserver? _terminalResizeObserver(TerminalIo terminal) =>
+    terminal is TerminalIoResizeObserver
+    ? (terminal as TerminalIoResizeObserver).resizeObserver
+    : null;
 
 OutputProfile _constrainToObservedGeometry(
   OutputProfile profile,
@@ -331,6 +344,7 @@ final class TerminalSession {
             supportsRich: _source.supportsRich,
             outputProfile: _source.outputProfile,
             transcript: _source.transcript,
+            resizeObserver: _source.resizeObserver,
           ),
           selected,
           outputProfile: _outputProfile,
@@ -346,6 +360,9 @@ final class TerminalSession {
               _output,
               supportsRich: _terminalIo.supportsRich,
               outputProfile: _terminalOutputProfile(_terminalIo),
+              hardColorDisabled:
+                  _terminalIo.environment['NO_COLOR']?.isNotEmpty == true,
+              resizeObserver: _terminalResizeObserver(_terminalIo),
             ),
             selected,
             outputProfile: _outputProfile,
@@ -455,6 +472,7 @@ void _renderTextInputOpening(
   required bool linear,
   required InstructionDisplay instructions,
   OutputProfile? outputProfile,
+  ColorTheme colors = ColorThemes.terminalDefault,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -471,7 +489,12 @@ void _renderTextInputOpening(
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
   _writeWrappedText(
     output,
-    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
+    _colorText(
+      '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
+      colors.foreground,
+      colors.background,
+      outputProfile,
+    ),
     width,
   );
   final resolvedInstructions = instructions == InstructionDisplay.themeDefault
@@ -524,6 +547,7 @@ void _renderTextInputValidation(
   StringSink output,
   String message, {
   OutputProfile? outputProfile,
+  ColorTheme colors = ColorThemes.terminalDefault,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -538,9 +562,29 @@ void _renderTextInputValidation(
   );
   _writeWrappedText(
     output,
-    _slot(composition, PresentationSlot.validation).text!.value,
+    _colorText(
+      _slot(composition, PresentationSlot.validation).text!.value,
+      colors.error,
+      colors.background,
+      outputProfile,
+    ),
     outputProfile == null ? null : _textInputWidth(outputProfile),
   );
+}
+
+String _colorText(
+  String text,
+  TerminalColor foreground,
+  TerminalColor background,
+  OutputProfile? profile,
+) {
+  if (profile == null ||
+      profile.colorDepth == ColorDepth.none ||
+      profile.colorDepth == ColorDepth.automatic ||
+      (isTerminalDefault(foreground) && isTerminalDefault(background))) {
+    return text;
+  }
+  return '\x1b[${terminalSgr(foreground, background: false, depth: profile.colorDepth)};${terminalSgr(background, background: true, depth: profile.colorDepth)}m$text\x1b[0m';
 }
 
 bool _terminalActive = false;
@@ -572,6 +616,7 @@ final class TextInput {
     int? maxLength,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
+    ColorTheme colors = ColorThemes.terminalDefault,
   }) : this._(
          label,
          initialValue: initialValue,
@@ -580,6 +625,7 @@ final class TextInput {
          maxLength: maxLength,
          instructions: instructions,
          supplementaryHelp: supplementaryHelp,
+         colors: colors,
        );
 
   TextInput._(
@@ -590,6 +636,7 @@ final class TextInput {
     this.maxLength,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
     this._onChanged,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -610,6 +657,9 @@ final class TextInput {
   final String? Function(String)? validate;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
+
+  /// Complete palette for this prompt; it never alters global terminal state.
+  final ColorTheme colors;
   final void Function(String)? _onChanged;
   bool _active = false;
   Future<PromptResult<String>> prompt({
@@ -663,6 +713,9 @@ final class TextInput {
                   terminal.output,
                   supportsRich: terminal.supportsRich,
                   outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
                 ),
                 selected,
                 outputProfile: outputProfile,
@@ -707,7 +760,7 @@ final class TextInput {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    final effectiveProfile = _constrainToObservedGeometry(
+    var effectiveProfile = _constrainToObservedGeometry(
       OutputProfile.resolve(
         invocation: outputProfile,
         source: scripted.outputProfile,
@@ -715,6 +768,9 @@ final class TextInput {
       ),
       scripted._observedGeometry,
     );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -733,6 +789,7 @@ final class TextInput {
       linear: mode == PromptMode.linear,
       instructions: instructions,
       outputProfile: effectiveProfile,
+      colors: colors,
     );
     scripted.transcript?._event(
       TextInputPresentationEventKind.opened,
@@ -758,6 +815,10 @@ final class TextInput {
           onChanged: _onChanged,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          colors: colors,
+          resizeObserver: mode == PromptMode.rich
+              ? scripted.resizeObserver
+              : null,
         );
         if (result.action == 'cancel') {
           scripted.transcript?._event(TextInputPresentationEventKind.cancelled);
@@ -828,6 +889,8 @@ Future<({String action, String value})> _edit(
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
   OutputProfile? outputProfile,
+  ColorTheme colors = ColorThemes.terminalDefault,
+  TerminalResizeObserver? resizeObserver,
   void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
@@ -895,6 +958,8 @@ Future<({String action, String value})> _edit(
     }
   }
 
+  var activeProfile = outputProfile;
+
   void display() {
     transcript?._view(
       TextInputCurrentView(
@@ -915,9 +980,8 @@ Future<({String action, String value})> _edit(
     final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
-    final totalWidth = outputProfile == null
-        ? null
-        : _textInputWidth(outputProfile);
+    final profile = activeProfile;
+    final totalWidth = profile == null ? null : _textInputWidth(profile);
     if (totalWidth != null) {
       // `> ` is structural chrome; each truthful overflow marker consumes one
       // cell too. Reserve both markers while centring around the actual caret,
@@ -945,13 +1009,69 @@ Future<({String action, String value})> _edit(
     );
     final editable = _slot(composition, PresentationSlot.body);
     output.write(
-      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_renderEditableText(editable, beforeCaret: true)}\x1b[s${_renderEditableText(editable, beforeCaret: false)}${end < chars.length ? '>' : ''}\x1b[u',
+      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
     );
   }
 
   onChanged?.call(chars.join());
   display();
   var help = false;
+  StreamSubscription<void>? resizeSubscription;
+  Timer? resizeFallback;
+  if (resizeObserver != null) {
+    void observeResize() {
+      try {
+        final dimensions = resizeObserver.readDimensions();
+        if (dimensions == null ||
+            dimensions.columns <= 0 ||
+            dimensions.rows <= 0) {
+          return;
+        }
+        final old = activeProfile?.geometry;
+        if (old != null &&
+            !old.isAutomatic &&
+            old.columns == dimensions.columns &&
+            old.rows == dimensions.rows) {
+          return;
+        }
+        final profile = activeProfile;
+        if (profile == null) {
+          return;
+        }
+        activeProfile = OutputProfile(
+          cursor: profile.cursor,
+          alternateScreen: profile.alternateScreen,
+          styles: profile.styles,
+          colorDepth: profile.colorDepth,
+          glyphs: profile.glyphs,
+          geometry: OutputGeometry.fixed(
+            columns: dimensions.columns,
+            rows: dimensions.rows,
+          ),
+          ambiguousWidth: profile.ambiguousWidth,
+        );
+        // A resize is a repaint only: it neither edits the draft nor records
+        // a presentation occurrence. Help owns the screen until dismissed.
+        if (!help) {
+          display();
+        }
+      } catch (_) {
+        // Geometry observation is best-effort; retain the last known layout.
+      }
+    }
+
+    resizeSubscription = resizeObserver.notifications.listen(
+      (_) => observeResize(),
+      onError: (_, _) {},
+    );
+    final milliseconds = resizeObserver.fallbackInterval.inMilliseconds.clamp(
+      100,
+      30000,
+    );
+    resizeFallback = Timer.periodic(Duration(milliseconds: milliseconds), (_) {
+      observeResize();
+    });
+  }
   try {
     while (true) {
       final key = await keys.next();
@@ -1122,6 +1242,8 @@ Future<({String action, String value})> _edit(
       display();
     }
   } finally {
+    resizeFallback?.cancel();
+    await resizeSubscription?.cancel();
     if (help && transientHelp) output.write('\x1b[?1049l');
   }
 }
@@ -1544,6 +1666,9 @@ Future<PromptResult<T>> _posixTerminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          hardColorDisabled:
+              !outputStream.hasTerminal ||
+              Platform.environment['NO_COLOR']?.isNotEmpty == true,
         ),
         rich ? PromptMode.rich : PromptMode.linear,
         restore,
@@ -1654,6 +1779,9 @@ Future<PromptResult<T>> _terminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          hardColorDisabled:
+              !outputStream.hasTerminal ||
+              Platform.environment['NO_COLOR']?.isNotEmpty == true,
         ),
         rich ? PromptMode.rich : PromptMode.linear,
         restore,
