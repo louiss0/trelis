@@ -53,15 +53,23 @@ remain transcript responses, not temporary screens.
 
 Redirected stdin is never consumed implicitly. Supply a literal value with
 `source: SuppliedAnswer(value)`, or explicitly opt into a stream with
-`ScriptedInput(stream, sink, supportsRich: false)`. Supplied answers are literal
-and validated. For a stream, only completed lines submit; EOF, cancellation and
-interruption are distinct outcomes. Linear `/help` and `/cancel` are exact
-commands: prefix either with `\` to enter it literally, and double an initial
-backslash to enter one. Identified bracketed paste is literal; unframed paste
-cannot be distinguished from typing. Paste frames are bounded to 4096 UTF-16
-code units and oversized frames are rejected as a unit. Character limits count
-grapheme clusters. Accessibility is not qualified by the automated tests;
-see [the editable probe](doc/editable-probe.md) for evidence and limitations.
+`ScriptedInput(stream, sink, supportsRich: false)`. `TextInput.prompt` also
+accepts `terminal: TerminalIo` for an application-owned terminal adapter. It
+provides the selected input/output, existing rich-capability observation and a
+declared environment; `acquire()` returns a lease that Trelis restores after the
+invocation. Do not combine that adapter with `source:` or `output:`. `Text`,
+`Progress`, `Spinner`, and `MultiSpinner` can select its output with
+`terminal:` without acquiring input. The legacy native invocation and
+`ScriptedInput` forms remain supported until the later migration contract step.
+Supplied answers are literal and validated. For a stream, only completed lines
+submit; EOF, cancellation and interruption are distinct outcomes. Linear
+`/help` and `/cancel` are exact commands: prefix either with `\` to enter it
+literally, and double an initial backslash to enter one. Identified bracketed
+paste is literal; unframed paste cannot be distinguished from typing. Paste
+frames are bounded to 4096 UTF-16 code units and oversized frames are rejected
+as a unit. Character limits count grapheme clusters. Accessibility is not
+qualified by the automated tests; see [the editable probe](doc/editable-probe.md)
+for evidence and limitations.
 
 ## Visual reference
 
