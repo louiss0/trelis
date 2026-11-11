@@ -1,0 +1,1 @@
+text input redirected PASS result=alpha state=503:7:25:1 -> 496:7:25:1 -> 503:7:25:1
