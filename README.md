@@ -30,10 +30,13 @@ Construction does not acquire the terminal. Each invocation starts a new
 session; overlapping sessions on the same prompt or console are rejected.
 Interactive console input currently requires Windows. Prompt output defaults to
 stderr; pass `output: stdout` to select stdout. Redirected output is sequential,
-without cursor addressing. On a cursor-capable terminal, linear TextInput keeps
-the active answer on one editable line with the visible cursor at its editing
-position; instructions and completed exchanges remain in the transcript.
-Long answers scroll horizontally; `<` and `>` indicate hidden text on either side.
+without cursor addressing. On a cursor-capable terminal, TextInput keeps the active answer on one
+editable line with the visible cursor at its editing position; instructions and
+completed exchanges remain in the transcript. Long answers scroll horizontally;
+`<` and `>` indicate hidden text on either side. A declared output geometry
+bounds the editable line and wrapped read-only label, instructions, and
+validation text; Trelis uses the narrower of that geometry and a documented
+120-column total-width cap. It never splits a grapheme to meet that bound.
 Without that capability, it prints sequential text and cursor-position reports.
 Linear command quoting and validation are unchanged. Explicit rich mode requires
 a rich-capable terminal output and fails rather than falling back. A terminal
