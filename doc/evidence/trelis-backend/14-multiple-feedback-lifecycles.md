@@ -31,7 +31,11 @@ of rendering and does not require wall-clock sleeps.
 
 | Command | Result |
 | --- | --- |
+| `dart format --output=none --set-exit-if-changed .` | Passed: no files needed formatting |
 | `dart test test/feedback_test.dart test/multi_spinner_test.dart test/terminal_session_feedback_test.dart --reporter expanded` | Passed: 25 tests |
+| `dart analyze` | Passed: `No issues found!` |
+| `dart run tool/check_doc_links.dart` | Passed |
+| `dart test --reporter expanded` | Passed: 691 tests |
 | `git diff --check` | Passed: no whitespace errors |
 
 ## Limitations
