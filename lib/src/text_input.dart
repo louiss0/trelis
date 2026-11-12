@@ -311,9 +311,12 @@ final class TerminalSession {
   _Keys? _keys;
   final List<TerminalSessionFeedbackRegion> _feedback = [];
   final Map<int, int> _liveGenerations = {};
+  final Map<int, String> _feedbackSnapshots = {};
   int _nextRegionId = 1;
   void Function()? _promptRepaint;
   bool _activePrompt = false;
+  bool _modalHelp = false;
+  bool _modalUsesAlternateScreen = false;
   bool _closed = false;
 
   bool get _feedbackRich {
@@ -358,6 +361,11 @@ final class TerminalSession {
         !_feedback.contains(region)) {
       return;
     }
+    // Retain the current region snapshot even while help owns painting. A
+    // worker may keep reporting progress during help, but it must not write
+    // into the alternate screen or transcript between help lines.
+    _feedbackSnapshots[region._id] = line;
+    if (_modalHelp) return;
     // One session-owned writer delivers a complete region update before the
     // prompt repaint. Clearing the editable line first prevents a status
     // write from overwriting the physical caret; the editor retains the
@@ -367,6 +375,53 @@ final class TerminalSession {
     }
     _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
     _promptRepaint?.call();
+  }
+
+  /// Makes component help the sole owner of session painting until dismissed.
+  ///
+  /// Background regions continue to update their retained snapshots, but only
+  /// this session decides whether an alternate screen is entered or a
+  /// transcript fallback is used.
+  void _openModalHelp({required bool useAlternateScreen}) {
+    if (_closed) throw StateError('Terminal session is closed.');
+    if (_modalHelp) return;
+    _modalHelp = true;
+    _modalUsesAlternateScreen = useAlternateScreen;
+    if (useAlternateScreen) _output.write('\x1b[?1049h\x1b[H');
+  }
+
+  void _restoreLatestComposite() {
+    for (final line in _feedbackSnapshots.values) {
+      _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+    }
+  }
+
+  /// Dismisses session help and reconstitutes current state rather than a
+  /// frame captured when help opened.
+  void _dismissModalHelp({
+    required bool showTranscriptDismissal,
+    required void Function() repaintPrompt,
+  }) {
+    if (!_modalHelp) return;
+    final usedAlternateScreen = _modalUsesAlternateScreen;
+    if (usedAlternateScreen) _output.write('\x1b[?1049l');
+    _modalHelp = false;
+    _modalUsesAlternateScreen = false;
+    if (showTranscriptDismissal && !usedAlternateScreen) {
+      _output.writeln('Help dismissed.');
+    }
+    _restoreLatestComposite();
+    repaintPrompt();
+  }
+
+  /// Releases session-owned help on an interruption, EOF, or exceptional exit.
+  /// There is no editor to repaint, but the latest notices remain observable.
+  void _abortModalHelp() {
+    if (!_modalHelp) return;
+    if (_modalUsesAlternateScreen) _output.write('\x1b[?1049l');
+    _modalHelp = false;
+    _modalUsesAlternateScreen = false;
+    _restoreLatestComposite();
   }
 
   /// Emits an informational block through the session writer.
@@ -450,6 +505,7 @@ final class TerminalSession {
     try {
       return await callback(session);
     } finally {
+      session._abortModalHelp();
       session._closed = true;
       session._promptRepaint = null;
       for (final region in List.of(session._feedback)) {
@@ -1265,7 +1321,12 @@ Future<({String action, String value})> _edit(
       if (key == '\x1b') {
         if (!help) return (action: 'cancel', value: '');
         help = false;
-        if (transientHelp) {
+        if (session != null) {
+          session._dismissModalHelp(
+            showTranscriptDismissal: !transientHelp,
+            repaintPrompt: display,
+          );
+        } else if (transientHelp) {
           output.write('\x1b[?1049l');
         } else {
           output.writeln('Help dismissed.');
@@ -1276,7 +1337,9 @@ Future<({String action, String value})> _edit(
       if (key == '\x14') {
         if (help) continue;
         help = true;
-        if (transientHelp) {
+        if (session != null) {
+          session._openModalHelp(useAlternateScreen: transientHelp);
+        } else if (transientHelp) {
           output.write('\x1b[?1049h\x1b[H');
         } else if (!sequential && !secret) {
           output.writeln();
@@ -1424,7 +1487,13 @@ Future<({String action, String value})> _edit(
     if (session != null) session._setPromptRepaint(null);
     resizeFallback?.cancel();
     await resizeSubscription?.cancel();
-    if (help && transientHelp) output.write('\x1b[?1049l');
+    if (help) {
+      if (session != null) {
+        session._abortModalHelp();
+      } else if (transientHelp) {
+        output.write('\x1b[?1049l');
+      }
+    }
   }
 }
 
