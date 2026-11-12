@@ -1,5 +1,12 @@
+import 'dart:async';
+
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
 
 void main() {
   test('hidden literal entry needs separate submission', () async {
@@ -24,6 +31,22 @@ void main() {
     expect(result, isA<Unavailable<String>>());
     expect(output.toString(), isNot(contains('temporary')));
   });
+  test('session validation failure remains generic and does not disclose its canary', () async {
+    const canary = 'session-secret-canary';
+    final output = StringBuffer();
+    final result = await TerminalSession.run(
+      (session) => Password(
+        'Password',
+        validate: (_) => throw StateError(canary),
+      ).prompt(session: session),
+      source: ScriptedInput(Stream.value('$canary\rsubmit\r'), output),
+      mode: PromptMode.linear,
+    );
+
+    expect(result, isA<Unavailable<String>>());
+    expect(output.toString(), isNot(contains(canary)));
+  });
+
   test(
     'linear actions advertise the shared help and cancellation commands',
     () async {
@@ -62,6 +85,9 @@ void main() {
               source: ScriptedInput(
                 Stream.value('a\rsubmit\redit\rb\rsubmit\r'),
                 output,
+                outputProfile: mode == PromptMode.rich
+                    ? _richProfile
+                    : const OutputProfile(),
               ),
               mode: mode,
             );
@@ -75,13 +101,22 @@ void main() {
         source: ScriptedInput(
           Stream.value('\rclear\rnew\rsubmit\r'),
           StringBuffer(),
+          outputProfile: mode == PromptMode.rich
+              ? _richProfile
+              : const OutputProfile(),
         ),
         mode: mode,
       );
       expect((result as Accepted<String>).value, 'new');
       expect(
         await Password('Password', initialValue: 'old').prompt(
-          source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+          source: ScriptedInput(
+            Stream.value('\r'),
+            StringBuffer(),
+            outputProfile: mode == PromptMode.rich
+                ? _richProfile
+                : const OutputProfile(),
+          ),
           mode: mode,
         ),
         isA<InputEnded<String>>(),
@@ -125,4 +160,50 @@ void main() {
       );
     },
   );
+
+  test('a password uses the shared rich session without projecting its private draft', () async {
+    const canary = 'password-canary-73';
+    final output = StringBuffer();
+    final transcript = TextInputTranscript();
+    final input = StreamController<String>();
+    final profile = OutputProfile(
+      cursor: CapabilitySupport.supported,
+      geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+    );
+
+    final result = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Vault');
+        spinner.start(session: session);
+        final pending = Password('Password').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        input.add(canary);
+        await Future<void>.delayed(Duration.zero);
+        spinner.update('checking entry');
+        input.add('\x14\x1b\rsubmit\r');
+        await input.close();
+        spinner.finish(FeedbackOutcome.completed);
+        return await pending;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        outputProfile: profile,
+        transcript: transcript,
+      ),
+    );
+
+    expect((result as Accepted<String>).value, canary);
+    expect(output.toString(), contains('Hidden entry'));
+    expect(output.toString(), contains('[status] Vault: checking entry'));
+    expect(output.toString(), contains('Enter opens Password actions'));
+    expect(output.toString(), isNot(contains(canary)));
+    expect(output.toString(), isNot(contains('${canary.length} graphemes')));
+    expect(transcript.currentView!.text, '<private entry>');
+    expect(transcript.currentView!.caret, 0);
+    expect(
+      transcript.events.map((event) => event.text),
+      isNot(contains(canary)),
+    );
+  });
 }
