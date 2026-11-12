@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:async';
 
 import 'terminal_io.dart';
-import 'text_input.dart' show PromptMode;
+import 'text_input.dart'
+    show PromptMode, TerminalSession, TerminalSessionFeedbackRegion;
 
 /// Semantic meaning that remains readable without color.
 enum TextKind { ordinary, hint, success, warning, error }
@@ -35,13 +36,40 @@ bool _supportsRich({
     terminal?.supportsRich ??
     (output is Stdout && output.hasTerminal);
 
+TerminalSessionFeedbackRegion _startInSession(
+  TerminalSession session, {
+  StringSink? output,
+  TerminalIo? terminal,
+  PromptMode? mode,
+  PromptMode? userPreference,
+  PromptMode? applicationPreference,
+  bool? supportsRich,
+}) {
+  if (output != null ||
+      terminal != null ||
+      (mode != null && mode != PromptMode.automatic) ||
+      (userPreference != null && userPreference != PromptMode.automatic) ||
+      (applicationPreference != null &&
+          applicationPreference != PromptMode.automatic) ||
+      supportsRich != null) {
+    throw ArgumentError(
+      'Feedback attached to a session inherits its output and presentation configuration.',
+    );
+  }
+  return session.startFeedbackRegion();
+}
+
 /// Literal, feedback-only text.
 final class Text {
   Text(this.content, {this.kind = TextKind.ordinary});
   final String content;
   final TextKind kind;
 
-  void present({StringSink? output, TerminalIo? terminal}) {
+  void present({
+    StringSink? output,
+    TerminalIo? terminal,
+    TerminalSession? session,
+  }) {
     final prefix = switch (kind) {
       TextKind.ordinary => '',
       TextKind.hint => 'Hint: ',
@@ -49,10 +77,19 @@ final class Text {
       TextKind.warning => 'Warning: ',
       TextKind.error => 'Error: ',
     };
-    _selectedOutput(
-      output: output,
-      terminal: terminal,
-    ).writeln('$prefix${_safe(content)}');
+    final line = '$prefix${_safe(content)}';
+    if (session != null) {
+      if (output != null || terminal != null) {
+        throw ArgumentError(
+          'Text attached to a session inherits its output; do not supply output or terminal.',
+        );
+      }
+      session.presentText(line);
+      return;
+    }
+    final sink = _selectedOutput(output: output, terminal: terminal);
+    TerminalSession.ensureStandaloneOutputAvailable(sink);
+    sink.writeln(line);
   }
 }
 
@@ -84,6 +121,8 @@ final class Progress {
   int? _total;
   int _value = 0;
   StringSink? _output;
+  Object? _standaloneOwner;
+  TerminalSessionFeedbackRegion? _sessionRegion;
   bool _rich = false;
   bool _finished = false;
 
@@ -94,21 +133,41 @@ final class Progress {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     bool? supportsRich,
+    TerminalSession? session,
   }) {
-    if (_output != null) throw StateError('Already started');
-    final sink = _selectedOutput(output: output, terminal: terminal);
-    final capable = _supportsRich(
-      output: sink,
-      declared: supportsRich,
-      terminal: terminal,
-    );
-    final selected =
-        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
-    if (selected == PromptMode.rich && !capable) {
-      throw StateError('Rich output unavailable');
+    if (_output != null || _sessionRegion != null) {
+      throw StateError('Already started');
     }
-    _rich = capable && selected != PromptMode.linear;
-    _output = sink;
+    if (session != null) {
+      _sessionRegion = _startInSession(
+        session,
+        output: output,
+        terminal: terminal,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        supportsRich: supportsRich,
+      );
+      _rich = _sessionRegion!.rich;
+    } else {
+      final sink = _selectedOutput(output: output, terminal: terminal);
+      final capable = _supportsRich(
+        output: sink,
+        declared: supportsRich,
+        terminal: terminal,
+      );
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (selected == PromptMode.rich && !capable) {
+        throw StateError('Rich output unavailable');
+      }
+      _rich = capable && selected != PromptMode.linear;
+      _output = sink;
+      _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
+    }
     _show();
   }
 
@@ -121,7 +180,9 @@ final class Progress {
 
   void update(int completed) {
     if (_finished) return;
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     if (_total == null || completed < 0 || completed > _total!) {
       throw ArgumentError.value(completed, 'completed');
     }
@@ -157,7 +218,9 @@ final class Progress {
   /// Report a meaningful phase without waiting for numeric throttling.
   void phase(String description) {
     if (_finished) return;
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     if (_phase == description) return;
     _phase = description;
     _emit('${_safe(label)}: running, ${_safe(description)}');
@@ -166,7 +229,9 @@ final class Progress {
   /// Change the work estimate, explicitly identifying the recalculation.
   void setTotal(int? total, {int completed = 0}) {
     if (_finished) return;
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     if ((total != null && (total <= 0 || completed < 0 || completed > total)) ||
         (total == null && completed != 0)) {
       throw ArgumentError('Invalid total or completed count');
@@ -194,7 +259,12 @@ final class Progress {
   }
 
   void _emit(String line, {bool finalLine = false}) {
-    _output!.writeln(_rich ? '[status] $line' : line);
+    final region = _sessionRegion;
+    if (region != null) {
+      region.write(line);
+    } else {
+      _output!.writeln(_rich ? '[status] $line' : line);
+    }
   }
 
   /// Release presentation resources without inventing an outcome.
@@ -203,11 +273,19 @@ final class Progress {
     _finished = true;
     _timer?.cancel();
     _pending = null;
+    _sessionRegion?.retire();
+    final owner = _standaloneOwner;
+    if (owner != null && _output != null) {
+      TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
+      _standaloneOwner = null;
+    }
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {
     if (_finished) return;
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     _finished = true;
     _timer?.cancel();
     _pending = null;
@@ -215,6 +293,12 @@ final class Progress {
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
       finalLine: true,
     );
+    _sessionRegion?.retire();
+    final owner = _standaloneOwner;
+    if (owner != null && _output != null) {
+      TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
+      _standaloneOwner = null;
+    }
   }
 }
 
@@ -223,6 +307,8 @@ final class Spinner {
   Spinner(this.label);
   final String label;
   StringSink? _output;
+  Object? _standaloneOwner;
+  TerminalSessionFeedbackRegion? _sessionRegion;
   bool _rich = false;
   String _state = 'running';
   bool _finished = false;
@@ -234,50 +320,91 @@ final class Spinner {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     bool? supportsRich,
+    TerminalSession? session,
   }) {
-    if (_output != null) throw StateError('Already started');
-    final sink = _selectedOutput(output: output, terminal: terminal);
-    final capable = _supportsRich(
-      output: sink,
-      declared: supportsRich,
-      terminal: terminal,
-    );
-    final selected =
-        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
-    if (selected == PromptMode.rich && !capable) {
-      throw StateError('Rich output unavailable');
+    if (_output != null || _sessionRegion != null) {
+      throw StateError('Already started');
     }
-    _rich = capable && selected != PromptMode.linear;
-    _output = sink;
+    if (session != null) {
+      _sessionRegion = _startInSession(
+        session,
+        output: output,
+        terminal: terminal,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        supportsRich: supportsRich,
+      );
+      _rich = _sessionRegion!.rich;
+    } else {
+      final sink = _selectedOutput(output: output, terminal: terminal);
+      final capable = _supportsRich(
+        output: sink,
+        declared: supportsRich,
+        terminal: terminal,
+      );
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (selected == PromptMode.rich && !capable) {
+        throw StateError('Rich output unavailable');
+      }
+      _rich = capable && selected != PromptMode.linear;
+      _output = sink;
+      _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
+    }
     _emit('${_safe(label)}: $_state');
   }
 
   void update(String state) {
     if (_finished) return;
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     if (state == _state) return;
     _state = state;
     _emit('${_safe(label)}: ${_safe(state)}');
   }
 
   void _emit(String line, {bool finalLine = false}) {
-    _output!.writeln(_rich ? '[status] $line' : line);
+    final region = _sessionRegion;
+    if (region != null) {
+      region.write(line);
+    } else {
+      _output!.writeln(_rich ? '[status] $line' : line);
+    }
   }
 
   /// Release presentation resources without inventing an outcome.
   void dispose() {
     if (_finished) return;
     _finished = true;
+    _sessionRegion?.retire();
+    final owner = _standaloneOwner;
+    if (owner != null && _output != null) {
+      TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
+      _standaloneOwner = null;
+    }
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {
     if (_finished) return;
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     _finished = true;
     _emit(
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
       finalLine: true,
     );
+    _sessionRegion?.retire();
+    final owner = _standaloneOwner;
+    if (owner != null && _output != null) {
+      TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
+      _standaloneOwner = null;
+    }
   }
 }
 
@@ -324,6 +451,8 @@ final class MultiSpinner {
   Duration? _lastBatch;
   Timer? _timer;
   StringSink? _output;
+  Object? _standaloneOwner;
+  TerminalSessionFeedbackRegion? _sessionRegion;
   bool _rich = false;
   bool _closed = false;
 
@@ -334,23 +463,41 @@ final class MultiSpinner {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     bool? supportsRich,
+    TerminalSession? session,
   }) {
-    if (_output != null || _closed) {
+    if (_output != null || _sessionRegion != null || _closed) {
       throw StateError('Already started or disposed');
     }
-    final sink = _selectedOutput(output: output, terminal: terminal);
-    final capable = _supportsRich(
-      output: sink,
-      declared: supportsRich,
-      terminal: terminal,
-    );
-    final selected =
-        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
-    if (selected == PromptMode.rich && !capable) {
-      throw StateError('Rich output unavailable');
+    if (session != null) {
+      _sessionRegion = _startInSession(
+        session,
+        output: output,
+        terminal: terminal,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        supportsRich: supportsRich,
+      );
+      _rich = _sessionRegion!.rich;
+    } else {
+      final sink = _selectedOutput(output: output, terminal: terminal);
+      final capable = _supportsRich(
+        output: sink,
+        declared: supportsRich,
+        terminal: terminal,
+      );
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (selected == PromptMode.rich && !capable) {
+        throw StateError('Rich output unavailable');
+      }
+      _rich = capable && selected != PromptMode.linear;
+      _output = sink;
+      _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
     }
-    _rich = capable && selected != PromptMode.linear;
-    _output = sink;
     for (final entry in _tasks.entries) {
       _emit('${_safe(entry.key)}: ${entry.value.description}');
       entry.value.shown = entry.value.description;
@@ -358,7 +505,9 @@ final class MultiSpinner {
   }
 
   _GroupTask _task(String task) {
-    if (_output == null) throw StateError('Not started');
+    if (_output == null && _sessionRegion == null) {
+      throw StateError('Not started');
+    }
     return _tasks[task] ??
         (throw ArgumentError.value(task, 'task', 'Unknown task'));
   }
@@ -411,6 +560,12 @@ final class MultiSpinner {
       _closed = true;
       _timer?.cancel();
       _pending.clear();
+      _sessionRegion?.retire();
+      final owner = _standaloneOwner;
+      if (owner != null && _output != null) {
+        TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
+        _standaloneOwner = null;
+      }
     }
   }
 
@@ -421,7 +576,14 @@ final class MultiSpinner {
     }
   }
 
-  void _emit(String line) => _output!.writeln(_rich ? '[status] $line' : line);
+  void _emit(String line) {
+    final region = _sessionRegion;
+    if (region != null) {
+      region.write(line);
+    } else {
+      _output!.writeln(_rich ? '[status] $line' : line);
+    }
+  }
 
   /// Stop presentation without assigning outcomes to unfinished tasks.
   void dispose() {
@@ -429,6 +591,12 @@ final class MultiSpinner {
     _closed = true;
     _timer?.cancel();
     _pending.clear();
-    if (_output != null) _summary();
+    if (_output != null || _sessionRegion != null) _summary();
+    _sessionRegion?.retire();
+    final owner = _standaloneOwner;
+    if (owner != null && _output != null) {
+      TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
+      _standaloneOwner = null;
+    }
   }
 }

@@ -235,9 +235,59 @@ enum PromptMode { rich, linear, automatic }
 /// value.
 enum InstructionDisplay { themeDefault, compact, expanded, hidden }
 
-/// Coordinates sequential prompt invocations over one selected terminal.
+final _noScreenOwner = Object();
+final _screenOwners = Expando<Object>('prompty terminal screen owner');
+
+Object? _screenOwner(StringSink output) {
+  final owner = _screenOwners[output as Object];
+  return identical(owner, _noScreenOwner) ? null : owner;
+}
+
+void _claimScreen(StringSink output, Object owner) {
+  if (_screenOwner(output) != null) {
+    throw StateError(
+      'This output already has a terminal screen owner; attach to its TerminalSession instead.',
+    );
+  }
+  _screenOwners[output as Object] = owner;
+}
+
+void _releaseScreen(StringSink output, Object owner) {
+  if (identical(_screenOwner(output), owner)) {
+    _screenOwners[output as Object] = _noScreenOwner;
+  }
+}
+
+/// An opaque, session-local live-feedback registration.
 ///
-/// A session handle is only created by [run]. Attached prompts inherit its
+/// Its identity belongs to the session rather than a feedback label, so a
+/// retired registration cannot be revived by a late application update.
+final class TerminalSessionFeedbackRegion {
+  TerminalSessionFeedbackRegion._(this._session, this._id, this._generation);
+
+  final TerminalSession _session;
+  final int _id;
+  final int _generation;
+  bool _retired = false;
+
+  bool get rich => _session._feedbackRich;
+
+  void write(String line) {
+    if (_retired) return;
+    _session._writeFeedback(this, line);
+  }
+
+  void retire() {
+    if (_retired) return;
+    _retired = true;
+    _session._retireFeedback(this);
+  }
+}
+
+/// Coordinates sequential prompt and feedback invocations over one selected
+/// terminal.
+///
+/// A session handle is only created by [run]. Attached components inherit its
 /// input, output and presentation configuration; they cannot take competing
 /// ownership of those resources.
 final class TerminalSession {
@@ -259,8 +309,107 @@ final class TerminalSession {
   final PromptMode? _applicationPreference;
   final OutputProfile? _outputProfile;
   _Keys? _keys;
+  final List<TerminalSessionFeedbackRegion> _feedback = [];
+  final Map<int, int> _liveGenerations = {};
+  int _nextRegionId = 1;
+  void Function()? _promptRepaint;
   bool _activePrompt = false;
   bool _closed = false;
+
+  bool get _feedbackRich {
+    final selected =
+        _mode ??
+        _userPreference ??
+        _applicationPreference ??
+        PromptMode.automatic;
+    if (selected == PromptMode.linear) return false;
+    final sourceProfile =
+        _source?.outputProfile ??
+        (_terminalIo == null
+            ? const OutputProfile()
+            : _terminalOutputProfile(_terminalIo));
+    final profile = OutputProfile.resolve(
+      invocation: _outputProfile,
+      source: sourceProfile,
+      supportsRich: _source?.supportsRich ?? _terminalIo?.supportsRich ?? false,
+    );
+    return profile.supportsRichInteraction;
+  }
+
+  /// Registers one feedback region with this session's serialized writer.
+  /// Feedback components call this when they are started with `session:`.
+  TerminalSessionFeedbackRegion startFeedbackRegion() {
+    if (_closed) throw StateError('Terminal session is closed.');
+    final region = TerminalSessionFeedbackRegion._(this, _nextRegionId++, 1);
+    _feedback.add(region);
+    _liveGenerations[region._id] = region._generation;
+    return region;
+  }
+
+  void _retireFeedback(TerminalSessionFeedbackRegion region) {
+    if (_liveGenerations[region._id] != region._generation) return;
+    _liveGenerations.remove(region._id);
+    _feedback.remove(region);
+  }
+
+  void _writeFeedback(TerminalSessionFeedbackRegion region, String line) {
+    if (_closed ||
+        _liveGenerations[region._id] != region._generation ||
+        !_feedback.contains(region)) {
+      return;
+    }
+    // One session-owned writer delivers a complete region update before the
+    // prompt repaint. Clearing the editable line first prevents a status
+    // write from overwriting the physical caret; the editor retains the
+    // logical draft and anchor used by its repaint closure.
+    if (_promptRepaint != null && _feedbackRich) {
+      _output.write('\r\x1b[2K');
+    }
+    _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+    _promptRepaint?.call();
+  }
+
+  /// Emits an informational block through the session writer.
+  void presentText(String line) {
+    if (_closed) throw StateError('Terminal session is closed.');
+    final region = TerminalSessionFeedbackRegion._(this, _nextRegionId++, 1);
+    // Text is a coordinated informational block rather than an input-owning
+    // live region. It receives an identity for ordered writer delivery.
+    _feedback.add(region);
+    _liveGenerations[region._id] = region._generation;
+    region.write(line);
+    region.retire();
+  }
+
+  void _setPromptRepaint(void Function()? repaint) {
+    _promptRepaint = repaint;
+  }
+
+  /// Claims a standalone feedback lifetime on [output].
+  ///
+  /// This is used by the feedback components to reject an independent writer
+  /// while a session owns the selected screen. It never creates a shared
+  /// global session: callers must explicitly attach to [run].
+  static void ensureStandaloneOutputAvailable(StringSink output) {
+    if (_screenOwner(output) != null) {
+      throw StateError(
+        'This output already has a terminal screen owner; attach to its TerminalSession instead.',
+      );
+    }
+  }
+
+  static Object claimStandaloneFeedbackOutput(StringSink output) {
+    // Standalone feedback remains source-compatible with other standalone
+    // feedback. It must not, however, paint through an explicit session.
+    ensureStandaloneOutputAvailable(output);
+    return Object();
+  }
+
+  /// Releases a claim returned by [claimStandaloneFeedbackOutput].
+  static void releaseStandaloneFeedbackOutput(
+    StringSink output,
+    Object owner,
+  ) {}
 
   /// Runs [callback] with a scoped terminal owner and returns its result after
   /// releasing any session-owned scripted reader.
@@ -285,8 +434,10 @@ final class TerminalSession {
         'Session output must be identical to its input adapter output.',
       );
     }
+    final selectedSink = output ?? selectedOutput ?? stderr;
+    _claimScreen(selectedSink, Object());
     final session = TerminalSession._(
-      output ?? selectedOutput ?? stderr,
+      selectedSink,
       source,
       terminal,
       mode,
@@ -294,11 +445,18 @@ final class TerminalSession {
       applicationPreference,
       outputProfile,
     );
+    // Replace the temporary claim with the handle exposed to the callback.
+    _screenOwners[selectedSink as Object] = session;
     try {
       return await callback(session);
     } finally {
       session._closed = true;
+      session._promptRepaint = null;
+      for (final region in List.of(session._feedback)) {
+        region.retire();
+      }
       await session._keys?.close();
+      _releaseScreen(selectedSink, session);
     }
   }
 
@@ -349,6 +507,7 @@ final class TerminalSession {
           selected,
           outputProfile: _outputProfile,
           keys: _keys,
+          session: this,
         );
       }
       if (_terminalIo != null) {
@@ -366,6 +525,7 @@ final class TerminalSession {
             ),
             selected,
             outputProfile: _outputProfile,
+            session: this,
           ),
           lease.restore,
         );
@@ -382,6 +542,7 @@ final class TerminalSession {
           nativeSource,
           nativeMode,
           outputProfile: _outputProfile,
+          session: this,
         ),
       );
     } finally {
@@ -744,6 +905,7 @@ final class TextInput {
     PromptMode mode, {
     OutputProfile? outputProfile,
     _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -819,6 +981,7 @@ final class TextInput {
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
+          session: session,
         );
         if (result.action == 'cancel') {
           scripted.transcript?._event(TextInputPresentationEventKind.cancelled);
@@ -891,6 +1054,7 @@ Future<({String action, String value})> _edit(
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
   TerminalResizeObserver? resizeObserver,
+  TerminalSession? session,
   void Function(bool literal)? onSubmit,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
@@ -1015,6 +1179,7 @@ Future<({String action, String value})> _edit(
 
   onChanged?.call(chars.join());
   display();
+  session?._setPromptRepaint(display);
   var help = false;
   StreamSubscription<void>? resizeSubscription;
   Timer? resizeFallback;
@@ -1242,6 +1407,7 @@ Future<({String action, String value})> _edit(
       display();
     }
   } finally {
+    if (session != null) session._setPromptRepaint(null);
     resizeFallback?.cancel();
     await resizeSubscription?.cancel();
     if (help && transientHelp) output.write('\x1b[?1049l');
