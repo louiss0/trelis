@@ -207,4 +207,86 @@ void main() {
       expect(out.toString(), contains('0% (2/1000)'));
     },
   );
+
+  test(
+    'progress cadence is deterministic with an application-controlled clock',
+    () {
+      final out = StringBuffer();
+      final clock = _FakeFeedbackClock();
+      final progress = Progress(
+        'Upload',
+        total: 100,
+        interval: const Duration(seconds: 5),
+        clock: clock,
+      );
+
+      progress.start(output: out);
+      progress.update(10);
+      progress.update(20);
+      expect(out.toString(), isNot(contains('20%')));
+
+      clock.elapse(const Duration(seconds: 5));
+      expect(out.toString(), contains('Upload: running, 20%'));
+      progress.dispose();
+    },
+  );
+
+  test('multi-spinner batching is deterministic with an application-controlled clock', () {
+    final out = StringBuffer();
+    final clock = _FakeFeedbackClock();
+    final tasks = MultiSpinner(
+      ['compile'],
+      interval: const Duration(seconds: 5),
+      clock: clock,
+    );
+
+    tasks.start(output: out);
+    tasks.update('compile', TaskActivity.running, phase: 'first');
+    tasks.update('compile', TaskActivity.running, phase: 'latest');
+    expect(out.toString(), isNot(contains('latest')));
+
+    clock.elapse(const Duration(seconds: 5));
+    expect(out.toString(), contains('compile: running, latest'));
+    tasks.dispose();
+  });
+}
+
+final class _FakeFeedbackClock implements FeedbackClock {
+  Duration _elapsed = Duration.zero;
+  final List<_ScheduledCallback> _callbacks = [];
+
+  @override
+  Duration get elapsed => _elapsed;
+
+  @override
+  FeedbackTimer schedule(Duration delay, void Function() callback) {
+    final scheduled = _ScheduledCallback(_elapsed + delay, callback);
+    _callbacks.add(scheduled);
+    return scheduled;
+  }
+
+  void elapse(Duration duration) {
+    _elapsed += duration;
+    while (true) {
+      final due = _callbacks.where((callback) {
+        return !callback.cancelled && callback.when <= _elapsed;
+      }).toList();
+      if (due.isEmpty) return;
+      for (final callback in due) {
+        _callbacks.remove(callback);
+        callback.callback();
+      }
+    }
+  }
+}
+
+final class _ScheduledCallback implements FeedbackTimer {
+  _ScheduledCallback(this.when, this.callback);
+
+  final Duration when;
+  final void Function() callback;
+  bool cancelled = false;
+
+  @override
+  void cancel() => cancelled = true;
 }
