@@ -315,6 +315,7 @@ final class TerminalSession {
   int _nextRegionId = 1;
   void Function()? _promptRepaint;
   bool _activePrompt = false;
+  OutputGeometry? _promptGeometry;
   bool _modalHelp = false;
   bool _modalUsesAlternateScreen = false;
   bool _closed = false;
@@ -353,6 +354,79 @@ final class TerminalSession {
     if (_liveGenerations[region._id] != region._generation) return;
     _liveGenerations.remove(region._id);
     _feedback.remove(region);
+    if (!_modalHelp && _feedbackNeedsCompaction) {
+      _paintCompactFeedback();
+      _promptRepaint?.call();
+    }
+  }
+
+  int? get _feedbackCapacity {
+    if (!_feedbackRich || _promptRepaint == null) return null;
+    final rows = _promptGeometry?.rows;
+    if (rows == null) return null;
+    // The active editable row is never feedback capacity. A one-row screen
+    // therefore retains the prompt/caret and moves every background detail to
+    // reviewable history.
+    return rows - 1;
+  }
+
+  bool _isImportantFeedback(String line) =>
+      line.startsWith('Warning: ') ||
+      line.startsWith('Error: ') ||
+      line.contains(': failed') ||
+      line.contains(': skipped') ||
+      line.contains(': cancelled') ||
+      line.contains(': interrupted') ||
+      line.contains(': completed');
+
+  bool get _hasImportantFeedback =>
+      _feedbackSnapshots.values.any(_isImportantFeedback);
+
+  bool get _feedbackNeedsCompaction {
+    final capacity = _feedbackCapacity;
+    if (capacity == null) return false;
+    return _feedback.length > capacity ||
+        (capacity == 0 && _hasImportantFeedback);
+  }
+
+  String _compactFeedbackLine() {
+    final labels = <String>[
+      for (final region in _feedback)
+        if (_feedbackSnapshots[region._id] case final line?)
+          line.split(':').first,
+    ];
+    var line =
+        '${_hasImportantFeedback ? '[!] ' : ''}Feedback (${labels.length})';
+    if (labels.isNotEmpty) {
+      final columns = _promptGeometry?.columns;
+      final available = columns == null ? null : columns - '[status] '.length;
+      final visible = <String>[];
+      for (var index = 0; index < labels.length; index++) {
+        final remaining = labels.length - index - 1;
+        final suffix = remaining == 0
+            ? labels[index]
+            : '${labels[index]} +$remaining';
+        final candidate = '$line: ${[...visible, suffix].join(', ')}';
+        if (available != null &&
+            TextDisplayMap(candidate).cellWidth > available) {
+          break;
+        }
+        visible.add(labels[index]);
+      }
+      if (visible.isEmpty) {
+        line = '$line: ${labels.length} active';
+      } else {
+        final remaining = labels.length - visible.length;
+        line =
+            '$line: ${visible.join(', ')}${remaining == 0 ? '' : ' +$remaining'}';
+      }
+    }
+    return line;
+  }
+
+  void _paintCompactFeedback() {
+    if (_promptRepaint != null && _feedbackRich) _output.write('\r\x1b[2K');
+    _output.writeln('[status] ${_compactFeedbackLine()}');
   }
 
   void _writeFeedback(TerminalSessionFeedbackRegion region, String line) {
@@ -370,10 +444,20 @@ final class TerminalSession {
     // prompt repaint. Clearing the editable line first prevents a status
     // write from overwriting the physical caret; the editor retains the
     // logical draft and anchor used by its repaint closure.
-    if (_promptRepaint != null && _feedbackRich) {
-      _output.write('\r\x1b[2K');
+    if (_feedbackNeedsCompaction) {
+      // Failures and explicit outcomes remain full, reviewable transcript
+      // records even when the live portion has no available rows.
+      if (_isImportantFeedback(line)) {
+        if (_promptRepaint != null && _feedbackRich) _output.write('\r\x1b[2K');
+        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+      }
+      _paintCompactFeedback();
+    } else {
+      if (_promptRepaint != null && _feedbackRich) {
+        _output.write('\r\x1b[2K');
+      }
+      _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
     }
-    _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
     _promptRepaint?.call();
   }
 
@@ -391,6 +475,10 @@ final class TerminalSession {
   }
 
   void _restoreLatestComposite() {
+    if (_feedbackNeedsCompaction) {
+      _paintCompactFeedback();
+      return;
+    }
     for (final line in _feedbackSnapshots.values) {
       _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
     }
@@ -438,6 +526,16 @@ final class TerminalSession {
 
   void _setPromptRepaint(void Function()? repaint) {
     _promptRepaint = repaint;
+    if (repaint == null) {
+      _promptGeometry = null;
+    } else if (!_modalHelp && _feedbackNeedsCompaction) {
+      _paintCompactFeedback();
+      repaint();
+    }
+  }
+
+  void _setPromptGeometry(OutputGeometry geometry) {
+    _promptGeometry = geometry;
   }
 
   /// Claims a standalone feedback lifetime on [output].
@@ -1183,6 +1281,8 @@ Future<({String action, String value})> _edit(
   var activeProfile = outputProfile;
 
   void display() {
+    final profile = activeProfile;
+    if (profile != null) session?._setPromptGeometry(profile.geometry);
     if (secret) {
       // Private entries never cross the recording/presentation boundary as
       // their draft, length, caret, or paste provenance. Masking is an
@@ -1212,7 +1312,6 @@ Future<({String action, String value})> _edit(
     final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
-    final profile = activeProfile;
     final totalWidth = profile == null ? null : _textInputWidth(profile);
     if (totalWidth != null) {
       // `> ` is structural chrome; each truthful overflow marker consumes one
