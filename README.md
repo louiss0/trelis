@@ -171,7 +171,16 @@ cancels, and Ctrl+C interrupts. In linear mode enter `yes`/`y` or `no`/`n`, or
 submit an empty line to take the displayed default. An unparseable answer
 restates the guidance and keeps the draft. `/help` and `/cancel` are exact
 commands under the shared quoting rules, and no shortcut submits a draft. A
-`SuppliedAnswer` accepts only yes/y/no/n and is otherwise unavailable.
+`SuppliedAnswer` accepts only yes/y/no/n and is otherwise unavailable. Each
+boolean prompt also accepts an optional `ColorTheme`; styles are emitted only
+when the selected `OutputProfile` permits colour and are suppressed by
+`NO_COLOR`.
+
+Boolean `prompt` invocations accept `terminal`, `outputProfile` and `session`
+the same way as the shared editor. A rich synthetic source declares cursor
+support and positive geometry through its profile. An attached prompt inherits
+its explicit `TerminalSession` configuration and can remain active while
+session feedback repaints.
 
 ## Select and Radio
 
