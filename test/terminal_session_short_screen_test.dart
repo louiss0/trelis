@@ -61,6 +61,8 @@ void main() {
         final prompt = TextInput('Project').prompt(session: session);
         await Future<void>.delayed(Duration.zero);
         index.finish(FeedbackOutcome.failed, detail: 'offline');
+        Text('Cache stale', kind: TextKind.warning).present(session: session);
+        Text('Network offline', kind: TextKind.error).present(session: session);
         input.add('demo\r');
         await input.close();
         await prompt;
@@ -74,6 +76,8 @@ void main() {
     );
 
     expect(output.toString(), contains('[status] Index: failed: offline'));
+    expect(output.toString(), contains('[status] Warning: Cache stale'));
+    expect(output.toString(), contains('[status] Error: Network offline'));
     expect(output.toString(), contains('[status] [!] Feedback (0)'));
   });
 
