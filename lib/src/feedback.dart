@@ -96,6 +96,45 @@ final class Text {
 /// The operation's reported outcome; reaching a value never implies one.
 enum FeedbackOutcome { completed, failed, skipped, cancelled, interrupted }
 
+/// A cancellable feedback cadence callback.
+abstract interface class FeedbackTimer {
+  /// Prevents the scheduled callback from running.
+  void cancel();
+}
+
+/// Time and delayed-callback ownership for feedback cadence.
+///
+/// Applications normally use the default system clock. Supplying a clock makes
+/// Progress and MultiSpinner cadence deterministic without making rendering
+/// responsible for advancing time.
+abstract interface class FeedbackClock {
+  /// The elapsed time used to decide whether a pending update may be shown.
+  Duration get elapsed;
+
+  /// Schedules [callback] after [delay].
+  FeedbackTimer schedule(Duration delay, void Function() callback);
+}
+
+final class _SystemFeedbackClock implements FeedbackClock {
+  final Stopwatch _stopwatch = Stopwatch()..start();
+
+  @override
+  Duration get elapsed => _stopwatch.elapsed;
+
+  @override
+  FeedbackTimer schedule(Duration delay, void Function() callback) =>
+      _SystemFeedbackTimer(Timer(delay, callback));
+}
+
+final class _SystemFeedbackTimer implements FeedbackTimer {
+  _SystemFeedbackTimer(this._timer);
+
+  final Timer _timer;
+
+  @override
+  void cancel() => _timer.cancel();
+}
+
 /// Caller-owned progress presentation. Construction does not produce output.
 final class Progress {
   Progress(
@@ -103,7 +142,9 @@ final class Progress {
     int? total,
     this.interval = const Duration(seconds: 5),
     this.milestone = 10,
-  }) : _total = total {
+    FeedbackClock? clock,
+  }) : _total = total,
+       _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative || milestone <= 0 || milestone > 100) {
       throw ArgumentError('Invalid progress cadence');
     }
@@ -112,9 +153,9 @@ final class Progress {
   final String label;
   final Duration interval;
   final int milestone;
-  final Stopwatch _clock = Stopwatch()..start();
+  final FeedbackClock _clock;
   Duration? _lastUpdate;
-  Timer? _timer;
+  FeedbackTimer? _timer;
   int _shownPercent = 0;
   int? _pending;
   String? _phase;
@@ -211,7 +252,7 @@ final class Progress {
     if (elapsed >= interval) {
       _flush();
     } else {
-      _timer ??= Timer(interval - elapsed, _flush);
+      _timer ??= _clock.schedule(interval - elapsed, _flush);
     }
   }
 
@@ -428,7 +469,8 @@ final class MultiSpinner {
   MultiSpinner(
     Iterable<String> tasks, {
     this.interval = const Duration(seconds: 5),
-  }) {
+    FeedbackClock? clock,
+  }) : _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
     final displayNames = <String>{};
     for (final task in tasks) {
@@ -447,9 +489,9 @@ final class MultiSpinner {
   final Duration interval;
   final Map<String, _GroupTask> _tasks = {};
   final Set<String> _pending = {};
-  final Stopwatch _clock = Stopwatch()..start();
+  final FeedbackClock _clock;
   Duration? _lastBatch;
-  Timer? _timer;
+  FeedbackTimer? _timer;
   StringSink? _output;
   Object? _standaloneOwner;
   TerminalSessionFeedbackRegion? _sessionRegion;
@@ -529,7 +571,7 @@ final class MultiSpinner {
     if (elapsed >= interval) {
       _flush();
     } else {
-      _timer ??= Timer(interval - elapsed, _flush);
+      _timer ??= _clock.schedule(interval - elapsed, _flush);
     }
   }
 

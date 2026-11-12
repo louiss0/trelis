@@ -51,4 +51,114 @@ void main() {
     expect(transcript.currentView!.text, 'demo');
     expect(transcript.currentView!.caret, 4);
   });
+
+  test('rich sessions retire multiple feedback lifecycles without losing the prompt caret', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+    final transcript = TextInputTranscript();
+    final profile = OutputProfile(
+      cursor: CapabilitySupport.supported,
+      alternateScreen: CapabilitySupport.unsupported,
+      styles: CapabilitySupport.supported,
+      colorDepth: ColorDepth.none,
+      glyphs: GlyphSet.ascii,
+      geometry: OutputGeometry.fixed(columns: 40, rows: 8),
+    );
+    late Spinner unfinished;
+
+    final answer = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Index');
+        final progress = Progress('Upload', total: 10);
+        final tasks = MultiSpinner(['compile', 'test']);
+        unfinished = Spinner('Watch');
+        spinner.start(session: session);
+        progress.start(session: session);
+        tasks.start(session: session);
+        unfinished.start(session: session);
+        final prompt = TextInput('Project').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        input.add('dem');
+        await Future<void>.delayed(Duration.zero);
+
+        spinner.finish(FeedbackOutcome.failed, detail: 'offline');
+        progress.update(10);
+        progress.phase('verifying');
+        progress.dispose();
+        tasks.finishTask('test', FeedbackOutcome.failed, detail: 'broken');
+        tasks.finishTask('compile', FeedbackOutcome.completed);
+        tasks.update('compile', TaskActivity.running, phase: 'stale');
+        input.add('o\r');
+        await input.close();
+        return (await prompt as Accepted<String>).value;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        supportsRich: true,
+        outputProfile: profile,
+        transcript: transcript,
+      ),
+    );
+
+    expect(answer, 'demo');
+    expect(transcript.currentView!.text, 'demo');
+    expect(transcript.currentView!.caret, 4);
+    expect(output.toString(), contains('[status] Index: failed: offline'));
+    expect(
+      output.toString(),
+      contains('[status] Upload: running, 100% (10/10)'),
+    );
+    expect(output.toString(), contains('[status] Upload: running, verifying'));
+    expect(output.toString(), contains('[status] Summary:'));
+    expect(output.toString(), contains('[status] compile: completed'));
+    expect(output.toString(), contains('[status] test: failed: broken'));
+    expect(output.toString(), isNot(contains('Upload: completed')));
+    expect(output.toString(), isNot(contains('stale')));
+
+    final beforeLateUpdate = output.toString();
+    unfinished.update('late');
+    expect(output.toString(), beforeLateUpdate);
+  });
+
+  test('linear sessions keep multiple feedback updates separate from the prompt caret', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+    final transcript = TextInputTranscript();
+
+    final answer = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Index');
+        final progress = Progress('Upload', total: 10);
+        final tasks = MultiSpinner(['compile', 'test']);
+        spinner.start(session: session);
+        progress.start(session: session);
+        tasks.start(session: session);
+        final prompt = TextInput('Project').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        input.add('dem');
+        await Future<void>.delayed(Duration.zero);
+
+        spinner.update('reading cache');
+        progress.update(10);
+        tasks.finishTask('compile', FeedbackOutcome.completed);
+        tasks.finishTask('test', FeedbackOutcome.cancelled);
+        input.add('o\r');
+        await input.close();
+        return (await prompt as Accepted<String>).value;
+      },
+      source: ScriptedInput(input.stream, output, transcript: transcript),
+      mode: PromptMode.linear,
+    );
+
+    expect(answer, 'demo');
+    expect(transcript.currentView!.text, 'demo');
+    expect(transcript.currentView!.caret, 4);
+    expect(output.toString(), contains('Index: reading cache'));
+    expect(output.toString(), contains('Upload: running, 100%'));
+    expect(output.toString(), contains('Summary:'));
+    expect(output.toString(), contains('compile: completed'));
+    expect(output.toString(), contains('test: cancelled'));
+    expect(output.toString(), isNot(contains('\x1b[2K')));
+  });
 }
