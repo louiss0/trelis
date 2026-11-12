@@ -134,7 +134,7 @@ final class TextInputTranscript {
 
 sealed class PromptSource {}
 
-typedef _SessionPromptRunner = Future<PromptResult<String>> Function(
+typedef _SessionPromptRunner<T> = Future<PromptResult<T>> Function(
   PromptSource source,
   PromptMode mode, {
   OutputProfile? outputProfile,
@@ -460,8 +460,8 @@ final class TerminalSession {
     }
   }
 
-  Future<PromptResult<String>> _promptRunner(
-    _SessionPromptRunner runner, {
+  Future<PromptResult<T>> _promptRunner<T>(
+    _SessionPromptRunner<T> runner, {
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
@@ -535,7 +535,7 @@ final class TerminalSession {
           'Native input requires a terminal output destination.',
         );
       }
-      return await _terminal<String>(
+      return await _terminal<T>(
         selected,
         _output,
         (nativeSource, nativeMode, _) => runner(
@@ -1049,6 +1049,7 @@ Future<({String action, String value})> _edit(
   bool required = false,
   List<String> supplementaryHelp = const [],
   String? helpText,
+  String? linearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
@@ -1325,12 +1326,13 @@ Future<({String action, String value})> _edit(
             } else {
               _writeWrappedText(
                 output,
-                _textInputHelp(
-                  linear: true,
-                  required: required,
-                  maxLength: maxLength,
-                  supplementaryHelp: supplementaryHelp,
-                ),
+                linearHelpText ??
+                    _textInputHelp(
+                      linear: true,
+                      required: required,
+                      maxLength: maxLength,
+                      supplementaryHelp: supplementaryHelp,
+                    ),
                 outputProfile == null ? null : _textInputWidth(outputProfile),
               );
               transcript?._event(TextInputPresentationEventKind.help);
@@ -2247,24 +2249,38 @@ final class _SecretValidationException implements Exception {
 
 /// A Yes/No question whose draft is not submitted by a shortcut.
 final class Confirm extends _BooleanPrompt {
-  Confirm(super.label, {super.initialValue = false})
-    : super(kind: _BooleanKind.confirm);
+  Confirm(
+    super.label, {
+    super.initialValue = false,
+    super.colors = ColorThemes.terminalDefault,
+  }) : super(kind: _BooleanKind.confirm);
 }
 
 final class Checkbox extends _BooleanPrompt {
-  Checkbox(super.label, {super.initialValue = false})
-    : super(kind: _BooleanKind.checkbox);
+  Checkbox(
+    super.label, {
+    super.initialValue = false,
+    super.colors = ColorThemes.terminalDefault,
+  }) : super(kind: _BooleanKind.checkbox);
 }
 
 final class Toggle extends _BooleanPrompt {
-  Toggle(super.label, {super.initialValue = false})
-    : super(kind: _BooleanKind.toggle);
+  Toggle(
+    super.label, {
+    super.initialValue = false,
+    super.colors = ColorThemes.terminalDefault,
+  }) : super(kind: _BooleanKind.toggle);
 }
 
 enum _BooleanKind { confirm, checkbox, toggle }
 
 abstract class _BooleanPrompt {
-  _BooleanPrompt(this.label, {required this.initialValue, required this.kind}) {
+  _BooleanPrompt(
+    this.label, {
+    required this.initialValue,
+    required this.kind,
+    required this.colors,
+  }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -2272,6 +2288,7 @@ abstract class _BooleanPrompt {
   final String label;
   final bool initialValue;
   final _BooleanKind kind;
+  final ColorTheme colors;
   bool _active = false;
 
   Future<PromptResult<bool>> prompt({
@@ -2280,7 +2297,22 @@ abstract class _BooleanPrompt {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<bool>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -2289,22 +2321,48 @@ abstract class _BooleanPrompt {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<bool>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -2316,6 +2374,25 @@ abstract class _BooleanPrompt {
     _BooleanKind.toggle => value ? 'on' : 'off',
   };
 
+  String get _kindName => switch (kind) {
+    _BooleanKind.confirm => 'Confirm',
+    _BooleanKind.checkbox => 'Checkbox',
+    _BooleanKind.toggle => 'Toggle',
+  };
+
+  String get _richControl => kind == _BooleanKind.confirm
+      ? 'Y/N changes the draft'
+      : 'Space toggles the draft';
+
+  String _help({required bool linear}) {
+    final defaultMeaning =
+        'The displayed default is ${_state(initialValue)}; the current draft changes only when you use a control.';
+    if (linear) {
+      return 'Help: $_kindName accepts yes/y or no/n. An empty line submits the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal. $defaultMeaning';
+    }
+    return 'Help: $_richControl; Enter submits. Escape dismisses help or cancels; Ctrl+C interrupts. $defaultMeaning';
+  }
+
   bool? _parse(String value) => switch (value.toLowerCase()) {
     'yes' || 'y' => true,
     'no' || 'n' => false,
@@ -2325,47 +2402,83 @@ abstract class _BooleanPrompt {
   Future<PromptResult<bool>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final value = _parse(source.value);
       return value == null ? Unavailable('Supply yes or no.') : Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
     var draft = initialValue;
-    out.writeln(
-      '$label Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
-    );
-    if (mode == PromptMode.linear) {
-      out.writeln(
-        r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.',
-      );
-    } else {
-      out.writeln(
-        '${kind == _BooleanKind.confirm ? 'Y/N changes the draft' : 'Space toggles the draft'}; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      );
+
+    void writeStyled(String text, TerminalColor foreground) {
+      // Measure and escape application text before adding terminal controls;
+      // otherwise the safety renderer would correctly spell the controls out
+      // as visible text instead of applying this component-owned style.
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, text, width);
+      final lines = wrapped.toString().split('\n');
+      for (var i = 0; i < lines.length - 1; i++) {
+        out.writeln(
+          _colorText(lines[i], foreground, colors.background, effectiveProfile),
+        );
+      }
     }
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+
+    void renderDraft() =>
+        writeStyled('Draft: ${_state(draft)}.', colors.accent);
+
+    writeStyled(
+      '$label. Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
+      colors.foreground,
+    );
+    writeStyled(
+      mode == PromptMode.linear
+          ? r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.'
+          : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      colors.muted,
+    );
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    session?._setPromptRepaint(renderDraft);
     try {
       if (mode == PromptMode.linear) {
         var entry = '';
         while (true) {
           final result = await _edit(
-            keys,
+            inputKeys,
             entry,
             out,
             linear: true,
-            sequential: true,
+            sequential: !effectiveProfile.supportsRichInteraction,
             clearHelpCommand: true,
+            linearHelpText: _help(linear: true),
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (result.action == 'cancel') return Cancelled();
           if (result.action == 'interrupt') return Interrupted();
@@ -2373,52 +2486,52 @@ abstract class _BooleanPrompt {
           entry = result.value;
           final answer = entry.isEmpty ? draft : _parse(entry);
           if (answer != null) {
-            out.writeln('Accepted: ${_state(answer)}.');
+            writeStyled('Accepted: ${_state(answer)}.', colors.success);
             return Accepted(answer);
           }
-          out.writeln(
+          writeStyled(
             'Enter yes/y or no/n, or erase the line and submit the displayed default.',
+            colors.warning,
           );
         }
       }
       var help = false;
       while (true) {
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') {
           if (!help) return Cancelled();
           help = false;
-          out.writeln('Help dismissed. Draft: ${_state(draft)}.');
+          writeStyled(
+            'Help dismissed. Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
+            colors.foreground,
+          );
           continue;
         }
         if (key == '\x14') {
+          if (help) continue;
           help = true;
-          out.writeln(
-            'Help: ${kind == _BooleanKind.confirm ? 'Y/N changes the draft' : 'Space toggles the draft'}; Enter submits. Escape dismisses help; Ctrl+C interrupts.',
-          );
+          writeStyled(_help(linear: false), colors.foreground);
           continue;
         }
         if (help) continue;
         if (key == '\r' || key == '\n') {
-          out.writeln('Accepted: ${_state(draft)}.');
+          writeStyled('Accepted: ${_state(draft)}.', colors.success);
           return Accepted(draft);
         }
         if (kind == _BooleanKind.confirm &&
             (key == 'y' || key == 'Y' || key == 'n' || key == 'N')) {
           draft = key.toLowerCase() == 'y';
-          out.writeln('Draft: ${_state(draft)}.');
+          renderDraft();
         } else if (kind != _BooleanKind.confirm && key == ' ') {
           draft = !draft;
-          out.writeln('Draft: ${_state(draft)}.');
+          renderDraft();
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (session != null) session._setPromptRepaint(null);
+      if (keys == null) await inputKeys.close();
     }
   }
 }
