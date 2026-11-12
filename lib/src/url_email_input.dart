@@ -84,7 +84,22 @@ final class URLInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -93,22 +108,48 @@ final class URLInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -117,36 +158,64 @@ final class URLInput {
   Future<PromptResult<String>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final error = _validate(source.value);
       return error == null ? Accepted(source.value) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
-    out.writeln(
-      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. No network check is performed.',
+    final width = _textInputWidth(effectiveProfile);
+    _writeWrappedText(
+      out,
+      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+      width,
     );
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = '';
     try {
       while (true) {
         final edit = await _edit(
-          keys,
+          inputKeys,
           value,
           out,
+          sequential:
+              mode != PromptMode.rich &&
+              !effectiveProfile.supportsRichInteraction,
           secret: true,
-          linear: mode == PromptMode.linear,
-          sequential: mode == PromptMode.linear,
+          transientHelp:
+              effectiveProfile.alternateScreen == CapabilitySupport.supported,
+          transcript: scripted.transcript,
+          outputProfile: effectiveProfile,
+          resizeObserver: mode == PromptMode.rich
+              ? scripted.resizeObserver
+              : null,
+          session: session,
+          helpText: 'Help: Enter validates an absolute URL with an allowed scheme. Drafts are hidden; accepted output may describe the host interpretation but makes no availability or reachability claim.',
         );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
@@ -165,17 +234,12 @@ final class URLInput {
               'Host interpretation -- Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
             );
           }
-          out.writeln('Accepted URL: $value');
           return Accepted(value);
         }
         out.writeln(error);
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
 }

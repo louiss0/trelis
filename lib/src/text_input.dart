@@ -134,6 +134,14 @@ final class TextInputTranscript {
 
 sealed class PromptSource {}
 
+typedef _SessionPromptRunner = Future<PromptResult<String>> Function(
+  PromptSource source,
+  PromptMode mode, {
+  OutputProfile? outputProfile,
+  _Keys? keys,
+  TerminalSession? session,
+});
+
 final class SuppliedTags extends PromptSource {
   SuppliedTags(List<String> values) : values = List.unmodifiable(values);
   final List<String> values;
@@ -179,14 +187,6 @@ final class ScriptedInput extends PromptSource {
   final OutputGeometry? _observedGeometry;
 
   final bool _hardColorDisabled;
-
-  // Retained for existing component implementations. TextInput resolves the
-  // declared alternate-screen fact through OutputProfile instead.
-  bool get _supportsTemporaryHelp =>
-      supportsRich &&
-      (Platform.isWindows ||
-          RegExp(r'^(xterm|screen|tmux|rxvt)(-|$)')
-              .hasMatch(Platform.environment['TERM'] ?? ''));
 }
 
 OutputProfile _terminalOutputProfile(TerminalIo terminal) =>
@@ -460,8 +460,8 @@ final class TerminalSession {
     }
   }
 
-  Future<PromptResult<String>> _prompt(
-    TextInput prompt, {
+  Future<PromptResult<String>> _promptRunner(
+    _SessionPromptRunner runner, {
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
@@ -495,7 +495,7 @@ final class TerminalSession {
           PromptMode.automatic;
       if (_source != null) {
         _keys ??= _Keys(_source.input.transform(utf8.encoder));
-        return await prompt._run(
+        return await runner(
           ScriptedInput(
             const Stream<String>.empty(),
             _output,
@@ -513,7 +513,7 @@ final class TerminalSession {
       if (_terminalIo != null) {
         final lease = _terminalIo.acquire();
         return await _restoreAfter(
-          () => prompt._run(
+          () => runner(
             ScriptedInput(
               _terminalIo.input,
               _output,
@@ -538,7 +538,7 @@ final class TerminalSession {
       return await _terminal<String>(
         selected,
         _output,
-        (nativeSource, nativeMode, _) => prompt._run(
+        (nativeSource, nativeMode, _) => runner(
           nativeSource,
           nativeMode,
           outputProfile: _outputProfile,
@@ -834,8 +834,8 @@ final class TextInput {
     TerminalSession? session,
   }) async {
     if (session != null) {
-      return session._prompt(
-        this,
+      return session._promptRunner(
+        _run,
         source: source,
         mode: mode,
         userPreference: userPreference,
@@ -1048,6 +1048,7 @@ Future<({String action, String value})> _edit(
   int? maxLength,
   bool required = false,
   List<String> supplementaryHelp = const [],
+  String? helpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
@@ -1125,6 +1126,20 @@ Future<({String action, String value})> _edit(
   var activeProfile = outputProfile;
 
   void display() {
+    if (secret) {
+      // Private entries never cross the recording/presentation boundary as
+      // their draft, length, caret, or paste provenance. Masking is an
+      // explicit length disclosure, but recordings still use a safe marker.
+      transcript?._view(
+        const TextInputCurrentView(
+          text: '<private entry>',
+          caret: 0,
+          containsPaste: false,
+        ),
+      );
+      if (mask) output.writeln('*' * chars.length);
+      return;
+    }
     transcript?._view(
       TextInputCurrentView(
         text: chars.join(),
@@ -1132,10 +1147,6 @@ Future<({String action, String value})> _edit(
         containsPaste: provenance.contains(true),
       ),
     );
-    if (secret) {
-      if (mask) output.writeln('*' * chars.length);
-      return;
-    }
     if (sequential) {
       output.writeln('Current text: ${DisplayText.from(chars.join()).value}');
       output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
@@ -1271,12 +1282,13 @@ Future<({String action, String value})> _edit(
         }
         _writeWrappedText(
           output,
-          _textInputHelp(
-            linear: false,
-            required: required,
-            maxLength: maxLength,
-            supplementaryHelp: supplementaryHelp,
-          ),
+          helpText ??
+              _textInputHelp(
+                linear: false,
+                required: required,
+                maxLength: maxLength,
+                supplementaryHelp: supplementaryHelp,
+              ),
           outputProfile == null ? null : _textInputWidth(outputProfile),
         );
         transcript?._event(TextInputPresentationEventKind.help);
@@ -1348,9 +1360,9 @@ Future<({String action, String value})> _edit(
         onSubmit?.call(literal);
         transcript?._event(
           TextInputPresentationEventKind.submitted,
-          text: text,
-          isLiteral: literal,
-          containsPaste: provenance.contains(true),
+          text: secret ? null : text,
+          isLiteral: secret ? false : literal,
+          containsPaste: secret ? false : provenance.contains(true),
         );
         return (action: 'submit', value: text);
       }
@@ -1995,7 +2007,26 @@ final class Password {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      try {
+        return await session._promptRunner(
+          _run,
+          source: source,
+          mode: mode,
+          userPreference: userPreference,
+          applicationPreference: applicationPreference,
+          output: output,
+          terminal: terminal,
+          outputProfile: outputProfile,
+        );
+      } on _SecretValidationException {
+        return Unavailable('Secret validation failed.');
+      }
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -2004,22 +2035,48 @@ final class Password {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } on _SecretValidationException {
       return Unavailable('Secret validation failed.');
     } finally {
@@ -2038,7 +2095,9 @@ final class Password {
   Future<PromptResult<String>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -2051,48 +2110,97 @@ final class Password {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
-    scripted.output.writeln(
-      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T for help; Escape cancels; Ctrl+C interrupts.',
+    if (mode == PromptMode.automatic) {
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
+    }
+    final width = _textInputWidth(effectiveProfile);
+    _writeWrappedText(
+      scripted.output,
+      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      width,
     );
     if (mask) {
-      scripted.output.writeln('Masking is enabled and discloses length.');
-    }
-    if (initialValue.isNotEmpty) {
-      scripted.output.writeln(
-        'Secret prefill is enabled; the secret is retained in memory.',
+      _writeWrappedText(
+        scripted.output,
+        'Masking is enabled and discloses length.',
+        width,
       );
     }
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    if (initialValue.isNotEmpty) {
+      _writeWrappedText(
+        scripted.output,
+        'Secret prefill is enabled; the secret is retained in memory.',
+        width,
+      );
+    }
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
       while (true) {
         final edit = await _edit(
-          keys,
+          inputKeys,
           value,
           scripted.output,
+          sequential:
+              mode != PromptMode.rich &&
+              !effectiveProfile.supportsRichInteraction,
           secret: true,
           mask: mask,
-          transientHelp: scripted._supportsTemporaryHelp,
+          transientHelp:
+              effectiveProfile.alternateScreen == CapabilitySupport.supported,
+          transcript: scripted.transcript,
+          outputProfile: effectiveProfile,
+          resizeObserver: mode == PromptMode.rich
+              ? scripted.resizeObserver
+              : null,
+          session: session,
+          helpText: 'Help: Enter opens Password actions. Use the listed submit, edit, clear, help or cancel action after entry. Ctrl+T opens this help without treating secret text as a command.',
         );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
         if (edit.action != 'submit') return InputEnded();
         value = edit.value;
         while (true) {
-          scripted.output.writeln(
+          _writeWrappedText(
+            scripted.output,
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
+            width,
           );
           final action = await _edit(
-            keys,
+            inputKeys,
             '',
             scripted.output,
+            sequential:
+                mode != PromptMode.rich &&
+                !effectiveProfile.supportsRichInteraction,
             secret: true,
-            transientHelp: scripted._supportsTemporaryHelp,
+            transientHelp:
+                effectiveProfile.alternateScreen == CapabilitySupport.supported,
+            transcript: scripted.transcript,
+            outputProfile: effectiveProfile,
+            resizeObserver: mode == PromptMode.rich
+                ? scripted.resizeObserver
+                : null,
+            session: session,
+            helpText: 'Help: submit validates; edit reopens the secret; clear starts empty; cancel ends the prompt.',
           );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
@@ -2128,11 +2236,7 @@ final class Password {
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
 }

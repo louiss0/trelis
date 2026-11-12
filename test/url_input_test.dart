@@ -1,7 +1,13 @@
+import 'dart:async';
 import 'dart:isolate';
 
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
 
 void main() {
   test('URL and email accept concurrent IDNA prompts in isolates', () async {
@@ -46,7 +52,13 @@ void main() {
           'example.com',
         ].join();
         final result = await URLInput('URL', allowedSchemes: {'https'}).prompt(
-          source: ScriptedInput(Stream.value('$invalid\n\u0003'), out),
+          source: ScriptedInput(
+            Stream.value('$invalid\n\u0003'),
+            out,
+            outputProfile: mode == PromptMode.rich
+                ? _richProfile
+                : const OutputProfile(),
+          ),
           mode: mode,
         );
         expect(result, isA<Interrupted<String>>());
@@ -155,5 +167,55 @@ void main() {
       (result as Accepted<String>).value,
       'https://example.com/a%2Fb?x=One',
     );
+  });
+
+  test('a URL session hides its draft while retaining its approved host interpretation', () async {
+    const url = 'https://faß.de/private-path?private-query=73';
+    final output = StringBuffer();
+    final transcript = TextInputTranscript();
+    final input = StreamController<String>();
+    final profile = OutputProfile(
+      cursor: CapabilitySupport.supported,
+      geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+    );
+
+    final result = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Network');
+        spinner.start(session: session);
+        final pending = URLInput(
+          'URL',
+          allowedSchemes: {'https'},
+        ).prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        input.add(url);
+        await Future<void>.delayed(Duration.zero);
+        spinner.update('waiting for entry');
+        input.add('\r');
+        await input.close();
+        spinner.dispose();
+        return await pending;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        outputProfile: profile,
+        transcript: transcript,
+      ),
+      mode: PromptMode.linear,
+    );
+
+    expect((result as Accepted<String>).value, url);
+    expect(output.toString(), contains('Network: waiting for entry'));
+    expect(
+      output.toString(),
+      contains('Unicode: faß.de; ASCII: xn--fa-hia.de'),
+    );
+    expect(output.toString(), isNot(contains('private-path')));
+    expect(output.toString(), isNot(contains('private-query')));
+    expect(output.toString(), isNot(contains('Accepted URL:')));
+    expect(transcript.currentView!.text, '<private entry>');
+    expect(transcript.currentView!.caret, 0);
+    expect(transcript.events.map((event) => event.text), isNot(contains(url)));
   });
 }
