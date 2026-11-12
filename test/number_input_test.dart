@@ -9,6 +9,8 @@ final _richProfile = OutputProfile(
   geometry: OutputGeometry.fixed(columns: 100, rows: 30),
 );
 
+const _clearHelpCommand = '\x01\x1b[3~\x1b[3~\x1b[3~\x1b[3~\x1b[3~';
+
 void main() {
   test(
     'integer input accepts a supplied answer under an explicit convention',
@@ -296,16 +298,22 @@ void main() {
     },
   );
 
-  test('editing discloses the active convention and an example', () async {
-    final output = StringBuffer();
-    await NumberInput('Count', convention: NumericConvention.ascii()).prompt(
-      source: ScriptedInput(Stream.value('12\r'), output),
-      mode: PromptMode.linear,
-    );
-    expect(output.toString(), contains('decimal separator .'));
-    expect(output.toString(), contains('grouping separator ,'));
-    expect(output.toString(), contains('negative example -123'));
-  });
+  test(
+    'editing keeps the active convention compact and offers examples in help',
+    () async {
+      final output = StringBuffer();
+      await NumberInput('Count', convention: NumericConvention.ascii()).prompt(
+        source: ScriptedInput(
+          Stream.value('/help\r${_clearHelpCommand}12\r'),
+          output,
+        ),
+        mode: PromptMode.linear,
+      );
+      expect(output.toString(), contains('decimal separator .'));
+      expect(output.toString(), contains('grouping separator ,'));
+      expect(output.toString(), contains('negative example -123'));
+    },
+  );
 
   test('all accepted forms and required state are disclosed with concrete examples', () async {
     final output = StringBuffer();
@@ -322,12 +330,15 @@ void main() {
       decimal: true,
       precision: 2,
     ).prompt(
-      source: ScriptedInput(Stream.value('1234567,89\r'), output),
+      source: ScriptedInput(
+        Stream.value('/help\r${_clearHelpCommand}1234567,89\r'),
+        output,
+      ),
       mode: PromptMode.linear,
     );
     final text = output.toString();
     for (final disclosure in [
-      'required',
+      'Required',
       'ASCII digits 0123456789',
       'native digits ٠١٢٣٤٥٦٧٨٩',
       'ungrouped example 1234567,89',
@@ -351,10 +362,10 @@ void main() {
       source: ScriptedInput(Stream.value('\r'), output),
       mode: PromptMode.linear,
     );
-    expect(output.toString(), contains('optional'));
+    expect(output.toString(), contains('Optional'));
   });
 
-  test('format and exact constraints are stated before editing', () async {
+  test('format constraints are available in component help', () async {
     final output = StringBuffer();
     await NumberInput(
       'Amount',
@@ -364,7 +375,10 @@ void main() {
       maximum: '10.00',
       precision: 2,
     ).prompt(
-      source: ScriptedInput(Stream.value('1\r'), output),
+      source: ScriptedInput(
+        Stream.value('/help\r${_clearHelpCommand}1\r'),
+        output,
+      ),
       mode: PromptMode.linear,
     );
     expect(output.toString(), contains('decimal mode'));
@@ -429,7 +443,10 @@ void main() {
       );
       final output = StringBuffer();
       await input.prompt(
-        source: ScriptedInput(Stream.value('1\r'), output),
+        source: ScriptedInput(
+          Stream.value('/help\r${_clearHelpCommand}1\r'),
+          output,
+        ),
         mode: PromptMode.linear,
       );
       expect(output.toString(), contains('grouping not supported'));

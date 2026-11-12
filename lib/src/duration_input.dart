@@ -23,7 +23,10 @@ final class DurationInput {
     this.allowZero = true,
     this.minimumMicroseconds,
     this.initialValue,
-  }) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -41,6 +44,9 @@ final class DurationInput {
   final bool allowZero;
   final int? minimumMicroseconds;
   final String? initialValue;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ColorTheme colors;
   bool _active = false;
   static final _limit = BigInt.parse('9223372036854775807');
   static const _units = <String, int>{
@@ -127,6 +133,9 @@ final class DurationInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
@@ -165,12 +174,21 @@ final class DurationInput {
             validate: (v) => _parse(v) == null
                 ? 'Invalid duration: use unique case-sensitive unit tokens and exact microseconds within bounds.'
                 : null,
+            instructions: instructions,
+            supplementaryHelp: [
+              'Duration format: $description; ${signed ? 'one global sign is allowed' : 'amounts are nonnegative'}; ${allowZero ? 'zero is allowed unless below the minimum' : 'zero is forbidden'}. Use ASCII amounts, optional dot fractions where exact, and space-separated case-sensitive tokens. Calendar periods are unapplied and do not imply an elapsed total.',
+              ...supplementaryHelp,
+            ],
+            colors: colors,
           ).prompt(
             source: source,
             mode: mode,
             userPreference: userPreference,
             applicationPreference: applicationPreference,
             output: output,
+            terminal: terminal,
+            outputProfile: outputProfile,
+            session: session,
           );
       if (result is Accepted<String>) return Accepted(_parse(result.value)!);
       if (result is Cancelled<String>) return Cancelled();

@@ -2,23 +2,39 @@ part of 'text_input.dart';
 
 /// Local ASCII decimal port entry. Zero requires an explicit bind-request opt-in.
 final class PortInput {
-  PortInput(String label, {this.allowZero = false, String initialValue = ''}) {
+  PortInput(
+    String label, {
+    this.allowZero = false,
+    String initialValue = '',
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
     _input = TextInput(
-      '$label (ASCII decimal ${allowZero ? '0-65535; zero requests automatic allocation' : '1-65535'}; availability is not checked)',
+      '$label (ASCII decimal ${allowZero ? '0-65535' : '1-65535'}).',
       initialValue: initialValue,
       required: true,
       validate: (value) => _parse(value) == null
           ? 'Enter an ASCII decimal port from ${allowZero ? 0 : 1} to 65535.'
           : null,
+      instructions: instructions,
+      supplementaryHelp: [
+        'Port format: ASCII decimal ${allowZero ? '0 through 65535; zero requests automatic allocation' : '1 through 65535'}. Availability and reachability are not checked.',
+        ...supplementaryHelp,
+      ],
+      colors: colors,
     );
     if (initialValue.isNotEmpty && _parse(initialValue) == null) {
       throw ArgumentError.value(initialValue, 'initialValue');
     }
   }
   final bool allowZero;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ColorTheme colors;
   late final TextInput _input;
   int? _parse(String value) {
     if (!RegExp(r'^[0-9]+$').hasMatch(value)) return null;
@@ -34,6 +50,9 @@ final class PortInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     final result = await _input.prompt(
       source: source,
@@ -41,6 +60,9 @@ final class PortInput {
       userPreference: userPreference,
       applicationPreference: applicationPreference,
       output: output,
+      terminal: terminal,
+      outputProfile: outputProfile,
+      session: session,
     );
     if (result is Accepted<String>) return Accepted(_parse(result.value)!);
     if (result is Cancelled<String>) return Cancelled();
@@ -66,17 +88,26 @@ final class IPAddressInput {
     this.cidr = false,
     this.scoped = false,
     String initialValue = '',
-  }) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
     _input = TextInput(
-      '$label (numeric IPv4 or IPv6${cidr ? ' with required /prefix, retaining host bits' : ''}${scoped ? '; IPv6 zone uses % followed by ASCII letters, digits, underscore, hyphen or dot; zone identity is environment-dependent' : ''}; reachability and interface existence are not checked)',
+      '$label (numeric IPv4 or IPv6${cidr ? ' with /prefix' : ''}${scoped ? ' and IPv6 %zone' : ''}).',
       required: true,
       initialValue: initialValue,
       validate: (value) => _parse(value) == null
           ? 'Enter a valid numeric IPv4 or IPv6 address${cidr ? ' with a family-specific prefix (0-32 or 0-128)' : ''}${scoped ? ' and optional IPv6 %zone' : ''}; brackets and hostnames are not accepted.'
           : null,
+      instructions: instructions,
+      supplementaryHelp: [
+        'Address format: numeric IPv4 or IPv6${cidr ? ' with a required family-specific /prefix; host bits are retained' : ''}${scoped ? '; IPv6 zones use % followed by ASCII letters, digits, underscore, hyphen, or dot; zone identity is environment-dependent' : ''}. Brackets and hostnames are not accepted; reachability and interface existence are not checked.',
+        ...supplementaryHelp,
+      ],
+      colors: colors,
     );
     if (initialValue.isNotEmpty && _parse(initialValue) == null) {
       throw ArgumentError.value(initialValue, 'initialValue');
@@ -84,6 +115,9 @@ final class IPAddressInput {
   }
   final bool cidr;
   final bool scoped;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ColorTheme colors;
   late final TextInput _input;
 
   IPAddressValue? _parse(String value) {
@@ -135,6 +169,9 @@ final class IPAddressInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     final result = await _input.prompt(
       source: source,
@@ -142,6 +179,9 @@ final class IPAddressInput {
       userPreference: userPreference,
       applicationPreference: applicationPreference,
       output: output,
+      terminal: terminal,
+      outputProfile: outputProfile,
+      session: session,
     );
     if (result is Accepted<String>) return Accepted(_parse(result.value)!);
     if (result is Cancelled<String>) return Cancelled();
