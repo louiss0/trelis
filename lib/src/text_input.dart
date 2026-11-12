@@ -228,6 +228,13 @@ OutputProfile _constrainToObservedGeometry(
 
 enum PromptMode { rich, linear, automatic }
 
+/// Selects how much optional TextInput opening guidance is shown.
+///
+/// [themeDefault] preserves the reference presentation's expanded guidance.
+/// Essential prompt context and a route to full help remain visible for every
+/// value.
+enum InstructionDisplay { themeDefault, compact, expanded, hidden }
+
 /// Coordinates sequential prompt invocations over one selected terminal.
 ///
 /// A session handle is only created by [run]. Attached prompts inherit its
@@ -463,6 +470,7 @@ void _renderTextInputOpening(
   required bool required,
   required int? maxLength,
   required bool linear,
+  required InstructionDisplay instructions,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
 }) {
@@ -489,16 +497,44 @@ void _renderTextInputOpening(
     ),
     width,
   );
-  _writeWrappedText(
-    output,
-    'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-    width,
-  );
-  if (linear) {
-    output.writeln(
+  final resolvedInstructions = instructions == InstructionDisplay.themeDefault
+      ? InstructionDisplay.expanded
+      : instructions;
+  final route = linear ? '/help opens help.' : 'Ctrl+T opens help.';
+  final guidance = switch (resolvedInstructions) {
+    InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
+    InstructionDisplay.expanded =>
+      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. $route Escape cancels; Ctrl+C interrupts.',
+    InstructionDisplay.hidden => route,
+    InstructionDisplay.themeDefault => throw StateError(
+      'Instructions resolved above.',
+    ),
+  };
+  _writeWrappedText(output, guidance, width);
+  if (linear && resolvedInstructions != InstructionDisplay.hidden) {
+    _writeWrappedText(
+      output,
       r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
+      width,
     );
   }
+}
+
+String _textInputHelp({
+  required bool linear,
+  required bool required,
+  required int? maxLength,
+  required List<String> supplementaryHelp,
+}) {
+  final constraints =
+      '${required ? 'A value is required' : 'An empty value is allowed'}${maxLength == null ? '' : '; maximum $maxLength graphemes'}.';
+  final controls = linear
+      ? r'Enter text to submit. Exact /help and /cancel are commands. Use \/help or \/cancel for literal commands; double a leading backslash to enter one. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+      : 'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Escape dismisses help or cancels; Ctrl+C interrupts.';
+  return [
+    'Help: $controls Validation: $constraints',
+    ...supplementaryHelp.map((text) => DisplayText.from(text).value),
+  ].join('\n');
 }
 
 String _renderEditableText(
@@ -578,6 +614,8 @@ final class TextInput {
     bool required = false,
     String? Function(String)? validate,
     int? maxLength,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
     ColorTheme colors = ColorThemes.terminalDefault,
   }) : this._(
          label,
@@ -585,6 +623,8 @@ final class TextInput {
          required: required,
          validate: validate,
          maxLength: maxLength,
+         instructions: instructions,
+         supplementaryHelp: supplementaryHelp,
          colors: colors,
        );
 
@@ -594,9 +634,11 @@ final class TextInput {
     this.required = false,
     this.validate,
     this.maxLength,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
     this._onChanged,
-  }) {
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -613,6 +655,8 @@ final class TextInput {
   final bool required;
   final int? maxLength;
   final String? Function(String)? validate;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
 
   /// Complete palette for this prompt; it never alters global terminal state.
   final ColorTheme colors;
@@ -743,6 +787,7 @@ final class TextInput {
       required: required,
       maxLength: maxLength,
       linear: mode == PromptMode.linear,
+      instructions: instructions,
       outputProfile: effectiveProfile,
       colors: colors,
     );
@@ -765,6 +810,8 @@ final class TextInput {
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           maxLength: maxLength,
+          required: required,
+          supplementaryHelp: supplementaryHelp,
           onChanged: _onChanged,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
@@ -791,8 +838,15 @@ final class TextInput {
         }
         value = result.value;
         if (required && value.isEmpty) {
-          scripted.output.writeln(
-            'Required: enter a non-empty value and submit again.',
+          const message = 'Required: enter a non-empty value and submit again.';
+          _renderTextInputValidation(
+            scripted.output,
+            message,
+            outputProfile: effectiveProfile,
+          );
+          scripted.transcript?._event(
+            TextInputPresentationEventKind.validation,
+            text: message,
           );
           continue;
         }
@@ -829,6 +883,8 @@ Future<({String action, String value})> _edit(
   bool clearHelpCommand = false,
   bool allowCommandPrefixes = false,
   int? maxLength,
+  bool required = false,
+  List<String> supplementaryHelp = const [],
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
   TextInputTranscript? transcript,
@@ -1048,8 +1104,15 @@ Future<({String action, String value})> _edit(
         } else if (!sequential && !secret) {
           output.writeln();
         }
-        output.writeln(
-          'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
+        _writeWrappedText(
+          output,
+          _textInputHelp(
+            linear: false,
+            required: required,
+            maxLength: maxLength,
+            supplementaryHelp: supplementaryHelp,
+          ),
+          outputProfile == null ? null : _textInputWidth(outputProfile),
         );
         transcript?._event(TextInputPresentationEventKind.help);
         continue;
@@ -1083,9 +1146,17 @@ Future<({String action, String value})> _edit(
                 'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
               );
             } else {
-              output.writeln(
-                r'Edit text; /cancel cancels. Use \/cancel or \/help for literal commands; double a leading backslash.',
+              _writeWrappedText(
+                output,
+                _textInputHelp(
+                  linear: true,
+                  required: required,
+                  maxLength: maxLength,
+                  supplementaryHelp: supplementaryHelp,
+                ),
+                outputProfile == null ? null : _textInputWidth(outputProfile),
               );
+              transcript?._event(TextInputPresentationEventKind.help);
             }
             if (clearHelpCommand || extraCommands.isNotEmpty) {
               chars.clear();
