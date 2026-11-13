@@ -143,10 +143,13 @@ final class DurationInput {
       final description = durationMode == DurationInputMode.elapsed
           ? 'elapsed; units w d h m s ms us; d is 24 hours, w is 7 days; minimum ${minimumMicroseconds?.toString() ?? (signed ? "none" : "0")} microseconds'
           : 'calendar-relative; whole y mo w d and elapsed h m s ms us; unapplied period';
+      final cue = durationMode == DurationInputMode.elapsed
+          ? 'elapsed duration; units w d h m s ms us${signed ? '; one global sign allowed' : ''}'
+          : 'calendar-relative duration; whole y mo w d plus elapsed h m s ms us; period is unapplied${signed ? '; one global sign allowed' : ''}';
       final sink = source is ScriptedInput
           ? source.output
           : source == null
-          ? (output ?? stderr)
+          ? (session?._output ?? output ?? terminal?.output ?? stderr)
           : null;
       void review(String draft) {
         if (sink == null) return;
@@ -166,7 +169,7 @@ final class DurationInput {
 
       final result =
           await TextInput._(
-            '$label ($description; ${signed ? 'global sign allowed' : 'nonnegative'}; ${allowZero ? 'zero allowed unless below minimum' : 'zero forbidden'}; ASCII amounts with dot fractions, space-separated tokens, no grouping; exact integer microseconds; maximum 1024 characters; maximum magnitude 9223372036854775807)',
+            '$label ($cue).',
             onChanged: review,
             required: true,
             initialValue: initialValue ?? '',
@@ -176,7 +179,7 @@ final class DurationInput {
                 : null,
             instructions: instructions,
             supplementaryHelp: [
-              'Duration format: $description; ${signed ? 'one global sign is allowed' : 'amounts are nonnegative'}; ${allowZero ? 'zero is allowed unless below the minimum' : 'zero is forbidden'}. Use ASCII amounts, optional dot fractions where exact, and space-separated case-sensitive tokens. Calendar periods are unapplied and do not imply an elapsed total.',
+              'Duration format: $description; ${signed ? 'one global sign is allowed' : 'amounts are nonnegative'}; ${allowZero ? 'zero is allowed unless below the minimum' : 'zero is forbidden'}. Use ASCII amounts, optional dot fractions where exact, and space-separated case-sensitive tokens; fractions must convert exactly to integer microseconds, with maximum magnitude 9223372036854775807. Calendar periods are unapplied and do not imply an elapsed total.',
               ...supplementaryHelp,
             ],
             colors: colors,

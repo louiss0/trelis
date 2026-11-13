@@ -563,18 +563,29 @@ back to US formatting. A `convention` is an explicit override, while a
 snapshot remains active for the whole prompt, so preference changes affect only
 the next invocation.
 
-Instructions state required/optional state, mode, separators, exact bounds and
-precision, and concrete ASCII/native, grouped/ungrouped, positive and negative
-examples before editing. Accepted `NumericAnswer` values retain the original
+Entry opens with a compact cue naming the required/optional state, mode, and
+the active decimal and grouping separators. Ctrl+T in rich mode or `/help` in
+linear mode opens component help with the exact bounds and precision, the digit
+repertoire, and concrete ASCII/native, grouped/ungrouped, positive and negative
+examples. Accepted `NumericAnswer` values retain the original
 `spelling` and exact base-ten `coefficient`/`scale` without binary rounding.
 Malformed grouping, mixed digit scripts, alternate signs, exponents, currency,
 percent and special values are rejected rather than normalized.
+
+Like the other formatted-value inputs, `NumberInput` accepts `instructions`
+(`themeDefault`, `compact`, `expanded` or `hidden` for the editing guidance
+only), `supplementaryHelp` appended to its component help, a component
+`ColorTheme`, and `terminal`, `outputProfile` and `session` on `prompt`. The
+active-format cue and component help stay available under every instruction
+policy; colour is emitted only when the selected profile permits it.
 
 ### Port and IP address entry
 
 `PortInput` accepts ASCII decimal ports 1-65535. Set `allowZero: true` only
 when zero means a caller-defined automatic allocation/bind request. It does
-not check availability or bind a socket.
+not check availability or bind a socket. The opening shows only the accepted
+range; component help states that zero requests automatic allocation and that
+availability and reachability are not checked.
 
 `IPAddressInput` accepts numeric IPv4 and IPv6 without resolving hostnames or
 checking reachability. Set `cidr: true` to require an address and prefix;
@@ -582,7 +593,9 @@ checking reachability. Set `cidr: true` to require an address and prefix;
 `prefixLength` without masking host bits. Set `scoped: true` to allow an IPv6
 zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
-interface existence. Brackets and URL escaping are not interpreted.
+interface existence. Brackets and URL escaping are not interpreted. The
+opening shows a compact address/prefix/zone cue; component help gives the full
+grammar and the zone, host-bit, reachability and interface caveats.
 
 ### URLInput and EmailInput
 
@@ -592,6 +605,12 @@ Punycode checks, nontransitional processing and DNS-length verification
 without native libraries. The source URLs are recorded in
 `lib/src/uts46.dart`; the Unicode license is in `lib/src/uts46_LICENSE`.
 This is local syntax processing, not a DNS or reachability check.
+
+`EmailInput` opens with a compact SMTP mailbox cue naming whether an SMTPUTF8
+local part is allowed. Component help gives the bare-mailbox grammar, the
+SMTPUTF8 requirement and the fact that deliverability and transport
+availability are not checked. An accepted answer still prints the labeled
+domain interpretation or the transport address literal.
 
 ### ColorInput
 
@@ -619,7 +638,9 @@ color spaces are excluded. No value is silently repaired.
 
 Both rich and linear entry show textual sRGB, alpha, and normalized HSL hue as
 valid drafts are entered. Rounded hex is explicitly an approximate preview and
-never replaces the answer. No color perception is needed.
+never replaces the answer. No color perception is needed. The opening shows a
+compact sRGB cue; Ctrl+T or `/help` gives the full accepted syntax, the alpha
+order, the decimal-digit limit and the excluded expressions and colour spaces.
 
 ### Key capture
 
@@ -663,7 +684,7 @@ Select `DurationInputMode.elapsed` or `DurationInputMode.calendarRelative` when 
 
 Elapsed tokens are `w d h m s ms us`. A day is exactly 24 hours and a week seven days. Calendar-relative mode additionally accepts `y mo`; its `y mo w d` amounts must be whole and remain unapplied components. Sub-day amounts are elapsed quantities. No date, zone, application order, DST policy, endpoint or total is inferred for a period.
 
-Fractions must convert exactly to integer microseconds; there is no rounding. The maximum magnitude is 9223372036854775807 for the elapsed total and for each calendar component, and drafts are limited to 1024 characters. The default is nonnegative, with zero accepted. `signed: true` permits a global sign; `minimumMicroseconds` optionally bounds elapsed values. `allowZero: false` rejects an all-zero value in either mode; calendar periods have no arbitrary built-in ordering or elapsed minimum. Microsecond resolution does not promise scheduler accuracy. Rich and linear input both show a textual interpretation while editing; invalid drafts remain editable.
+Fractions must convert exactly to integer microseconds; there is no rounding. The maximum magnitude is 9223372036854775807 for the elapsed total and for each calendar component, and drafts are limited to 1024 characters. The default is nonnegative, with zero accepted. `signed: true` permits a global sign; `minimumMicroseconds` optionally bounds elapsed values. `allowZero: false` rejects an all-zero value in either mode; calendar periods have no arbitrary built-in ordering or elapsed minimum. Microsecond resolution does not promise scheduler accuracy. Rich and linear input both show a textual interpretation while editing; invalid drafts remain editable. Entry opens with a compact mode cue naming the unit set and whether a global sign is allowed; component help carries the full token grammar, the exact-microsecond and magnitude bounds, and the unapplied-period caveat.
 
 ### Concurrent task feedback
 
