@@ -4,11 +4,13 @@
 
 ## Source and environment
 
-- **Implementation revision:** `7336353376170a8c5a9db93f0f1296ecbb584733`
-  (`refactor:`, `feat:` and `docs:` commits listed below). The evidence commit
-  that contains this record follows that revision.
+- **Implementation revision:** `0d0f7ea21677c7a2909b0a54897143d42a6b6a37`. It
+  follows `2764317` (moving the slider family into its own library part),
+  `f468ca3` (`Slider`), `22fec80` (`RangeSlider`), `89904d9` (`MaskedInput`),
+  `d4ce279` (stage-led help and layout coverage) and `7336353` (README).
 - **Branch:** `ticket/backend-26-range-mask-migration`, based on integration
-  `9d6ecbe` (`Merge branch 'ticket/backend-17-failure-recovery'`).
+  `9d6ecbe` (`Merge branch 'ticket/backend-17-failure-recovery'`); the
+  integration tip was unchanged when the branch was merged before this report.
 - **Date:** 2026-11-13.
 - **Environment:** Windows 11 (`10.0.26200`), Dart SDK `3.13.2 (stable)`,
   `windows_x64`, commands run in the ticket worktree
@@ -24,7 +26,7 @@
 
 ## Public behavior exercised
 
-`test/range_mask_migration_test.dart` (22 tests) drives only public
+`test/range_mask_migration_test.dart` (23 tests) drives only public
 constructors and `prompt`, and records that:
 
 - `Slider` and `RangeSlider` resolve the invocation/source/legacy
@@ -68,9 +70,12 @@ constructors and `prompt`, and records that:
   releases the watcher;
 - both modes keep partial drafts, validation and every terminal outcome
   (`Accepted`, `Cancelled`, `Interrupted`, `InputEnded`, `Unavailable`) for all
-  three components.
+  three components;
+- a failed shared writer surfaces the original failure from an attached
+  `RangeSlider`, retires the session and rejects a late registration, so
+  ticket 17 behaviour is preserved for this family.
 
-The existing `test/slider_test.dart` (17 tests) and `test/masked_input_test.dart`
+The existing `test/slider_test.dart` (16 tests) and `test/masked_input_test.dart`
 (36 tests) continue to cover exact decimal arithmetic, precision and grid
 rejection, endpoint ordering and review, concurrency rejection and reuse,
 combining-mark slot joins, paste atomicity and capacity rejection, adaptive
@@ -114,7 +119,7 @@ Implementation notes:
 | `dart test test/range_mask_migration_test.dart test/slider_test.dart test/masked_input_test.dart --reporter compact` | Passed: 75 tests. |
 | `dart test test/component_acceptance_matrix_test.dart --reporter compact` | Passed: 144 tests. |
 | `dart run tool/check_doc_links.dart` | Passed: `Checked 152 relative links in 42 Markdown files.` |
-| `dart test --reporter compact` | Passed: 736 tests. |
+| `dart test --reporter compact` | Passed: 737 tests. |
 
 The repository-wide `dart format --output=none --set-exit-if-changed .` still
 reports three files changed (`test/linear_text_input_events_test.dart`,
@@ -123,6 +128,11 @@ reports three files changed (`test/linear_text_input_events_test.dart`,
 this ticket and already failed that check on the integration tip `9d6ecbe`
 with this SDK, so the ticket records the failure instead of reformatting
 unrelated files.
+
+One intermediate full-suite invocation at this revision exited non-zero, but the
+failing test name was not captured before the run was repeated. Five subsequent
+full-suite runs at the same revision passed all 737 tests. That single run is
+recorded as unexplained rather than as a pass or a known regression.
 
 ## Limitations
 
