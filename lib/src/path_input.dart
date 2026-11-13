@@ -11,6 +11,7 @@ final class PathInput {
     this.initialValue = '',
     this.allowNonexistent = false,
     this.target = PathTarget.any,
+    this.colors = ColorThemes.terminalDefault,
   }) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -28,6 +29,7 @@ final class PathInput {
   final String initialValue;
   final bool allowNonexistent;
   final PathTarget target;
+  final ColorTheme colors;
   bool _active = false;
 
   Future<PromptResult<String>> prompt({
@@ -36,33 +38,89 @@ final class PathInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
+      // The base is captured when the invocation starts so an attached session
+      // and a later repaint both use the same stable location.
       final capturedBase = base ?? Directory.current.path;
+      Future<PromptResult<String>> run(
+        PromptSource source,
+        PromptMode mode, {
+        OutputProfile? outputProfile,
+        _Keys? keys,
+        TerminalSession? session,
+      }) => _run(
+        source,
+        mode,
+        capturedBase,
+        outputProfile: outputProfile,
+        keys: keys,
+        session: session,
+      );
+      if (session != null) {
+        return await session._promptRunner<String>(
+          run,
+          source: source,
+          mode: mode,
+          userPreference: userPreference,
+          applicationPreference: applicationPreference,
+          output: output,
+          terminal: terminal,
+          outputProfile: outputProfile,
+        );
+      }
       final selected =
           mode ??
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) =>
-                _run(source, mode, capturedBase, beforeClose: restore),
+            (source, mode, _) =>
+                run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected, capturedBase);
+      return await run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -117,7 +175,9 @@ final class PathInput {
     PromptSource source,
     PromptMode mode,
     String base, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final candidate = _candidate(source.value, base);
@@ -125,38 +185,77 @@ final class PathInput {
       return error == null ? Accepted(candidate!) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
-    scripted.output.writeln(
+    final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
+    final linear = mode == PromptMode.linear;
+    void write(String text, TerminalColor foreground) {
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          out.writeln(
+            _colorText(line, foreground, colors.background, effectiveProfile),
+          );
+        }
+      }
+    }
+
+    write(
       '$label. Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
+      colors.foreground,
     );
-    scripted.output.writeln(
+    write(
       'Literal native path; no shell expansion. Returned paths do not guarantee later operations succeed.',
+      colors.muted,
     );
-    scripted.output.writeln(
-      'Enter edits the path, then review and confirm. Escape cancels; Ctrl+C interrupts; Ctrl+T opens help.',
+    write(
+      linear
+          ? r'Enter edits the path, then review and confirm. Exact /help and /cancel are commands; quote them with a backslash. Double a leading backslash: enter three for a UNC pair. Identified paste is literal. Escape cancels; Ctrl+C interrupts.'
+          : 'Enter edits the path, then review and confirm. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      colors.muted,
     );
-    if (mode == PromptMode.linear) {
-      scripted.output.writeln(
-        r'Exact /help and /cancel are commands; quote them with a backslash. Double a leading backslash: enter three for a UNC pair. Identified paste is literal.',
-      );
-    }
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final entryHelp = _pathEntryHelp(
+      linear: linear,
+      allowNonexistent: allowNonexistent,
+      target: target,
+      base: base,
+    );
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var draft = initialValue;
     try {
       while (true) {
         final edit = await _edit(
-          keys,
+          inputKeys,
           draft,
-          scripted.output,
-          linear: mode == PromptMode.linear,
-          sequential: mode == PromptMode.linear,
+          out,
+          linear: linear,
+          sequential: linear,
+          clearHelpCommand: true,
+          helpText: entryHelp,
+          linearHelpText: entryHelp,
+          outputProfile: effectiveProfile,
+          session: session,
         );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
@@ -165,38 +264,98 @@ final class PathInput {
         final candidate = _candidate(draft, base);
         final error = await _error(candidate);
         if (error != null) {
-          scripted.output.writeln(
+          write(
             'Base: $base. Candidate: ${candidate ?? draft}. $error',
+            colors.warning,
           );
           continue;
         }
-        scripted.output.writeln(
+        write(
           'Base: $base. Resolved candidate: $candidate. Enter to accept, or type edit to correct.',
+          colors.accent,
+        );
+        final reviewHelp = _pathReviewHelp(
+          linear: linear,
+          candidate: candidate!,
+          allowNonexistent: allowNonexistent,
+          target: target,
         );
         while (true) {
           final review = await _edit(
-            keys,
+            inputKeys,
             '',
-            scripted.output,
-            linear: mode == PromptMode.linear,
-            sequential: mode == PromptMode.linear,
+            out,
+            linear: linear,
+            sequential: linear,
+            clearHelpCommand: true,
+            helpText: reviewHelp,
+            linearHelpText: reviewHelp,
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (review.action == 'cancel') return Cancelled();
           if (review.action == 'interrupt') return Interrupted();
           if (review.action != 'submit') return InputEnded();
-          if (review.value.isEmpty) return Accepted(candidate!);
+          if (review.value.isEmpty) return Accepted(candidate);
           if (review.value == 'edit') break;
-          scripted.output.writeln('Enter to accept, or type edit to correct.');
+          write('Enter to accept, or type edit to correct.', colors.warning);
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
+}
+
+/// Component help for the path-entry stage, led by the current action.
+///
+/// It carries the interpretation and safety context that compact guidance
+/// cannot: literal-path and escaping rules, the base and the existence/type
+/// policy, and the absence of shell expansion, link canonicalization and
+/// later-operation guarantees.
+String _pathEntryHelp({
+  required bool linear,
+  required bool allowNonexistent,
+  required PathTarget target,
+  required String base,
+}) {
+  final existence = allowNonexistent
+      ? 'Prospective paths are permitted, so a target that does not exist can be returned.'
+      : 'The target must already exist.';
+  final type = switch (target) {
+    PathTarget.any => 'Any target type is accepted.',
+    PathTarget.file => 'The target must be a file.',
+    PathTarget.directory => 'The target must be a directory.',
+  };
+  final controls = linear
+      ? r'Enter submits the path for review; an empty line submits the current draft. Exact /help and /cancel are commands, and /help is cleared instead of being typed into the path; enter \/help or \/cancel for those literal paths, double a leading backslash to enter one, and enter three for a UNC pair. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+      : 'Enter submits the path for review. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+  return 'Help: PathInput accepts one literal native path relative to $base. Entry is not evaluated by a shell, so there is no variable, tilde or glob expansion, no quote stripping, no link canonicalization and no working-directory change; .. segments are retained and a drive-relative Windows path such as C:name is rejected. $existence $type A path with an unusable name, an uninspectable target, or a parent that is not a directory is rejected rather than assumed absent. FilePicker and DirectoryPicker browse the filesystem instead, and opening a link there requires explicit per-open approval. Review shows the resolved candidate before it is returned. Nothing is created, opened or changed, and the result is a snapshot: later filesystem operations can still fail. $controls';
+}
+
+/// Component help for the review stage of a typed path.
+///
+/// Review keeps the resolved candidate and the policy visible, restates that a
+/// disabled-looking entry is a snapshot, and names the non-accepting return to
+/// entry rather than implying that the first Enter always accepts.
+String _pathReviewHelp({
+  required bool linear,
+  required String candidate,
+  required bool allowNonexistent,
+  required PathTarget target,
+}) {
+  final existence = allowNonexistent
+      ? 'Nonexistent targets are permitted by this invocation.'
+      : 'The target was required to exist at inspection time.';
+  final type = switch (target) {
+    PathTarget.any => 'no target type is required',
+    PathTarget.file => 'a file target was required',
+    PathTarget.directory => 'a directory target was required',
+  };
+  final controls = linear
+      ? r'Enter accepts the reviewed candidate; type edit and press Enter to return to path entry without accepting. Exact /help and /cancel are commands, and /help is cleared instead of being accepted; enter \/help for that literal path. Escape cancels; Ctrl+C interrupts.'
+      : 'Enter accepts the reviewed candidate; type edit to return to path entry without accepting. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+  return 'Help: PathInput review. The candidate ${DisplayText.from(candidate).value} was resolved from the captured base and is returned only after this review. $existence, $type, and nothing was opened, created or changed. Existence and type are a snapshot rather than permission, so a later filesystem operation can still fail. $controls';
 }
 
 // Dart's type() maps filesystem errors to notFound. Probe again with native

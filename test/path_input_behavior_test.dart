@@ -4,6 +4,11 @@ import 'package:path/path.dart' as path;
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test('default requires existence and target type is enforced', () async {
     final dir = await Directory.systemTemp.createTemp('path-input-');
@@ -63,6 +68,7 @@ void main() {
       source: ScriptedInput(
         Stream.value('missing\r\x7f\x7f\x7f\x7f\x7f\x7f\x7f.\r\r'),
         out,
+        outputProfile: _richProfile,
       ),
       mode: PromptMode.rich,
     );
