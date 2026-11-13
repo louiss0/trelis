@@ -1,7 +1,26 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
+ScriptedInput _scriptedInput(Stream<String> input, StringSink output) =>
+    ScriptedInput(input, output, outputProfile: _richProfile);
+
 void main() {
+  test('timezone select accepts through the shared session', () async {
+    final output = StringBuffer();
+    final source = _scriptedInput(Stream.value('UTC\r/cancel\r'), output);
+    final result = await TerminalSession.run(
+      (session) => TimezoneSelect('Zone').prompt(session: session),
+      source: source,
+      mode: PromptMode.linear,
+    );
+    expect(result, isA<Cancelled<String>>());
+    expect(output.toString(), contains('UTC'));
+  });
   test('supplied stable reference accepts an enabled canonical zone', () async {
     final result = await TimezoneSelect('Zone')
         .prompt(source: SuppliedAnswer('105'));
@@ -9,7 +28,7 @@ void main() {
   });
   test('rich alias search and linear search return the same zone', () async {
     final result = await TimezoneSelect('Zone').prompt(
-      source: ScriptedInput(Stream.value('US/Eastern\r\r'), StringBuffer()),
+      source: _scriptedInput(Stream.value('US/Eastern\r\r'), StringBuffer()),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'America/New_York');
@@ -17,7 +36,7 @@ void main() {
   test('stale references do not select a different zone', () async {
     final out = StringBuffer();
     final result = await TimezoneSelect('Zone').prompt(
-      source: ScriptedInput(Stream.value('US/Eastern\r1\r105\r'), out),
+      source: _scriptedInput(Stream.value('US/Eastern\r1\r105\r'), out),
       mode: PromptMode.linear,
     );
     expect((result as Accepted<String>).value, 'America/New_York');
@@ -29,7 +48,7 @@ void main() {
       final out = StringBuffer();
       final result =
           await TimezoneSelect('Zone', defaultValue: 'America/New_York').prompt(
-            source: ScriptedInput(Stream.value('\rtokyo\r\r\x1b[B\r'), out),
+            source: _scriptedInput(Stream.value('\rtokyo\r\r\x1b[B\r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'Asia/Tokyo');
@@ -56,7 +75,7 @@ void main() {
           defaultValue: 'US/Eastern',
           unavailable: {'America/New_York': 'not supported'},
         ).prompt(
-          source: ScriptedInput(Stream.value('\r\r\x1b'), out),
+          source: _scriptedInput(Stream.value('\r\r\x1b'), out),
           mode: PromptMode.rich,
         );
     expect(result, isA<InputEnded<String>>());
@@ -65,7 +84,7 @@ void main() {
   test('an alias default retains its canonical identity', () async {
     final result = await TimezoneSelect('Zone', defaultValue: 'US/Eastern')
         .prompt(
-          source: ScriptedInput(Stream.value('\r\r'), StringBuffer()),
+          source: _scriptedInput(Stream.value('\r\r'), StringBuffer()),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'America/New_York');
@@ -76,7 +95,7 @@ void main() {
       final out = StringBuffer();
       final result = await TimezoneSelect('Zone', defaultValue: 'Asia/Tokyo')
           .prompt(
-            source: ScriptedInput(Stream.value('\r\r'), out),
+            source: _scriptedInput(Stream.value('\r\r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'Asia/Tokyo');
@@ -86,7 +105,7 @@ void main() {
   test('linear search returns canonical IANA identity for an alias', () async {
     final out = StringBuffer();
     final result = await TimezoneSelect('Zone').prompt(
-      source: ScriptedInput(Stream.value('US/Eastern\r105\r'), out),
+      source: _scriptedInput(Stream.value('US/Eastern\r105\r'), out),
       mode: PromptMode.linear,
     );
     expect((result as Accepted<String>).value, 'America/New_York');

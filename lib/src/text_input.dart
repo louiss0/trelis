@@ -1476,6 +1476,8 @@ Future<({String action, String value})> _edit(
   String? linearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  void Function()? onHelpDismissed,
+  void Function(bool visible)? onHelpVisibilityChanged,
   TextInputTranscript? transcript,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
@@ -1721,6 +1723,7 @@ Future<({String action, String value})> _edit(
       if (key == '\x1b') {
         if (!help) return (action: 'cancel', value: '');
         help = false;
+        onHelpVisibilityChanged?.call(false);
         if (session != null) {
           session._dismissModalHelp(
             showTranscriptDismissal: !transientHelp,
@@ -1732,11 +1735,16 @@ Future<({String action, String value})> _edit(
           output.writeln('Help dismissed.');
           display();
         }
+        if (onHelpDismissed != null) {
+          onHelpDismissed();
+          display();
+        }
         continue;
       }
       if (key == '\x14') {
         if (help) continue;
         help = true;
+        onHelpVisibilityChanged?.call(true);
         if (session != null) {
           session._openModalHelp(useAlternateScreen: transientHelp);
         } else if (transientHelp) {

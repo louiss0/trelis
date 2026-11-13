@@ -7,7 +7,10 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     this.search,
-  }) : choices = List.unmodifiable(choices),
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(choices),
        _kind = 'SearchSelect',
        _matches = null {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -25,7 +28,10 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     this.search,
-  }) : choices = List.unmodifiable(choices),
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(choices),
        _kind = 'CommandPalette',
        _matches = null {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -43,7 +49,10 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     required this._matches,
-  }) : choices = List.unmodifiable(choices),
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(choices),
        search = null,
        _kind = 'TimezoneSelect' {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -58,6 +67,8 @@ final class SearchSelect<T> {
   final String _kind;
   final List<Choice<T>> choices;
   final T? defaultValue;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
 
   /// Optional search policy. Results must use identities from [choices]; their
   /// labels and availability may change. Results retain source order and stable
@@ -71,31 +82,72 @@ final class SearchSelect<T> {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
+      if (session != null) {
+        return await session._promptRunner<T>(
+          _run,
+          source: source,
+          mode: mode,
+          userPreference: userPreference,
+          applicationPreference: applicationPreference,
+          output: output,
+          terminal: terminal,
+          outputProfile: outputProfile,
+        );
+      }
       final selected =
           mode ??
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<T>(
             selected,
             output ?? stderr,
-            (s, m, restore) => _run(s, m, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -104,7 +156,9 @@ final class SearchSelect<T> {
   Future<PromptResult<T>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       if (search != null) {
@@ -122,16 +176,31 @@ final class SearchSelect<T> {
       return Accepted(choices[n - 1].value);
     }
     final input = source as ScriptedInput;
-    if (mode == PromptMode.rich && !input.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: input.outputProfile,
+        supportsRich: input.supportsRich,
+      ),
+      input._observedGeometry,
+    );
+    if (input._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = input.output;
-    final keys = _Keys(input.input.transform(utf8.encoder));
+    String safe(String value) => DisplayText.from(value).value;
+    final additionalHelp = supplementaryHelp.map(safe).join(' ');
+    final inputKeys = keys ?? _Keys(input.input.transform(utf8.encoder));
     var query = '';
     var focus = defaultValue == null
         ? -1
@@ -142,11 +211,13 @@ final class SearchSelect<T> {
     var current = <int, Choice<T>>{};
     var loading = false;
     var failed = false;
+    var invalidIdentities = false;
     var closed = false;
     var generation = 0;
     String? requestedQuery;
     var invalidFocus = false;
     var hadResultsFocus = false;
+    var helpVisible = false;
     List<int> visible() => search == null
         ? [
             for (var i = 0; i < choices.length; i++)
@@ -161,13 +232,23 @@ final class SearchSelect<T> {
     Choice<T> item(int i) => search == null ? choices[i] : current[i]!;
     void show() {
       final matches = visible();
-      out.writeln('$label $_kind: ${matches.length} results for "$query".');
+      out.writeln(
+        '${safe(label)} $_kind: ${matches.length} results for "${safe(query)}".',
+      );
       if (loading) {
         out.writeln('Searching; results cannot be accepted yet.');
       } else if (failed) {
+        if (invalidIdentities) {
+          out.writeln('Search returned unknown or duplicate identities.');
+        }
         out.writeln('Search unavailable; edit the query to retry.');
       } else if (matches.isEmpty) {
         out.writeln('No matching choices; edit the query.');
+      }
+      if (invalidFocus) {
+        out.writeln(
+          'Previously focused choice is removed or unavailable; navigate to choose another.',
+        );
       }
       if (mode == PromptMode.linear && matches.isNotEmpty) {
         out.writeln(
@@ -180,7 +261,7 @@ final class SearchSelect<T> {
               : matches) {
         final c = item(i);
         out.writeln(
-          '${i + 1}. ${c.label}${i == focus ? ' [focused]' : ''}${defaultValue != null && c.value == defaultValue ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+          '${i + 1}. ${safe(c.label)}${i == focus ? ' [focused]' : ''}${defaultValue != null && c.value == defaultValue ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${safe(c.disabledReason!)}]'}',
         );
       }
     }
@@ -205,6 +286,7 @@ final class SearchSelect<T> {
       current = {};
       loading = true;
       failed = false;
+      invalidIdentities = false;
       void apply(List<Choice<T>> results) {
         if (closed || requestId != generation) return;
         final next = <int, Choice<T>>{};
@@ -213,7 +295,10 @@ final class SearchSelect<T> {
           if (index < 0 || next.containsKey(index)) {
             loading = false;
             failed = true;
-            out.writeln('Search returned unknown or duplicate identities.');
+            invalidIdentities = true;
+            if (!helpVisible) {
+              out.writeln('Search returned unknown or duplicate identities.');
+            }
             return;
           }
           next[index] = candidate;
@@ -226,9 +311,11 @@ final class SearchSelect<T> {
             (!current.containsKey(focus) ||
                 current[focus]!.disabledReason != null)) {
           invalidFocus = true;
-          out.writeln(
-            'Previously focused choice is removed or unavailable; navigate to choose another.',
-          );
+          if (!helpVisible) {
+            out.writeln(
+              'Previously focused choice is removed or unavailable; navigate to choose another.',
+            );
+          }
         } else if (current.containsKey(focus)) {
           invalidFocus = false;
         }
@@ -239,14 +326,16 @@ final class SearchSelect<T> {
           );
           focus = enabled < 0 ? items.first : items[enabled];
         }
-        show();
+        if (!helpVisible) show();
       }
 
       void fail(Object error) {
         if (closed || requestId != generation) return;
         loading = false;
         failed = true;
-        out.writeln('Search unavailable; edit the query to retry.');
+        if (!helpVisible) {
+          out.writeln('Search unavailable; edit the query to retry.');
+        }
       }
 
       try {
@@ -288,17 +377,21 @@ final class SearchSelect<T> {
       }
       final c = item(index);
       if (c.disabledReason != null) {
-        out.writeln('Unavailable: ${c.disabledReason}.');
+        out.writeln('Unavailable: ${safe(c.disabledReason!)}.');
         return null;
       }
-      out.writeln('Accepted: ${c.label}.');
+      out.writeln('Accepted: ${safe(c.label)}.');
       return Accepted(c.value);
     }
 
+    session?._setPromptGeometry(effectiveProfile.geometry);
+    session?._setPromptRepaint(show);
     out.writeln(
-      mode == PromptMode.linear
-          ? '$label. Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-          : '$label. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      instructions == InstructionDisplay.hidden
+          ? '${safe(label)}. ${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.'
+          : mode == PromptMode.linear
+          ? '${safe(label)}. Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+          : '${safe(label)}. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
     );
     try {
       if (mode == PromptMode.linear) {
@@ -306,15 +399,21 @@ final class SearchSelect<T> {
         while (true) {
           var literal = false;
           final r = await _edit(
-            keys,
+            inputKeys,
             editing ? query : '',
             out,
             linear: true,
             sequential: true,
+            clearHelpCommand: true,
             extraCommands: editing
                 ? const {}
                 : const {'/search', '/next', '/previous', '/list'},
             onSubmit: (v) => literal = v,
+            linearHelpText: editing
+                ? 'Help: $_kind query. Enter opens matching results without accepting a choice. $additionalHelp'
+                : 'Help: $_kind results. Enter a source-stable reference to accept an enabled current result. /search edits the query; /next and /previous change pages; /list reviews results. $additionalHelp',
+            session: session,
+            outputProfile: effectiveProfile,
             onChanged: editing
                 ? (v) {
                     query = v;
@@ -363,31 +462,25 @@ final class SearchSelect<T> {
       var help = false;
       while (true) {
         if (editing) {
-          var queryHelp = false;
           final r = await _edit(
-            keys,
+            inputKeys,
             query,
             out,
+            session: session,
+            outputProfile: effectiveProfile,
+            resizeObserver: input.resizeObserver,
+            transientHelp:
+                effectiveProfile.alternateScreen == CapabilitySupport.supported,
+            helpText:
+                'Help: edit query; Enter opens results without accepting. Tab or Up/Down also enters results. Escape dismisses help. $additionalHelp',
+            onHelpDismissed: show,
+            onHelpVisibilityChanged: (visible) => helpVisible = visible,
             onChanged: (v) {
               query = v;
               request(v);
               show();
             },
             intercept: (key, text) {
-              if (queryHelp) {
-                if (key == '\x1b') {
-                  queryHelp = false;
-                  out.writeln('Help dismissed.');
-                }
-                return 'handled';
-              }
-              if (key == '\x14') {
-                queryHelp = true;
-                out.writeln(
-                  'Help: edit query; Enter opens results without accepting. Tab or Up/Down also enters results. Escape dismisses help.',
-                );
-                return 'handled';
-              }
               if (key == '\t' || key == '\x1b[A' || key == '\x1b[B') {
                 return 'results';
               }
@@ -399,22 +492,34 @@ final class SearchSelect<T> {
           if (r.action == 'eof') return InputEnded();
           query = r.value;
           editing = false;
+          session?._setPromptRepaint(show);
           enterResults();
           continue;
         }
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') {
           if (!help) return Cancelled();
           help = false;
-          out.writeln('Help dismissed.');
+          helpVisible = false;
+          if (session != null) {
+            session._dismissModalHelp(
+              showTranscriptDismissal: true,
+              repaintPrompt: show,
+            );
+          } else {
+            out.writeln('Help dismissed.');
+            show();
+          }
           continue;
         }
         if (key == '\x14') {
           help = true;
+          helpVisible = true;
+          session?._openModalHelp(useAlternateScreen: false);
           out.writeln(
-            'Help: Tab traverses query, results and Cancel; arrows navigate results; Enter accepts a focused enabled result or Cancel; typing edits query. Escape dismisses help.',
+            'Help: Tab traverses query, results and Cancel; arrows navigate results; Enter accepts a focused enabled result or Cancel; typing edits query. Escape dismisses help. $additionalHelp',
           );
           continue;
         }
@@ -467,9 +572,10 @@ final class SearchSelect<T> {
       closed = true;
       generation++;
       try {
-        beforeClose?.call();
+        session?._abortModalHelp();
+        session?._setPromptRepaint(null);
       } finally {
-        await keys.close();
+        if (keys == null) await inputKeys.close();
       }
     }
   }

@@ -3,7 +3,223 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
+ScriptedInput _scriptedInput(Stream<String> input, StringSink output) =>
+    ScriptedInput(input, output, outputProfile: _richProfile);
+
 void main() {
+  test('explicit rich mode requires declared geometry without querying suggestions', () async {
+    var queried = false;
+    final result =
+        await Autocomplete(
+          'Name',
+          suggestions: (_) {
+            queried = true;
+            return <String>[];
+          },
+        ).prompt(
+          source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
+          mode: PromptMode.rich,
+        );
+    expect(result, isA<Unavailable<String>>());
+    expect(queried, isFalse);
+  });
+  test(
+    'one autocomplete instance rejects overlap across session and standalone',
+    () async {
+      final sessionInput = StreamController<String>();
+      final prompt = Autocomplete('Name', suggestions: (_) => <String>[]);
+      await TerminalSession.run(
+        (session) async {
+          final first = prompt.prompt(session: session);
+          await expectLater(
+            prompt.prompt(
+              source: _scriptedInput(
+                const Stream<String>.empty(),
+                StringBuffer(),
+              ),
+              mode: PromptMode.linear,
+            ),
+            throwsStateError,
+          );
+          sessionInput.add('/cancel\r');
+          expect(await first, isA<Cancelled<String>>());
+        },
+        source: _scriptedInput(sessionInput.stream, StringBuffer()),
+        mode: PromptMode.linear,
+      );
+      await sessionInput.close();
+    },
+  );
+  test(
+    'standalone autocomplete defers suggestion output while help is open',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final pending = Completer<List<String>>();
+      final prompt = Autocomplete('Name', suggestions: (_) => pending.future)
+          .prompt(
+            source: _scriptedInput(input.stream, output),
+            mode: PromptMode.rich,
+          );
+      input.add('\x14');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      pending.complete(['Ada']);
+      await Future<void>.delayed(Duration.zero);
+      expect(output.toString(), isNot(contains('1 suggestions; none active.')));
+      input.add('\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      input.add('\x03');
+      expect(await prompt, isA<Interrupted<String>>());
+      expect(output.toString(), contains('1 suggestions; none active.'));
+      await input.close();
+    },
+  );
+  test(
+    'suggestion display encodes bidi without altering accepted text',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await Autocomplete('Name', suggestions: (_) => ['A\u202eB']).prompt(
+            source: _scriptedInput(Stream.value('A\r1\r/submit\r'), output),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'A\u202eB');
+      expect(output.toString(), contains(r'A\u{202E}B'));
+      expect(output.toString(), isNot(contains('A\u202eB')));
+    },
+  );
+  test('linear query help preserves a draft for continued editing', () async {
+    final output = StringBuffer();
+    final result = await Autocomplete('Name', suggestions: (_) => <String>[])
+        .prompt(
+          source: _scriptedInput(Stream.value('/help\rAda\r/submit\r'), output),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'Ada');
+  });
+  test(
+    'hidden autocomplete instructions retain help and supplementary guidance',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final prompt =
+          Autocomplete(
+            'Name',
+            suggestions: (_) => <String>[],
+            instructions: InstructionDisplay.hidden,
+            supplementaryHelp: ['Use a preferred name.'],
+          ).prompt(
+            source: _scriptedInput(input.stream, output),
+            mode: PromptMode.rich,
+          );
+      input.add('\x14');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(output.toString(), contains('Use a preferred name.'));
+      input.add('\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      input.add('\x03');
+      expect(await prompt, isA<Interrupted<String>>());
+      await input.close();
+    },
+  );
+  test(
+    'linear results help distinguishes choosing a candidate from submitting',
+    () async {
+      final output = StringBuffer();
+      final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
+          .prompt(
+            source: _scriptedInput(
+              Stream.value('A\r/help\r1\r/submit\r'),
+              output,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'Ada');
+      expect(output.toString(), contains('Help: Autocomplete results.'));
+      expect(output.toString(), contains('number copies a candidate'));
+    },
+  );
+  test(
+    'suggestions completing during help are shown after dismissal',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final pending = Completer<List<String>>();
+      await TerminalSession.run(
+        (session) async {
+          final prompt = Autocomplete(
+            'Name',
+            suggestions: (_) => pending.future,
+          ).prompt(session: session);
+          input.add('\x14');
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          pending.complete(['Ada']);
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            output.toString(),
+            isNot(contains('1 suggestions; none active.')),
+          );
+          input.add('\x1b');
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          input.add('\x03');
+          expect(await prompt, isA<Interrupted<String>>());
+          expect(output.toString(), contains('1 suggestions; none active.'));
+        },
+        source: _scriptedInput(input.stream, output),
+        mode: PromptMode.rich,
+      );
+      await input.close();
+    },
+  );
+  test(
+    'autocomplete shares scripted input with the next session prompt',
+    () async {
+      final output = StringBuffer();
+      final source = _scriptedInput(
+        Stream.value('Ada\r/submit\rnext\r'),
+        output,
+      );
+      await TerminalSession.run(
+        (session) async {
+          final first = await Autocomplete(
+            'Name',
+            suggestions: (_) => <String>[],
+          ).prompt(session: session);
+          final second = await TextInput('Next').prompt(session: session);
+          expect((first as Accepted<String>).value, 'Ada');
+          expect((second as Accepted<String>).value, 'next');
+        },
+        source: source,
+        mode: PromptMode.linear,
+      );
+    },
+  );
+  test(
+    'rich help explains candidate acceptance without losing the draft',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final result = Autocomplete('Name', suggestions: (_) => ['Ada']).prompt(
+        source: _scriptedInput(input.stream, output),
+        mode: PromptMode.rich,
+      );
+      input.add('A\x14\x1b');
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      input.add('\r');
+      expect((await result as Accepted<String>).value, 'A');
+      expect(
+        output.toString(),
+        contains('Help: Autocomplete. Tab accepts a candidate'),
+      );
+      expect(output.toString(), contains('Enter submits free text'));
+      await input.close();
+    },
+  );
   test(
     'supplied unmatched text is accepted without querying suggestions',
     () async {
@@ -29,7 +245,7 @@ void main() {
             'Name',
             suggestions: (_) async => ['Ada', 'Grace'],
           ).prompt(
-            source: ScriptedInput(Stream.value('A\r2\r/submit\r'), output),
+            source: _scriptedInput(Stream.value('A\r2\r/submit\r'), output),
             mode: PromptMode.linear,
           );
       expect((result as Accepted<String>).value, 'Grace');
@@ -42,7 +258,7 @@ void main() {
     () async {
       final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
           .prompt(
-            source: ScriptedInput(Stream.value('A\x1b[B\r\r'), StringBuffer()),
+            source: _scriptedInput(Stream.value('A\x1b[B\r\r'), StringBuffer()),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'Ada');
@@ -53,7 +269,7 @@ void main() {
     final result =
         await Autocomplete('Name', suggestions: (_) => pending.future)
             .prompt(
-              source: ScriptedInput(
+              source: _scriptedInput(
                 Stream.value('Grace\r/submit\r'),
                 StringBuffer(),
               ),
@@ -69,7 +285,7 @@ void main() {
       final input = StreamController<String>();
       final result = Autocomplete('Name', suggestions: (_) => pending.future)
           .prompt(
-            source: ScriptedInput(input.stream, StringBuffer()),
+            source: _scriptedInput(input.stream, StringBuffer()),
             mode: PromptMode.rich,
           );
       input.add('A\x1b');
@@ -91,7 +307,7 @@ void main() {
             suggestions: (_) => <String>[],
             validate: (value) => value == 'Ada!' ? null : 'Add an exclamation',
           ).prompt(
-            source: ScriptedInput(
+            source: _scriptedInput(
               Stream.value('\r/submit\r/edit\r!\r/submit\r'),
               output,
             ),
@@ -104,7 +320,7 @@ void main() {
   test('Escape dismisses help before the active suggestion layer', () async {
     final input = StreamController<String>();
     final result = Autocomplete('Name', suggestions: (_) => ['Ada']).prompt(
-      source: ScriptedInput(input.stream, StringBuffer()),
+      source: _scriptedInput(input.stream, StringBuffer()),
       mode: PromptMode.rich,
     );
     input.add('A\x1b[B\x14\x1b');
@@ -122,7 +338,7 @@ void main() {
           suggestions: (query) =>
               requests.putIfAbsent(query, Completer<List<String>>.new).future,
         ).prompt(
-          source: ScriptedInput(input.stream, StringBuffer()),
+          source: _scriptedInput(input.stream, StringBuffer()),
           mode: PromptMode.rich,
         );
     input.add('a');
@@ -143,7 +359,7 @@ void main() {
       final input = StreamController<String>();
       final result = Autocomplete('Name', suggestions: (_) => ['candidate'])
           .prompt(
-            source: ScriptedInput(input.stream, StringBuffer()),
+            source: _scriptedInput(input.stream, StringBuffer()),
             mode: PromptMode.rich,
           );
       input.add('ab\x1b[D\x1b[B\x1b');
@@ -156,7 +372,7 @@ void main() {
   test('linear quoted command remains free-text data', () async {
     final result = await Autocomplete('Name', suggestions: (_) => <String>[])
         .prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('\\/cancel\r/submit\r'),
             StringBuffer(),
           ),
@@ -167,7 +383,7 @@ void main() {
   test('pasted action-stage submit is literal, not a command', () async {
     final result = await Autocomplete('Name', suggestions: (_) => <String>[])
         .prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('Ada\r\x1b[200~/submit\x1b[201~\r/cancel\r'),
             StringBuffer(),
           ),
@@ -178,7 +394,7 @@ void main() {
   test('quoted action-stage submit is not executed', () async {
     final result = await Autocomplete('Name', suggestions: (_) => <String>[])
         .prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('Ada\r\\/submit\r/cancel\r'),
             StringBuffer(),
           ),
@@ -189,7 +405,7 @@ void main() {
   test('pasted candidate number does not accept a candidate', () async {
     final result = await Autocomplete('Name', suggestions: (_) => ['Grace'])
         .prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('Ada\r\x1b[200~1\x1b[201~\r/submit\r'),
             StringBuffer(),
           ),
@@ -208,7 +424,7 @@ void main() {
             suggestions: (query) =>
                 requests.putIfAbsent(query, Completer<List<String>>.new).future,
           ).prompt(
-            source: ScriptedInput(input.stream, StringBuffer()),
+            source: _scriptedInput(input.stream, StringBuffer()),
             mode: PromptMode.linear,
           );
       input.add('a\r/edit\rb\r');
@@ -225,7 +441,7 @@ void main() {
   test('offered candidates do not intercept free-text Enter', () async {
     final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
         .prompt(
-          source: ScriptedInput(Stream.value('Grace\r'), StringBuffer()),
+          source: _scriptedInput(Stream.value('Grace\r'), StringBuffer()),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'Grace');
@@ -233,7 +449,7 @@ void main() {
   test('Tab accepts the first suggestion without submitting it', () async {
     final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
         .prompt(
-          source: ScriptedInput(Stream.value('x\t!\r'), StringBuffer()),
+          source: _scriptedInput(Stream.value('x\t!\r'), StringBuffer()),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'Ada!');
@@ -241,7 +457,7 @@ void main() {
   test('rich Escape dismisses suggestions then cancels', () async {
     final input = StreamController<String>();
     final result = Autocomplete('Name', suggestions: (_) => ['Ada']).prompt(
-      source: ScriptedInput(input.stream, StringBuffer()),
+      source: _scriptedInput(input.stream, StringBuffer()),
       mode: PromptMode.rich,
     );
     input.add('x\x1b');
@@ -260,7 +476,7 @@ void main() {
             maxLength: 2,
             suggestions: (_) => <String>[],
           ).prompt(
-            source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+            source: _scriptedInput(Stream.value('/cancel\r'), StringBuffer()),
             mode: PromptMode.linear,
           );
       expect(result, isA<Cancelled<String>>());
@@ -272,7 +488,7 @@ void main() {
       final out = StringBuffer();
       final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
           .prompt(
-            source: ScriptedInput(Stream.value('Grace\r'), out),
+            source: _scriptedInput(Stream.value('Grace\r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'Grace');
@@ -290,11 +506,15 @@ void main() {
       final requests = <String, Completer<List<String>>>{};
       final input = StreamController<String>();
       final out = StringBuffer();
-      final result = Autocomplete(
-        'Name',
-        suggestions: (q) =>
-            requests.putIfAbsent(q, Completer<List<String>>.new).future,
-      ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.rich);
+      final result =
+          Autocomplete(
+            'Name',
+            suggestions: (q) =>
+                requests.putIfAbsent(q, Completer<List<String>>.new).future,
+          ).prompt(
+            source: _scriptedInput(input.stream, out),
+            mode: PromptMode.rich,
+          );
       input.add('a');
       while (!requests.containsKey('a')) {
         await Future<void>.delayed(Duration.zero);
@@ -319,10 +539,11 @@ void main() {
       final pending = Completer<List<String>>();
       final input = StreamController<String>();
       final out = StringBuffer();
-      final result = Autocomplete(
-        'Name',
-        suggestions: (_) => pending.future,
-      ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.rich);
+      final result = Autocomplete('Name', suggestions: (_) => pending.future)
+          .prompt(
+            source: _scriptedInput(input.stream, out),
+            mode: PromptMode.rich,
+          );
       input.add('draft\t\r');
       expect((await result as Accepted<String>).value, 'draft');
       expect(out.toString(), isNot(contains('Accepted into editable text:')));
@@ -337,10 +558,11 @@ void main() {
     final pending = Completer<List<String>>();
     final input = StreamController<String>();
     final out = StringBuffer();
-    final result = Autocomplete(
-      'Name',
-      suggestions: (_) => pending.future,
-    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    final result = Autocomplete('Name', suggestions: (_) => pending.future)
+        .prompt(
+          source: _scriptedInput(input.stream, out),
+          mode: PromptMode.linear,
+        );
     input.add('draft\r/cancel\r');
     expect(await result, isA<Cancelled<String>>());
     final snapshot = out.toString();

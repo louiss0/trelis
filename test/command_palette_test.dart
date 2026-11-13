@@ -1,7 +1,44 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
+ScriptedInput _scriptedInput(Stream<String> input, StringSink output) =>
+    ScriptedInput(input, output, outputProfile: _richProfile);
+
 void main() {
+  test('command palette help retains application guidance when instructions are hidden', () async {
+    final output = StringBuffer();
+    final result =
+        await CommandPalette(
+          'Commands',
+          [Choice('save', 'Save')],
+          instructions: InstructionDisplay.hidden,
+          supplementaryHelp: ['Commands do not run automatically.'],
+        ).prompt(
+          source: _scriptedInput(Stream.value('/help\rSave\r1\r'), output),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'save');
+    expect(
+      output.toString().replaceAll(RegExp(r'\s+'), ' '),
+      contains('Commands do not run automatically.'),
+    );
+  });
+  test('command palette accepts through the shared session', () async {
+    final source = _scriptedInput(Stream.value('Save\r1\r'), StringBuffer());
+    final result = await TerminalSession.run(
+      (session) => CommandPalette('Commands', [
+        Choice('save', 'Save'),
+      ]).prompt(session: session),
+      source: source,
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, 'save');
+  });
   test(
     'accepts a command identity without executing application work',
     () async {
@@ -10,7 +47,7 @@ void main() {
       final out = StringBuffer();
       final result = await CommandPalette('Commands', [Choice('save', 'Save')])
           .prompt(
-            source: ScriptedInput(Stream.value('sav\r\r'), out),
+            source: _scriptedInput(Stream.value('sav\r\r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'save');
@@ -31,7 +68,7 @@ void main() {
             Choice('share', 'Share file', disabledReason: 'Offline'),
             Choice('close', 'Close file'),
           ]).prompt(
-            source: ScriptedInput(Stream.value('file\r2\r3\r'), out),
+            source: _scriptedInput(Stream.value('file\r2\r3\r'), out),
             mode: PromptMode.linear,
           );
       expect((result as Accepted<String>).value, 'close');
@@ -50,7 +87,7 @@ void main() {
       final out = StringBuffer();
       final result = await CommandPalette('Commands', [Choice('save', 'Save')])
           .prompt(
-            source: ScriptedInput(Stream.value('missing\r1\r/cancel\r'), out),
+            source: _scriptedInput(Stream.value('missing\r1\r/cancel\r'), out),
             mode: PromptMode.linear,
           );
       expect(result, isA<Cancelled<String>>());
@@ -65,7 +102,7 @@ void main() {
         await CommandPalette('Commands', [
           Choice('save', 'Save'),
         ], search: (_) => throw StateError('offline')).prompt(
-          source: ScriptedInput(Stream.value('x\r1\r/cancel\r'), out),
+          source: _scriptedInput(Stream.value('x\r1\r/cancel\r'), out),
           mode: PromptMode.linear,
         );
     expect(result, isA<Cancelled<String>>());
@@ -80,7 +117,7 @@ void main() {
           await CommandPalette('Commands', [
             Choice('save', 'Save'),
           ], search: (_) => [Choice('save', 'Save')]).prompt(
-            source: ScriptedInput(Stream.value('\r\r'), out),
+            source: _scriptedInput(Stream.value('\r\r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'save');

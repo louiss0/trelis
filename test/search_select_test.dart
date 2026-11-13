@@ -3,11 +3,248 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
+ScriptedInput _scriptedInput(Stream<String> input, StringSink output) =>
+    ScriptedInput(input, output, outputProfile: _richProfile);
+
 void main() {
+  test(
+    'one search instance rejects overlap across session and standalone',
+    () async {
+      final input = StreamController<String>();
+      final prompt = SearchSelect('Fruit', [Choice('a', 'Apple')]);
+      await TerminalSession.run(
+        (session) async {
+          final first = prompt.prompt(session: session);
+          await expectLater(
+            prompt.prompt(
+              source: _scriptedInput(
+                const Stream<String>.empty(),
+                StringBuffer(),
+              ),
+              mode: PromptMode.linear,
+            ),
+            throwsStateError,
+          );
+          input.add('/cancel\r');
+          expect(await first, isA<Cancelled<String>>());
+        },
+        source: _scriptedInput(input.stream, StringBuffer()),
+        mode: PromptMode.linear,
+      );
+      await input.close();
+    },
+  );
+  test('invalid search identities arriving during help are reported after dismissal', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final pending = Completer<List<Choice<String>>>();
+    final prompt =
+        SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ], search: (_) => pending.future).prompt(
+          source: _scriptedInput(input.stream, output),
+          mode: PromptMode.rich,
+        );
+    input.add('\x14');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    pending.complete([Choice('unknown', 'Other')]);
+    await Future<void>.delayed(Duration.zero);
+    expect(output.toString(), isNot(contains('unknown or duplicate')));
+    input.add('\x1b');
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    input.add('\x03');
+    expect(await prompt, isA<Interrupted<String>>());
+    expect(output.toString(), contains('unknown or duplicate'));
+    await input.close();
+  });
+  test('standalone search defers results while query help is open', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final pending = Completer<List<Choice<String>>>();
+    final prompt =
+        SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ], search: (_) => pending.future).prompt(
+          source: _scriptedInput(input.stream, output),
+          mode: PromptMode.rich,
+        );
+    input.add('\x14');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    pending.complete([Choice('a', 'Apple')]);
+    await Future<void>.delayed(Duration.zero);
+    expect(output.toString(), isNot(contains('1. Apple')));
+    input.add('\x1b');
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    input.add('\x03');
+    expect(await prompt, isA<Interrupted<String>>());
+    expect(output.toString(), contains('1. Apple'));
+    await input.close();
+  });
+  test(
+    'search results encode bidi controls without changing choice identity',
+    () async {
+      final output = StringBuffer();
+      final result = await SearchSelect('Pick', [Choice('a', 'A\u202eB')])
+          .prompt(
+            source: _scriptedInput(Stream.value('\r1\r'), output),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'a');
+      expect(output.toString(), contains(r'A\u{202E}B'));
+      expect(output.toString(), isNot(contains('A\u202eB')));
+    },
+  );
+  test('search failure during help is deferred until dismissal', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final pending = Completer<List<Choice<String>>>();
+    await TerminalSession.run(
+      (session) async {
+        final prompt = SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ], search: (_) => pending.future).prompt(session: session);
+        input.add('\x14');
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        pending.completeError(StateError('failure'));
+        await Future<void>.delayed(Duration.zero);
+        expect(output.toString(), isNot(contains('Search unavailable')));
+        input.add('\x1b');
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        input.add('\x03');
+        expect(await prompt, isA<Interrupted<String>>());
+        expect(output.toString(), contains('Search unavailable'));
+      },
+      source: _scriptedInput(input.stream, output),
+      mode: PromptMode.rich,
+    );
+    await input.close();
+  });
+  test('linear query help does not become part of the query', () async {
+    final output = StringBuffer();
+    final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
+      source: _scriptedInput(Stream.value('/help\rApple\r1\r'), output),
+      mode: PromptMode.linear,
+    );
+    expect((result as Accepted<String>).value, 'a');
+  });
+  test(
+    'linear results help explains stable references and searching again',
+    () async {
+      final output = StringBuffer();
+      final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
+        source: _scriptedInput(Stream.value('Apple\r/help\r1\r'), output),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<String>).value, 'a');
+      expect(output.toString(), contains('Help: SearchSelect results.'));
+      expect(output.toString(), contains('source-stable reference'));
+    },
+  );
+  test('search completion during help appears after dismissal', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final pending = Completer<List<Choice<String>>>();
+    await TerminalSession.run(
+      (session) async {
+        final prompt = SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ], search: (_) => pending.future).prompt(session: session);
+        input.add('\x14');
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        pending.complete([Choice('a', 'Apple')]);
+        await Future<void>.delayed(Duration.zero);
+        expect(output.toString(), isNot(contains('1. Apple')));
+        input.add('\x1b');
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        input.add('\x03');
+        expect(await prompt, isA<Interrupted<String>>());
+        expect(output.toString(), contains('1. Apple'));
+      },
+      source: _scriptedInput(input.stream, output),
+      mode: PromptMode.rich,
+    );
+    await input.close();
+  });
+  test('feedback waits while search results help owns the session', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    await TerminalSession.run(
+      (session) async {
+        final region = session.startFeedbackRegion();
+        final prompt = SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ]).prompt(session: session);
+        input.add('\r\x14');
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        region.write('background update');
+        expect(output.toString(), isNot(contains('background update')));
+        input.add('\x1b');
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        input.add('\x03');
+        expect(await prompt, isA<Interrupted<String>>());
+        expect(output.toString(), contains('background update'));
+        region.retire();
+      },
+      source: _scriptedInput(input.stream, output),
+      mode: PromptMode.rich,
+    );
+    await input.close();
+  });
+  test('feedback waits while search query help owns the session', () async {
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    await TerminalSession.run(
+      (session) async {
+        final region = session.startFeedbackRegion();
+        final prompt = SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ]).prompt(session: session);
+        input.add('\x14');
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        region.write('background update');
+        expect(output.toString(), isNot(contains('background update')));
+        input.add('\x1b');
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        input.add('\x03');
+        expect(await prompt, isA<Interrupted<String>>());
+        expect(output.toString(), contains('background update'));
+        region.retire();
+      },
+      source: _scriptedInput(input.stream, output),
+      mode: PromptMode.rich,
+    );
+    await input.close();
+  });
+  test(
+    'search select shares scripted input with the next session prompt',
+    () async {
+      final source = _scriptedInput(
+        Stream.value('Apple\r1\rnext\r'),
+        StringBuffer(),
+      );
+      await TerminalSession.run(
+        (session) async {
+          final first = await SearchSelect('Fruit', [
+            Choice('a', 'Apple'),
+          ]).prompt(session: session);
+          final second = await TextInput('Next').prompt(session: session);
+          expect((first as Accepted<String>).value, 'a');
+          expect((second as Accepted<String>).value, 'next');
+        },
+        source: source,
+        mode: PromptMode.linear,
+      );
+    },
+  );
   test('query help explains Enter only opens results', () async {
     final out = StringBuffer();
     final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-      source: ScriptedInput(Stream.value('\x14\x1b\r\r'), out),
+      source: _scriptedInput(Stream.value('\x14\x1b\r\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'a');
@@ -25,7 +262,7 @@ void main() {
                 ? [Choice('a', 'Apple'), Choice('b', 'Banana')]
                 : [Choice('b', 'Banana')],
           ).prompt(
-            source: ScriptedInput(Stream.value('\r\t\tb\r\r\x1b[B\r'), out),
+            source: _scriptedInput(Stream.value('\r\t\tb\r\r\x1b[B\r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<String>).value, 'b');
@@ -37,7 +274,7 @@ void main() {
   );
   test('rich results help is dismissed before root cancellation', () async {
     final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-      source: ScriptedInput(Stream.value('\r\x14\x1b\r'), StringBuffer()),
+      source: _scriptedInput(Stream.value('\r\x14\x1b\r'), StringBuffer()),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'a');
@@ -52,11 +289,13 @@ void main() {
     final pending = Completer<List<Choice<String>>>();
     final input = StreamController<String>();
     final out = StringBuffer();
-    final result = SearchSelect(
-      'Fruit',
-      [Choice('a', 'Apple')],
-      search: (_) => pending.future,
-    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    final result =
+        SearchSelect('Fruit', [
+          Choice('a', 'Apple'),
+        ], search: (_) => pending.future).prompt(
+          source: _scriptedInput(input.stream, out),
+          mode: PromptMode.linear,
+        );
     input.add('\r1\r');
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(out.toString(), contains('Choose a current result reference.'));
@@ -74,7 +313,7 @@ void main() {
         await SearchSelect('Fruit', [
           Choice('a', 'Apple'),
         ], search: (_) => pending.future).prompt(
-          source: ScriptedInput(Stream.value('/cancel\r'), out),
+          source: _scriptedInput(Stream.value('/cancel\r'), out),
           mode: PromptMode.linear,
         );
     expect(result, isA<Cancelled<String>>());
@@ -89,7 +328,7 @@ void main() {
           Choice('a', 'Apple'),
           Choice('b', 'Banana'),
         ], defaultValue: 'b').prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('app\r\t\t\x7f\x7f\x7f\r\r'),
             StringBuffer(),
           ),
@@ -104,7 +343,7 @@ void main() {
           Choice('a', 'Apple', disabledReason: 'seasonal'),
           Choice('b', 'Banana'),
         ], defaultValue: 'a').prompt(
-          source: ScriptedInput(Stream.value('\r\r\x1b[B\r'), out),
+          source: _scriptedInput(Stream.value('\r\r\x1b[B\r'), out),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'b');
@@ -119,7 +358,7 @@ void main() {
           await SearchSelect('Items', [
             for (var i = 1; i <= 12; i++) Choice(i, 'Item $i'),
           ]).prompt(
-            source: ScriptedInput(
+            source: _scriptedInput(
               Stream.value('item\r/next\r/list\r12\r'),
               out,
             ),
@@ -134,7 +373,7 @@ void main() {
   test('no matches cannot submit and query can be replaced', () async {
     final out = StringBuffer();
     final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-      source: ScriptedInput(
+      source: _scriptedInput(
         Stream.value('zzz\r1\r/search\r\x7f\x7f\x7fapple\r1\r'),
         out,
       ),
@@ -152,7 +391,7 @@ void main() {
           SearchSelect('Fruit', [
             Choice('a', 'Apple'),
           ], search: (_) => pending.future).prompt(
-            source: ScriptedInput(input.stream, StringBuffer()),
+            source: _scriptedInput(input.stream, StringBuffer()),
             mode: PromptMode.rich,
           );
       input.add('\r');
@@ -175,7 +414,7 @@ void main() {
               ? [Choice('a', 'Apple'), Choice('b', 'Banana')]
               : [Choice('b', 'Banana')],
         ).prompt(
-          source: ScriptedInput(Stream.value('\r/search\rb\r2\r'), out),
+          source: _scriptedInput(Stream.value('\r/search\rb\r2\r'), out),
           mode: PromptMode.linear,
         );
     expect((result as Accepted<String>).value, 'b');
@@ -185,12 +424,16 @@ void main() {
     final requests = <String, Completer<List<Choice<String>>>>{};
     final input = StreamController<String>();
     final out = StringBuffer();
-    final prompt = SearchSelect(
-      'Fruit',
-      [Choice('a', 'Apple'), Choice('b', 'Banana')],
-      search: (query) =>
-          (requests[query] = Completer<List<Choice<String>>>()).future,
-    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    final prompt =
+        SearchSelect(
+          'Fruit',
+          [Choice('a', 'Apple'), Choice('b', 'Banana')],
+          search: (query) =>
+              (requests[query] = Completer<List<Choice<String>>>()).future,
+        ).prompt(
+          source: _scriptedInput(input.stream, out),
+          mode: PromptMode.linear,
+        );
     input.add('a');
     await Future<void>.delayed(const Duration(milliseconds: 50));
     input.add('\x7fb\r');
@@ -208,7 +451,7 @@ void main() {
     () async {
       final out = StringBuffer();
       final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-        source: ScriptedInput(Stream.value('\t\t\t\r\r'), out),
+        source: _scriptedInput(Stream.value('\t\t\t\r\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<String>).value, 'a');
@@ -221,7 +464,7 @@ void main() {
           Choice('apple', 'Apple'),
           Choice('pear', 'Pear'),
         ]).prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('\r\x1b[B\t\tzzz\r\t\t\x7f\x7f\x7f\r\r'),
             StringBuffer(),
           ),
@@ -235,7 +478,7 @@ void main() {
           Choice('apple', 'Apple'),
           Choice('pear', 'Pear'),
         ]).prompt(
-          source: ScriptedInput(
+          source: _scriptedInput(
             Stream.value('\r\x1b[200~pear\x1b[201~\r\r'),
             StringBuffer(),
           ),
@@ -246,7 +489,7 @@ void main() {
   test('query Enter cannot accept a choice', () async {
     final result = await SearchSelect('Fruit', [Choice('apple', 'Apple')])
         .prompt(
-          source: ScriptedInput(Stream.value('app\r'), StringBuffer()),
+          source: _scriptedInput(Stream.value('app\r'), StringBuffer()),
           mode: PromptMode.rich,
         );
     expect(result, isA<InputEnded<String>>());
@@ -261,7 +504,7 @@ void main() {
             Choice('apple', 'Apple'),
             Choice('pear', 'Pear'),
           ]).prompt(
-            source: ScriptedInput(Stream.value('pear\r1\r2\r'), output),
+            source: _scriptedInput(Stream.value('pear\r1\r2\r'), output),
             mode: PromptMode.linear,
           );
       expect((result as Accepted<String>).value, 'pear');
@@ -275,7 +518,7 @@ void main() {
           Choice('apple', 'Apple'),
           Choice('pear', 'Pear'),
         ]).prompt(
-          source: ScriptedInput(Stream.value('PL\r\r'), output),
+          source: _scriptedInput(Stream.value('PL\r\r'), output),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'apple');
@@ -287,7 +530,7 @@ void main() {
         await SearchSelect('Fruit', [
           Choice('a', 'Apple'),
         ], search: (_) => throw StateError('offline')).prompt(
-          source: ScriptedInput(Stream.value('x\r/list\r/cancel\r'), out),
+          source: _scriptedInput(Stream.value('x\r/list\r/cancel\r'), out),
           mode: PromptMode.linear,
         );
     expect(result, isA<Cancelled<String>>());
@@ -315,7 +558,7 @@ void main() {
                   ? invalid
                   : [Choice('b', 'Renamed B'), Choice('a', 'Renamed A')],
             ).prompt(
-              source: ScriptedInput(
+              source: _scriptedInput(
                 Stream.value('x\r/list\r1\r/search\r\x7fy\r2\r'),
                 out,
               ),
@@ -343,12 +586,17 @@ void main() {
       final requests = <String, Completer<List<Choice<String>>>>{};
       final input = StreamController<String>();
       final out = StringBuffer();
-      final result = SearchSelect(
-        'Fruit',
-        [Choice('a', 'Apple'), Choice('b', 'Banana')],
-        search: (q) =>
-            requests.putIfAbsent(q, Completer<List<Choice<String>>>.new).future,
-      ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.rich);
+      final result =
+          SearchSelect(
+            'Fruit',
+            [Choice('a', 'Apple'), Choice('b', 'Banana')],
+            search: (q) => requests
+                .putIfAbsent(q, Completer<List<Choice<String>>>.new)
+                .future,
+          ).prompt(
+            source: _scriptedInput(input.stream, out),
+            mode: PromptMode.rich,
+          );
       input.add('a');
       await Future<void>.delayed(const Duration(milliseconds: 30));
       input.add('b');
@@ -371,12 +619,17 @@ void main() {
     final out = StringBuffer();
     final input = StreamController<String>();
     final pending = Completer<List<Choice<String>>>();
-    final result = SearchSelect<String>(
-      'Fruit',
-      [Choice('a', 'Apple')],
-      search: (q) =>
-          q == 'x' ? pending.future : <Choice<String>>[Choice('a', 'Apple')],
-    ).prompt(source: ScriptedInput(input.stream, out), mode: PromptMode.linear);
+    final result =
+        SearchSelect<String>(
+          'Fruit',
+          [Choice('a', 'Apple')],
+          search: (q) => q == 'x'
+              ? pending.future
+              : <Choice<String>>[Choice('a', 'Apple')],
+        ).prompt(
+          source: _scriptedInput(input.stream, out),
+          mode: PromptMode.linear,
+        );
     input.add('x\r');
     await Future<void>.delayed(const Duration(milliseconds: 30));
     pending.completeError(StateError('offline'));
