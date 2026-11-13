@@ -26,6 +26,11 @@ Iterable<String> _visibleLines(String text) => text
     )
     .where((line) => line.isNotEmpty);
 
+/// Prose guidance wraps inside the declared width, so phrases are compared
+/// without whitespace.
+String _withoutWrapping(String transcript) =>
+    transcript.replaceAll(RegExp(r'\s+'), '');
+
 void main() {
   test(
     'time keeps incomplete field drafts local before explicit review submit',
@@ -111,9 +116,12 @@ void main() {
         reason: 'line exceeds the declared width: "$line"',
       );
     }
-    final guidance = lines.join();
-    expect(guidance, contains('CE 0001-9999'));
-    expect(guidance, contains('Arithmetic profile; date only, no timezone.'));
+    final guidance = _withoutWrapping(lines.join());
+    expect(guidance, contains(_withoutWrapping('CE 0001-9999')));
+    expect(
+      guidance,
+      contains(_withoutWrapping('Arithmetic profile; date only, no timezone.')),
+    );
     // Guidance never overwrites the field the user just left.
     expect(
       lines.where(
@@ -369,8 +377,10 @@ void main() {
       expect(accepted(invalidRich).value.day, 30);
       expect(accepted(invalidRich).value.month, 4);
       expect(
-        _visibleLines(invalidRichOutput.toString()).join(),
-        contains('day does not exist in the selected month and year'),
+        _withoutWrapping(_visibleLines(invalidRichOutput.toString()).join()),
+        contains(
+          _withoutWrapping('day does not exist in the selected month and year'),
+        ),
       );
 
       final invalidLinearOutput = StringBuffer();
