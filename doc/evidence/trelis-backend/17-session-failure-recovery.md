@@ -1,15 +1,17 @@
 # Ticket 17 — region fault isolation and session failure recovery
 
-**Status:** pass for the scripted public shared-session seam.
+**Status:** pass for the scripted/public-terminal public shared-session seam.
 
 ## Source and environment
 
 - **Implementation revision:** `54572dc235144a149951ed056b4df8062f149678`
-  (`feat: retire shared sessions safely after writer failures`).
-- **Test revision:** `5ed2ae528c910f581fba6b84ea6c591eff453309`
-  (`test: cover session failure isolation and recovery`).
+  (`feat: retire shared sessions safely after writer failures`) plus the review
+  follow-up `d85a6982b6ae3f187fd19f97300a2ea40b19fcfa`
+  (`fix: end an idle prompt when its session retires`).
+- **Test revisions:** `5ed2ae528c910f581fba6b84ea6c591eff453309` and the review
+  follow-up `76e356cff11cdb6ce4c158d02180374a2e8b84be`.
 - **Branch:** `ticket/backend-17-failure-recovery`, based on integration
-  `aae33d028c4d097845b95aeaefe8bce4db6c2d6e`.
+  `9d6ecbe` (the ticket's own merge); the follow-up commits are not merged.
 - **Date:** 2026-11-13.
 - **Environment:** Windows 11 (`10.0.26200`), Dart SDK `3.13.2 (stable)`,
   `windows_x64`.
@@ -52,7 +54,13 @@ verifies that:
   to the selected output, and releases the output claim so a later session can
   own the same sink;
 - a terminal-backed session whose shared writer fails still restores its
-  acquired lease (`acquire`, `restore`).
+  acquired lease (`acquire`, `restore`);
+- a feedback write failure that the caller catches still ends the idle prompt
+  (scripted and terminal-adapter sessions) with that same failure, and the
+  retired scope still restores its lease; and
+- a prompt the callback abandons (started, never awaited, scope returns) ends as
+  `InputEnded` at closure instead of staying pending, and writes nothing after
+  closure.
 
 The implementation retires the live generations, clears the repaint/geometry
 anchors, retires and removes feedback registrations, stops the prompt's resize
@@ -64,15 +72,35 @@ probe failures remain best-effort. Diagnostics for session cleanup and terminal
 restoration deliberately omit the embedded error text, so application data and
 secret drafts are not copied into an exception message.
 
+### Retirement contract for an active prompt
+
+A failed shared writer retires the session and ends the active prompt with the
+original failure; the prompt must not wait for input that can never be acted on.
+The session-owned reader carries that failure, and the reader records only the
+first one so a detached resize repaint and the session cannot deliver the same
+writer failure twice. To make that hold for every reader a session can own, a
+`TerminalIo`-backed session now owns its key reader exactly as a scripted source
+does (same construction the components already performed, so no new decoding
+path is introduced). A caller that catches the feedback failure must therefore
+still await or otherwise handle the prompt future: catching and `await`ing it is
+supported and tested; catching it and discarding the prompt is misuse, because
+the discarded future completes with that failure as an unhandled error.
+
 ## Executed verification
 
 | Command | Result |
 | --- | --- |
 | `dart format --output=none --set-exit-if-changed lib/src/text_input.dart lib/src/terminal_io.dart test/terminal_session_failure_recovery_test.dart` | Passed: `Formatted 3 files (0 changed)`. |
-| `dart test test/terminal_session_failure_recovery_test.dart --reporter expanded` | Passed: 10 tests. |
-| `dart test test/terminal_session_failure_recovery_test.dart test/terminal_session_test.dart test/terminal_session_feedback_test.dart test/terminal_session_modal_help_test.dart test/terminal_session_short_screen_test.dart test/idle_text_input_resize_test.dart test/terminal_io_test.dart --reporter expanded` | Passed: 32 tests. |
+| `dart test test/terminal_session_failure_recovery_test.dart --reporter expanded` | Passed: 13 tests. |
+| `dart test test/terminal_session_failure_recovery_test.dart test/terminal_session_test.dart test/terminal_session_feedback_test.dart test/terminal_session_modal_help_test.dart test/terminal_session_short_screen_test.dart test/idle_text_input_resize_test.dart test/terminal_io_test.dart --reporter expanded` | Passed: 35 tests. |
 | `dart analyze` | Passed: `No issues found!`. |
-| `dart test --reporter expanded` | Passed: 714 tests. |
+| `dart test --reporter expanded` | Passed: 717 tests. |
+
+Red-before-fix evidence, both with `--timeout 15s`: the caught-idle-feedback
+scenario timed out (the prompt stayed parked) for scripted sessions before
+`d85a698` and for terminal-adapter sessions before the session-owned reader in
+the same commit; the abandoned-prompt scenario already passed and is retained as
+a regression lock.
 
 ## Limitations
 
@@ -81,6 +109,17 @@ injection. The sinks record composed terminal writes, but no evidence here
 covers physical alt-screen restoration, scrollback, font width, or caret
 behavior in a real terminal.
 
+- **Native console sessions:** a prompt running on the real console
+  (`TerminalSession.run` without `terminal:` or `source:`) still creates its own
+  key reader, so a retirement cannot pre-empt a blocking console read. The
+  failure surfaces at the next prompt interaction. The same session-owned-reader
+  treatment is applicable, but it would change the native console key path,
+  which this environment cannot exercise deterministically (no TTY), so it is
+  left for native-evidence work rather than changed unverified.
+- **Caller responsibilities:** catching a writer failure and continuing to await
+  the prompt is supported; discarding an active prompt future without handling
+  its error, ignoring the failure and expecting further accepted input, or
+  expecting terminal restoration through the failed writer are misuse.
 - **Forcible termination:** recovery is only claimed for supported exits.
   `SIGKILL`/process termination or a terminal torn down without delivering a
   supported exit cannot run the cleanup path and is explicitly out of scope.

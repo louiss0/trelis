@@ -293,8 +293,9 @@ final class TerminalSessionFeedbackRegion {
 /// ownership of those resources.
 ///
 /// A failed shared writer retires the scope: registrations are retired, no
-/// further writes reach the selected output, and the original failure is
-/// reported to the caller or to the prompt that observed it. Recovery is only
+/// further writes reach the selected output, and the pending prompt ends with
+/// the original failure instead of waiting for input. A caller that catches the
+/// writer failure must still await or handle that prompt. Recovery is only
 /// claimed for supported exits; a forcible process termination or an
 /// unmanaged external writer mutating the same terminal cannot be recovered.
 final class TerminalSession {
@@ -369,6 +370,10 @@ final class TerminalSession {
     }
     _feedback.clear();
     _liveGenerations.clear();
+    // The active prompt cannot be answered through a retired session, so it
+    // must end with the original failure instead of waiting for input that can
+    // never be acted on, even when the caller caught the write failure.
+    _keys?.fail(error, stackTrace);
   }
 
   /// Performs one serialized shared-output action and retires the session if
@@ -774,6 +779,10 @@ final class TerminalSession {
       }
       if (_terminalIo != null) {
         final lease = _terminalIo.acquire();
+        // A session-owned reader lets retirement end an idle prompt and keeps
+        // buffered input across sequential prompts, exactly as it does for a
+        // scripted source.
+        _keys ??= _Keys(_terminalIo.input.transform(utf8.encoder));
         return await _restoreAfter(
           () => runner(
             ScriptedInput(
@@ -787,6 +796,7 @@ final class TerminalSession {
             ),
             selected,
             outputProfile: _outputProfile,
+            keys: _keys,
             session: this,
           ),
           lease.restore,
@@ -1904,6 +1914,7 @@ class _Keys {
   late final StreamSubscription<String> _subscription;
   late final StreamIterator<String> _iterator;
   bool Function(String)? onKey;
+  Object? _failure;
   void _emit(String key) {
     if (!(onKey?.call(key) ?? false)) _controller.add(key);
   }
@@ -2010,9 +2021,12 @@ class _Keys {
   /// Resize notifications and other detached work cannot return a value to the
   /// awaiting prompt, so a failure they observe is delivered through the key
   /// stream. The prompt then ends with the original failure instead of waiting
-  /// for input that can no longer be answered safely.
+  /// for input that can no longer be answered safely. Only the first failure is
+  /// delivered: a detached repaint and its session can observe the same writer
+  /// failure, and the reader must not receive it twice.
   void fail(Object error, StackTrace stackTrace) {
-    if (_controller.isClosed) return;
+    if (_failure != null || _controller.isClosed) return;
+    _failure = error;
     _controller.addError(error, stackTrace);
   }
 

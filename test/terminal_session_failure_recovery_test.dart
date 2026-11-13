@@ -85,6 +85,113 @@ void main() {
     },
   );
 
+  test('a feedback write failure ends an idle prompt even when the caller catches it', () async {
+    final failure = StateError('shared writer failed');
+    final output = _ConditionalThrowingSink(
+      failure,
+      (text) => text.contains('Index: tick'),
+    );
+    final input = StreamController<String>();
+    late Spinner spinner;
+
+    final run = TerminalSession.run(
+      (session) async {
+        spinner = Spinner('Index')..start(session: session);
+        final prompt = TextInput('Project').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        // The caller observes the failure and keeps waiting on the prompt.
+        // No further key ever arrives, so retirement itself must decide it.
+        try {
+          spinner.update('tick');
+        } catch (error) {
+          expect(error, same(failure));
+        }
+        return await prompt;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        supportsRich: true,
+        outputProfile: _richProfile(),
+      ),
+    );
+
+    await expectLater(run, throwsA(same(failure)));
+    final writesBeforeLateUpdate = output.writeAttempts;
+    spinner.update('late');
+    expect(output.writeAttempts, writesBeforeLateUpdate);
+    expect(output.text, isNot(contains('completed')));
+    await input.close();
+  });
+
+  test(
+    'a feedback write failure ends an idle terminal-backed prompt',
+    () async {
+      final failure = StateError('shared writer failed');
+      final output = _ConditionalThrowingSink(
+        failure,
+        (text) => text.contains('Index: tick'),
+      );
+      final input = StreamController<String>();
+      final terminal = _RecordingTerminal(input: input.stream, output: output);
+      late Spinner spinner;
+
+      final run = TerminalSession.run(
+        (session) async {
+          spinner = Spinner('Index')..start(session: session);
+          final prompt = TextInput('Project').prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          try {
+            spinner.update('tick');
+          } catch (error) {
+            expect(error, same(failure));
+          }
+          return await prompt;
+        },
+        terminal: terminal,
+        mode: PromptMode.linear,
+      );
+
+      await expectLater(run, throwsA(same(failure)));
+      expect(terminal.events, [
+        'acquire',
+        'restore',
+      ], reason: 'the retired scope still restores its acquired lease');
+      final writesBeforeLateUpdate = output.writeAttempts;
+      spinner.update('late');
+      expect(output.writeAttempts, writesBeforeLateUpdate);
+      await input.close();
+    },
+  );
+
+  test(
+    'a prompt abandoned by its scope ends instead of staying pending',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      late Future<PromptResult<String>> abandoned;
+
+      final scope = await TerminalSession.run(
+        (session) {
+          abandoned = TextInput('Project').prompt(session: session);
+          return 'scope done';
+        },
+        source: ScriptedInput(input.stream, output),
+        mode: PromptMode.linear,
+      );
+
+      expect(scope, 'scope done');
+      final result = await abandoned.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw StateError('abandoned prompt never completed'),
+      );
+      expect(result, isA<InputEnded<String>>());
+      final writesAfterClosure = output.toString();
+      await input.close();
+      expect(output.toString(), writesAfterClosure);
+    },
+  );
+
   test(
     'a shared writer failure closes regions and does not invent outcomes',
     () async {
@@ -251,9 +358,14 @@ void main() {
       final run = TerminalSession.run(
         (session) async {
           spinner = Spinner('Index')..start(session: session);
-          TextInput('Project').prompt(session: session);
+          final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          spinner.finish(FeedbackOutcome.failed, detail: 'offline');
+          expect(
+            () => spinner.finish(FeedbackOutcome.failed, detail: 'offline'),
+            throwsA(same(failure)),
+          );
+          // No later key arrives: retirement decides the idle prompt.
+          return await prompt;
         },
         source: ScriptedInput(
           input.stream,
