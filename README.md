@@ -537,6 +537,21 @@ prompt. A preview is civil-time matching, not scheduler execution. Provider
 identity, work bounds and the unqualified dialect gaps are recorded in
 [doc/cron-preview-evidence.md](doc/cron-preview-evidence.md).
 
+`CronInput` runs on the shared backend: it accepts `terminal`, `outputProfile`
+and `session`, resolves the invocation/source/legacy profile precedence, refuses
+an explicitly requested rich mode that the effective profile cannot support, and
+keeps every guidance line, validation message and preview report inside the
+declared geometry. An attached prompt inherits its session's input, output, mode
+and profile, shares the session-owned key stream and repaints through the
+session writer, so background feedback and an idle resize repaint the retained
+draft without accepting or changing it. Ctrl+T or `/help` opens component help
+that leads with the requesting stage (entry or review), keeps the dialect field
+shape, the 4096-code-unit limit, the accepted syntax and the bounded
+matching-preview limitation in the same block, and names the review actions.
+This is scripted public-behavior evidence only; native PTY, CI and visible
+terminal probes remain outstanding. See
+[the cron migration evidence](doc/evidence/trelis-backend/28-cron-workflow-migration.md).
+
 ### TimeInput
 
 `TimeInput('Start')` accepts strict 24-hour `HH:mm` time-of-day values.

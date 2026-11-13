@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
+
 CronPreviewConfig config() => CronPreviewConfig(
   providerTimeout: const Duration(seconds: 5),
   zone: 'Etc/UTC',
@@ -140,7 +145,11 @@ void main() {
             profile: CronProfile.unix,
             preview: longConfig,
           ).prompt(
-            source: ScriptedInput(input.stream, output),
+            source: ScriptedInput(
+              input.stream,
+              output,
+              outputProfile: _richProfile,
+            ),
             mode: PromptMode.rich,
           );
       input.add('0 0 31 2 *\r\t\r');
@@ -196,6 +205,7 @@ void main() {
           source: ScriptedInput(
             Stream.value('* * * * *\r\x03'),
             StringBuffer(),
+            outputProfile: _richProfile,
           ),
           mode: PromptMode.rich,
         );

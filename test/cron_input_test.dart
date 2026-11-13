@@ -1,6 +1,11 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
+
 void main() {
   test('preview is strictly after the reference and stays in bounds', () async {
     final result = await CronInput(
@@ -452,7 +457,11 @@ void main() {
           profile: CronProfile.unix,
           preview: config,
         ).prompt(
-          source: ScriptedInput(Stream.value('* * * * *\r\t\r\t\r'), output),
+          source: ScriptedInput(
+            Stream.value('* * * * *\r\t\r\t\r'),
+            output,
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         );
     expect(result, isA<Accepted<CronExpression>>());
