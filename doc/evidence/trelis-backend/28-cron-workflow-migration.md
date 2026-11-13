@@ -4,11 +4,12 @@
 
 ## Source and environment
 
-- **Implementation revision:** `dd9511a2086beba41d9d02c95ed072e10036eae6`. It
-  follows `1dea842` (profile resolution and shared sessions), `3cac7dc`
-  (stage-led help and wrapped guidance) and `b427110` (background updates,
-  resize, outcomes). Commits after `dd9511a` change only this record; `lib/`
-  and `test/` content is unchanged by them.
+- **Implementation revision:** `43e0592`. It follows `1dea842` (profile
+  resolution and shared sessions), `3cac7dc` (stage-led help and wrapped
+  guidance), `b427110` (background updates, resize, outcomes), `dd9511a`
+  (README) and `43e0592` (mode-consistent help wording); the evidence record
+  itself is the commit that contains this file. Every command in the table
+  below was re-run at `43e0592`.
 - **Branch:** `ticket/backend-28-cron-workflow-migration`, based on integration
   `9d6ecbe` (`Merge branch 'ticket/backend-17-failure-recovery'`). The
   integration tip was merged into this branch before this report was written.
@@ -49,7 +50,9 @@ constructors and `prompt`, and records that:
   Submit, while the focused action stays announced on the editor line;
 - linear entry and review help keep the exact command workflow (`/preview`,
   `/edit`, `/submit`, `/help`, `/cancel`), the quoting rule and the
-  identified-paste rule; dismissing help restores the draft;
+  identified-paste rule; dismissing help restores the draft, and a stray
+  Ctrl+T in the linear workflow shows the linear wording rather than the rich
+  action guidance;
 - guidance, validation and preview reports are measured against the declared
   geometry: at 20 columns every rich physical line stays inside the declared
   width, and the linear opening guidance re-wraps inside it while preserving
