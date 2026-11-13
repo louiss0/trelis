@@ -1744,20 +1744,32 @@ Future<({String action, String value})> _edit(
           text = answer.join();
         } else if (linear && !provenance.contains(true)) {
           if (text == '/help') {
-            if (extraCommands.isNotEmpty) {
+            final componentHelp = linearHelpText;
+            if (componentHelp != null) {
+              // A component that supplies its own command-aware help keeps that
+              // content; the exact command spellings are appended rather than
+              // replacing it with the generic command list.
+              _writeWrappedText(
+                output,
+                extraCommands.isEmpty
+                    ? componentHelp
+                    : '$componentHelp Exact commands: ${extraCommands.join(', ')}, /help and /cancel. Quote a command with a backslash; double a leading backslash.',
+                outputProfile == null ? null : _textInputWidth(outputProfile),
+              );
+              transcript?._event(TextInputPresentationEventKind.help);
+            } else if (extraCommands.isNotEmpty) {
               output.writeln(
                 'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
               );
             } else {
               _writeWrappedText(
                 output,
-                linearHelpText ??
-                    _textInputHelp(
-                      linear: true,
-                      required: required,
-                      maxLength: maxLength,
-                      supplementaryHelp: supplementaryHelp,
-                    ),
+                _textInputHelp(
+                  linear: true,
+                  required: required,
+                  maxLength: maxLength,
+                  supplementaryHelp: supplementaryHelp,
+                ),
                 outputProfile == null ? null : _textInputWidth(outputProfile),
               );
               transcript?._event(TextInputPresentationEventKind.help);

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:characters/characters.dart';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
@@ -682,6 +683,360 @@ void main() {
           }
         }
       }
+    },
+  );
+
+  test(
+    'fixed masked input rich help leads with the slot and submit stages',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await MaskedInput(
+            'Code',
+            templates: [
+              MaskTemplate('code', [
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+                MaskLiteral('-'),
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+              ]),
+            ],
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\x14\x1b1\x14\x1b2\x14\x1b\r'),
+              output,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
+      final text = _visibleLines(output.toString()).join();
+      expect(text, contains('Help: Editing slot 1'));
+      expect(text, contains('Help: Editing slot 2'));
+      expect(text, contains('Help: Submitting'));
+      // Slot and literal rules stay visible in every help block.
+      expect(text, contains('literal "-"'));
+      expect(text, contains('slot 1 (digit, required)'));
+      expect(text, contains('Help dismissed.'));
+    },
+  );
+
+  test(
+    'masked linear help keeps raw, formatted and correction rules',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await MaskedInput(
+            'Code',
+            templates: [
+              MaskTemplate('code', [
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+                MaskLiteral('-'),
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+              ]),
+            ],
+          ).prompt(
+            source: ScriptedInput(Stream.value('/help\r/cancel\r'), output),
+            mode: PromptMode.linear,
+          );
+      expect(result, isA<Cancelled<MaskedValue>>());
+      final text = _visibleLines(output.toString()).join();
+      expect(text, contains('Help: Entering a masked value'));
+      expect(text, contains('/edit corrects a single slot'));
+      expect(
+        text,
+        contains('/value replaces the whole raw or formatted value'),
+      );
+      expect(text, contains('literal "-"'));
+      expect(text, contains('required slot'));
+    },
+  );
+
+  test('masked rich layout clips and stacks around the focused slot', () async {
+    MaskedInput code() => MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskLiteral(' (area) '),
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskLiteral(' (local) '),
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        ]),
+      ],
+    );
+    final clippedOutput = StringBuffer();
+    final clipped = await code().prompt(
+      source: ScriptedInput(
+        Stream.value('123\r'),
+        clippedOutput,
+        outputProfile: _narrowProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(
+      (clipped as Accepted<MaskedValue>).value.formatted,
+      '1 (area) 2 (local) 3',
+    );
+    final clippedLines = _visibleLines(clippedOutput.toString()).toList();
+    for (final line in clippedLines) {
+      expect(line.length, lessThanOrEqualTo(18));
+    }
+    final clippedText = clippedLines.join();
+    // The clipped window keeps the focused slot and marks the omitted cells.
+    final draftLines = clippedLines
+        .where((line) => line.startsWith('> '))
+        .toList();
+    expect(draftLines.any((line) => line.contains('<')), isTrue);
+    expect(draftLines.any((line) => line.endsWith('>')), isTrue);
+    expect(clippedText, contains('[]'));
+    expect(draftLines.last, endsWith('3|'));
+
+    final stackedOutput = StringBuffer();
+    final stacked =
+        await MaskedInput(
+          'Glyph',
+          templates: [
+            MaskTemplate('pair', [
+              MaskSlot('grapheme', (s) => s.characters.length == 1),
+              MaskLiteral('-'),
+              MaskSlot('grapheme', (s) => s.characters.length == 1),
+            ]),
+          ],
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('漢x\r'),
+            stackedOutput,
+            outputProfile: OutputProfile(
+              cursor: CapabilitySupport.supported,
+              geometry: OutputGeometry.fixed(columns: 3, rows: 6),
+            ),
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((stacked as Accepted<MaskedValue>).value.slots, ['漢', 'x']);
+    final stackedLines = _visibleLines(stackedOutput.toString()).toList();
+    for (final line in stackedLines) {
+      expect(line.length, lessThanOrEqualTo(4));
+    }
+    final stackedText = stackedLines.join();
+    expect(stackedText, contains('literal "-"'));
+    expect(stackedText, contains('[focused]'));
+    expect(stackedText, contains('Slot 1: 漢'));
+  });
+
+  test(
+    'masked rich layout repaints at new idle geometry with its slots intact',
+    () async {
+      final keys = StreamController<String>();
+      var watcherCancelled = false;
+      final resized = StreamController<void>.broadcast(
+        onCancel: () => watcherCancelled = true,
+      );
+      final output = StringBuffer();
+      final observer = _ResizeObserver(
+        resized.stream,
+        () => (columns: 16, rows: 6),
+      );
+
+      final pending =
+          MaskedInput(
+            'Code',
+            templates: [
+              MaskTemplate('code', [
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+                MaskLiteral('-'),
+                MaskSlot('digit', (s) => '0123456789'.contains(s)),
+              ]),
+            ],
+          ).prompt(
+            source: ScriptedInput(
+              keys.stream,
+              output,
+              outputProfile: _richProfile,
+              resizeObserver: observer,
+            ),
+            mode: PromptMode.rich,
+          );
+      await pumpEventQueue();
+      keys.add('1');
+      await pumpEventQueue();
+      final beforeResize = output.length;
+
+      resized.add(null);
+      await pumpEventQueue();
+
+      expect(output.length, greaterThan(beforeResize));
+      final tail = _visibleLines(output.toString().substring(beforeResize))
+          .toList();
+      expect(tail.join(), contains('Focus: slot 2 of 2 (digit)'));
+      for (final line in tail) {
+        expect(line.length, lessThanOrEqualTo(16));
+      }
+
+      keys.add('2\r');
+      expect((await pending as Accepted<MaskedValue>).value.formatted, '1-2');
+      await keys.close();
+      await resized.close();
+      expect(watcherCancelled, isTrue);
+    },
+  );
+
+  test(
+    'both modes keep partial drafts, validation and every terminal outcome',
+    () async {
+      final sliderOut = StringBuffer();
+      final slider = Slider(
+        'Volume',
+        minimum: '0',
+        maximum: '10',
+        step: '1',
+        initialValue: '4',
+      );
+      // A partial edit is retained and validated before submission.
+      expect(
+        (await slider.prompt(
+          source: ScriptedInput(
+            Stream.value('\t\r\x7f1x\r\t\r\t\t\r\x7f\x7f5\r\t\r'),
+            sliderOut,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ) as Accepted<String>).value,
+        '5',
+      );
+      expect(
+        _visibleLines(sliderOut.toString()).join(),
+        contains('between 0 and 10 on the 1 grid'),
+      );
+      expect(
+        await slider.prompt(
+          source: ScriptedInput(
+            Stream.value('\x1bx'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Cancelled<String>>(),
+      );
+      expect(
+        await slider.prompt(
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Interrupted<String>>(),
+      );
+      expect(
+        await slider.prompt(
+          source: ScriptedInput(const Stream.empty(), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<InputEnded<String>>(),
+      );
+      expect(
+        await slider.prompt(source: SuppliedAnswer('11')),
+        isA<Unavailable<String>>(),
+      );
+
+      final range = RangeSlider(
+        'Window',
+        minimum: '0',
+        maximum: '10',
+        step: '1',
+        minimumGap: '2',
+      );
+      // Only the first endpoint is entered, so the pair stays a partial draft.
+      expect(
+        await range.prompt(
+          source: ScriptedInput(Stream.value('3\r'), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<InputEnded<(String, String)>>(),
+      );
+      expect(
+        await range.prompt(
+          source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<Cancelled<(String, String)>>(),
+      );
+      expect(
+        await range.prompt(
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Interrupted<(String, String)>>(),
+      );
+      expect(
+        await range.prompt(source: SuppliedAnswer('3,4')),
+        isA<Unavailable<(String, String)>>(),
+      );
+
+      MaskedInput code() => MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('code', [
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+            MaskLiteral('-'),
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          ]),
+        ],
+      );
+      final partialOut = StringBuffer();
+      final partial = await code().prompt(
+        source: ScriptedInput(
+          Stream.value('1\r2\r'),
+          partialOut,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+      expect((partial as Accepted<MaskedValue>).value.formatted, '1-2');
+      expect(
+        _visibleLines(partialOut.toString()).join(),
+        contains('Required slots are incomplete'),
+      );
+      expect(
+        await code().prompt(
+          source: ScriptedInput(
+            Stream.value('\x1bx'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Cancelled<MaskedValue>>(),
+      );
+      expect(
+        await code().prompt(
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Interrupted<MaskedValue>>(),
+      );
+      expect(
+        await code().prompt(
+          source: ScriptedInput(const Stream.empty(), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<InputEnded<MaskedValue>>(),
+      );
+      expect(
+        await code().prompt(source: SuppliedAnswer('1-2-3')),
+        isA<Unavailable<MaskedValue>>(),
+      );
     },
   );
 }

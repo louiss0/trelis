@@ -344,6 +344,7 @@ final class Slider {
             if (edit.action == 'cancel') {
               notice('Edit dismissed.');
               show();
+              session?._setPromptRepaint(show);
               continue;
             }
             if (edit.action != 'submit') return InputEnded();
@@ -351,6 +352,7 @@ final class Slider {
             final error = _validate(value);
             if (error != null) notice(error);
             show();
+            session?._setPromptRepaint(show);
             continue;
           }
           if ((key == '\r' || key == '\n') && focus == 2) {
@@ -777,6 +779,7 @@ final class RangeSlider {
             if (edit.action == 'cancel') {
               notice('Edit dismissed.');
               show();
+              session?._setPromptRepaint(show);
               continue;
             }
             if (edit.action == 'interrupt') return Interrupted();
@@ -789,6 +792,7 @@ final class RangeSlider {
             final error = _pairError(lower, upper);
             if (error != null) notice(error);
             show();
+            session?._setPromptRepaint(show);
             continue;
           }
           if ((key == '\r' || key == '\n') && focus == 4) {

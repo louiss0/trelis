@@ -928,6 +928,7 @@ final class MaskedInput {
                 session: session,
                 resizeObserver: source.resizeObserver,
               );
+              session?._setPromptRepaint(show);
               if (correction.action == 'cancel') return Cancelled();
               if (correction.action == 'interrupt') return Interrupted();
               if (correction.action != 'submit') return InputEnded();
@@ -986,6 +987,7 @@ final class MaskedInput {
               );
             }
             show();
+            session?._setPromptRepaint(show);
             continue;
           }
           if (matches.length == 1 && matches.single.template == template.name) {
