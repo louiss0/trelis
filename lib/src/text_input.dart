@@ -882,15 +882,24 @@ const _textInputTotalWidthCap = 120;
 int? _textInputWidth(OutputProfile profile) =>
     profile.geometry.columns?.clamp(1, _textInputTotalWidthCap);
 
-void _writeWrappedText(StringSink output, String text, int? width) {
+void _writeWrappedText(
+  StringSink output,
+  String text,
+  int? width, {
+  Iterable<String> atomicText = const [],
+}) {
   if (width == null) {
     output.writeln(text);
     return;
   }
   // DisplayText's visible control spelling is one protected display unit: a
   // wrap may precede it but must not split `\\u{202E}` into misleading pieces.
+  // Callers may protect further meaningful units, such as a choice row's state
+  // markers, so wrapping never detaches a marker from its meaning.
+  final unit = RegExp(
+    [r'\\u\{[0-9A-F]+\}', ...atomicText.map(RegExp.escape)].join('|'),
+  );
   final pieces = <({String text, int cells})>[];
-  final escape = RegExp(r'\\u\{[0-9A-F]+\}');
   var offset = 0;
   void addMeasured(String segment) {
     for (final entry in TextDisplayMap(segment).entries) {
@@ -898,10 +907,10 @@ void _writeWrappedText(StringSink output, String text, int? width) {
     }
   }
 
-  for (final match in escape.allMatches(text)) {
+  for (final match in unit.allMatches(text)) {
     addMeasured(text.substring(offset, match.start));
-    final visibleEscape = match.group(0)!;
-    pieces.add((text: visibleEscape, cells: visibleEscape.length));
+    final whole = match.group(0)!;
+    pieces.add((text: whole, cells: TextDisplayMap(whole).cellWidth));
     offset = match.end;
   }
   addMeasured(text.substring(offset));
@@ -909,10 +918,11 @@ void _writeWrappedText(StringSink output, String text, int? width) {
   var cells = 0;
   for (final piece in pieces) {
     if (cells > 0 && cells + piece.cells > width) {
-      output.writeln(line);
+      output.writeln(line.toString().trimRight());
       line = StringBuffer();
       cells = 0;
     }
+    if (cells == 0 && piece.text == ' ') continue;
     line.write(piece.text);
     cells += piece.cells;
   }
@@ -1652,20 +1662,27 @@ Future<({String action, String value})> _edit(
           text = answer.join();
         } else if (linear && !provenance.contains(true)) {
           if (text == '/help') {
-            if (extraCommands.isNotEmpty) {
+            final override = linearHelpText;
+            if (override != null) {
+              _writeWrappedText(
+                output,
+                override,
+                outputProfile == null ? null : _textInputWidth(outputProfile),
+              );
+              transcript?._event(TextInputPresentationEventKind.help);
+            } else if (extraCommands.isNotEmpty) {
               output.writeln(
                 'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
               );
             } else {
               _writeWrappedText(
                 output,
-                linearHelpText ??
-                    _textInputHelp(
-                      linear: true,
-                      required: required,
-                      maxLength: maxLength,
-                      supplementaryHelp: supplementaryHelp,
-                    ),
+                _textInputHelp(
+                  linear: true,
+                  required: required,
+                  maxLength: maxLength,
+                  supplementaryHelp: supplementaryHelp,
+                ),
                 outputProfile == null ? null : _textInputWidth(outputProfile),
               );
               transcript?._event(TextInputPresentationEventKind.help);
@@ -3314,13 +3331,87 @@ final class Choice<T> {
   final String? disabledReason;
 }
 
+/// One displayed choice row.
+///
+/// Every public choice family composes its rows through this typed record so a
+/// stable reference, the family's selection marker, focus, the displayed
+/// default and an unavailable reason stay separate facts. The markers are also
+/// the row's atomic units: wrapping may move one to the next line but never
+/// splits it.
+final class _ChoiceRow {
+  const _ChoiceRow({
+    required this.reference,
+    required this.label,
+    this.radio = false,
+    this.checked,
+    this.focused = false,
+    this.isDefault = false,
+    this.disabledReason,
+  });
+
+  /// The stable choice reference displayed for this row, independent of order.
+  final int reference;
+  final String label;
+
+  /// Presents the single-choice marker beside the label.
+  final bool radio;
+
+  /// The draft selection state, or null for a family without one.
+  final bool? checked;
+  final bool focused;
+  final bool isDefault;
+  final String? disabledReason;
+
+  List<String> get markers => [
+    if (checked != null) checked! ? '[checked]' : '[unchecked]',
+    if (focused) '[focused]',
+    if (isDefault) '[default]',
+    if (disabledReason != null) '[unavailable: $disabledReason]',
+  ];
+
+  String get text =>
+      '$reference. ${radio ? '( ) ' : ''}$label'
+      '${markers.map((marker) => ' $marker').join()}';
+}
+
+/// Writes one shared choice row within the declared width.
+void _writeChoiceRow(
+  StringSink output,
+  _ChoiceRow row, {
+  required int? width,
+  required TerminalColor foreground,
+  required ColorTheme colors,
+  required OutputProfile? profile,
+}) {
+  final wrapped = StringBuffer();
+  _writeWrappedText(
+    wrapped,
+    DisplayText.from(row.text).value,
+    width,
+    atomicText: row.markers,
+  );
+  for (final line in wrapped.toString().split('\n')) {
+    if (line.isEmpty) continue;
+    output.writeln(_colorText(line, foreground, colors.background, profile));
+  }
+}
+
 final class Select<T> extends _SingleChoice<T> {
-  Select(super.label, super.choices, {super.defaultValue})
-    : super(radio: false);
+  Select(
+    super.label,
+    super.choices, {
+    super.defaultValue,
+    super.colors = ColorThemes.terminalDefault,
+  }) : super(radio: false);
 }
 
 final class Radio<T> extends _SingleChoice<T> {
-  Radio(super.label, super.choices, {super.defaultValue}) : super(radio: true);
+  Radio(
+    super.label,
+    super.choices, {
+    super.defaultValue,
+    super.colors = ColorThemes.terminalDefault,
+  }) : super(radio: true);
 }
 
 abstract class _SingleChoice<T> {
@@ -3329,6 +3420,7 @@ abstract class _SingleChoice<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     required this.radio,
+    required this.colors,
   }) : choices = List.unmodifiable(choices) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -3344,7 +3436,35 @@ abstract class _SingleChoice<T> {
   final List<Choice<T>> choices;
   final T? defaultValue;
   final bool radio;
+  final ColorTheme colors;
   bool _active = false;
+
+  /// Component help led by this family's controls.
+  ///
+  /// Unavailable reasons are protected: help names every unavailable choice
+  /// with its reason, including pages that are not currently displayed.
+  String _help({required bool linear}) {
+    final kind = radio ? 'Radio' : 'Select';
+    final unavailable = [
+      for (var i = 0; i < choices.length; i++)
+        if (choices[i].disabledReason != null)
+          '${i + 1}. ${choices[i].label} is unavailable '
+              '(${choices[i].disabledReason}) and cannot be accepted',
+    ];
+    final unavailableText = unavailable.isEmpty
+        ? 'Every choice is currently available.'
+        : '${unavailable.join('; ')}.';
+    final defaultIndex = defaultValue == null
+        ? -1
+        : choices.indexWhere((c) => c.value == defaultValue);
+    final defaultText = defaultIndex < 0
+        ? 'No choice is marked as the default.'
+        : 'Default: ${defaultIndex + 1}. ${choices[defaultIndex].label}.';
+    final controls = linear
+        ? r'Enter a stable choice number to accept that choice; /next and /previous show another page of ten. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.'
+        : 'Up/Down move the focus; Enter accepts the focused enabled choice; Escape dismisses help or cancels; Ctrl+C interrupts.';
+    return 'Help: $kind. $unavailableText $controls $defaultText';
+  }
 
   Future<PromptResult<T>> prompt({
     PromptSource? source,
@@ -3352,7 +3472,22 @@ abstract class _SingleChoice<T> {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<T>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -3361,22 +3496,48 @@ abstract class _SingleChoice<T> {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<T>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -3385,7 +3546,9 @@ abstract class _SingleChoice<T> {
   Future<PromptResult<T>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final n = int.tryParse(source.value);
@@ -3398,15 +3561,41 @@ abstract class _SingleChoice<T> {
       return Accepted(choices[n - 1].value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
+    void write(String text, TerminalColor foreground) {
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          out.writeln(
+            _colorText(line, foreground, colors.background, effectiveProfile),
+          );
+        }
+      }
+    }
+
     var focus = defaultValue == null
         ? -1
         : choices.indexWhere((c) => c.value == defaultValue);
@@ -3415,45 +3604,65 @@ abstract class _SingleChoice<T> {
     var page = 0;
     const pageSize = 10;
     void show() {
-      out.writeln(
+      session?._setPromptGeometry(effectiveProfile.geometry);
+      write(
         '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
+        colors.foreground,
       );
-      if (choices.isEmpty) out.writeln('No choices available.');
+      if (choices.isEmpty) write('No choices available.', colors.warning);
       final start = mode == PromptMode.linear ? page * pageSize : 0;
       final end = mode == PromptMode.linear
           ? (start + pageSize).clamp(0, choices.length)
           : choices.length;
       if (mode == PromptMode.linear && choices.isNotEmpty) {
-        out.writeln(
+        write(
           'Page ${page + 1} of ${(choices.length + pageSize - 1) ~/ pageSize}.',
+          colors.muted,
         );
       }
       for (var i = start; i < end; i++) {
         final c = choices[i];
-        out.writeln(
-          '${i + 1}. ${radio ? '( ) ' : ''}${c.label}${i == focus ? ' [focused]' : ''}${defaultValue != null && c.value == defaultValue ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+        _writeChoiceRow(
+          out,
+          _ChoiceRow(
+            reference: i + 1,
+            label: c.label,
+            radio: radio,
+            focused: i == focus,
+            isDefault: defaultValue != null && c.value == defaultValue,
+            disabledReason: c.disabledReason,
+          ),
+          width: width,
+          foreground: i == focus ? colors.accent : colors.foreground,
+          colors: colors,
+          profile: effectiveProfile,
         );
       }
     }
 
     show();
-    out.writeln(
+    write(
       mode == PromptMode.rich
           ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
           : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+      colors.muted,
     );
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {
         var entry = '';
         while (true) {
           final result = await _edit(
-            keys,
+            inputKeys,
             entry,
             out,
             linear: true,
             sequential: true,
             extraCommands: const {'/next', '/previous'},
+            linearHelpText: _help(linear: true),
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (result.action == 'cancel') return Cancelled();
           if (result.action == 'interrupt') return Interrupted();
@@ -3471,23 +3680,24 @@ abstract class _SingleChoice<T> {
           entry = result.value;
           final n = int.tryParse(entry);
           if (n == null || n < 1 || n > choices.length) {
-            out.writeln('Enter a valid choice reference.');
+            write('Enter a valid choice reference.', colors.warning);
             continue;
           }
           final c = choices[n - 1];
           if (c.disabledReason != null) {
-            out.writeln(
+            write(
               'Unavailable: ${c.disabledReason}. Choose an enabled reference.',
+              colors.warning,
             );
             continue;
           }
-          out.writeln('Accepted: ${c.label}.');
+          write('Accepted: ${c.label}.', colors.success);
           return Accepted(c.value);
         }
       }
       var help = false;
       while (true) {
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') {
@@ -3498,9 +3708,7 @@ abstract class _SingleChoice<T> {
         }
         if (key == '\x14') {
           help = true;
-          out.writeln(
-            'Help: Up/Down navigate; Enter accepts the focused enabled choice; Escape dismisses help.',
-          );
+          write(_help(linear: false), colors.foreground);
           continue;
         }
         if (help) continue;
@@ -3514,26 +3722,24 @@ abstract class _SingleChoice<T> {
         }
         if (key == '\r' || key == '\n') {
           if (focus < 0) {
-            out.writeln('No choice available.');
+            write('No choice available.', colors.warning);
             continue;
           }
           final c = choices[focus];
           if (c.disabledReason != null) {
-            out.writeln(
+            write(
               'Unavailable: ${c.disabledReason}. Navigate to an enabled choice.',
+              colors.warning,
             );
             continue;
           }
-          out.writeln('Accepted: ${c.label}.');
+          write('Accepted: ${c.label}.', colors.success);
           return Accepted(c.value);
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (session != null) session._setPromptRepaint(null);
+      if (keys == null) await inputKeys.close();
     }
   }
 }
@@ -3546,6 +3752,7 @@ final class MultiSelect<T> {
     List<T> defaultValues = const [],
     this.min = 0,
     this.max,
+    this.colors = ColorThemes.terminalDefault,
   }) : choices = List.unmodifiable(choices),
        defaultValues = List.unmodifiable(defaultValues) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -3570,7 +3777,30 @@ final class MultiSelect<T> {
   final List<T> defaultValues;
   final int min;
   final int? max;
+  final ColorTheme colors;
   bool _active = false;
+
+  /// Component help led by this family's toggle, review and filter actions.
+  ///
+  /// Unavailable reasons are protected: help names every unavailable choice
+  /// with its reason, including filtered or paged-away choices.
+  String _help({required bool linear}) {
+    final unavailable = [
+      for (var i = 0; i < choices.length; i++)
+        if (choices[i].disabledReason != null)
+          '${i + 1}. ${choices[i].label} is unavailable '
+              '(${choices[i].disabledReason}) and cannot be toggled',
+    ];
+    final unavailableText = unavailable.isEmpty
+        ? 'Every choice is currently available.'
+        : '${unavailable.join('; ')}.';
+    final bounds =
+        'Bounds: minimum $min${max == null ? '' : ', maximum $max'}.';
+    final controls = linear
+        ? r'Enter a choice number to toggle it. /done submits; /selected reviews the selection; /filter edits the label filter; /select-visible and /clear-visible act on enabled results across pages; /next and /previous page. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.'
+        : 'Up/Down move the focus; Space toggles; Enter submits; / filters labels; Ctrl+A selects visible; Ctrl+X clears visible; Ctrl+R reviews; Escape dismisses help or cancels; Ctrl+C interrupts.';
+    return 'Help: MultiSelect. $unavailableText $controls $bounds';
+  }
 
   Future<PromptResult<List<T>>> prompt({
     PromptSource? source,
@@ -3578,7 +3808,22 @@ final class MultiSelect<T> {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<List<T>>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -3587,22 +3832,48 @@ final class MultiSelect<T> {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selectedMode,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<List<T>>(
             selectedMode,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selectedMode);
+      return await _run(source, selectedMode, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -3611,7 +3882,9 @@ final class MultiSelect<T> {
   Future<PromptResult<List<T>>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final refs = source.value.isEmpty ? <String>[] : source.value.split(',');
@@ -3637,16 +3910,42 @@ final class MultiSelect<T> {
       ]);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final width = _textInputWidth(effectiveProfile);
+    void write(String text, TerminalColor foreground) {
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          out.writeln(
+            _colorText(line, foreground, colors.background, effectiveProfile),
+          );
+        }
+      }
+    }
+
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     final selected = <int>{
       for (var i = 0; i < choices.length; i++)
         if (defaultValues.contains(choices[i].value)) i,
@@ -3660,34 +3959,52 @@ final class MultiSelect<T> {
         if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
     ];
     void show() {
+      session?._setPromptGeometry(effectiveProfile.geometry);
       final items = visible();
       final hidden = selected.where((i) => !items.contains(i)).length;
-      out.writeln(
+      write(
         '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
+        colors.foreground,
       );
-      if (items.isEmpty) out.writeln('No matching choices.');
+      if (items.isEmpty) write('No matching choices.', colors.warning);
       final shown = mode == PromptMode.linear
           ? items.skip(page * size).take(size)
           : items;
       if (mode == PromptMode.linear && items.isNotEmpty) {
-        out.writeln(
+        write(
           'Page ${page + 1} of ${(items.length + size - 1) ~/ size}.',
+          colors.muted,
         );
       }
       for (final i in shown) {
         final c = choices[i];
-        out.writeln(
-          '${i + 1}. ${c.label} [${selected.contains(i) ? 'checked' : 'unchecked'}]${mode == PromptMode.rich && items.isNotEmpty && items[focus] == i ? ' [focused]' : ''}${defaultValues.contains(c.value) ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${c.disabledReason}]'}',
+        final focused =
+            mode == PromptMode.rich && items.isNotEmpty && items[focus] == i;
+        _writeChoiceRow(
+          out,
+          _ChoiceRow(
+            reference: i + 1,
+            label: c.label,
+            checked: selected.contains(i),
+            focused: focused,
+            isDefault: defaultValues.contains(c.value),
+            disabledReason: c.disabledReason,
+          ),
+          width: width,
+          foreground: focused ? colors.accent : colors.foreground,
+          colors: colors,
+          profile: effectiveProfile,
         );
       }
     }
 
     void review() {
-      out.writeln('Selected: ${selected.length}.');
+      write('Selected: ${selected.length}.', colors.foreground);
       for (var i = 0; i < choices.length; i++) {
         if (selected.contains(i)) {
-          out.writeln(
+          write(
             '${i + 1}. ${choices[i].label}${visible().contains(i) ? '' : ' [hidden]'}',
+            colors.foreground,
           );
         }
       }
@@ -3696,19 +4013,21 @@ final class MultiSelect<T> {
     void toggle(int i) {
       final c = choices[i];
       if (c.disabledReason != null) {
-        out.writeln('Unavailable: ${c.disabledReason}.');
+        write('Unavailable: ${c.disabledReason}.', colors.warning);
         return;
       }
       if (selected.contains(i)) {
         selected.remove(i);
       } else if (max != null && selected.length >= max!) {
-        out.writeln('Maximum $max selections.');
+        write('Maximum $max selections.', colors.warning);
         return;
       } else {
         selected.add(i);
       }
-      out.writeln(
-        '${c.label}: ${selected.contains(i) ? 'checked' : 'unchecked'}.',
+      final checked = selected.contains(i);
+      write(
+        '${c.label}: ${checked ? 'checked' : 'unchecked'}.',
+        checked ? colors.success : colors.muted,
       );
     }
 
@@ -3717,7 +4036,7 @@ final class MultiSelect<T> {
           .where((i) => choices[i].disabledReason == null)
           .toSet();
       if (add && max != null && selected.union(enabled).length > max!) {
-        out.writeln('Maximum $max selections; no changes made.');
+        write('Maximum $max selections; no changes made.', colors.warning);
         return;
       }
       if (add) {
@@ -3729,7 +4048,7 @@ final class MultiSelect<T> {
 
     PromptResult<List<T>>? submit() {
       if (selected.length < min) {
-        out.writeln('Minimum $min selections required.');
+        write('Minimum $min selections required.', colors.warning);
         return null;
       }
       return Accepted([
@@ -3739,16 +4058,18 @@ final class MultiSelect<T> {
     }
 
     show();
-    out.writeln(
+    write(
       mode == PromptMode.linear
           ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
           : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      colors.muted,
     );
+    session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {
         while (true) {
           final r = await _edit(
-            keys,
+            inputKeys,
             '',
             out,
             linear: true,
@@ -3762,6 +4083,9 @@ final class MultiSelect<T> {
               '/next',
               '/previous',
             },
+            linearHelpText: _help(linear: true),
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (r.action == 'cancel') return Cancelled();
           if (r.action == 'interrupt') return Interrupted();
@@ -3786,13 +4110,15 @@ final class MultiSelect<T> {
                 if (page > 0) page--;
                 show();
               case '/filter':
-                out.writeln('Enter filter text (empty clears):');
+                write('Enter filter text (empty clears):', colors.muted);
                 final f = await _edit(
-                  keys,
+                  inputKeys,
                   '',
                   out,
                   linear: true,
                   sequential: true,
+                  outputProfile: effectiveProfile,
+                  session: session,
                 );
                 if (f.action == 'cancel') return Cancelled();
                 if (f.action == 'interrupt') return Interrupted();
@@ -3817,7 +4143,7 @@ final class MultiSelect<T> {
       }
       var help = false;
       while (true) {
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') {
@@ -3828,9 +4154,7 @@ final class MultiSelect<T> {
         }
         if (key == '\x14') {
           help = true;
-          out.writeln(
-            'Help: Space toggles; Enter submits; / filters; Ctrl+A selects visible; Ctrl+X clears visible; Ctrl+R reviews; Escape dismisses help.',
-          );
+          write(_help(linear: false), colors.foreground);
           continue;
         }
         if (help) continue;
@@ -3857,8 +4181,14 @@ final class MultiSelect<T> {
         }
         if (key == '\x12') review();
         if (key == '/') {
-          out.writeln('Enter filter text (empty clears):');
-          final f = await _edit(keys, '', out);
+          write('Enter filter text (empty clears):', colors.muted);
+          final f = await _edit(
+            inputKeys,
+            '',
+            out,
+            outputProfile: effectiveProfile,
+            session: session,
+          );
           if (f.action == 'interrupt') return Interrupted();
           if (f.action == 'eof') return InputEnded();
           if (f.action == 'submit') {
@@ -3873,11 +4203,8 @@ final class MultiSelect<T> {
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (session != null) session._setPromptRepaint(null);
+      if (keys == null) await inputKeys.close();
     }
   }
 }

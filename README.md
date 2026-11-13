@@ -190,13 +190,28 @@ nonempty labels, plus an optional `defaultValue` that must be one of them. Both
 return the chosen identity; `Radio` changes only how the list is presented.
 
 Rich mode lists every choice with `[focused]`, `[default]` and
-`[unavailable: reason]` markers. Up/Down move between choices, Enter accepts the
-focused enabled choice, Ctrl+T opens help, Escape cancels and Ctrl+C interrupts.
-Linear mode pages the list ten at a time, announces `Page n of m`, and accepts a
-stable choice number, with `/next` and `/previous` for pages. A disabled or
-out-of-range reference keeps the listing and explains why, and an accepted
-answer prints `Accepted: <label>`. A `SuppliedAnswer` is a stable choice number
-for an enabled choice; anything else is unavailable.
+`[unavailable: reason]` markers. Up/Down move the focus between choices, Enter
+accepts the focused enabled choice, Ctrl+T opens component help, Escape
+dismisses help before it cancels, and Ctrl+C interrupts. Linear mode pages the
+list ten at a time, announces `Page n of m`, and accepts a stable choice
+number, with `/next` and `/previous` for pages. A disabled or out-of-range
+reference keeps the listing and explains why, and an accepted answer prints
+`Accepted: <label>`. A `SuppliedAnswer` is a stable choice number for an
+enabled choice; anything else is unavailable.
+
+Rows are composed once for both single-choice families: the stable reference,
+the radio marker, `[focused]`, `[default]` and a protected
+`[unavailable: reason]` stay separate facts, while long labels and feedback
+wrap within the declared width instead of splitting a state marker. Component
+help names every unavailable choice with its reason, including choices that
+are paged away, plus the displayed default and this family's controls.
+
+Both families accept an optional `ColorTheme`. `prompt` also accepts
+`terminal`, `outputProfile` and `session` like the shared editor: an attached
+prompt inherits its `TerminalSession` configuration, and a rich synthetic
+source declares cursor support and positive geometry through its profile.
+Colour is emitted only when the effective profile permits it and is suppressed
+by `NO_COLOR`.
 
 ## Multiline
 
@@ -273,6 +288,17 @@ A `SuppliedAnswer` is the complete selection as comma-separated stable choice
 numbers, for example `2,1`; an empty string means the empty set. References
 must be unique and enabled, without whitespace, and satisfy count constraints.
 Supplied answers are literal and do not interpret prompt commands.
+
+Rows use the same shared choice presentation as `Select` and `Radio`, so the
+stable reference, `[checked]`/`[unchecked]`, `[focused]`, `[default]` and a
+protected `[unavailable: reason]` stay separate and survive wrapping. Rich
+Ctrl+T help and linear `/help` name the toggle, filter, bulk, review and page
+actions, the configured bounds and every unavailable reason, including choices
+hidden by the current filter. Toggling, bound rejection, review and acceptance
+messages wrap within the declared width and use the component palette when the
+effective profile permits colour. `MultiSelect` also accepts an optional
+`ColorTheme`, and `prompt` accepts `terminal`, `outputProfile` and `session`
+like the shared editor.
 
 ## MaskedInput
 
