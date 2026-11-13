@@ -292,4 +292,250 @@ void main() {
     expect((result as Accepted<String>).value, '2');
     expect(terminal.events, ['acquire', 'restore']);
   });
+
+  test(
+    'range honours declared rich facts and refuses undeclared rich output',
+    () async {
+      final output = StringBuffer();
+      final rich =
+          await RangeSlider(
+            'Window',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+            minimumGap: '2',
+            initialLower: '3',
+            initialUpper: '5',
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\t\t\t\t\r'),
+              output,
+              supportsRich: false,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((rich as Accepted<(String, String)>).value, ('3', '5'));
+
+      expect(
+        await RangeSlider(
+          'Window',
+          minimum: '0',
+          maximum: '10',
+          step: '1',
+        ).prompt(
+          source: ScriptedInput(Stream.value('\t\t\t\t\r'), StringBuffer()),
+          mode: PromptMode.rich,
+        ),
+        isA<Unavailable<(String, String)>>(),
+      );
+
+      final linear =
+          await RangeSlider(
+            'Window',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+          ).prompt(
+            source: ScriptedInput(Stream.value('3\r5\r\r'), StringBuffer()),
+            mode: PromptMode.automatic,
+          );
+      expect((linear as Accepted<(String, String)>).value, ('3', '5'));
+    },
+  );
+
+  test('range help names the endpoints, gap and pair review', () async {
+    final output = StringBuffer();
+    await RangeSlider(
+      'Window',
+      minimum: '0',
+      maximum: '10',
+      step: '1',
+      minimumGap: '2',
+    ).prompt(
+      source: ScriptedInput(
+        Stream.value('\x14\x1b\t\x14\x1b\x03'),
+        output,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    final rich = _visibleLines(output.toString()).join();
+    expect(rich, contains('Help: Adjusting the Lower endpoint'));
+    expect(rich, contains('Help: Adjusting the Upper endpoint'));
+    expect(rich, contains('minimum gap 2'));
+    expect(rich, contains('pair is reviewed'));
+
+    final linearOutput = StringBuffer();
+    final linear =
+        await RangeSlider(
+          'Window',
+          minimum: '0',
+          maximum: '10',
+          step: '1',
+          minimumGap: '2',
+        ).prompt(
+          source: ScriptedInput(Stream.value('/help\r/cancel\r'), linearOutput),
+          mode: PromptMode.linear,
+        );
+    expect(linear, isA<Cancelled<(String, String)>>());
+    final linearText = _visibleLines(linearOutput.toString()).join();
+    expect(linearText, contains('Help: Entering the endpoints'));
+    expect(linearText, contains('minimum gap 2'));
+  });
+
+  test('narrow range guidance wraps and keeps the endpoint caret', () async {
+    for (final mode in [PromptMode.rich, PromptMode.linear]) {
+      final output = StringBuffer();
+      final result =
+          await RangeSlider(
+            'Window',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+            precision: 0,
+            initialLower: '3',
+            initialUpper: '5',
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value(mode == PromptMode.rich ? '\t\t\t\t\r' : '\r\r\r'),
+              output,
+              outputProfile: _narrowProfile,
+            ),
+            mode: mode,
+          );
+      expect((result as Accepted<(String, String)>).value, ('3', '5'));
+      final lines = _visibleLines(output.toString()).toList();
+      for (final line in lines) {
+        expect(
+          line.length,
+          lessThanOrEqualTo(18),
+          reason: '${mode.name} line exceeds the declared width: "$line"',
+        );
+      }
+      expect(lines.join(), contains('Lower: 3'));
+      expect(lines.join(), contains('Upper: 5'));
+    }
+  });
+
+  test('rich range keeps endpoint roles and the minimum gap', () async {
+    final output = StringBuffer();
+    final result =
+        await RangeSlider(
+          'Window',
+          minimum: '0',
+          maximum: '10',
+          step: '1',
+          minimumGap: '2',
+          initialLower: '3',
+          initialUpper: '5',
+        ).prompt(
+          source: ScriptedInput(
+            // Up on Lower would cross the gap boundary and is refused; Down then
+            // moves only that endpoint, so the Upper role and its value survive.
+            Stream.value('\x1b[A\x1b[B\t\x1b[B\t\t\t\r'),
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<(String, String)>).value, ('2', '4'));
+    final lines = _visibleLines(output.toString()).join();
+    expect(lines, contains('Lower: 3; Upper: 5'));
+    expect(lines, contains('Lower: 2; Upper: 5'));
+    expect(lines, isNot(contains('Lower: 4')));
+  });
+
+  test(
+    'rich range repaints at new idle geometry without accepting the pair',
+    () async {
+      final keys = StreamController<String>();
+      var watcherCancelled = false;
+      final resized = StreamController<void>.broadcast(
+        onCancel: () => watcherCancelled = true,
+      );
+      final output = StringBuffer();
+      final observer = _ResizeObserver(
+        resized.stream,
+        () => (columns: 16, rows: 6),
+      );
+
+      final pending =
+          RangeSlider(
+            'Window',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+            initialLower: '3',
+            initialUpper: '5',
+          ).prompt(
+            source: ScriptedInput(
+              keys.stream,
+              output,
+              outputProfile: _richProfile,
+              resizeObserver: observer,
+            ),
+            mode: PromptMode.rich,
+          );
+      await pumpEventQueue();
+      keys.add('\t');
+      await pumpEventQueue();
+      final beforeResize = output.length;
+
+      resized.add(null);
+      await pumpEventQueue();
+
+      var completed = false;
+      unawaited(pending.then((_) => completed = true));
+      expect(output.length, greaterThan(beforeResize));
+      final tail = _visibleLines(output.toString().substring(beforeResize))
+          .toList();
+      expect(tail.join(), contains('Focus: Upper'));
+      for (final line in tail) {
+        expect(line.length, lessThanOrEqualTo(16));
+      }
+      await pumpEventQueue();
+      expect(completed, isFalse, reason: 'a repaint must not submit the pair');
+
+      keys.add('\t\t\t\r');
+      expect((await pending as Accepted<(String, String)>).value, ('3', '5'));
+      await keys.close();
+      await resized.close();
+      expect(watcherCancelled, isTrue);
+    },
+  );
+
+  test('range shares one session with coordinated feedback', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+
+    final result = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Window');
+        spinner.start(session: session);
+        final pending = RangeSlider(
+          'Window',
+          minimum: '0',
+          maximum: '10',
+          step: '1',
+          initialLower: '3',
+          initialUpper: '5',
+        ).prompt(session: session);
+        await pumpEventQueue();
+        spinner.update('checking');
+        await pumpEventQueue();
+        input.add('\t\t\t\t\r');
+        await input.close();
+        final answer = await pending;
+        spinner.finish(FeedbackOutcome.completed);
+        return answer;
+      },
+      source: ScriptedInput(input.stream, output, outputProfile: _richProfile),
+      mode: PromptMode.rich,
+    );
+
+    expect((result as Accepted<(String, String)>).value, ('3', '5'));
+    expect(output.toString(), contains('[status] Window: checking'));
+    expect(output.toString(), contains('Focus: Submit'));
+  });
 }

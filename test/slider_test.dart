@@ -238,7 +238,11 @@ void main() {
       );
       expect(
         await range.prompt(
-          source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         ),
         isA<Interrupted<(String, String)>>(),
