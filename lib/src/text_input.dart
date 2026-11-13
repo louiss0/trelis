@@ -919,6 +919,23 @@ void _writeWrappedText(StringSink output, String text, int? width) {
   output.writeln(line);
 }
 
+/// Terminates the editable line that a segmented field editor leaves current.
+///
+/// `_edit` ends its own line when it submits or accepts a command; a control
+/// action such as `next` or `increase` deliberately leaves the field on screen
+/// for the next repaint. Callers that write guidance afterwards must terminate
+/// that line first, or the guidance would overwrite the field the user is
+/// leaving and hide the stacked field order.
+void _finishFieldLine(StringSink out, String action) {
+  if (action != 'submit' &&
+      action != 'command' &&
+      action != 'cancel' &&
+      action != 'interrupt' &&
+      action != 'eof') {
+    out.writeln();
+  }
+}
+
 void _renderTextInputOpening(
   StringSink output,
   String label, {
