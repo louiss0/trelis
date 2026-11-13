@@ -140,6 +140,130 @@ void main() {
       },
     );
   });
+
+  group('PathInput stage help', () {
+    test('rich help is stage-led and preserves the draft', () async {
+      final out = StringBuffer();
+      final result =
+          await PathInput(
+            'Path',
+            base: Directory.current.path,
+            allowNonexistent: true,
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\x14\x1bdraft\r\r'),
+              out,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<String>).value, endsWith('draft'));
+      final transcript = out.toString();
+      expect(transcript, contains('Help: PathInput accepts one literal'));
+      expect(transcript, contains('no link canonicalization'));
+      expect(transcript, contains('drive-relative Windows path'));
+      expect(transcript, contains('snapshot'));
+      expect(transcript, contains('per-open approval'));
+      expect(transcript, contains('Ctrl+T opens this help'));
+      expect(transcript, contains('Help dismissed.'));
+      expect(transcript, isNot(contains('Cursor position')));
+    });
+
+    test(
+      'linear help is component-specific and never becomes a path',
+      () async {
+        final out = StringBuffer();
+        final result =
+            await PathInput(
+              'Path',
+              base: Directory.current.path,
+              allowNonexistent: true,
+            ).prompt(
+              source: ScriptedInput(Stream.value('/help\rdraft\r\r'), out),
+              mode: PromptMode.linear,
+            );
+        expect((result as Accepted<String>).value, endsWith('draft'));
+        final transcript = out.toString();
+        expect(transcript, contains('Help: PathInput accepts one literal'));
+        expect(transcript, contains('no variable, tilde or glob expansion'));
+        expect(transcript, contains('/help is cleared instead'));
+        expect(transcript, contains('UNC pair'));
+        expect(transcript, contains('Identified paste is literal'));
+        expect(transcript, isNot(contains('Resolved candidate: /help')));
+      },
+    );
+
+    test('linear review help does not accept the candidate', () async {
+      final out = StringBuffer();
+      final result =
+          await PathInput(
+            'Path',
+            base: Directory.current.path,
+            allowNonexistent: true,
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('draft\r/help\redit\r\r\r'),
+              out,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, endsWith('draft'));
+      final transcript = out.toString();
+      expect(transcript, contains('Help: PathInput review'));
+      expect(transcript, contains('type edit'));
+      expect(transcript, contains('later filesystem operation'));
+      expect(
+        RegExp('Resolved candidate:').allMatches(transcript).length,
+        greaterThanOrEqualTo(2),
+      );
+    });
+
+    test('rich review help returns to the same review stage', () async {
+      final out = StringBuffer();
+      final result =
+          await PathInput(
+            'Path',
+            base: Directory.current.path,
+            allowNonexistent: true,
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('draft\r\x14\x1b\r'),
+              out,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<String>).value, endsWith('draft'));
+      final transcript = out.toString();
+      expect(transcript, contains('Help: PathInput review'));
+      expect(transcript, contains('Help dismissed.'));
+      expect(
+        transcript.indexOf('Help: PathInput review'),
+        lessThan(transcript.indexOf('Help dismissed.')),
+      );
+      // Dismissal returns to the same review stage instead of accepting.
+      expect(RegExp('Resolved candidate:').allMatches(transcript).length, 1);
+    });
+
+    test(
+      'documented escaping still enters a literal command-shaped path',
+      () async {
+        final base = Directory.current.path;
+        final out = StringBuffer();
+        final result =
+            await PathInput('Path', base: base, allowNonexistent: true).prompt(
+              source: ScriptedInput(Stream.value('\\/help\r\r'), out),
+              mode: PromptMode.linear,
+            );
+        expect(
+          (result as Accepted<String>).value,
+          Platform.isWindows
+              ? '${path.rootPrefix(base)}help'
+              : path.normalize('${path.separator}help'),
+        );
+      },
+    );
+  });
 }
 
 final class _PathTerminal implements TerminalIo, TerminalIoOutputProfile {
