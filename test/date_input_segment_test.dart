@@ -6,7 +6,11 @@ void main() {
     final out = StringBuffer();
     final result = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
         .prompt(
-          source: ScriptedInput(Stream.value('29/02/2024\r/submit\r'), out),
+          source: ScriptedInput(
+            Stream.value('29/02/2024\r/submit\r'),
+            out,
+            outputProfile: _dateRichProfile,
+          ),
           mode: PromptMode.rich,
         );
     expect(result, isA<Accepted<CivilDate>>());
@@ -14,3 +18,8 @@ void main() {
     expect(out.toString(), contains('Focus: year'));
   });
 }
+
+final _dateRichProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);

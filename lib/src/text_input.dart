@@ -4664,13 +4664,32 @@ final class TimeInput {
     return (hour: hour, minute: minute, second: second);
   }
 
+  String _help({required bool linear}) => linear
+      ? 'Help: Enter a complete $_format. This is a time of day, not a date or timezone. Exact /help and /cancel are commands; quote a command with a backslash. Invalid drafts remain available for correction.'
+      : 'Help: $_format. Edit one labeled field at a time; incomplete fields remain drafts. Tab moves between fields and actions. Up/Down or + and - adjust only the focused field without wrapping. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+
   Future<PromptResult<({int hour, int minute, int? second})>> prompt({
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<({int hour, int minute, int? second})>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -4679,22 +4698,48 @@ final class TimeInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
-          return await _terminal(
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
+          return await _terminal<({int hour, int minute, int? second})>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (nativeSource, nativeMode, _) =>
+                _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -4703,138 +4748,266 @@ final class TimeInput {
   Future<PromptResult<({int hour, int minute, int? second})>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
-    if (source is SuppliedAnswer ||
-        (source is ScriptedInput &&
-            (mode == PromptMode.linear ||
-                (mode == PromptMode.automatic && !source.supportsRich)))) {
-      try {
-        final result = await TextInput(
-          '$label ($_format)',
-          required: true,
-          initialValue: initialValue ?? '',
-          validate: (v) => _parse(v) == null ? _error : null,
-        ).prompt(source: source, mode: PromptMode.linear);
-        if (result is Accepted<String>) return Accepted(_parse(result.value)!);
-        if (result is Cancelled<String>) return Cancelled();
-        if (result is Interrupted<String>) return Interrupted();
-        if (result is InputEnded<String>) return InputEnded();
-        return Unavailable((result as Unavailable<String>).reason);
-      } finally {
-        beforeClose?.call();
-      }
+    if (source is SuppliedAnswer) {
+      final value = _parse(source.value);
+      return value == null ? Unavailable(_error) : Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    if (!scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
+    if (mode == PromptMode.automatic) {
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
+    }
     final out = scripted.output;
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue ?? '';
-    final segments = [
-      'Hour',
-      'Minute',
-      if (seconds) 'Second',
+    out.writeln(
+      '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
+    );
+    out.writeln(
+      mode == PromptMode.linear
+          ? 'Enter a time of day, not a date or timezone. /help describes the format; /cancel cancels.'
+          : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    );
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      if (mode == PromptMode.linear) {
+        while (true) {
+          final edit = await _edit(
+            inputKeys,
+            value,
+            out,
+            linear: true,
+            sequential: !effectiveProfile.supportsRichInteraction,
+            clearHelpCommand: true,
+            linearHelpText: _help(linear: true),
+            outputProfile: effectiveProfile,
+            session: session,
+          );
+          if (edit.action == 'cancel') return Cancelled();
+          if (edit.action == 'interrupt') return Interrupted();
+          if (edit.action != 'submit') return InputEnded();
+          value = edit.value;
+          final parsed = _parse(value);
+          if (parsed != null) {
+            out.writeln(
+              'Review: $value is a time of day without date or timezone.',
+            );
+            return Accepted(parsed);
+          }
+          out.writeln('$_error Correct the retained draft.');
+        }
+      }
+      return await _runRich(inputKeys, out, value, effectiveProfile, session);
+    } finally {
+      if (keys == null) await inputKeys.close();
+    }
+  }
+
+  Future<PromptResult<({int hour, int minute, int? second})>> _runRich(
+    _Keys keys,
+    StringSink out,
+    String draft,
+    OutputProfile profile,
+    TerminalSession? session,
+  ) async {
+    final labels = <String>['Hour', 'Minute', if (seconds) 'Second'];
+    final clock = draft.split(' ').first.split(':');
+    final fields = List<String>.generate(
+      labels.length,
+      (index) => index < clock.length ? clock[index] : '',
+    );
+    var period = draft.contains(' ') ? draft.split(' ').skip(1).join(' ') : '';
+    final controls = [
+      ...labels,
       if (twelveHour) 'Period',
+      'Edit formatted time',
+      'Submit',
     ];
-    final controls = [...segments, 'Edit formatted time', 'Submit'];
     var focus = 0;
-    var help = false;
+
+    String current() {
+      if (fields.every((field) => field.isEmpty) && period.isEmpty) return '';
+      final clockText = fields.join(':');
+      return twelveHour ? '$clockText $period' : clockText;
+    }
+
     void show() {
       out.writeln(
-        '$label. Format: $_format. Draft: ${value.isEmpty ? 'not set' : value}.',
+        '$label. Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
       );
       out.writeln(
-        'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+        'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       );
     }
 
     show();
-    try {
-      while (true) {
-        final key = await keys.next();
-        if (key == null || key == '\x1a') return InputEnded();
-        if (key == '\x03') return Interrupted();
-        if (key == '\x1b') {
-          if (!help) return Cancelled();
-          help = false;
-          show();
-          continue;
-        }
-        if (key == '\x14') {
-          help = true;
-          out.writeln(
-            'Help: Tab moves between labeled segments and actions. Up/Down or + and - adjust; Enter edits or submits. Escape dismisses help. $_error',
-          );
-          continue;
-        }
-        if (help) continue;
-        if (key == '\t') {
-          focus = (focus + 1) % controls.length;
-          show();
-          continue;
-        }
-        if (focus < segments.length &&
-            (key == '\x1b[A' || key == '\x1b[B' || key == '+' || key == '-')) {
-          if (_parse(value) == null) {
-            out.writeln('Edit a valid formatted time before adjusting.');
-            show();
-            continue;
-          }
-          final up = key == '+' || key == '\x1b[A';
-          if (segments[focus] == 'Period') {
-            if (up && value.endsWith('AM')) {
-              value = '${value.substring(0, value.length - 2)}PM';
+    while (true) {
+      final segmentCount = labels.length + (twelveHour ? 1 : 0);
+      if (focus < segmentCount) {
+        final name = controls[focus];
+        final isPeriod = name == 'Period';
+        final old = isPeriod ? period : fields[focus];
+        final edit = await _edit(
+          keys,
+          old,
+          out,
+          maxLength: isPeriod ? 2 : 2,
+          transientHelp: profile.alternateScreen == CapabilitySupport.supported,
+          helpText: _help(linear: false),
+          outputProfile: profile,
+          session: session,
+          intercept: (key, text) {
+            if (key.startsWith('\x1b[200~') &&
+                (key.contains(':') || key.contains(' '))) {
+              out.writeln('Paste only one time field at a time.');
+              return 'handled';
             }
-            if (!up && value.endsWith('PM')) {
-              value = '${value.substring(0, value.length - 2)}AM';
-            }
+            if (key == '\t') return 'next';
+            if (key == '\x1b[Z' || key == '\x02') return 'previous';
+            if (key == ':' || (isPeriod && key == ' ')) return 'next';
+            if (key == '\x1b[A' || key == '+') return 'increase';
+            if (key == '\x1b[B' || key == '-') return 'decrease';
+            return null;
+          },
+        );
+        if (edit.action == 'cancel') return Cancelled();
+        if (edit.action == 'interrupt') return Interrupted();
+        if (edit.action == 'eof') return InputEnded();
+        if (isPeriod) {
+          period = edit.value;
+        } else {
+          fields[focus] = edit.value;
+        }
+        if (edit.action == 'increase' || edit.action == 'decrease') {
+          if (isPeriod) {
+            period = edit.action == 'increase'
+                ? (period == 'AM' ? 'PM' : period)
+                : (period == 'PM' ? 'AM' : period);
           } else {
-            final start = focus * 3;
-            final current = int.parse(value.substring(start, start + 2));
-            final min = focus == 0 && twelveHour ? 1 : 0;
-            final max = focus == 0 ? (twelveHour ? 12 : 23) : 59;
-            final next = current + (up ? 1 : -1);
-            if (next >= min && next <= max) {
-              value = value.replaceRange(
-                start,
-                start + 2,
-                next.toString().padLeft(2, '0'),
-              );
+            final currentValue = int.tryParse(edit.value);
+            if (currentValue == null) {
+              out.writeln('Enter a complete numeric field before adjustment.');
+            } else {
+              final min = focus == 0 && twelveHour ? 1 : 0;
+              final max = focus == 0 ? (twelveHour ? 12 : 23) : 59;
+              final next = currentValue + (edit.action == 'increase' ? 1 : -1);
+              if (next >= min && next <= max) {
+                fields[focus] = next.toString().padLeft(edit.value.length, '0');
+              }
             }
           }
           show();
           continue;
         }
-        if ((key == '\r' || key == '\n') && focus == segments.length) {
-          out.writeln('Edit formatted time; Enter finishes editing.');
-          final edit = await _edit(keys, value, out);
-          if (edit.action == 'interrupt') return Interrupted();
-          if (edit.action == 'cancel') {
-            show();
-            continue;
-          }
-          if (edit.action != 'submit') return InputEnded();
-          value = edit.value;
-          if (_parse(value) == null) out.writeln(_error);
+        if (edit.action == 'previous') {
+          focus = (focus + controls.length - 1) % controls.length;
+        } else if (edit.action == 'next' || edit.action == 'submit') {
+          focus = (focus + 1) % controls.length;
+        }
+        show();
+        continue;
+      }
+      if (focus == segmentCount) {
+        out.writeln('Edit formatted time; Enter finishes editing.');
+        final edit = await _edit(
+          keys,
+          current(),
+          out,
+          transientHelp: profile.alternateScreen == CapabilitySupport.supported,
+          helpText: _help(linear: false),
+          outputProfile: profile,
+          session: session,
+          intercept: (key, text) {
+            if (key == '\t') return 'next';
+            if (key == '\x1b[Z' || key == '\x02') return 'previous';
+            return null;
+          },
+        );
+        if (edit.action == 'interrupt') return Interrupted();
+        if (edit.action == 'cancel') {
           show();
           continue;
         }
-        if ((key == '\r' || key == '\n') && focus == segments.length + 1) {
-          final parsed = _parse(value);
-          if (parsed != null) return Accepted(parsed);
-          out.writeln(_error);
+        if (edit.action == 'next') {
+          focus++;
           show();
+          continue;
         }
+        if (edit.action == 'previous') {
+          focus = (focus + controls.length - 1) % controls.length;
+          show();
+          continue;
+        }
+        if (edit.action != 'submit') return InputEnded();
+        draft = edit.value;
+        final parts = draft.split(' ');
+        final editedClock = parts.first.split(':');
+        for (var index = 0; index < fields.length; index++) {
+          fields[index] = index < editedClock.length ? editedClock[index] : '';
+        }
+        period = twelveHour && parts.length > 1 ? parts.skip(1).join(' ') : '';
+        if (_parse(current()) == null) out.writeln(_error);
+        show();
+        continue;
       }
-    } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
+      final submit = await _edit(
+        keys,
+        '',
+        out,
+        transientHelp: profile.alternateScreen == CapabilitySupport.supported,
+        helpText: _help(linear: false),
+        outputProfile: profile,
+        session: session,
+        intercept: (key, text) {
+          if (key == '\t') return 'next';
+          if (key == '\x1b[Z' || key == '\x02') return 'previous';
+          if ((key == '\r' || key == '\n') && text.isEmpty) return 'submit';
+          return null;
+        },
+      );
+      if (submit.action == 'cancel') return Cancelled();
+      if (submit.action == 'interrupt') return Interrupted();
+      if (submit.action == 'eof') return InputEnded();
+      if (submit.action == 'next') {
+        focus = 0;
+        show();
+        continue;
+      }
+      if (submit.action == 'previous') {
+        focus = segmentCount;
+        show();
+        continue;
+      }
+      if (submit.action == 'submit') {
+        final parsed = _parse(current());
+        if (parsed != null) {
+          out.writeln(
+            'Review: ${current()} is a time of day without date or timezone.',
+          );
+          return Accepted(parsed);
+        }
+        out.writeln(_error);
+        show();
       }
     }
   }

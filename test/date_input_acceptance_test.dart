@@ -7,7 +7,11 @@ void main() {
     final result = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
         .prompt(
           mode: PromptMode.rich,
-          source: ScriptedInput(Stream.value('/\x03'), out),
+          source: ScriptedInput(
+            Stream.value('/\x03'),
+            out,
+            outputProfile: _dateRichProfile,
+          ),
         );
     expect(result, isA<Interrupted>());
     expect(out.toString(), contains('Slash cannot skip an incomplete field'));
@@ -27,3 +31,8 @@ void main() {
     expect(out.toString(), contains('Use /submit or /edit'));
   });
 }
+
+final _dateRichProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);

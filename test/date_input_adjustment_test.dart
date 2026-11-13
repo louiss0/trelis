@@ -13,10 +13,19 @@ void main() {
             initialValue: '31/01/2024',
           ).prompt(
             mode: PromptMode.rich,
-            source: ScriptedInput(Stream.value('\t+\t\r\x03'), output),
+            source: ScriptedInput(
+              Stream.value('\t+\t\r\x03'),
+              output,
+              outputProfile: _dateRichProfile,
+            ),
           );
       expect(result, isA<Interrupted<CivilDate>>());
       expect(output.toString(), contains('Invalid date'));
     },
   );
 }
+
+final _dateRichProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
