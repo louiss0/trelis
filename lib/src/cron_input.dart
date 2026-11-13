@@ -621,45 +621,82 @@ final class CronInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
-    final config = preview;
-    if (config != null && source is! SuppliedAnswer) {
-      if (_active) throw StateError('A prompt session is already active.');
-      _active = true;
-      try {
-        final selected =
-            mode ??
-            userPreference ??
-            applicationPreference ??
-            PromptMode.automatic;
-        if (source == null) {
-          if (_terminalActive) {
-            throw StateError('A terminal session is already active.');
-          }
-          _terminalActive = true;
-          try {
-            return await _terminal<CronExpression>(
-              selected,
-              output ?? stderr,
-              (source, mode, restore) =>
-                  _runPreview(source, mode, config, beforeClose: restore),
-            );
-          } finally {
-            _terminalActive = false;
-          }
-        }
-        return await _runPreview(source, selected, config);
-      } finally {
-        _active = false;
-      }
+    if (session != null) {
+      return session._promptRunner<CronExpression>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
     }
-    final result = await _input.prompt(
-      source: source,
-      mode: mode,
-      userPreference: userPreference,
-      applicationPreference: applicationPreference,
-      output: output,
-    );
+    if (_active) throw StateError('A prompt session is already active.');
+    _active = true;
+    try {
+      final selected =
+          mode ??
+          userPreference ??
+          applicationPreference ??
+          PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
+          return await _terminal<CronExpression>(
+            selected,
+            output ?? stderr,
+            (source, mode, restore) => _run(
+              source,
+              mode,
+              outputProfile: outputProfile,
+              beforeClose: restore,
+            ),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selected, outputProfile: outputProfile);
+    } finally {
+      _active = false;
+    }
+  }
+
+  PromptResult<CronExpression> _asCron(PromptResult<String> result) {
     if (result is Accepted<String>) {
       return Accepted(CronExpression._(result.value, profile));
     }
@@ -669,23 +706,56 @@ final class CronInput {
     return Unavailable((result as Unavailable<String>).reason);
   }
 
-  Future<PromptResult<CronExpression>> _runPreview(
+  Future<PromptResult<CronExpression>> _run(
     PromptSource source,
-    PromptMode mode,
-    CronPreviewConfig config, {
+    PromptMode mode, {
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
     void Function()? beforeClose,
   }) async {
+    final config = preview;
+    if (config == null || source is SuppliedAnswer) {
+      // Without a configured preview the entry and review stages are the
+      // shared text contract, so the existing TextInput flow is reused rather
+      // than restated here.
+      return _asCron(
+        await _input._run(
+          source,
+          mode,
+          outputProfile: outputProfile,
+          keys: keys,
+          session: session,
+        ),
+      );
+    }
     if (source is! ScriptedInput) {
       return Unavailable('Unsupported cron input source.');
     }
-    if (mode == PromptMode.rich && !source.supportsRich) {
-      return Unavailable('Rich interaction unavailable.');
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: source.outputProfile,
+        supportsRich: source.supportsRich,
+      ),
+      source._observedGeometry,
+    );
+    if (source._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
     }
-    final linear =
-        mode == PromptMode.linear ||
-        (mode == PromptMode.automatic && !source.supportsRich);
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
+      return Unavailable(
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
+    }
+    final linear = mode == PromptMode.linear;
     final out = source.output;
-    final keys = _Keys(source.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var draft = initialValue;
     out.writeln(
       '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units. Enter an expression, then /preview, /edit or /submit; /cancel cancels.',
@@ -693,12 +763,15 @@ final class CronInput {
     try {
       while (true) {
         final entry = await _edit(
-          keys,
+          inputKeys,
           draft,
           out,
           linear: linear,
           sequential: linear,
           maxLength: maxExpressionLength,
+          outputProfile: effectiveProfile,
+          session: session,
+          resizeObserver: linear ? null : source.resizeObserver,
         );
         if (entry.action == 'cancel') return Cancelled();
         if (entry.action == 'interrupt') return Interrupted();
@@ -718,12 +791,15 @@ final class CronInput {
         }
         while (true) {
           final action = await _edit(
-            keys,
+            inputKeys,
             '',
             out,
             linear: true,
             sequential: linear,
             extraCommands: const {'/preview', '/edit', '/submit'},
+            outputProfile: effectiveProfile,
+            session: session,
+            resizeObserver: linear ? null : source.resizeObserver,
             intercept: linear
                 ? null
                 : (key, text) {
@@ -754,7 +830,7 @@ final class CronInput {
             var interrupted = false;
             var cancelled = false;
             var line = '';
-            keys.onKey = (key) {
+            inputKeys.onKey = (key) {
               if (key == '\x03') {
                 interrupted = true;
                 return true;
@@ -799,7 +875,7 @@ final class CronInput {
                 profile,
               ).preview(cancellable);
             } finally {
-              keys.onKey = null;
+              inputKeys.onKey = null;
             }
             if (interrupted) return Interrupted();
             out.writeln(
@@ -822,7 +898,7 @@ final class CronInput {
       try {
         beforeClose?.call();
       } finally {
-        await keys.close();
+        if (keys == null) await inputKeys.close();
       }
     }
   }
