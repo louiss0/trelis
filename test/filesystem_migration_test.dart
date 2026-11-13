@@ -534,11 +534,224 @@ void main() {
       },
     );
   });
+
+  group('filesystem terminal outcomes', () {
+    test('linear entry distinguishes cancellation and input end', () async {
+      final dir = await Directory.systemTemp.createTemp('browse-outcomes-');
+      addTearDown(() => dir.delete(recursive: true));
+      for (final open in [
+        FilePicker('File', base: dir.path).prompt,
+        DirectoryPicker('Directory', base: dir.path).prompt,
+      ]) {
+        expect(
+          await open(
+            source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+            mode: PromptMode.linear,
+          ),
+          isA<Cancelled<String>>(),
+        );
+        expect(
+          await open(
+            source: ScriptedInput(Stream.value('choose'), StringBuffer()),
+            mode: PromptMode.linear,
+          ),
+          isA<InputEnded<String>>(),
+        );
+      }
+    });
+
+    test(
+      'rich browsing distinguishes interrupt, cancel and input end',
+      () async {
+        final dir = await Directory.systemTemp.createTemp('browse-rich-end-');
+        addTearDown(() => dir.delete(recursive: true));
+        final picker = FilePicker('File', base: dir.path);
+        expect(
+          await picker.prompt(
+            source: ScriptedInput(
+              Stream.value('\x03'),
+              StringBuffer(),
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          ),
+          isA<Interrupted<String>>(),
+        );
+        expect(
+          await picker.prompt(
+            source: ScriptedInput(
+              Stream.value('\x1bq'),
+              StringBuffer(),
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          ),
+          isA<Cancelled<String>>(),
+        );
+        expect(
+          await picker.prompt(
+            source: ScriptedInput(
+              Stream.empty(),
+              StringBuffer(),
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          ),
+          isA<InputEnded<String>>(),
+        );
+      },
+    );
+
+    test('a rich review can be abandoned without choosing', () async {
+      final dir = await Directory.systemTemp.createTemp('browse-review-exit-');
+      addTearDown(() => dir.delete(recursive: true));
+      await File('${dir.path}${Platform.pathSeparator}answer.txt')
+          .writeAsString('data');
+      final out = StringBuffer();
+      expect(
+        await FilePicker('File', base: dir.path).prompt(
+          source: ScriptedInput(
+            Stream.value('choose 1\r\x1bq'),
+            out,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Cancelled<String>>(),
+      );
+      expect(out.toString(), contains('type edit'));
+
+      final pathOut = StringBuffer();
+      expect(
+        await PathInput('Path', base: dir.path, allowNonexistent: true).prompt(
+          source: ScriptedInput(
+            Stream.value('draft\r\x1bq'),
+            pathOut,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Cancelled<String>>(),
+      );
+      expect(pathOut.toString(), contains('type edit to correct'));
+    });
+
+    test('visible safety caveats survive help and dismissal', () async {
+      final dir = await Directory.systemTemp.createTemp('browse-caveats-');
+      addTearDown(() => dir.delete(recursive: true));
+      await File('${dir.path}${Platform.pathSeparator}answer.txt')
+          .writeAsString('data');
+      final out = StringBuffer();
+      await FilePicker('File', base: dir.path).prompt(
+        source: ScriptedInput(
+          Stream.value('\x14\x1b\x03'),
+          out,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+      final transcript = out.toString();
+      expect(transcript, contains('Links require explicit per-open approval'));
+      expect(transcript, contains('The base is not a sandbox.'));
+      expect(transcript, contains('Help: FilePicker browses'));
+      expect(transcript, contains('Links are never followed implicitly'));
+      expect(transcript, contains('Help dismissed.'));
+
+      final pathOut = StringBuffer();
+      await PathInput('Path', base: dir.path, allowNonexistent: true).prompt(
+        source: ScriptedInput(Stream.value('\r\r'), pathOut),
+        mode: PromptMode.linear,
+      );
+      expect(
+        pathOut.toString(),
+        contains('Returned paths do not guarantee later operations succeed'),
+      );
+    });
+
+    test('repeated browser rejections keep the listing usable', () async {
+      final dir = await Directory.systemTemp.createTemp('browse-reject-');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = await File('${dir.path}${Platform.pathSeparator}answer.txt')
+          .writeAsString('data');
+      await Directory('${dir.path}${Platform.pathSeparator}folder').create();
+      final out = StringBuffer();
+      final result = await FilePicker('File', base: dir.path).prompt(
+        source: ScriptedInput(
+          Stream.value('open 1\rchoose 3\rchoose 2\rchoose 1\r\r'),
+          out,
+        ),
+        mode: PromptMode.linear,
+      );
+      expect((result as Accepted<String>).value, file.path);
+      final transcript = out.toString();
+      expect(transcript, contains('target must be a file'));
+      expect(transcript, contains('Invalid entry reference; listing retained'));
+      expect(
+        RegExp('Current directory:').allMatches(transcript).length,
+        greaterThanOrEqualTo(4),
+      );
+    });
+
+    test(
+      'session help keeps live feedback until dismissal restores it',
+      () async {
+        final dir = await Directory.systemTemp.createTemp('browse-modal-');
+        addTearDown(() => dir.delete(recursive: true));
+        final file = await File(
+          '${dir.path}${Platform.pathSeparator}answer.txt',
+        ).writeAsString('data');
+        final output = StringBuffer();
+        final input = StreamController<String>();
+
+        final result = await TerminalSession.run(
+          (session) async {
+            final spinner = Spinner('Listing');
+            spinner.start(session: session);
+            final pending = FilePicker(
+              'File',
+              base: dir.path,
+            ).prompt(session: session);
+            await _until(output, 'Current directory:');
+            input.add('\x14');
+            await _until(output, 'Help: FilePicker browses');
+            spinner.update('entries');
+            input.add('\x1b');
+            await _until(output, 'Help dismissed.');
+            input.add('choose 1\r');
+            input.add('\r');
+            await input.close();
+            spinner.finish(FeedbackOutcome.completed);
+            return await pending;
+          },
+          source: ScriptedInput(
+            input.stream,
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+
+        expect((result as Accepted<String>).value, file.path);
+        final transcript = output.toString();
+        expect(transcript, contains('Help: FilePicker browses'));
+        expect(transcript, contains('Help dismissed.'));
+        // The update written while help owned painting is retained and
+        // restored when help is dismissed, rather than lost or interleaved.
+        expect(
+          transcript.indexOf('Help dismissed.'),
+          lessThan(transcript.indexOf('Listing: entries')),
+        );
+        expect(
+          transcript.indexOf('Help dismissed.'),
+          lessThan(transcript.indexOf('Choose ${file.path}')),
+        );
+      },
+    );
+  });
 }
 
 final class _PathTerminal implements TerminalIo, TerminalIoOutputProfile {
   _PathTerminal(this.input, this.output, this.outputProfile);
-
   @override
   final Stream<String> input;
 
@@ -561,4 +774,16 @@ final class _PathTerminal implements TerminalIo, TerminalIoOutputProfile {
     events.add('acquire');
     return TerminalLease(() => events.add('restore'));
   }
+}
+
+/// Waits for a marker that a prompt writes synchronously.
+///
+/// Session scenarios then never depend on a fixed number of event-loop turns to
+/// reach a particular stage.
+Future<void> _until(StringBuffer output, String marker) async {
+  for (var attempt = 0; attempt < 200; attempt++) {
+    if (output.toString().contains(marker)) return;
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+  fail('Timed out waiting for "$marker".');
 }
