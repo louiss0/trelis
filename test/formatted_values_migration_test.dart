@@ -276,13 +276,22 @@ final _formatted = <_Formatted>[
 
 /// Joins wrapped transcript lines back into one flowed string so a wrapped
 /// cue or help sentence is still observable as continuous text.
-String _flowed(String text) => text.replaceAll('\n', '');
+///
+/// The shared wrapper trims the space at a wrap point, which ticket 21
+/// introduced for choice rows, so the transcript and every phrase compared
+/// against it drop whitespace. This matches the convention in
+/// `test/select_radio_test.dart`, `test/multi_select_test.dart` and
+/// `test/date_time_migration_test.dart`.
+String _flowed(String text) => text.replaceAll(RegExp(r'\s+'), '');
+
+/// A phrase compared against [_flowed] transcript text.
+Matcher _containsPhrase(String phrase) => contains(_flowed(phrase));
 
 /// Where the shared editing guidance starts; the active-format cue precedes it.
 int _nextGuidance(String text, int from) {
   var first = text.length;
   for (final marker in ['Left/Right move', 'Enter submits;', 'opens help.']) {
-    final at = text.indexOf(marker, from);
+    final at = text.indexOf(_flowed(marker), from);
     if (at >= 0 && at < first) first = at;
   }
   return first;
@@ -290,7 +299,7 @@ int _nextGuidance(String text, int from) {
 
 /// Checks one component's cue/help contract and returns where its run starts.
 int _expectFixtureSegment(_Formatted fixture, String text, {int from = 0}) {
-  final cue = text.indexOf(fixture.cue, from);
+  final cue = text.indexOf(_flowed(fixture.cue), from);
   expect(cue, isNonNegative, reason: '${fixture.name} is missing its cue');
   expect(
     cue,
@@ -305,7 +314,7 @@ int _expectFixtureSegment(_Formatted fixture, String text, {int from = 0}) {
   );
   for (final detail in fixture.details) {
     expect(
-      text.indexOf(detail, cue),
+      text.indexOf(_flowed(detail), cue),
       greaterThan(help),
       reason: '${fixture.name} must keep "$detail" in component help',
     );
@@ -332,12 +341,12 @@ void main() {
         _expectFixtureSegment(fixture, text);
         expect(
           text,
-          contains('Caller note for ${fixture.name}.'),
+          _containsPhrase('Caller note for ${fixture.name}.'),
           reason: '${fixture.name} must append supplementary help',
         );
         expect(
           text,
-          contains('Enter text to submit'),
+          _containsPhrase('Enter text to submit'),
           reason: '${fixture.name} must retain the shared editing help',
         );
       }
@@ -368,29 +377,29 @@ void main() {
             case InstructionDisplay.hidden:
               expect(
                 text,
-                isNot(contains('Left/Right move')),
+                isNot(_containsPhrase('Left/Right move')),
                 reason: '${fixture.name} hidden guidance',
               );
               expect(
                 text,
-                isNot(contains('Enter submits;')),
+                isNot(_containsPhrase('Enter submits;')),
                 reason: '${fixture.name} hidden guidance',
               );
             case InstructionDisplay.compact:
               expect(
                 text,
-                contains('Enter submits;'),
+                _containsPhrase('Enter submits;'),
                 reason: '${fixture.name} compact guidance',
               );
               expect(
                 text,
-                isNot(contains('Left/Right move')),
+                isNot(_containsPhrase('Left/Right move')),
                 reason: '${fixture.name} compact guidance',
               );
             case InstructionDisplay.expanded:
               expect(
                 text,
-                contains('Left/Right move'),
+                _containsPhrase('Left/Right move'),
                 reason: '${fixture.name} expanded guidance',
               );
             case InstructionDisplay.themeDefault:
@@ -417,7 +426,7 @@ void main() {
       _expectFixtureSegment(fixture, text);
       expect(
         text,
-        contains('Help dismissed.'),
+        _containsPhrase('Help dismissed.'),
         reason: '${fixture.name} must restore the prompt after help',
       );
     }
@@ -480,7 +489,7 @@ void main() {
 
         expect(
           _flowed(output.toString()),
-          contains(fixture.validation),
+          _containsPhrase(fixture.validation),
           reason: '${fixture.name} must explain the rejected draft',
         );
         fixture.expectAnswer(result);
@@ -513,17 +522,17 @@ void main() {
     }
     expect(
       text,
-      contains('Elapsed interpretation: -1000000 microseconds.'),
+      _containsPhrase('Elapsed interpretation: -1000000 microseconds.'),
       reason: 'duration interpretation must share the session output',
     );
     expect(
       text,
-      contains('approximate rounded hex preview: #ff0000ff'),
+      _containsPhrase('approximate rounded hex preview: #ff0000ff'),
       reason: 'colour preview must share the session output',
     );
     expect(
       text,
-      contains('Domain interpretation -- Unicode: example.com'),
+      _containsPhrase('Domain interpretation -- Unicode: example.com'),
       reason: 'email interpretation must share the session output',
     );
   });
@@ -737,7 +746,7 @@ void main() {
       );
       expect(
         _flowed(port.toString()),
-        contains('Availability and reachability are not checked.'),
+        _containsPhrase('Availability and reachability are not checked.'),
       );
 
       final address = StringBuffer();
@@ -746,11 +755,16 @@ void main() {
         mode: PromptMode.linear,
       );
       final addressText = _flowed(address.toString());
-      expect(addressText, contains('host bits are retained'));
-      expect(addressText, contains('zone identity is environment-dependent'));
+      expect(addressText, _containsPhrase('host bits are retained'));
       expect(
         addressText,
-        contains('reachability and interface existence are not checked.'),
+        _containsPhrase('zone identity is environment-dependent'),
+      );
+      expect(
+        addressText,
+        _containsPhrase(
+          'reachability and interface existence are not checked.',
+        ),
       );
 
       final mail = StringBuffer();
@@ -761,7 +775,7 @@ void main() {
       expect(literal, isA<Accepted<String>>());
       expect(
         _flowed(mail.toString()),
-        contains('Transport address literal: [192.0.2.1].'),
+        _containsPhrase('Transport address literal: [192.0.2.1].'),
       );
 
       final mailHelp = StringBuffer();
@@ -771,7 +785,9 @@ void main() {
       );
       expect(
         _flowed(mailHelp.toString()),
-        contains('Deliverability and transport availability are not checked.'),
+        _containsPhrase(
+          'Deliverability and transport availability are not checked.',
+        ),
       );
 
       final colour = StringBuffer();
@@ -781,7 +797,7 @@ void main() {
       );
       expect(
         _flowed(colour.toString()),
-        contains(
+        _containsPhrase(
           'approximate rounded hex preview: #ff0000ff (not the stored value)',
         ),
       );
@@ -801,7 +817,7 @@ void main() {
       });
       expect(
         _flowed(calendar.toString()),
-        contains('Unapplied calendar components: {mo: 1, d: 2}'),
+        _containsPhrase('Unapplied calendar components: {mo: 1, d: 2}'),
       );
     },
   );
