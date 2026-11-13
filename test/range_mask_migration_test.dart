@@ -882,6 +882,41 @@ void main() {
   );
 
   test(
+    'a failed shared writer ends a range prompt with the original failure',
+    () async {
+      final failure = StateError('shared writer failed');
+      final output = _ThrowingSink(failure);
+      final input = StreamController<String>();
+      late TerminalSession closed;
+
+      await expectLater(
+        TerminalSession.run(
+          (session) {
+            closed = session;
+            return RangeSlider(
+              'Window',
+              minimum: '0',
+              maximum: '10',
+              step: '1',
+            ).prompt(session: session);
+          },
+          source: ScriptedInput(
+            input.stream,
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        throwsA(same(failure)),
+      );
+      // A retired scope cannot revive a registration after the writer failed.
+      expect(() => Spinner('Late').start(session: closed), throwsStateError);
+      expect(output.text, isNot(contains('Accepted')));
+      await input.close();
+    },
+  );
+
+  test(
     'both modes keep partial drafts, validation and every terminal outcome',
     () async {
       final sliderOut = StringBuffer();
@@ -1039,4 +1074,33 @@ void main() {
       );
     },
   );
+}
+
+final class _ThrowingSink implements StringSink {
+  _ThrowingSink(this.error);
+
+  final Object error;
+  final StringBuffer _recording = StringBuffer();
+  int writeAttempts = 0;
+
+  String get text => _recording.toString();
+
+  Never _throw(Object? value) {
+    writeAttempts++;
+    _recording.write(value);
+    throw error;
+  }
+
+  @override
+  void write(Object? object) => _throw(object);
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      _throw(objects.join(separator));
+
+  @override
+  void writeCharCode(int charCode) => _throw(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => _throw('$object\n');
 }
