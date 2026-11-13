@@ -290,6 +290,12 @@ final class TerminalSessionFeedbackRegion {
 /// A session handle is only created by [run]. Attached components inherit its
 /// input, output and presentation configuration; they cannot take competing
 /// ownership of those resources.
+///
+/// A failed shared writer retires the scope: registrations are retired, no
+/// further writes reach the selected output, and the original failure is
+/// reported to the caller or to the prompt that observed it. Recovery is only
+/// claimed for supported exits; a forcible process termination or an
+/// unmanaged external writer mutating the same terminal cannot be recovered.
 final class TerminalSession {
   TerminalSession._(
     this._output,
@@ -319,6 +325,8 @@ final class TerminalSession {
   bool _modalHelp = false;
   bool _modalUsesAlternateScreen = false;
   bool _closed = false;
+  Object? _sharedWriterFailure;
+  StackTrace? _sharedWriterFailureStackTrace;
 
   bool get _feedbackRich {
     final selected =
@@ -340,6 +348,48 @@ final class TerminalSession {
     return profile.supportsRichInteraction;
   }
 
+  /// Closes all presentation registrations after the shared writer fails.
+  ///
+  /// No best-effort diagnostic is written here: the selected writer is the
+  /// failed resource and diagnostics must not expose application data through
+  /// an arbitrary fallback. Scope cleanup still stops the reader, releases the
+  /// screen claim, and restores any prompt lease that was acquired.
+  void _closeAfterSharedWriterFailure(Object error, StackTrace stackTrace) {
+    if (_closed) return;
+    _sharedWriterFailure = error;
+    _sharedWriterFailureStackTrace = stackTrace;
+    _closed = true;
+    _modalHelp = false;
+    _modalUsesAlternateScreen = false;
+    _promptRepaint = null;
+    _promptGeometry = null;
+    for (final region in _feedback) {
+      region._retired = true;
+    }
+    _feedback.clear();
+    _liveGenerations.clear();
+  }
+
+  /// Performs one serialized shared-output action and retires the session if
+  /// its writer fails. Local registration and validation failures never take
+  /// this path, so unrelated regions remain usable.
+  void _writeShared(void Function() action) {
+    if (_closed) {
+      final failure = _sharedWriterFailure;
+      final failureStackTrace = _sharedWriterFailureStackTrace;
+      if (failure != null && failureStackTrace != null) {
+        Error.throwWithStackTrace(failure, failureStackTrace);
+      }
+      return;
+    }
+    try {
+      action();
+    } catch (error, stackTrace) {
+      _closeAfterSharedWriterFailure(error, stackTrace);
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
   /// Registers one feedback region with this session's serialized writer.
   /// Feedback components call this when they are started with `session:`.
   TerminalSessionFeedbackRegion startFeedbackRegion() {
@@ -356,7 +406,7 @@ final class TerminalSession {
     _feedback.remove(region);
     if (!_modalHelp && _feedbackNeedsCompaction) {
       _paintCompactFeedback();
-      _promptRepaint?.call();
+      _writeShared(() => _promptRepaint?.call());
     }
   }
 
@@ -425,8 +475,10 @@ final class TerminalSession {
   }
 
   void _paintCompactFeedback() {
-    if (_promptRepaint != null && _feedbackRich) _output.write('\r\x1b[2K');
-    _output.writeln('[status] ${_compactFeedbackLine()}');
+    _writeShared(() {
+      if (_promptRepaint != null && _feedbackRich) _output.write('\r\x1b[2K');
+      _output.writeln('[status] ${_compactFeedbackLine()}');
+    });
   }
 
   void _writeFeedback(TerminalSessionFeedbackRegion region, String line) {
@@ -448,17 +500,23 @@ final class TerminalSession {
       // Failures and explicit outcomes remain full, reviewable transcript
       // records even when the live portion has no available rows.
       if (_isImportantFeedback(line)) {
-        if (_promptRepaint != null && _feedbackRich) _output.write('\r\x1b[2K');
-        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+        _writeShared(() {
+          if (_promptRepaint != null && _feedbackRich) {
+            _output.write('\r\x1b[2K');
+          }
+          _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+        });
       }
       _paintCompactFeedback();
     } else {
-      if (_promptRepaint != null && _feedbackRich) {
-        _output.write('\r\x1b[2K');
-      }
-      _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+      _writeShared(() {
+        if (_promptRepaint != null && _feedbackRich) {
+          _output.write('\r\x1b[2K');
+        }
+        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+      });
     }
-    _promptRepaint?.call();
+    _writeShared(() => _promptRepaint?.call());
   }
 
   /// Makes component help the sole owner of session painting until dismissed.
@@ -471,7 +529,9 @@ final class TerminalSession {
     if (_modalHelp) return;
     _modalHelp = true;
     _modalUsesAlternateScreen = useAlternateScreen;
-    if (useAlternateScreen) _output.write('\x1b[?1049h\x1b[H');
+    if (useAlternateScreen) {
+      _writeShared(() => _output.write('\x1b[?1049h\x1b[H'));
+    }
   }
 
   void _restoreLatestComposite() {
@@ -479,9 +539,11 @@ final class TerminalSession {
       _paintCompactFeedback();
       return;
     }
-    for (final line in _feedbackSnapshots.values) {
-      _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
-    }
+    _writeShared(() {
+      for (final line in _feedbackSnapshots.values) {
+        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+      }
+    });
   }
 
   /// Dismisses session help and reconstitutes current state rather than a
@@ -492,21 +554,23 @@ final class TerminalSession {
   }) {
     if (!_modalHelp) return;
     final usedAlternateScreen = _modalUsesAlternateScreen;
-    if (usedAlternateScreen) _output.write('\x1b[?1049l');
+    if (usedAlternateScreen) _writeShared(() => _output.write('\x1b[?1049l'));
     _modalHelp = false;
     _modalUsesAlternateScreen = false;
     if (showTranscriptDismissal && !usedAlternateScreen) {
-      _output.writeln('Help dismissed.');
+      _writeShared(() => _output.writeln('Help dismissed.'));
     }
     _restoreLatestComposite();
-    repaintPrompt();
+    _writeShared(repaintPrompt);
   }
 
   /// Releases session-owned help on an interruption, EOF, or exceptional exit.
   /// There is no editor to repaint, but the latest notices remain observable.
   void _abortModalHelp() {
-    if (!_modalHelp) return;
-    if (_modalUsesAlternateScreen) _output.write('\x1b[?1049l');
+    if (!_modalHelp || _closed) return;
+    if (_modalUsesAlternateScreen) {
+      _writeShared(() => _output.write('\x1b[?1049l'));
+    }
     _modalHelp = false;
     _modalUsesAlternateScreen = false;
     _restoreLatestComposite();
@@ -530,7 +594,7 @@ final class TerminalSession {
       _promptGeometry = null;
     } else if (!_modalHelp && _feedbackNeedsCompaction) {
       _paintCompactFeedback();
-      repaint();
+      _writeShared(repaint);
     }
   }
 
@@ -600,17 +664,59 @@ final class TerminalSession {
     );
     // Replace the temporary claim with the handle exposed to the callback.
     _screenOwners[selectedSink as Object] = session;
+    Object? operationError;
     try {
       return await callback(session);
+    } catch (error, stackTrace) {
+      operationError = error;
+      Error.throwWithStackTrace(error, stackTrace);
     } finally {
-      session._abortModalHelp();
-      session._closed = true;
-      session._promptRepaint = null;
-      for (final region in List.of(session._feedback)) {
-        region.retire();
+      try {
+        await session._close();
+      } catch (cleanupError, cleanupStackTrace) {
+        if (operationError != null) {
+          throw TerminalSessionCleanupException(operationError, cleanupError);
+        }
+        Error.throwWithStackTrace(cleanupError, cleanupStackTrace);
+      } finally {
+        _releaseScreen(selectedSink, session);
       }
-      await session._keys?.close();
-      _releaseScreen(selectedSink, session);
+    }
+  }
+
+  /// Releases every resource owned by this scope, continuing after a cleanup
+  /// failure so late callbacks cannot retain the reader, output claim, or live
+  /// registration. The first cleanup failure is reported after all supported
+  /// cleanup has been attempted.
+  Future<void> _close() async {
+    Object? cleanupError;
+    StackTrace? cleanupStackTrace;
+
+    void recordFailure(Object error, StackTrace stackTrace) {
+      cleanupError ??= error;
+      cleanupStackTrace ??= stackTrace;
+    }
+
+    try {
+      _abortModalHelp();
+    } catch (error, stackTrace) {
+      recordFailure(error, stackTrace);
+    }
+    _closed = true;
+    _promptRepaint = null;
+    _promptGeometry = null;
+    for (final region in _feedback) {
+      region._retired = true;
+    }
+    _feedback.clear();
+    _liveGenerations.clear();
+    try {
+      await _keys?.close();
+    } catch (error, stackTrace) {
+      recordFailure(error, stackTrace);
+    }
+    if (cleanupError != null) {
+      Error.throwWithStackTrace(cleanupError!, cleanupStackTrace!);
     }
   }
 
@@ -652,7 +758,7 @@ final class TerminalSession {
         return await runner(
           ScriptedInput(
             const Stream<String>.empty(),
-            _output,
+            _SessionOutputSink(this),
             supportsRich: _source.supportsRich,
             outputProfile: _source.outputProfile,
             transcript: _source.transcript,
@@ -670,7 +776,7 @@ final class TerminalSession {
           () => runner(
             ScriptedInput(
               _terminalIo.input,
-              _output,
+              _SessionOutputSink(this),
               supportsRich: _terminalIo.supportsRich,
               outputProfile: _terminalOutputProfile(_terminalIo),
               hardColorDisabled:
@@ -693,7 +799,16 @@ final class TerminalSession {
         selected,
         _output,
         (nativeSource, nativeMode, _) => runner(
-          nativeSource,
+          ScriptedInput(
+            nativeSource.input,
+            _SessionOutputSink(this),
+            supportsRich: nativeSource.supportsRich,
+            outputProfile: nativeSource.outputProfile,
+            transcript: nativeSource.transcript,
+            resizeObserver: nativeSource.resizeObserver,
+            observedGeometry: nativeSource._observedGeometry,
+            hardColorDisabled: nativeSource._hardColorDisabled,
+          ),
           nativeMode,
           outputProfile: _outputProfile,
           session: this,
@@ -703,6 +818,31 @@ final class TerminalSession {
       _activePrompt = false;
     }
   }
+}
+
+/// Routes all prompt rendering through its owning session's shared writer.
+/// This includes help, history commits, and resize repaints performed by a
+/// component, rather than only feedback writes initiated by the session.
+final class _SessionOutputSink implements StringSink {
+  _SessionOutputSink(this._session);
+
+  final TerminalSession _session;
+
+  @override
+  void write(Object? object) =>
+      _session._writeShared(() => _session._output.write(object));
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) => _session
+      ._writeShared(() => _session._output.writeAll(objects, separator));
+
+  @override
+  void writeCharCode(int charCode) =>
+      _session._writeShared(() => _session._output.writeCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) =>
+      _session._writeShared(() => _session._output.writeln(object));
 }
 
 bool _isAutomaticProfile(OutputProfile profile) =>
@@ -1291,6 +1431,15 @@ Future<({String action, String value})> _edit(
   var activeProfile = outputProfile;
 
   void display() {
+    void writePrompt(void Function() action) {
+      final activeSession = session;
+      if (activeSession == null) {
+        action();
+      } else {
+        activeSession._writeShared(action);
+      }
+    }
+
     final profile = activeProfile;
     if (profile != null) session?._setPromptGeometry(profile.geometry);
     if (secret) {
@@ -1304,7 +1453,7 @@ Future<({String action, String value})> _edit(
           containsPaste: false,
         ),
       );
-      if (mask) output.writeln('*' * chars.length);
+      if (mask) writePrompt(() => output.writeln('*' * chars.length));
       return;
     }
     transcript?._view(
@@ -1315,8 +1464,10 @@ Future<({String action, String value})> _edit(
       ),
     );
     if (sequential) {
-      output.writeln('Current text: ${DisplayText.from(chars.join()).value}');
-      output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
+      writePrompt(() {
+        output.writeln('Current text: ${DisplayText.from(chars.join()).value}');
+        output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
+      });
       return;
     }
     final displayMap = TextDisplayMap(chars.join());
@@ -1349,9 +1500,11 @@ Future<({String action, String value})> _edit(
       ),
     );
     final editable = _slot(composition, PresentationSlot.body);
-    output.write(
-      '\r\x1b[2K> ${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
-    );
+    writePrompt(() {
+      output.write(
+        '\r\x1b[2K> ${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
+      );
+    });
   }
 
   onChanged?.call(chars.join());
@@ -1361,44 +1514,62 @@ Future<({String action, String value})> _edit(
   StreamSubscription<void>? resizeSubscription;
   Timer? resizeFallback;
   if (resizeObserver != null) {
+    void stopResizeObservation() {
+      resizeFallback?.cancel();
+      resizeFallback = null;
+      final subscription = resizeSubscription;
+      resizeSubscription = null;
+      if (subscription != null) unawaited(subscription.cancel());
+    }
+
     void observeResize() {
+      final ({int columns, int rows})? dimensions;
       try {
-        final dimensions = resizeObserver.readDimensions();
-        if (dimensions == null ||
-            dimensions.columns <= 0 ||
-            dimensions.rows <= 0) {
-          return;
-        }
-        final old = activeProfile?.geometry;
-        if (old != null &&
-            !old.isAutomatic &&
-            old.columns == dimensions.columns &&
-            old.rows == dimensions.rows) {
-          return;
-        }
-        final profile = activeProfile;
-        if (profile == null) {
-          return;
-        }
-        activeProfile = OutputProfile(
-          cursor: profile.cursor,
-          alternateScreen: profile.alternateScreen,
-          styles: profile.styles,
-          colorDepth: profile.colorDepth,
-          glyphs: profile.glyphs,
-          geometry: OutputGeometry.fixed(
-            columns: dimensions.columns,
-            rows: dimensions.rows,
-          ),
-          ambiguousWidth: profile.ambiguousWidth,
-        );
-        // A resize is a repaint only: it neither edits the draft nor records
-        // a presentation occurrence. Help owns the screen until dismissed.
-        if (!help) {
-          display();
-        }
+        dimensions = resizeObserver.readDimensions();
       } catch (_) {
-        // Geometry observation is best-effort; retain the last known layout.
+        // Reading geometry is best-effort; retain the last known layout.
+        return;
+      }
+      if (dimensions == null ||
+          dimensions.columns <= 0 ||
+          dimensions.rows <= 0) {
+        return;
+      }
+      final old = activeProfile?.geometry;
+      if (old != null &&
+          !old.isAutomatic &&
+          old.columns == dimensions.columns &&
+          old.rows == dimensions.rows) {
+        return;
+      }
+      final profile = activeProfile;
+      if (profile == null) {
+        return;
+      }
+      activeProfile = OutputProfile(
+        cursor: profile.cursor,
+        alternateScreen: profile.alternateScreen,
+        styles: profile.styles,
+        colorDepth: profile.colorDepth,
+        glyphs: profile.glyphs,
+        geometry: OutputGeometry.fixed(
+          columns: dimensions.columns,
+          rows: dimensions.rows,
+        ),
+        ambiguousWidth: profile.ambiguousWidth,
+      );
+      // A resize is a repaint only: it neither edits the draft nor records
+      // a presentation occurrence. Help owns the screen until dismissed.
+      if (help) return;
+      try {
+        display();
+      } catch (error, stackTrace) {
+        // A failed repaint is not a geometry observation fault: the session
+        // has retired its shared writer. Stop watching and end the prompt with
+        // the original failure instead of retrying a dead writer on every
+        // notification or poll.
+        stopResizeObservation();
+        keys.fail(error, stackTrace);
       }
     }
 
@@ -1717,6 +1888,17 @@ class _Keys {
       return key;
     }
     return null;
+  }
+
+  /// Ends the pending prompt iteration with [error].
+  ///
+  /// Resize notifications and other detached work cannot return a value to the
+  /// awaiting prompt, so a failure they observe is delivered through the key
+  /// stream. The prompt then ends with the original failure instead of waiting
+  /// for input that can no longer be answered safely.
+  void fail(Object error, StackTrace stackTrace) {
+    if (_controller.isClosed) return;
+    _controller.addError(error, stackTrace);
   }
 
   Future<void> close() async {
