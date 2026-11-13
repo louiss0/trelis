@@ -118,7 +118,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('12\r2\r\r'), out),
+        source: _richSource(Stream.value('12\r2\r\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
@@ -146,7 +146,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('1-2\r\x7f3\r2\r\r'), out),
+        source: _richSource(Stream.value('1-2\r\x7f3\r2\r\r'), out),
         mode: PromptMode.rich,
       );
       expect(out.toString(), isNot(contains('Invalid')));
@@ -233,14 +233,11 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(
-          Stream.value('12\r\x1b[200~abc\x1b[201~\r\r'),
-          out,
-        ),
+        source: _richSource(Stream.value('12\r\x1b[200~abc\x1b[201~\r\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<MaskedValue>).value.raw, '12');
-      expect(out.toString(), contains('Draft preserved: abc'));
+      expect(_transcript(out), contains('Draft preserved: abc'));
     },
   );
 
@@ -264,14 +261,11 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(
-          Stream.value('1-2\r\x1b[200~34\x1b[201~\r\r'),
-          out,
-        ),
+        source: _richSource(Stream.value('1-2\r\x1b[200~34\x1b[201~\r\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<MaskedValue>).value.raw, '12');
-      expect(out.toString(), contains('Draft preserved: 34'));
+      expect(_transcript(out), contains('Draft preserved: 34'));
     },
   );
 
@@ -295,7 +289,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(
+        source: _richSource(
           Stream.value('1-2\r\x1b[200~34\x1b[201~1\r\r'),
           out,
         ),
@@ -387,7 +381,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('1-2\r\x7f3\r1\r\r'), out),
+      source: _richSource(Stream.value('1-2\r\x7f3\r1\r\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.template, 'pair');
@@ -415,7 +409,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('1-2\r\x7f3'), out),
+        source: _richSource(Stream.value('1-2\r\x7f3'), out),
         mode: PromptMode.rich,
       );
       expect(result, isA<InputEnded<MaskedValue>>());
@@ -456,7 +450,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('\x1b[200~1\x1b[201~2\r\r'), out),
+      source: _richSource(Stream.value('\x1b[200~1\x1b[201~2\r\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.slots, ['1', '']);
@@ -571,7 +565,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(
+      source: _richSource(
         Stream.value('\x1b[200~123456789\x1b[201~${'\x7f' * 9}1\r1\r\r'),
         out,
       ),
@@ -595,7 +589,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('123456789\r${'\x7f' * 9}x\r\r'), out),
+      source: _richSource(Stream.value('123456789\r${'\x7f' * 9}x\r\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.raw, 'x');
@@ -618,7 +612,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(
+      source: _richSource(
         Stream.value('#1\r${'\x1b[D' * 17}23456789${'\x7f' * 8}\r'),
         out,
       ),
@@ -648,7 +642,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('12\r2\r\x7f3\r2\r\r'), out),
+        source: _richSource(Stream.value('12\r2\r\x7f3\r2\r\r'), out),
         mode: PromptMode.rich,
       );
       final value = (result as Accepted<MaskedValue>).value;
@@ -673,7 +667,7 @@ void main() {
       );
       final out = StringBuffer();
       final result = await input.prompt(
-        source: ScriptedInput(Stream.value('1\r2\r\r'), out),
+        source: _richSource(Stream.value('1\r2\r\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<MaskedValue>).value.slots, ['1', '']);
@@ -695,7 +689,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('12\r'), out),
+      source: _richSource(Stream.value('12\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
@@ -714,11 +708,12 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('123\x1b[D\x1b[D\x1b[3~\r9\r'), out),
+      source: _richSource(Stream.value('123\x1b[D\x1b[D\x1b[3~\r9\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.formatted, '1-93');
-    expect(out.toString(), contains('Slot 3: 3'));
+    expect(_transcript(out), contains('1-[]3'));
+    expect(_transcript(out), contains('1-9[3]'));
   });
   test('accepted default is editable in rich and linear modes', () async {
     final templates = [
@@ -735,7 +730,7 @@ void main() {
     );
     for (final mode in [PromptMode.rich, PromptMode.linear]) {
       final result = await input.prompt(
-        source: ScriptedInput(
+        source: _richSource(
           Stream.value(
             mode == PromptMode.rich ? '\x7f3\r' : '/value\r\x7f3\r/done\r',
           ),
@@ -782,7 +777,7 @@ void main() {
     );
     final out = StringBuffer();
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('\x1b[200~9-8-7\x1b[201~\r'), out),
+      source: _richSource(Stream.value('\x1b[200~9-8-7\x1b[201~\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
@@ -804,7 +799,7 @@ void main() {
       ],
     );
     final result = await input.prompt(
-      source: ScriptedInput(Stream.value('e\u0301x\r'), StringBuffer()),
+      source: _richSource(Stream.value('e\u0301x\r'), StringBuffer()),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<MaskedValue>).value.slots, ['e\u0301', 'x']);
@@ -823,7 +818,7 @@ void main() {
         ],
       );
       final result = await input.prompt(
-        source: ScriptedInput(
+        source: _richSource(
           Stream.value('\x1b[200~1-2\x1b[201~\r'),
           StringBuffer(),
         ),
@@ -848,7 +843,7 @@ void main() {
       ],
     );
     final result = await input.prompt(
-      source: ScriptedInput(
+      source: _richSource(
         Stream.value('\x1b[200~1-2\x1b[201~\r'),
         StringBuffer(),
       ),
@@ -857,3 +852,33 @@ void main() {
     expect((result as Accepted<MaskedValue>).value.raw, '12');
   });
 }
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 60, rows: 14),
+);
+
+/// A scripted source that declares the minimum facts for rich interaction.
+ScriptedInput _richSource(
+  Stream<String> input,
+  StringSink output, {
+  bool supportsRich = true,
+}) => ScriptedInput(
+  input,
+  output,
+  supportsRich: supportsRich,
+  outputProfile: _richProfile,
+);
+
+/// Rejoins the physical transcript lines so a wrapped notice still matches.
+String _transcript(StringBuffer output) => output
+    .toString()
+    .split('\n')
+    .map(
+      (line) => line
+          .replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), '')
+          .split('\r')
+          .last,
+    )
+    .where((line) => line.isNotEmpty)
+    .join();

@@ -538,4 +538,150 @@ void main() {
     expect(output.toString(), contains('[status] Window: checking'));
     expect(output.toString(), contains('Focus: Submit'));
   });
+
+  test('masked input honours declared rich facts and refuses undeclared rich output', () async {
+    MaskedInput code() => MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskLiteral('-'),
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        ]),
+      ],
+    );
+
+    final rich = await code().prompt(
+      source: ScriptedInput(
+        Stream.value('12\r'),
+        StringBuffer(),
+        supportsRich: false,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((rich as Accepted<MaskedValue>).value.formatted, '1-2');
+
+    expect(
+      await code().prompt(
+        source: ScriptedInput(Stream.value('12\r'), StringBuffer()),
+        mode: PromptMode.rich,
+      ),
+      isA<Unavailable<MaskedValue>>(),
+    );
+
+    final linear = await code().prompt(
+      source: ScriptedInput(Stream.value('12\r/done\r'), StringBuffer()),
+      mode: PromptMode.automatic,
+    );
+    expect((linear as Accepted<MaskedValue>).value.formatted, '1-2');
+  });
+
+  test('masked input shares one session with coordinated feedback', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+
+    final result = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Code');
+        spinner.start(session: session);
+        final pending = MaskedInput(
+          'Code',
+          templates: [
+            MaskTemplate('code', [
+              MaskSlot('digit', (s) => '0123456789'.contains(s)),
+              MaskLiteral('-'),
+              MaskSlot('digit', (s) => '0123456789'.contains(s)),
+            ]),
+          ],
+        ).prompt(session: session);
+        await pumpEventQueue();
+        spinner.update('checking');
+        await pumpEventQueue();
+        input.add('12\r');
+        await input.close();
+        final answer = await pending;
+        spinner.finish(FeedbackOutcome.completed);
+        return answer;
+      },
+      source: ScriptedInput(input.stream, output, outputProfile: _richProfile),
+      mode: PromptMode.rich,
+    );
+
+    expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
+    expect(output.toString(), contains('[status] Code: checking'));
+  });
+
+  test(
+    'masked input acquires and restores an explicit terminal adapter',
+    () async {
+      final output = StringBuffer();
+      final terminal = _FakeTerminal(
+        Stream.value('12\r/done\r'),
+        output,
+        _richProfile,
+      );
+      final result = await MaskedInput(
+        'Code',
+        templates: [
+          MaskTemplate('code', [
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+            MaskLiteral('-'),
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          ]),
+        ],
+      ).prompt(terminal: terminal, mode: PromptMode.linear);
+
+      expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
+      expect(terminal.events, ['acquire', 'restore']);
+    },
+  );
+
+  test(
+    'narrow masked input keeps guidance inside the declared width',
+    () async {
+      for (final adaptive in [false, true]) {
+        final templates = [
+          MaskTemplate('pair', [
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+            MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          ]),
+          if (adaptive)
+            MaskTemplate('dash', [
+              MaskSlot('digit', (s) => '0123456789'.contains(s)),
+              MaskLiteral('-'),
+              MaskSlot('digit', (s) => '0123456789'.contains(s)),
+            ]),
+        ];
+        for (final mode in [PromptMode.rich, PromptMode.linear]) {
+          final output = StringBuffer();
+          final result = await MaskedInput('Code', templates: templates).prompt(
+            source: ScriptedInput(
+              Stream.value(
+                !adaptive
+                    ? (mode == PromptMode.rich ? '12\r' : '12\r/done\r')
+                    : (mode == PromptMode.rich
+                          ? '12\r2\r\r'
+                          : '12\r/template\r2\r/done\r'),
+              ),
+              output,
+              outputProfile: _narrowProfile,
+            ),
+            mode: mode,
+          );
+          expect(result, isA<Accepted<MaskedValue>>());
+          final lines = _visibleLines(output.toString()).toList();
+          for (final line in lines) {
+            expect(
+              line.length,
+              lessThanOrEqualTo(18),
+              reason:
+                  'adaptive=$adaptive ${mode.name} line exceeds the declared '
+                  'width: "$line"',
+            );
+          }
+        }
+      }
+    },
+  );
 }
