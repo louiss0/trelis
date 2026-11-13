@@ -529,7 +529,10 @@ final class NumberInput {
     this.maximum,
     this.precision,
     this.required = true,
-  }) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (precision != null && precision! < 0) {
       throw ArgumentError.value(precision, 'precision');
     }
@@ -553,6 +556,9 @@ final class NumberInput {
   final String? maximum;
   final int? precision;
   final bool required;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ColorTheme colors;
   bool _active = false;
 
   String? _validate(String value, NumericConvention convention) {
@@ -576,6 +582,9 @@ final class NumberInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
@@ -625,19 +634,30 @@ final class NumberInput {
           '$plain ${resolved.negativeSign}',
         NumericNegativePattern.parentheses => '($plain)',
       };
-      final description =
-          '$label (${required ? 'required' : 'optional'}; ${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; ${resolved.grouping.isEmpty ? 'grouping not supported' : 'grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}; grouped example $grouped'}; ungrouped example $plain; positive example $plain; negative example $negativeExample; ASCII digits 0123456789; native digits ${resolved.nativeDigits}; native example $nativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'})';
+      final details =
+          '${required ? 'Required' : 'Optional'} ${decimal ? 'decimal' : 'integer'} mode; ${convention == null ? 'system or provided' : 'explicit override'} convention; decimal separator ${resolved.decimalSeparator}; ${resolved.grouping.isEmpty ? 'grouping not supported' : 'grouping separator ${resolved.groupingSeparator}; grouping ${resolved.grouping.join(',')}; grouped example $grouped'}; ungrouped example $plain; positive example $plain; negative example $negativeExample; ASCII digits 0123456789; native digits ${resolved.nativeDigits}; native example $nativeExample${minimum == null ? '' : '; minimum $minimum'}${maximum == null ? '' : '; maximum $maximum'}${precision == null ? '' : '; maximum $precision decimal places'}.';
+      final cue =
+          '$label (${decimal ? 'decimal' : 'integer'} numeric entry; decimal separator ${resolved.decimalSeparator}${resolved.grouping.isEmpty ? '; no grouping' : '; grouping separator ${resolved.groupingSeparator}'})';
       final result =
           await TextInput(
-            description,
+            cue,
             required: required,
             validate: (value) => _validate(value, resolved),
+            instructions: instructions,
+            supplementaryHelp: [
+              'Number format: base-ten ${decimal ? 'decimal' : 'integer'} values use the active numeric convention. $details',
+              ...supplementaryHelp,
+            ],
+            colors: colors,
           ).prompt(
             source: source,
             mode: mode,
             userPreference: userPreference,
             applicationPreference: applicationPreference,
             output: output,
+            terminal: terminal,
+            outputProfile: outputProfile,
+            session: session,
           );
       if (result is Accepted<String>) {
         if (result.value.isEmpty) return Accepted(null);
