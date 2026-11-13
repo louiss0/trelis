@@ -244,6 +244,191 @@ void main() {
   );
 
   test(
+    'session help leads with the current date stage while feedback updates',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+
+      final result = await TerminalSession.run(
+        (session) async {
+          final spinner = Spinner('Calendar');
+          spinner.start(session: session);
+          final pending = DateInput(
+            'Date',
+            order: DateFieldOrder.dayMonthYear,
+            initialValue: '29/2/2024',
+          ).prompt(session: session);
+          await pumpEventQueue();
+          input.add('\t\t\t\r');
+          await pumpEventQueue();
+          input.add('\x14');
+          await pumpEventQueue();
+          spinner.update('checking');
+          await pumpEventQueue();
+          input.add('\x1b');
+          await pumpEventQueue();
+          input.add('\t\r');
+          await input.close();
+          final answer = await pending;
+          spinner.finish(FeedbackOutcome.completed);
+          return answer;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+
+      expect((result as Accepted<CivilDate>).value.day, 29);
+      final text = output.toString();
+      // Help leads with the review stage that requested it.
+      expect(text, contains('Help: Review'));
+      expect(text, contains('/submit accepts'));
+      expect(text, contains('day/month/year'));
+      // Background feedback continued while help owned the screen, and the
+      // retained draft survived dismissal.
+      expect(text, contains('[status] Calendar: checking'));
+      expect(text, contains('Help dismissed.'));
+    },
+  );
+
+  test('rich field help names the focused date and time fields', () async {
+    final dateOutput = StringBuffer();
+    await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
+      source: ScriptedInput(
+        Stream.value('\x14\x1b\x03'),
+        dateOutput,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(dateOutput.toString(), contains('Help: Editing the day field'));
+
+    final timeOutput = StringBuffer();
+    await TimeInput('Departure').prompt(
+      source: ScriptedInput(
+        Stream.value('\x14\x1b\x03'),
+        timeOutput,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(timeOutput.toString(), contains('Help: Editing the Hour field'));
+  });
+
+  test(
+    'both modes keep typed date results, validation and terminal outcomes',
+    () async {
+      Accepted<CivilDate> accepted(PromptResult<CivilDate> result) =>
+          result as Accepted<CivilDate>;
+
+      final rich =
+          await DateInput(
+            'Date',
+            order: DateFieldOrder.dayMonthYear,
+            initialValue: '29/2/2024',
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\t\t\t\r\t\r'),
+              StringBuffer(),
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(accepted(rich).value.day, 29);
+      expect(accepted(rich).value.era, 'CE');
+      expect(accepted(rich).value.inputYear, 2024);
+
+      final linear = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
+          .prompt(
+            source: ScriptedInput(
+              Stream.value('29/2/2024\r/submit\r'),
+              StringBuffer(),
+            ),
+            mode: PromptMode.linear,
+          );
+      expect(accepted(linear).value.day, 29);
+
+      // An invalid draft is retained for correction in both modes.
+      final invalidRichOutput = StringBuffer();
+      final invalidRich =
+          await DateInput(
+            'Date',
+            order: DateFieldOrder.dayMonthYear,
+            initialValue: '30/4/2024',
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\t\x7f2\t\t\r\t\x7f4\t\t\r\t\r'),
+              invalidRichOutput,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(accepted(invalidRich).value.day, 30);
+      expect(accepted(invalidRich).value.month, 4);
+      expect(
+        _visibleLines(invalidRichOutput.toString()).join(),
+        contains('day does not exist in the selected month and year'),
+      );
+
+      final invalidLinearOutput = StringBuffer();
+      final invalidLinear =
+          await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
+            source: ScriptedInput(
+              Stream.value('29/2/2023\r\x7f\x7f\x7f\x7f2024\r/submit\r'),
+              invalidLinearOutput,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect(accepted(invalidLinear).value.day, 29);
+      expect(accepted(invalidLinear).value.year, 2024);
+      expect(
+        _visibleLines(invalidLinearOutput.toString()).join(),
+        contains('Correct the retained draft'),
+      );
+
+      expect(
+        await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1bx'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Cancelled<CivilDate>>(),
+      );
+      expect(
+        await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
+          source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<Cancelled<CivilDate>>(),
+      );
+      expect(
+        await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        isA<Interrupted<CivilDate>>(),
+      );
+      expect(
+        await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
+          source: ScriptedInput(const Stream.empty(), StringBuffer()),
+          mode: PromptMode.linear,
+        ),
+        isA<InputEnded<CivilDate>>(),
+      );
+    },
+  );
+
+  test(
     'date and time provide field-specific help in rich and linear modes',
     () async {
       final dateOutput = StringBuffer();
@@ -258,7 +443,7 @@ void main() {
           );
       expect(date, isA<Interrupted<CivilDate>>());
       expect(dateOutput.toString(), contains('year/month/day'));
-      expect(dateOutput.toString(), contains('one numeric field at a time'));
+      expect(dateOutput.toString(), contains('numeric field at a time'));
 
       final timeOutput = StringBuffer();
       final time = await TimeInput('Time', seconds: true).prompt(

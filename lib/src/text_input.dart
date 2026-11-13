@@ -4799,6 +4799,12 @@ final class TreeSelect<T> {
   }
 }
 
+/// The interaction stage that requested component help from [TimeInput].
+///
+/// Help leads with the stage so field editing, formatted entry and submission
+/// do not share one undifferentiated paragraph.
+enum _TimeHelpStage { field, formatted, submit }
+
 /// A time of day without a date or timezone.
 final class TimeInput {
   TimeInput(
@@ -4846,9 +4852,28 @@ final class TimeInput {
     return (hour: hour, minute: minute, second: second);
   }
 
-  String _help({required bool linear}) => linear
-      ? 'Help: Enter a complete $_format. This is a time of day, not a date or timezone. Exact /help and /cancel are commands; quote a command with a backslash. Invalid drafts remain available for correction.'
-      : 'Help: $_format. Edit one labeled field at a time; incomplete fields remain drafts. Tab moves between fields and actions. Up/Down or + and - adjust only the focused field without wrapping. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+  /// Component help for one interaction stage.
+  ///
+  /// The opening sentence names the stage that requested help; the accepted
+  /// format and the wider workflow follow in the same block.
+  String _help({
+    required bool linear,
+    String? field,
+    _TimeHelpStage stage = _TimeHelpStage.field,
+  }) {
+    final cue =
+        '$_format time of day, not a date or timezone; ${seconds ? 'seconds included' : 'minutes only'} on ${twelveHour ? 'a 12-hour clock with a required AM/PM period' : 'a 24-hour clock'}.';
+    if (linear) {
+      return 'Help: Entering a complete $_format time. This is a time of day, not a date or timezone. Exact /help and /cancel are commands; quote a command with a backslash. An invalid draft stays editable for correction. $cue';
+    }
+    if (stage == _TimeHelpStage.submit) {
+      return 'Help: Submit. Enter accepts the completed $_format time, Tab moves to the fields, Shift-Tab or Ctrl+B moves back, and the retained draft stays available until it is accepted. $cue Escape cancels and Ctrl+C interrupts.';
+    }
+    if (stage == _TimeHelpStage.formatted) {
+      return 'Help: Editing the formatted time. Enter the whole $_format value and press Enter to reload the labeled fields. $cue Escape cancels and Ctrl+C interrupts.';
+    }
+    return 'Help: Editing the ${field ?? 'focused'} field. One labeled field at a time; incomplete fields remain drafts. Tab moves between fields and actions. Up/Down or + and - adjust only the focused field without wrapping. Escape cancels and Ctrl+C interrupts. $cue';
+  }
 
   Future<PromptResult<({int hour, int minute, int? second})>> prompt({
     PromptSource? source,
@@ -5079,7 +5104,7 @@ final class TimeInput {
           out,
           maxLength: isPeriod ? 2 : 2,
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
-          helpText: _help(linear: false),
+          helpText: _help(linear: false, field: name),
           outputProfile: profile,
           resizeObserver: resizeObserver,
           session: session,
@@ -5154,7 +5179,7 @@ final class TimeInput {
           current(),
           out,
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
-          helpText: _help(linear: false),
+          helpText: _help(linear: false, stage: _TimeHelpStage.formatted),
           outputProfile: profile,
           resizeObserver: resizeObserver,
           session: session,
@@ -5199,7 +5224,7 @@ final class TimeInput {
         '',
         out,
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
-        helpText: _help(linear: false),
+        helpText: _help(linear: false, stage: _TimeHelpStage.submit),
         outputProfile: profile,
         resizeObserver: resizeObserver,
         session: session,

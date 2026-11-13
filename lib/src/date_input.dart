@@ -500,12 +500,27 @@ final class DateInput {
     DateFieldOrder.yearMonthDay => 'year/month/day',
   };
 
-  String _help(DateFieldOrder order, {required bool linear}) {
+  /// Component help for one interaction stage.
+  ///
+  /// The first sentence names the stage that requested help so the guidance is
+  /// relevant before the shared format rules; the wider workflow stays in the
+  /// same block so compact entry hints never leave the draft unexplained.
+  String _help(
+    DateFieldOrder order, {
+    required bool linear,
+    String? field,
+    bool review = false,
+  }) {
     final common =
-        '${calendar.name} calendar, ${_format(order)}, ASCII and ${digits.name} digits; a four-digit year and one or two digit month and day. Enter one numeric field at a time; incomplete fields remain drafts until review.';
-    return linear
-        ? 'Help: $common Exact /help and /cancel are commands; quote a command with a backslash. Enter a valid date, then use /submit or /edit at review.'
-        : 'Help: $common Tab or slash moves between fields, Shift-Tab or Ctrl+B moves back, and Up/Down adjusts only the focused field without carry. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+        '${calendar.name} calendar, ${_format(order)}, ASCII and ${digits.name} digits; a four-digit year and one or two digit month and day. One numeric field at a time; incomplete fields remain drafts until review.';
+    if (linear) {
+      return review
+          ? 'Help: Review. /submit accepts the reviewed date, /edit returns to the entry, /cancel cancels; exact /help and /cancel are commands and a quoted command is literal. $common'
+          : 'Help: Entering a date. Exact /help and /cancel are commands; quote a command with a backslash. Write the whole date, then review it with /submit or return with /edit. $common';
+    }
+    return review
+        ? 'Help: Review. /submit accepts the reviewed date, /edit returns to the fields, Tab or Ctrl+B changes the review action and Enter activates it; Escape cancels and Ctrl+C interrupts. $common'
+        : 'Help: Editing the ${field ?? 'focused'} field. Tab or slash moves forward, Shift-Tab or Ctrl+B moves back, Up/Down adjusts only the focused field without carry, Enter advances or reviews. Escape cancels and Ctrl+C interrupts. $common';
   }
 
   String _dateError(String draft, DateFieldOrder order) {
@@ -570,7 +585,7 @@ final class DateInput {
           '',
           out,
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
-          helpText: _help(order, linear: false),
+          helpText: _help(order, linear: false, review: true),
           outputProfile: profile,
           resizeObserver: resizeObserver,
           session: session,
@@ -606,7 +621,7 @@ final class DateInput {
         out,
         maxLength: name == 'year' ? 4 : 2,
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
-        helpText: _help(order, linear: false),
+        helpText: _help(order, linear: false, field: name),
         outputProfile: profile,
         resizeObserver: resizeObserver,
         session: session,
@@ -793,8 +808,7 @@ final class DateInput {
                 linear: true,
                 sequential: !effectiveProfile.supportsRichInteraction,
                 maxLength: 10,
-                linearHelpText: _help(resolvedOrder, linear: true),
-                outputProfile: effectiveProfile,
+                linearHelpText: _help(resolvedOrder, linear: true),                outputProfile: effectiveProfile,
                 resizeObserver: resizeObserver,
                 session: session,
               )
@@ -852,8 +866,8 @@ final class DateInput {
             extraCommands: const {'/submit', '/edit'},
             transientHelp:
                 effectiveProfile.alternateScreen == CapabilitySupport.supported,
-            helpText: _help(resolvedOrder, linear: false),
-            linearHelpText: _help(resolvedOrder, linear: true),
+            helpText: _help(resolvedOrder, linear: false, review: true),
+            linearHelpText: _help(resolvedOrder, linear: true, review: true),
             outputProfile: effectiveProfile,
             resizeObserver: resizeObserver,
             session: session,
