@@ -383,59 +383,72 @@ final class DateInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<CivilDate>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      final resolvedOrder = order;
-      if (resolvedOrder == null) {
-        final profile = _systemDateProfile();
-        if (profile == null) {
-          return Unavailable(
-            'System date preferences are unsupported or unresolved; specify a calendar and field order.',
-          );
-        }
-        return await DateInput(
-          '$label (effective system pattern ${profile.pattern}, adapted to slash)',
-          order: profile.order,
-          calendar: profile.calendar,
-          digits: profile.digits,
-        ).prompt(
-          source: source,
-          mode: mode,
-          userPreference: userPreference,
-          applicationPreference: applicationPreference,
-          output: output,
-        );
-      }
-      if (source is SuppliedAnswer) {
-        final value = _parse(source.value, resolvedOrder);
-        return value == null
-            ? Unavailable('Invalid date for the explicit calendar profile.')
-            : Accepted(value);
-      }
       final selected =
           mode ??
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<CivilDate>(
             selected,
             output ?? stderr,
-            (source, mode, restore) =>
-                _run(source, mode, resolvedOrder, beforeClose: restore),
+            (nativeSource, nativeMode, _) =>
+                _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected, resolvedOrder);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -462,6 +475,35 @@ final class DateInput {
       result = result * 10 + rune - current;
     }
     return result;
+  }
+
+  String _format(DateFieldOrder order) => switch (order) {
+    DateFieldOrder.dayMonthYear => 'day/month/year',
+    DateFieldOrder.monthDayYear => 'month/day/year',
+    DateFieldOrder.yearMonthDay => 'year/month/day',
+  };
+
+  /// Component help for one interaction stage.
+  ///
+  /// The first sentence names the stage that requested help so the guidance is
+  /// relevant before the shared format rules; the wider workflow stays in the
+  /// same block so compact entry hints never leave the draft unexplained.
+  String _help(
+    DateFieldOrder order, {
+    required bool linear,
+    String? field,
+    bool review = false,
+  }) {
+    final common =
+        '${calendar.name} calendar, ${_format(order)}, ASCII and ${digits.name} digits; a four-digit year and one or two digit month and day. One numeric field at a time; incomplete fields remain drafts until review.';
+    if (linear) {
+      return review
+          ? 'Help: Review. /submit accepts the reviewed date, /edit returns to the entry, /cancel cancels; exact /help and /cancel are commands and a quoted command is literal. $common'
+          : 'Help: Entering a date. Exact /help and /cancel are commands; quote a command with a backslash. Write the whole date, then review it with /submit or return with /edit. $common';
+    }
+    return review
+        ? 'Help: Review. /submit accepts the reviewed date, /edit returns to the fields, Tab or Ctrl+B changes the review action and Enter activates it; Escape cancels and Ctrl+C interrupts. $common'
+        : 'Help: Editing the ${field ?? 'focused'} field. Tab or slash moves forward, Shift-Tab or Ctrl+B moves back, Up/Down adjusts only the focused field without carry, Enter advances or reviews. Escape cancels and Ctrl+C interrupts. $common';
   }
 
   String _dateError(String draft, DateFieldOrder order) {
@@ -501,24 +543,35 @@ final class DateInput {
     String draft,
     StringSink out,
     DateFieldOrder order,
+    OutputProfile profile,
+    TerminalSession? session,
+    TerminalResizeObserver? resizeObserver,
   ) async {
     final names = switch (order) {
       DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
       DateFieldOrder.monthDayYear => ['month', 'day', 'year'],
       DateFieldOrder.yearMonthDay => ['year', 'month', 'day'],
     };
+    final width = _textInputWidth(profile);
     final split = draft.split('/');
     final segments = List.generate(3, (i) => i < split.length ? split[i] : '');
     var focus = 0;
     while (true) {
       if (focus == 3) {
-        out.writeln(
+        _writeWrappedText(
+          out,
           'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab or Ctrl+B moves back.',
+          width,
         );
         final action = await _edit(
           keys,
           '',
           out,
+          transientHelp: profile.alternateScreen == CapabilitySupport.supported,
+          helpText: _help(order, linear: false, review: true),
+          outputProfile: profile,
+          resizeObserver: resizeObserver,
+          session: session,
           intercept: (key, text) {
             if (key == '\t') return 'next';
             if (key == '\x1b[Z' || key == '\x02') return 'previous';
@@ -531,6 +584,7 @@ final class DateInput {
             action.action == 'eof') {
           return action;
         }
+        _finishFieldLine(out, action.action);
         if (action.action == 'review') {
           return (action: 'submit', value: segments.join('/'));
         }
@@ -539,17 +593,28 @@ final class DateInput {
         continue;
       }
       final name = names[focus];
-      out.writeln(
+      _writeWrappedText(
+        out,
         'Focus: $name. Tab or slash moves forward; Shift-Tab or Ctrl+B moves back; Up/Down adjusts without carry. Enter advances or reviews.',
+        width,
       );
       final edit = await _edit(
         keys,
         segments[focus],
         out,
         maxLength: name == 'year' ? 4 : 2,
+        transientHelp: profile.alternateScreen == CapabilitySupport.supported,
+        helpText: _help(order, linear: false, field: name),
+        outputProfile: profile,
+        resizeObserver: resizeObserver,
+        session: session,
         intercept: (key, text) {
           if (key.startsWith('\x1b[200~') && key.contains('/')) {
-            out.writeln('Paste only one numeric segment at a time.');
+            _writeWrappedText(
+              out,
+              'Paste only one numeric segment at a time.',
+              width,
+            );
             return 'handled';
           }
           if (key == '\t') return 'next';
@@ -560,7 +625,11 @@ final class DateInput {
                 text.runes.length <= (name == 'year' ? 4 : 2) &&
                 (name != 'year' || text.runes.length == 4);
             if (valid && focus < 2) return 'next';
-            out.writeln('Slash cannot skip an incomplete field or submit.');
+            _writeWrappedText(
+              out,
+              'Slash cannot skip an incomplete field or submit.',
+              width,
+            );
             return 'handled';
           }
           if (key == '\x1b[A' || key == '+') return 'increase';
@@ -573,11 +642,16 @@ final class DateInput {
           edit.action == 'eof') {
         return edit;
       }
+      _finishFieldLine(out, edit.action);
       segments[focus] = edit.value;
       if (edit.action == 'increase' || edit.action == 'decrease') {
         final number = _segmentNumber(edit.value);
         if (number == null) {
-          out.writeln('Enter a numeric segment before adjustment.');
+          _writeWrappedText(
+            out,
+            'Enter a numeric segment before adjustment.',
+            width,
+          );
         } else {
           final next = number + (edit.action == 'increase' ? 1 : -1);
           final max = name == 'year'
@@ -616,92 +690,180 @@ final class DateInput {
 
   Future<PromptResult<CivilDate>> _run(
     PromptSource source,
-    PromptMode mode,
-    DateFieldOrder order, {
-    void Function()? beforeClose,
+    PromptMode mode, {
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
-    if (source is! ScriptedInput) {
-      return Unavailable('Unsupported date input source.');
+    final resolvedOrder = order;
+    if (resolvedOrder == null) {
+      final profile = _systemDateProfile();
+      if (profile == null) {
+        return Unavailable(
+          'System date preferences are unsupported or unresolved; specify a calendar and field order.',
+        );
+      }
+      return DateInput(
+        '$label (effective system pattern ${profile.pattern}, adapted to slash)',
+        order: profile.order,
+        calendar: profile.calendar,
+        digits: profile.digits,
+        initialValue: initialValue,
+      )._run(
+        source,
+        mode,
+        outputProfile: outputProfile,
+        keys: keys,
+        session: session,
+      );
     }
-    if (mode == PromptMode.rich && !source.supportsRich) {
-      return Unavailable('Rich interaction unavailable.');
+    if (source is SuppliedAnswer) {
+      final value = _parse(source.value, resolvedOrder);
+      return value == null
+          ? Unavailable('Invalid date for the explicit calendar profile.')
+          : Accepted(value);
     }
-    final linear =
-        mode == PromptMode.linear ||
-        (mode == PromptMode.automatic && !source.supportsRich);
-    final out = source.output;
-    final keys = _Keys(source.input.transform(utf8.encoder));
-    final format = switch (order) {
-      DateFieldOrder.dayMonthYear => 'day/month/year',
-      DateFieldOrder.monthDayYear => 'month/day/year',
-      DateFieldOrder.yearMonthDay => 'year/month/day',
-    };
+    final scripted = source as ScriptedInput;
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
+      return Unavailable(
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
+    }
+    final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
+    final resizeObserver = mode == PromptMode.rich
+        ? scripted.resizeObserver
+        : null;
+    final format = _format(resolvedOrder);
     var draft = initialValue ?? '';
-    out.writeln(
-      '$label. ${calendar.name} calendar; $format; ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
+    _writeWrappedText(
+      out,
+      '$label. Active format: $format; ${calendar.name} calendar.',
+      width,
+    );
+    _writeWrappedText(
+      out,
+      'ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
+      width,
     );
     final sampleYear = calendar == DateCalendar.buddhist ? '2567' : '2024';
-    final example = switch (order) {
+    final example = switch (resolvedOrder) {
       DateFieldOrder.dayMonthYear => '29/2/$sampleYear',
       DateFieldOrder.monthDayYear => '2/29/$sampleYear',
       DateFieldOrder.yearMonthDay => '$sampleYear/2/29',
     };
-    out.writeln(
+    _writeWrappedText(
+      out,
       'Year is ${calendar == DateCalendar.buddhist ? 'Buddhist era 2484-9999' : 'CE 0001-9999'}; Gregorian-derived months, no leap-month context. Example: $example. Arithmetic profile; date only, no timezone.',
+      width,
     );
-    out.writeln('Enter a date, then review. /cancel cancels in linear mode.');
+    _writeWrappedText(
+      out,
+      mode == PromptMode.linear
+          ? 'Enter a date, then review. /help describes the format; /cancel cancels.'
+          : 'Enter one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      width,
+    );
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       while (true) {
-        final edit = linear
+        final edit = mode == PromptMode.linear
             ? await _edit(
-                keys,
+                inputKeys,
                 draft,
                 out,
                 linear: true,
-                sequential: true,
+                sequential: !effectiveProfile.supportsRichInteraction,
                 maxLength: 10,
+                linearHelpText: _help(resolvedOrder, linear: true),
+                outputProfile: effectiveProfile,
+                resizeObserver: resizeObserver,
+                session: session,
               )
-            : await _editSegments(keys, draft, out, order);
+            : await _editSegments(
+                inputKeys,
+                draft,
+                out,
+                resolvedOrder,
+                effectiveProfile,
+                session,
+                scripted.resizeObserver,
+              );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
         if (edit.action != 'submit') return InputEnded();
         draft = edit.value;
-        final value = _parse(draft, order);
+        final value = _parse(draft, resolvedOrder);
         if (value == null) {
-          out.writeln(
-            '${_dateError(draft, order)} Correct the retained draft.',
+          _writeWrappedText(
+            out,
+            '${_dateError(draft, resolvedOrder)} Correct the retained draft.',
+            width,
           );
           continue;
         }
         final iso =
             '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-        out.writeln(
+        _writeWrappedText(
+          out,
           'Review: ${calendar.name} year ${value.inputYear}, month ${value.month}, day ${value.day}; ISO date: $iso.',
+          width,
         );
-        out.writeln(
+        _writeWrappedText(
+          out,
           'Type /submit to accept or /edit to return to the draft; /cancel cancels.',
+          width,
         );
         var reviewFocus = 0;
-        if (!linear) {
-          out.writeln(
+        if (mode != PromptMode.linear) {
+          _writeWrappedText(
+            out,
             'Review action: Edit. Tab or Ctrl+B changes action; Enter activates.',
+            width,
           );
         }
         while (true) {
           final action = await _edit(
-            keys,
+            inputKeys,
             '',
             out,
             linear: true,
-            sequential: linear,
+            sequential:
+                mode == PromptMode.linear &&
+                !effectiveProfile.supportsRichInteraction,
             extraCommands: const {'/submit', '/edit'},
-            intercept: linear
+            transientHelp:
+                effectiveProfile.alternateScreen == CapabilitySupport.supported,
+            helpText: _help(resolvedOrder, linear: false, review: true),
+            linearHelpText: _help(resolvedOrder, linear: true, review: true),
+            outputProfile: effectiveProfile,
+            resizeObserver: resizeObserver,
+            session: session,
+            intercept: mode == PromptMode.linear
                 ? null
                 : (key, text) {
                     if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
                       reviewFocus = 1 - reviewFocus;
-                      out.writeln(
+                      _writeWrappedText(
+                        out,
                         'Review action: ${reviewFocus == 0 ? 'Edit' : 'Submit'}.',
+                        width,
                       );
                       return 'handled';
                     }
@@ -714,6 +876,7 @@ final class DateInput {
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
           if (action.action == 'eof') return InputEnded();
+          _finishFieldLine(out, action.action);
           if (action.action == 'review-submit' ||
               (action.action == 'command' && action.value == '/submit')) {
             return Accepted(value);
@@ -722,15 +885,11 @@ final class DateInput {
               (action.action == 'command' && action.value == '/edit')) {
             break;
           }
-          out.writeln('Use /submit or /edit.');
+          _writeWrappedText(out, 'Use /submit or /edit.', width);
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
 }

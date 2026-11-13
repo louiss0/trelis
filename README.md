@@ -452,6 +452,15 @@ draft. Both review the parsed date and its ISO spelling before `/submit` or
 `/edit` accepts or returns to the draft, and `/cancel` cancels. Errors name the
 offending field, width, repertoire or calendar range and keep the draft.
 
+`DateInput.prompt` also accepts `terminal`, `outputProfile` and `session` like
+the shared editor, and an attached prompt inherits its session configuration
+while feedback repaints. Ctrl+T in rich mode or `/help` in linear mode leads
+with the current stage (the focused field or review) and then the format and
+workflow. Guidance wraps within the declared geometry, an idle resize repaints
+the current editor without changing the draft, and an explicitly requested rich
+mode is unavailable unless the profile declares cursor support and positive
+geometry.
+
 Automatic resolution is narrow: Windows reports one full-year numeric short-date
 profile, Gregorian or Buddhist, with ASCII, Thai or Arabic-Indic digits, and the
 Linux and macOS attempts cover the same narrow numeric full-year profiles. Any
@@ -498,10 +507,15 @@ nullable `second`; it does not contain or imply a date, timezone or instant.
 
 Rich interaction uses Tab to reach labeled segments, formatted editing and
 Submit. Up/Down or `+`/`-` adjust the focused segment without carry or wrap;
-formatted editing is available through the Edit action. Enter a valid formatted
-value before adjusting segments. Linear interaction accepts the same exact
-format, retaining invalid drafts for correction. Terminal and screen-reader
-support is subject to the qualifications documented above.
+formatted editing is available through the Edit action. Each labeled field is a
+local draft, so an incomplete hour, minute, second or period stays in its own
+field until the whole time is valid at Submit. Linear interaction accepts the
+same exact format, retaining invalid drafts for correction. Ctrl+T in rich mode
+or `/help` in linear mode leads with the requested stage and then the accepted
+format. `TimeInput.prompt` accepts `terminal`, `outputProfile` and `session` the
+same way as `DateInput`; guidance wraps within the declared geometry and an idle
+resize repaints the editor without changing the draft. Terminal and
+screen-reader support is subject to the qualifications documented above.
 
 ### TimezoneSelect
 

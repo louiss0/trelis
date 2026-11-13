@@ -29,7 +29,11 @@ void main() {
     () async {
       final out = StringBuffer();
       final result = await TimeInput('Time', initialValue: '23:59').prompt(
-        source: ScriptedInput(Stream.value('+\t+\t\t\r'), out),
+        source: ScriptedInput(
+          Stream.value('+\t+\t\t\r'),
+          out,
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       expect(
@@ -94,7 +98,11 @@ void main() {
           seconds: true,
           initialValue: '12:59:59 AM',
         ).prompt(
-          source: ScriptedInput(Stream.value('+\t+\t+\t+\t\t\r'), out),
+          source: ScriptedInput(
+            Stream.value('+\t+\t+\t+\t\t\r'),
+            out,
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<({int hour, int minute, int? second})>).value, (
@@ -109,14 +117,22 @@ void main() {
     for (final mode in [PromptMode.rich, PromptMode.linear]) {
       expect(
         await input.prompt(
-          source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
           mode: mode,
         ),
         isA<Interrupted>(),
       );
       expect(
         await input.prompt(
-          source: ScriptedInput(const Stream.empty(), StringBuffer()),
+          source: ScriptedInput(
+            const Stream.empty(),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
           mode: mode,
         ),
         isA<InputEnded>(),
@@ -133,6 +149,7 @@ void main() {
                     );
                   })(),
             StringBuffer(),
+            outputProfile: _richProfile,
           ),
           mode: mode,
         ),
@@ -160,6 +177,7 @@ void main() {
         source: ScriptedInput(
           Stream.value('\t\t\r24:00\r\r\x7f\x7f\x7f\x7f\x7f23:00\r\t\r'),
           output,
+          outputProfile: _richProfile,
         ),
       );
       expect(
@@ -175,7 +193,11 @@ void main() {
     () async {
       expect(() => TimeInput('T', initialValue: '24:00'), throwsArgumentError);
       final result = await TimeInput('T', initialValue: '12:34').prompt(
-        source: ScriptedInput(Stream.value('\x7f\x7f56\r'), StringBuffer()),
+        source: ScriptedInput(
+          Stream.value('\x7f\x7f56\r'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.linear,
       );
       expect(
@@ -188,7 +210,11 @@ void main() {
     final input = TimeInput('T');
     final controller = StreamController<String>();
     final pending = input.prompt(
-      source: ScriptedInput(controller.stream, StringBuffer()),
+      source: ScriptedInput(
+        controller.stream,
+        StringBuffer(),
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect(
@@ -209,6 +235,7 @@ void main() {
           source: ScriptedInput(
             Stream.value('\x1b[B\t\x1b[B\t\x1b[B\t\t\r'),
             StringBuffer(),
+            outputProfile: _richProfile,
           ),
           mode: PromptMode.rich,
         );
@@ -225,6 +252,7 @@ void main() {
         source: ScriptedInput(
           Stream.value('\x1b[200~+\t\t\t\r\x1b[201~'),
           StringBuffer(),
+          outputProfile: _richProfile,
         ),
         mode: PromptMode.rich,
       );
@@ -232,3 +260,8 @@ void main() {
     },
   );
 }
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
