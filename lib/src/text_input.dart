@@ -2955,13 +2955,49 @@ final class Multiline {
     return validate?.call(value);
   }
 
+  String _opening({required bool linear}) => linear
+      ? '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+      : '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+
+  /// Current-stage help for this multiline answer.
+  ///
+  /// Both stages name the actions that actually accept or edit lines rather
+  /// than generic text-submit wording, and keep the limits and caller
+  /// validation reviewable.
+  String _help({required bool linear}) {
+    final constraints =
+        '${required ? 'A value is required' : 'An empty value is allowed'}${maxLength == null ? '' : '; maximum $maxLength graphemes'}.';
+    final validation = validate == null
+        ? ''
+        : ' Your validator runs when the lines are accepted.';
+    if (linear) {
+      return 'Help: one line per Enter; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing. /done accepts the joined lines only after validation. $constraints$validation';
+    }
+    return 'Help: Enter inserts a newline; Tab selects Edit, Finish or Insert tab; Enter activates the selected action. Arrows move between lines; Home/End reach line boundaries; Backspace/Delete erase; identified paste keeps its line breaks and tabs. Ctrl+T opens this help; Escape returns to editing or cancels; Ctrl+C interrupts. Finish accepts the joined lines only after validation. $constraints$validation';
+  }
+
   Future<PromptResult<String>> prompt({
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<String>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -2970,22 +3006,46 @@ final class Multiline {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -2994,7 +3054,9 @@ final class Multiline {
   Future<PromptResult<String>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedAnswer) {
       final value = _normalize(source.value);
@@ -3002,21 +3064,31 @@ final class Multiline {
       return error == null ? Accepted(value) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    final effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
-    out.writeln(
-      mode == PromptMode.linear
-          ? '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-          : '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    _writeWrappedText(
+      out,
+      _opening(linear: mode == PromptMode.linear),
+      _textInputWidth(effectiveProfile),
     );
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
       final lines = initialValue.isEmpty
           ? <String>[]
@@ -3024,7 +3096,7 @@ final class Multiline {
       try {
         while (true) {
           final result = await _edit(
-            keys,
+            inputKeys,
             '',
             out,
             linear: true,
@@ -3037,6 +3109,9 @@ final class Multiline {
               '/done',
             },
             multilinePaste: true,
+            outputProfile: effectiveProfile,
+            session: session,
+            linearHelpText: _help(linear: true),
             maxLength: maxLength == null
                 ? null
                 : (maxLength! -
@@ -3079,11 +3154,13 @@ final class Multiline {
               result.value == '/remove') {
             out.writeln('Enter line number:');
             final number = await _edit(
-              keys,
+              inputKeys,
               '',
               out,
               linear: true,
               sequential: true,
+              outputProfile: effectiveProfile,
+              session: session,
             );
             if (number.action == 'cancel') return Cancelled();
             if (number.action == 'interrupt') return Interrupted();
@@ -3097,11 +3174,13 @@ final class Multiline {
             if (result.value == '/remove') {
               out.writeln('Remove line ${index + 1}? Enter y to confirm.');
               final confirm = await _edit(
-                keys,
+                inputKeys,
                 '',
                 out,
                 linear: true,
                 sequential: true,
+                outputProfile: effectiveProfile,
+                session: session,
               );
               if (confirm.action == 'cancel') return Cancelled();
               if (confirm.action == 'interrupt') return Interrupted();
@@ -3110,7 +3189,7 @@ final class Multiline {
             } else {
               out.writeln('Edit line:');
               final edited = await _edit(
-                keys,
+                inputKeys,
                 result.value == '/edit' ? lines[index] : '',
                 out,
                 linear: true,
@@ -3123,6 +3202,9 @@ final class Multiline {
                   '/done',
                 },
                 multilinePaste: true,
+                outputProfile: effectiveProfile,
+                session: session,
+                linearHelpText: _help(linear: true),
                 maxLength: maxLength == null
                     ? null
                     : (maxLength! -
@@ -3159,17 +3241,14 @@ final class Multiline {
           lines.add(result.value);
         }
       } finally {
-        try {
-          beforeClose?.call();
-        } finally {
-          await keys.close();
-        }
+        if (keys == null) await inputKeys.close();
       }
     }
     var chars = _normalize(initialValue).characters.toList();
     var pos = chars.length;
     var action = 0;
     var help = false;
+    var activeProfile = effectiveProfile;
     void insert(String text) {
       final before = chars.take(pos).join() + text;
       final candidate = before + chars.skip(pos).join();
@@ -3189,6 +3268,7 @@ final class Multiline {
     }
 
     void display() {
+      session?._setPromptGeometry(activeProfile.geometry);
       var start = pos;
       while (start > 0 && chars[start - 1] != '\n') {
         start--;
@@ -3200,28 +3280,144 @@ final class Multiline {
       final line = chars.take(start).where((c) => c == '\n').length + 1;
       String visible(Iterable<String> part) =>
           part.join().replaceAll(r'\', r'\\').replaceAll('\t', r'\t');
+      final width = _textInputWidth(activeProfile);
+      var shownStart = start;
+      var shownEnd = end;
+      if (width != null) {
+        // The row prefix and both truthful overflow markers consume cells;
+        // the remaining budget centres on the logical caret in the current
+        // line, measured in display cells rather than code units.
+        int cells(String cluster) => TextDisplayMap(cluster).cellWidth;
+        final prefixCells = 'Line $line: '.length;
+        final budget = (width - prefixCells - 2).clamp(
+          0,
+          _textInputTotalWidthCap,
+        );
+        var used = 0;
+        for (var index = start; index < pos; index++) {
+          used += cells(chars[index]);
+        }
+        while (shownStart < pos && used > budget) {
+          used -= cells(chars[shownStart++]);
+        }
+        shownEnd = pos;
+        while (shownEnd < end && used + cells(chars[shownEnd]) <= budget) {
+          used += cells(chars[shownEnd++]);
+        }
+      }
       out.write(
-        '\r\x1b[2KLine $line: ${visible(chars.getRange(start, pos))}\x1b[s${visible(chars.getRange(pos, end))}\x1b[u',
+        '\r\x1b[2KLine $line: ${shownStart > start ? '<' : ''}${visible(chars.getRange(shownStart, pos))}\x1b[s${visible(chars.getRange(pos, shownEnd))}${shownEnd < end ? '>' : ''}\x1b[u',
       );
     }
 
     display();
+    session?._setPromptRepaint(display);
+    StreamSubscription<void>? resizeSubscription;
+    Timer? resizeFallback;
+    final resizeObserver = scripted.resizeObserver;
+    if (resizeObserver != null) {
+      void stopResizeObservation() {
+        resizeFallback?.cancel();
+        resizeFallback = null;
+        final subscription = resizeSubscription;
+        resizeSubscription = null;
+        if (subscription != null) unawaited(subscription.cancel());
+      }
+
+      void observeResize() {
+        final ({int columns, int rows})? dimensions;
+        try {
+          dimensions = resizeObserver.readDimensions();
+        } catch (_) {
+          return;
+        }
+        if (dimensions == null ||
+            dimensions.columns <= 0 ||
+            dimensions.rows <= 0) {
+          return;
+        }
+        final old = activeProfile.geometry;
+        if (!old.isAutomatic &&
+            old.columns == dimensions.columns &&
+            old.rows == dimensions.rows) {
+          return;
+        }
+        final profile = activeProfile;
+        activeProfile = OutputProfile(
+          cursor: profile.cursor,
+          alternateScreen: profile.alternateScreen,
+          styles: profile.styles,
+          colorDepth: profile.colorDepth,
+          glyphs: profile.glyphs,
+          geometry: OutputGeometry.fixed(
+            columns: dimensions.columns,
+            rows: dimensions.rows,
+          ),
+          ambiguousWidth: profile.ambiguousWidth,
+        );
+        // A resize is a repaint only, and help owns the screen until it is
+        // dismissed.
+        if (help) return;
+        try {
+          display();
+        } catch (error, stackTrace) {
+          stopResizeObservation();
+          inputKeys.fail(error, stackTrace);
+        }
+      }
+
+      resizeSubscription = resizeObserver.notifications.listen(
+        (_) => observeResize(),
+        onError: (_, _) {},
+      );
+      final milliseconds = resizeObserver.fallbackInterval.inMilliseconds.clamp(
+        100,
+        30000,
+      );
+      resizeFallback = Timer.periodic(
+        Duration(milliseconds: milliseconds),
+        (_) => observeResize(),
+      );
+    }
     try {
       while (true) {
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x14') {
+          if (help) continue;
           help = true;
-          out.writeln(
-            'Help: arrows move; Home/End move to line boundaries; Backspace/Delete erase; Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates an action. Escape dismisses help or cancels; Ctrl+C interrupts.',
+          final transient =
+              effectiveProfile.alternateScreen == CapabilitySupport.supported;
+          if (session != null) {
+            session._openModalHelp(useAlternateScreen: transient);
+          } else if (transient) {
+            out.write('\x1b[?1049h\x1b[H');
+          }
+          _writeWrappedText(
+            out,
+            _help(linear: false),
+            _textInputWidth(effectiveProfile),
           );
           continue;
         }
         if (help) {
           if (key == '\x1b') {
             help = false;
-            out.writeln('Help dismissed.');
+            final transient =
+                effectiveProfile.alternateScreen == CapabilitySupport.supported;
+            if (session != null) {
+              session._dismissModalHelp(
+                showTranscriptDismissal: !transient,
+                repaintPrompt: display,
+              );
+            } else if (transient) {
+              out.write('\x1b[?1049l');
+              display();
+            } else {
+              out.writeln('Help dismissed.');
+              display();
+            }
           }
           continue;
         }
@@ -3321,11 +3517,18 @@ final class Multiline {
         display();
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
+      if (help) {
+        if (session != null) {
+          session._abortModalHelp();
+        } else if (effectiveProfile.alternateScreen ==
+            CapabilitySupport.supported) {
+          out.write('\x1b[?1049l');
+        }
       }
+      session?._setPromptRepaint(null);
+      resizeFallback?.cancel();
+      await resizeSubscription?.cancel();
+      if (keys == null) await inputKeys.close();
     }
   }
 }
@@ -5647,13 +5850,48 @@ final class TagInput {
     return style == TagStyle.snakeCase ? value.replaceAll('-', '_') : value;
   }
 
+  String get _styleName =>
+      style == TagStyle.snakeCase ? 'snake_case' : 'kebab-case';
+
+  String _opening({required bool linear}) =>
+      '$label: $_styleName tags. Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'}';
+
+  /// Current-stage help for this tag collection.
+  ///
+  /// The draft is never described as a submitted answer: adding, editing,
+  /// removing and finishing are separate explicit actions, and the canonical
+  /// casing plus the limits and caller validation stay reviewable.
+  String _help({required bool linear}) {
+    final constraints =
+        '${maxLength == null ? '' : 'Maximum $maxLength graphemes per canonical tag. '}${validate == null ? '' : 'Your validator runs on each canonical tag. '}';
+    if (linear) {
+      return 'Help: Enter adds one canonical $_styleName tag and clears the draft; /list, /edit, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing. Ctrl+X discards the current draft; /done finishes with the accepted tags only. $constraints';
+    }
+    return 'Help: Enter adds the draft as a canonical $_styleName tag and clears the draft; Tab focuses Finish, where Enter submits with an empty draft. Backspace with an empty draft focuses the last accepted tag; Left/Right move between accepted tags; Enter edits the focused tag; Delete removes the focused tag; Ctrl+X discards the draft. Preview shows the current canonical tag. Ctrl+T opens this help; Escape cancels; Ctrl+C interrupts. $constraints';
+  }
+
   Future<PromptResult<List<String>>> prompt({
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<List<String>>(
+        _runTags,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -5662,23 +5900,46 @@ final class TagInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _runTags(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<List<String>>(
             selected,
             output ?? stderr,
-            (source, mode, restore) =>
-                _runTags(source, mode, beforeClose: restore),
+            (source, mode, _) =>
+                _runTags(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _runTags(source, selected);
+      return await _runTags(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -5687,7 +5948,9 @@ final class TagInput {
   Future<PromptResult<List<String>>> _runTags(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     if (source is SuppliedTags) {
       final tags = <String>[];
@@ -5714,15 +5977,25 @@ final class TagInput {
       return Unavailable('Supply a collection using SuppliedTags.');
     }
     final input = source as ScriptedInput;
-    if (mode == PromptMode.rich && !input.supportsRich) {
+    final effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: input.outputProfile,
+        supportsRich: input.supportsRich,
+      ),
+      input._observedGeometry,
+    );
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
-    final keys = _Keys(input.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(input.input.transform(utf8.encoder));
     final tags = <String>[];
     var draft = '';
     var selectingRemoval = false;
@@ -5730,18 +6003,27 @@ final class TagInput {
     int? editing;
     int? focused;
     var finishFocused = false;
-    input.output.writeln(
-      '$label: ${style == TagStyle.snakeCase ? 'snake' : 'kebab'}-case tags. Enter adds; Ctrl+X discards the draft. ${mode == PromptMode.linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}',
+    _writeWrappedText(
+      input.output,
+      _opening(linear: mode == PromptMode.linear),
+      _textInputWidth(effectiveProfile),
     );
     try {
       while (true) {
         final result = await _edit(
-          keys,
+          inputKeys,
           draft,
           input.output,
           linear: mode == PromptMode.linear,
           sequential: mode == PromptMode.linear,
           extraCommands: const {'/done', '/list', '/edit', '/remove'},
+          helpText: _help(linear: false),
+          linearHelpText: _help(linear: true),
+          outputProfile: effectiveProfile,
+          session: session,
+          transientHelp:
+              effectiveProfile.alternateScreen == CapabilitySupport.supported,
+          resizeObserver: mode == PromptMode.rich ? input.resizeObserver : null,
           intercept: (key, text) {
             if (key == '\x18' && text.isNotEmpty) {
               return 'discard-draft';
@@ -5906,11 +6188,7 @@ final class TagInput {
         input.output.writeln('Added: $canonical');
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
 }

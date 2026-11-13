@@ -1,6 +1,13 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+/// Synthetic rich output declares positive geometry; the legacy rich hint is
+/// not geometry evidence.
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
+
 void main() {
   test('supplied answers are literal, normalized and validated', () async {
     final prompt = Multiline('Notes', required: true);
@@ -21,9 +28,13 @@ void main() {
       );
       expect(unavailable, isA<Unavailable<String>>());
       expect(output.toString(), isEmpty);
-      Future<PromptResult<String>> run(String input) => Multiline('Notes')
-          .prompt(
-            source: ScriptedInput(Stream.value(input), StringBuffer()),
+      Future<PromptResult<String>> run(String input) =>
+          Multiline('Notes').prompt(
+            source: ScriptedInput(
+              Stream.value(input),
+              StringBuffer(),
+              outputProfile: _richProfile,
+            ),
             mode: PromptMode.rich,
           );
       expect(await run('a\x1b\t'), isA<Cancelled<String>>());
@@ -67,7 +78,11 @@ void main() {
   test('rich editing updates the focused line in place', () async {
     final output = StringBuffer();
     await Multiline('Notes').prompt(
-      source: ScriptedInput(Stream.value('ab\t\r'), output),
+      source: ScriptedInput(
+        Stream.value('ab\t\r'),
+        output,
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect(output.toString(), contains('\r\x1b[2K'));
@@ -94,7 +109,11 @@ void main() {
     () async {
       final output = StringBuffer();
       final result = await Multiline('Notes').prompt(
-        source: ScriptedInput(Stream.value('a\t\t\rb\t\r'), output),
+        source: ScriptedInput(
+          Stream.value('a\t\t\rb\t\r'),
+          output,
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<String>).value, 'a\tb');
@@ -110,7 +129,11 @@ void main() {
       Future<String> render(String initial) async {
         final output = StringBuffer();
         final result = await Multiline('Notes', initialValue: initial).prompt(
-          source: ScriptedInput(Stream.value('\x1a'), output),
+          source: ScriptedInput(
+            Stream.value('\x1a'),
+            output,
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         );
         expect(result, isA<InputEnded<String>>());
@@ -142,7 +165,11 @@ void main() {
   test('rich help is dismissible without cancelling the draft', () async {
     final output = StringBuffer();
     final result = await Multiline('Notes').prompt(
-      source: ScriptedInput(Stream.value('x\x14\x1b\t\r'), output),
+      source: ScriptedInput(
+        Stream.value('x\x14\x1b\t\r'),
+        output,
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'x');
@@ -180,7 +207,11 @@ void main() {
   );
   test('rich vertical navigation corrects a prior logical line', () async {
     final result = await Multiline('Notes', initialValue: 'abc\ndef').prompt(
-      source: ScriptedInput(Stream.value('\x1b[A!\t\r'), StringBuffer()),
+      source: ScriptedInput(
+        Stream.value('\x1b[A!\t\r'),
+        StringBuffer(),
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'abc!\ndef');
@@ -193,6 +224,7 @@ void main() {
         source: ScriptedInput(
           Stream.value('\x1b[D\x7f\x1b[200~x\r\ny\rz\x1b[201~\t\r'),
           output,
+          outputProfile: _richProfile,
         ),
         mode: PromptMode.rich,
       );
@@ -272,7 +304,11 @@ void main() {
   test('rich Enter adds a newline and Finish accepts it', () async {
     final output = StringBuffer();
     final result = await Multiline('Notes').prompt(
-      source: ScriptedInput(Stream.value('one\rtwo\t\r'), output),
+      source: ScriptedInput(
+        Stream.value('one\rtwo\t\r'),
+        output,
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'one\ntwo');
