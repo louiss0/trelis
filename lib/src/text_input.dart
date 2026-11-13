@@ -1063,6 +1063,97 @@ Future<T> _restoreAfter<T>(
   }
 }
 
+/// Repaints one transcript-style rich prompt when the selected output resizes.
+///
+/// The caller keeps its own effective profile: [onGeometry] receives the
+/// observed dimensions so subsequent guidance is wrapped for the new width.
+/// A resize is a repaint only, so it neither edits a draft nor records a
+/// presentation occurrence. Help owns the screen until it is dismissed, and a
+/// failed repaint retires the watcher and ends the prompt with the original
+/// failure instead of retrying a dead writer on every notification or poll.
+///
+/// Returns the callback that stops observation; every supported exit must call
+/// it so the notification subscription and fallback timer are released.
+void Function() _watchIdleResize({
+  required TerminalResizeObserver? observer,
+  required OutputProfile Function() profile,
+  required void Function(OutputProfile) onGeometry,
+  required void Function() repaint,
+  required _Keys keys,
+  required bool Function() helpOpen,
+}) {
+  if (observer == null) return () {};
+  StreamSubscription<void>? subscription;
+  Timer? fallback;
+  var stopped = false;
+
+  void stop() {
+    if (stopped) return;
+    stopped = true;
+    fallback?.cancel();
+    fallback = null;
+    final active = subscription;
+    subscription = null;
+    if (active != null) unawaited(active.cancel());
+  }
+
+  void observe() {
+    if (stopped) return;
+    final ({int columns, int rows})? dimensions;
+    try {
+      dimensions = observer.readDimensions();
+    } catch (_) {
+      // Reading geometry is best-effort; keep the last known layout.
+      return;
+    }
+    if (dimensions == null || dimensions.columns <= 0 || dimensions.rows <= 0) {
+      return;
+    }
+    final current = profile();
+    final old = current.geometry;
+    if (!old.isAutomatic &&
+        old.columns == dimensions.columns &&
+        old.rows == dimensions.rows) {
+      return;
+    }
+    onGeometry(
+      OutputProfile(
+        cursor: current.cursor,
+        alternateScreen: current.alternateScreen,
+        styles: current.styles,
+        colorDepth: current.colorDepth,
+        glyphs: current.glyphs,
+        geometry: OutputGeometry.fixed(
+          columns: dimensions.columns,
+          rows: dimensions.rows,
+        ),
+        ambiguousWidth: current.ambiguousWidth,
+      ),
+    );
+    if (helpOpen()) return;
+    try {
+      repaint();
+    } catch (error, stackTrace) {
+      stop();
+      keys.fail(error, stackTrace);
+    }
+  }
+
+  subscription = observer.notifications.listen(
+    (_) => observe(),
+    onError: (_, _) {},
+  );
+  final milliseconds = observer.fallbackInterval.inMilliseconds.clamp(
+    100,
+    30000,
+  );
+  fallback = Timer.periodic(
+    Duration(milliseconds: milliseconds),
+    (_) => observe(),
+  );
+  return stop;
+}
+
 final class TextInput {
   TextInput(
     String label, {

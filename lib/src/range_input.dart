@@ -43,8 +43,42 @@ final class Slider {
   final String? initialValue;
   final int? precision;
   final String? units;
-  String get _description =>
-      '$label (minimum $minimum, maximum $maximum, step $step${units == null ? '' : ', units $units'}${precision == null ? '' : ', maximum $precision decimal places'})';
+
+  String get _unitsCue => units == null ? '' : ', units $units';
+
+  String get _precisionCue => precision == null
+      ? ''
+      : ', maximum $precision decimal place${precision == 1 ? '' : 's'}';
+
+  /// The active-format cue: bounds, step, units and precision.
+  String get _cue =>
+      'minimum $minimum, maximum $maximum, step $step$_unitsCue$_precisionCue';
+
+  String get _description => '$label ($_cue)';
+
+  /// The accepted format, kept available from every help stage.
+  String get _formatCue =>
+      'Accepted format: between $minimum and $maximum on the $step grid$_unitsCue$_precisionCue; entries are never rounded or clipped.';
+
+  /// Component help for the requesting interaction stage.
+  ///
+  /// The opening sentence names the stage so adjustment, editing and submission
+  /// do not share one undifferentiated paragraph; the bounds, step and units
+  /// stay in the same block.
+  String _help({required bool linear, int focus = 0}) {
+    const dismissal = 'Escape cancels and Ctrl+C interrupts.';
+    if (linear) {
+      return 'Help: Entering the value. $_formatCue A value is required, so an empty line is refused; invalid entries keep the draft for correction. /cancel cancels. Exact /help and /cancel are commands; quote a command with a backslash.';
+    }
+    return switch (focus) {
+      1 =>
+        'Help: Editing the value. Type or correct exact decimal text in the editor; the draft is never rounded. Submit accepts only a value on the $step grid. $_formatCue $dismissal',
+      2 =>
+        'Help: Submit. Enter accepts the displayed value only when it is on the $step grid and inside the bounds; otherwise the error keeps the draft. $_formatCue $dismissal',
+      _ =>
+        'Help: Adjusting the value. Left/Right or Up/Down move the draft by $step inside the same bounds; a candidate outside them or off the grid is refused. Tab reaches Edit and Submit. $_formatCue $dismissal',
+    };
+  }
 
   String? _validate(String value) {
     final number = _decimal(value);
@@ -72,13 +106,30 @@ final class Slider {
 
   bool _active = false;
 
+  static const _focusNames = ['Slider', 'Edit', 'Submit'];
+
   Future<PromptResult<String>> prompt({
     PromptSource? source,
     PromptMode? mode,
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<String>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -87,22 +138,48 @@ final class Slider {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) => _run(source, mode, beforeClose: restore),
+            (nativeSource, nativeMode, _) =>
+                _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -111,115 +188,183 @@ final class Slider {
   Future<PromptResult<String>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
-    if (source is SuppliedAnswer ||
-        (source is ScriptedInput &&
-            (mode == PromptMode.linear ||
-                (mode == PromptMode.automatic && !source.supportsRich)))) {
-      try {
-        return await TextInput(
-          _description,
-          required: true,
-          initialValue: initialValue ?? '',
-          validate: _validate,
-        ).prompt(source: source, mode: PromptMode.linear);
-      } finally {
-        beforeClose?.call();
+    if (source is SuppliedAnswer) {
+      final value = source.value;
+      if (value.isEmpty) {
+        return Unavailable(
+          'Supplied answer does not satisfy text constraints.',
+        );
       }
+      final error = _validate(value);
+      return error == null ? Accepted(value) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    if (!scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue ?? '';
-    var focus = 0;
-    var help = false;
-    void show() {
-      out.writeln(
-        '$_description. Value: ${value.isEmpty ? 'not set' : value}.',
-      );
-      out.writeln(
-        'Focus: ${['Slider', 'Edit', 'Submit'][focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      );
-    }
-
-    show();
+    // Guidance follows the current output geometry, so a resize repaint wraps
+    // to the observed width instead of the invocation width.
+    void notice(String text) =>
+        _writeWrappedText(out, text, _textInputWidth(effectiveProfile));
+    notice(
+      '$_description. Current value: ${value.isEmpty ? 'not set' : value}.',
+    );
+    notice(
+      mode == PromptMode.linear
+          ? 'Enter an exact value, then submit. /help explains the bounds; /cancel cancels.'
+          : 'Tab moves through Slider, Edit and Submit; arrows adjust; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    );
     try {
-      while (true) {
-        final key = await keys.next();
-        if (key == null || key == '\x1a') return InputEnded();
-        if (key == '\x03') return Interrupted();
-        if (key == '\x1b') {
-          if (!help) return Cancelled();
-          help = false;
-          out.writeln('Help dismissed.');
-          show();
-          continue;
-        }
-        if (key == '\x14') {
-          help = true;
-          out.writeln(
-            'Help: Tab moves through controls; arrows adjust a focused value; Enter activates Edit or Submit. Escape dismisses help; Ctrl+C interrupts.',
+      if (mode == PromptMode.linear) {
+        while (true) {
+          final edit = await _edit(
+            inputKeys,
+            value,
+            out,
+            linear: true,
+            sequential: !effectiveProfile.supportsRichInteraction,
+            clearHelpCommand: true,
+            linearHelpText: _help(linear: true),
+            outputProfile: effectiveProfile,
+            session: session,
           );
-          continue;
-        }
-        if (help) continue;
-        if (key == '\t') {
-          focus = (focus + 1) % 3;
-          show();
-          continue;
-        }
-        if (focus == 0 &&
-            (key == '\x1b[C' ||
-                key == '\x1b[A' ||
-                key == '\x1b[D' ||
-                key == '\x1b[B')) {
-          if (_validate(value) == null) {
-            final candidate = _addDecimal(
-              value,
-              step,
-              key == '\x1b[C' || key == '\x1b[A' ? 1 : -1,
-            );
-            if (_validate(candidate) == null) value = candidate;
-          } else {
-            out.writeln('Edit a valid value before adjusting.');
-          }
-          show();
-          continue;
-        }
-        if ((key == '\r' || key == '\n') && focus == 1) {
-          out.writeln('Edit value; Enter finishes editing.');
-          final edit = await _edit(keys, value, out);
+          if (edit.action == 'cancel') return Cancelled();
           if (edit.action == 'interrupt') return Interrupted();
-          if (edit.action == 'cancel') {
-            out.writeln('Edit dismissed.');
+          if (edit.action != 'submit') return InputEnded();
+          value = edit.value;
+          if (value.isEmpty) {
+            notice('Required: enter a non-empty value and submit again.');
+            continue;
+          }
+          final error = _validate(value);
+          if (error != null) {
+            notice(error);
+            continue;
+          }
+          return Accepted(value);
+        }
+      }
+      var focus = 0;
+      var help = false;
+      void show() {
+        notice('$_description. Value: ${value.isEmpty ? 'not set' : value}.');
+        notice(
+          'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+        );
+      }
+
+      show();
+      session?._setPromptRepaint(show);
+      final stopResize = _watchIdleResize(
+        observer: scripted.resizeObserver,
+        profile: () => effectiveProfile,
+        onGeometry: (geometry) => effectiveProfile = geometry,
+        repaint: show,
+        keys: inputKeys,
+        helpOpen: () => help,
+      );
+      try {
+        while (true) {
+          final key = await inputKeys.next();
+          if (key == null || key == '\x1a') return InputEnded();
+          if (key == '\x03') return Interrupted();
+          if (key == '\x1b') {
+            if (!help) return Cancelled();
+            help = false;
+            out.writeln('Help dismissed.');
             show();
             continue;
           }
-          if (edit.action != 'submit') return InputEnded();
-          value = edit.value;
-          final error = _validate(value);
-          if (error != null) out.writeln(error);
-          show();
-          continue;
+          if (key == '\x14') {
+            help = true;
+            notice(_help(linear: false, focus: focus));
+            continue;
+          }
+          if (help) continue;
+          if (key == '\t') {
+            focus = (focus + 1) % _focusNames.length;
+            show();
+            continue;
+          }
+          if (focus == 0 &&
+              (key == '\x1b[C' ||
+                  key == '\x1b[A' ||
+                  key == '\x1b[D' ||
+                  key == '\x1b[B')) {
+            if (_validate(value) == null) {
+              final candidate = _addDecimal(
+                value,
+                step,
+                key == '\x1b[C' || key == '\x1b[A' ? 1 : -1,
+              );
+              if (_validate(candidate) == null) value = candidate;
+            } else {
+              notice('Edit a valid value before adjusting.');
+            }
+            show();
+            continue;
+          }
+          if ((key == '\r' || key == '\n') && focus == 1) {
+            notice('Edit value; Enter finishes editing.');
+            final edit = await _edit(
+              inputKeys,
+              value,
+              out,
+              helpText: _help(linear: false, focus: 1),
+              outputProfile: effectiveProfile,
+              session: session,
+              resizeObserver: scripted.resizeObserver,
+            );
+            if (edit.action == 'interrupt') return Interrupted();
+            if (edit.action == 'cancel') {
+              notice('Edit dismissed.');
+              show();
+              continue;
+            }
+            if (edit.action != 'submit') return InputEnded();
+            value = edit.value;
+            final error = _validate(value);
+            if (error != null) notice(error);
+            show();
+            continue;
+          }
+          if ((key == '\r' || key == '\n') && focus == 2) {
+            final error = _validate(value);
+            if (error == null) return Accepted(value);
+            notice(error);
+          }
         }
-        if ((key == '\r' || key == '\n') && focus == 2) {
-          final error = _validate(value);
-          if (error == null) return Accepted(value);
-          out.writeln(error);
-        }
+      } finally {
+        stopResize();
+        if (session != null) session._setPromptRepaint(null);
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
 }
