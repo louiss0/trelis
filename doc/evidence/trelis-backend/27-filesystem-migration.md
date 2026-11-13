@@ -8,7 +8,11 @@
 - **Implementation revision:** `7ddc5cf` (implementation, test and README
   commits `c634946`, `6adf6e8`, `f122574`, `6af2faf`, `7ddc5cf` on
   `ticket/backend-27-filesystem-migration`), based on integration `74c5171`.
-  This record's own commit changes documentation only.
+  This record's own commits change documentation only. The branch was merged
+  with `integration/trelis-backend-tracer-bullets` before this record was
+  finalized; the integration branch was still at `74c5171`, which is already an
+  ancestor of the branch, so the merge reported `Already up to date` and the
+  revision under test did not change.
 - **Branch:** `ticket/backend-27-filesystem-migration`
 - **Date:** 2026-11-14
 - **Environment:** Microsoft Windows NT 10.0.26200.0 (`windows_x64`), Dart SDK
@@ -95,7 +99,7 @@ behavior these prompts attach to.
 | `dart test test/filesystem_migration_test.dart test/filesystem_picker_test.dart test/path_input_test.dart test/path_input_behavior_test.dart test/path_input_errors_test.dart --reporter compact` | Passed: 57 tests |
 | `dart test test/component_acceptance_matrix_test.dart test/terminal_session_feedback_test.dart test/terminal_session_modal_help_test.dart test/terminal_session_failure_recovery_test.dart --reporter compact` | Passed: 163 tests |
 | `dart test --reporter compact` | Passed: 837 tests |
-| `dart run tool/check_doc_links.dart` | Passed: 153 relative links in 49 Markdown files |
+| `dart run tool/check_doc_links.dart` | Passed: 153 relative links in 50 Markdown files |
 
 The full-suite figure includes the 24 new tests in
 `test/filesystem_migration_test.dart`; no other test file gained or lost a test
@@ -136,4 +140,13 @@ separately for the path and browser wiring, then restored).
   (`test/linear_text_input_events_test.dart`,
   `test/native_text_input_capabilities_test.dart`,
   `test/terminal_session_short_screen_test.dart`); they are unmodified here and
-  belong to their own tickets.
+  belong to their own tickets. The command was run and reported exactly those
+  three files.
+- One full-suite run executed while this record was being finalized reported
+  `test/filesystem_picker_test.dart: acceptance rechecks a selection removed
+  during review` as failed; the assertion detail was not captured. The following
+  ten full-suite runs and twenty isolated runs of that test passed. That
+  scenario deletes the fixture during the review message and then re-inspects
+  it, which is pre-existing behavior of the shared inspection policy rather than
+  a new code path, so it is recorded as an observed one-off full-suite flake
+  instead of a pass.
