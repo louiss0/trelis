@@ -274,6 +274,113 @@ final _formatted = <_Formatted>[
   ),
 ];
 
+/// One component whose live preview or interpretation writes into a session.
+final class _PreviewScenario {
+  const _PreviewScenario({
+    required this.name,
+    required this.marker,
+    required this.keys,
+    required this.prompt,
+  });
+
+  final String name;
+
+  /// The preview write that must fail, so the failure is the preview's own.
+  final String marker;
+  final String keys;
+  final Future<PromptResult<Object?>> Function(TerminalSession) prompt;
+}
+
+final _previewScenarios = <_PreviewScenario>[
+  _PreviewScenario(
+    name: 'ColorInput',
+    marker: 'Value: #f00',
+    keys: '#f00\r',
+    prompt: (session) => ColorInput('Tint').prompt(session: session),
+  ),
+  _PreviewScenario(
+    name: 'DurationInput',
+    marker: 'Elapsed interpretation',
+    keys: '1s\r',
+    prompt: (session) => DurationInput(
+      'Wait',
+      durationMode: DurationInputMode.elapsed,
+    ).prompt(session: session),
+  ),
+  _PreviewScenario(
+    name: 'EmailInput',
+    marker: 'Domain interpretation',
+    keys: 'x@example.com\r',
+    prompt: (session) => EmailInput('Mail').prompt(session: session),
+  ),
+];
+
+/// The declared shared-writer failure; its diagnostic carries a canary that
+/// must never be copied into selected output.
+final class _WriterFailure implements Exception {
+  _WriterFailure(this.name) : canary = 'CANARY-$name';
+
+  final String name;
+  final String canary;
+
+  @override
+  String toString() => 'SharedWriterFailure($canary) for $name';
+}
+
+/// Records selected-output writes and fails on the declared preview write.
+final class _FailingSink implements StringSink {
+  _FailingSink(this.marker, this.failure);
+
+  final String marker;
+  final Object failure;
+  final writes = <String>[];
+
+  int get writeCount => writes.length;
+
+  void _add(String text) {
+    if (text.contains(marker)) throw failure;
+    writes.add(text);
+  }
+
+  @override
+  void write(Object? object) => _add('$object');
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      _add(objects.map((object) => '$object').join(separator));
+
+  @override
+  void writeCharCode(int charCode) => _add(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => _add('$object\n');
+}
+
+/// A public [TerminalIo] adapter with its own selected output and lease.
+final class _RecordingTerminalIo implements TerminalIo {
+  _RecordingTerminalIo(this.input, this.output);
+
+  @override
+  final Stream<String> input;
+
+  @override
+  final StringSink output;
+
+  final events = <String>[];
+
+  @override
+  bool get supportsRich => false;
+
+  @override
+  Map<String, String?> get environment => const {'NO_COLOR': null};
+
+  @override
+  TerminalLease acquire() {
+    events.add('acquire');
+    return TerminalLease(() => events.add('restore'));
+  }
+}
+
 /// Joins wrapped transcript lines back into one flowed string so a wrapped
 /// cue or help sentence is still observable as continuous text.
 ///
@@ -572,6 +679,103 @@ void main() {
       }, source: ScriptedInput(const Stream<String>.empty(), StringBuffer())),
       completes,
     );
+  });
+
+  test(
+    'a failed shared preview write retires the session and blocks late writes',
+    () async {
+      for (final scenario in _previewScenarios) {
+        final failure = _WriterFailure(scenario.name);
+        final sink = _FailingSink(scenario.marker, failure);
+        TerminalSessionFeedbackRegion? region;
+        TerminalSession? session;
+        Object? previewFailure;
+        Object? secondOutcome;
+        var writesAtFailure = 0;
+        var lateWrites = 0;
+
+        final run = TerminalSession.run(
+          (scope) async {
+            session = scope;
+            region = scope.startFeedbackRegion();
+            region!.write('status before preview');
+            try {
+              await scenario.prompt(scope);
+            } catch (error) {
+              previewFailure = error;
+            }
+            // Still inside the scope: the failed writer must already have
+            // retired it, so neither a late region update nor another
+            // attached prompt may reach the selected output.
+            writesAtFailure = sink.writeCount;
+            region!.write('late update');
+            lateWrites = sink.writeCount - writesAtFailure;
+            try {
+              secondOutcome = await scenario.prompt(scope);
+            } catch (error) {
+              secondOutcome = error;
+            }
+            throw previewFailure!;
+          },
+          source: ScriptedInput(
+            Stream.value(scenario.keys),
+            sink,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.linear,
+        );
+
+        await expectLater(run, throwsA(same(failure)));
+        expect(
+          previewFailure,
+          same(failure),
+          reason: '${scenario.name} must surface the original writer failure',
+        );
+        expect(
+          writesAtFailure,
+          greaterThan(0),
+          reason: '${scenario.name} must have written the opening and status',
+        );
+        expect(
+          lateWrites,
+          0,
+          reason:
+              '${scenario.name} late updates must not reach a failed writer',
+        );
+        expect(
+          secondOutcome,
+          isA<StateError>(),
+          reason: '${scenario.name} must retire the session on writer failure',
+        );
+        expect(sink.writes.join(), isNot(contains('late update')));
+        expect(
+          sink.writes.join(),
+          isNot(contains(failure.canary)),
+          reason:
+              '${scenario.name} must not copy a writer diagnostic into output',
+        );
+
+        await expectLater(scenario.prompt(session!), throwsStateError);
+      }
+    },
+  );
+
+  test('email interpretation follows the selected terminal output', () async {
+    final output = StringBuffer();
+    final terminal = _RecordingTerminalIo(
+      Stream.value('x@example.com\r'),
+      output,
+    );
+
+    final result = await EmailInput('Mail').prompt(terminal: terminal);
+
+    expect((result as Accepted<String>).value, 'x@example.com');
+    expect(
+      _flowed(output.toString()),
+      _containsPhrase('Domain interpretation -- Unicode: example.com'),
+      reason: 'the interpretation must use the selected terminal output',
+    );
+    expect(terminal.events, ['acquire', 'restore']);
   });
 
   test('distinguishable configuration reaches every formatted input', () async {

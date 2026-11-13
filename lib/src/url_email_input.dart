@@ -374,7 +374,9 @@ final class EmailInput {
       final domain = result.value.substring(result.value.lastIndexOf('@') + 1);
       final sink = source is ScriptedInput
           ? source.output
-          : session?._output ?? output ?? stderr;
+          : session != null
+          ? _SessionOutputSink(session)
+          : output ?? terminal?.output ?? stderr;
       if (domain.startsWith('[')) {
         sink.writeln('Transport address literal: $domain.');
       } else {
