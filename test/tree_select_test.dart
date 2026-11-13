@@ -2,6 +2,26 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'linear help explains tree workflow while requesting a reference',
+    () async {
+      final out = StringBuffer();
+      final result =
+          await TreeSelect<String>('Pick', [
+            TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+          ]).prompt(
+            source: ScriptedInput(
+              Stream.value('/open\r/help\r1\r/choose\r2\r'),
+              out,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'b');
+      expect(out.toString(), contains('Help: TreeSelect'));
+      expect(out.toString(), contains('stable node reference'));
+      expect(out.toString(), contains('selectable'));
+    },
+  );
   test('linear discloses default even when it is nested', () async {
     final out = StringBuffer();
     await TreeSelect<String>('Pick', [

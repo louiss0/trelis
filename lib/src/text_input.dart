@@ -4696,6 +4696,8 @@ final class TreeSelect<T> {
         .toList();
     String path(List<TreeNode<T>> nodes) =>
         nodes.map((n) => n.label).join(' / ');
+    const linearHelp =
+        r'Help: TreeSelect. /open asks for a stable node reference in the current path and enters its children; /up returns to the parent. /choose asks for a stable node reference and accepts it only if selectable and available. Expandability and selectability are independent. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.';
     void show() {
       out.writeln('$label TreeSelect:');
       if (all.isEmpty) out.writeln('No nodes available.');
@@ -4748,6 +4750,7 @@ final class TreeSelect<T> {
             linear: true,
             sequential: true,
             extraCommands: const {'/open', '/up', '/choose'},
+            linearHelpText: linearHelp,
           );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
@@ -4775,6 +4778,7 @@ final class TreeSelect<T> {
             linear: true,
             sequential: true,
             extraCommands: const {'/open', '/up', '/choose'},
+            linearHelpText: linearHelp,
           );
           if (reference.action == 'cancel') return Cancelled();
           if (reference.action == 'interrupt') return Interrupted();
