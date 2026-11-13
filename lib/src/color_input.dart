@@ -96,7 +96,9 @@ final class ColorInput {
     _sink = source is ScriptedInput
         ? source.output
         : source == null
-        ? (session?._output ?? output ?? terminal?.output ?? stderr)
+        ? (session != null
+              ? _SessionOutputSink(session)
+              : output ?? terminal?.output ?? stderr)
         : null;
     try {
       final result = await _input.prompt(

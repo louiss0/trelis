@@ -149,7 +149,9 @@ final class DurationInput {
       final sink = source is ScriptedInput
           ? source.output
           : source == null
-          ? (session?._output ?? output ?? terminal?.output ?? stderr)
+          ? (session != null
+                ? _SessionOutputSink(session)
+                : output ?? terminal?.output ?? stderr)
           : null;
       void review(String draft) {
         if (sink == null) return;
