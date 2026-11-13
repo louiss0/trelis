@@ -1,18 +1,24 @@
 # Ticket 24 — formatted-value migration evidence
 
-**Status:** pass for the scripted public formatted-value seam. The backend evidence
-gate remains pending and is owned by its dedicated ticket.
+**Status:** pass for the scripted public formatted-value seam, including the
+follow-up shared-writer routing fix. The backend evidence gate remains pending
+and is owned by its dedicated ticket.
 
 ## Source and environment
 
-- **Implementation revision:** `ecb043b` (`feat: complete formatted value migration`)
-- **Branch:** `ticket/backend-24-formatted-values`, merged with
-  `integration/trelis-backend-tracer-bullets` at `9d6ecbe` before this work.
+- **Implementation revisions:** `ecb043b` (`feat: complete formatted value migration`)
+  and `1afacd8` (`fix: serialize formatted-value preview writes`, the follow-up
+  that routes live preview writes through the session's serialized writer).
+- **Branch:** `ticket/backend-24-formatted-values`. The migration was merged to
+  integration as `6368698`; the follow-up is based on integration tip `9a2bcbf`
+  (which normalises wrapped prose comparisons) and is not merged.
 - **Date:** 2026-11-13
 - **Environment:** Microsoft Windows NT 10.0.26200.0 (`windows_x64`), Dart SDK
   3.13.2 stable.
 - **Input/output:** synthetic `Stream<String>` input and `StringBuffer` output,
-  plus a public `TerminalSession.run` scope for the shared-session scenarios.
+  a public `TerminalSession.run` scope for the shared-session scenarios, a
+  recording `TerminalIo` adapter for the standalone terminal scenario, and a
+  declared failing `StringSink` for the writer-failure scenario.
 - **Profiles:** an explicitly declared rich profile (cursor support, indexed-256
   colour depth, 100×30 geometry) and `PromptMode.linear`. No real terminal,
   environment variable or font is consulted. The palette scenario supplies a
@@ -41,6 +47,12 @@ through their public constructors and `prompt`, and verifies:
   single session-owned reader/writer, including in-session help, and the colour
   preview, duration interpretation and email domain interpretation land in the
   session output rather than merely on `stderr`;
+- a preview write that fails on the selected output propagates the original
+  writer failure, retires the session before the scope ends, blocks a late
+  feedback-region update and refuses another attached prompt, and never copies
+  the private writer diagnostic (a canary in its message) into output;
+- the email domain interpretation follows the selected `TerminalIo` output for a
+  standalone terminal invocation, alongside the existing source/output routing;
 - an attached prompt rejects competing invocation configuration
   (`mode` on an attached `PortInput`) with `ArgumentError`;
 - distinguishable configuration is forwarded: `allowZero`, `cidr`/`scoped`,
@@ -52,28 +64,43 @@ through their public constructors and `prompt`, and verifies:
   dependence, email deliverability and transport address literals, approximate
   colour hex, and unapplied calendar duration components.
 
-Deliberate visible changes in this revision: `DurationInput`'s opening sentence
-is now a compact mode cue (the previous opening repeated the whole grammar), its
-live interpretation writes to the shared session output, and its component help
-retains the exact-microsecond and maximum-magnitude rules. `README.md` now
-documents the compact cue/help split, the `instructions`, `supplementaryHelp`
-and `ColorTheme` options, and the shared `terminal`/`outputProfile`/`session`
-invocation arguments for these six inputs.
+Deliberate visible changes in the migration revision: `DurationInput`'s opening
+sentence is now a compact mode cue (the previous opening repeated the whole
+grammar), its live interpretation writes to the shared session output, and its
+component help retains the exact-microsecond and maximum-magnitude rules.
+`README.md` documents the compact cue/help split, the `instructions`,
+`supplementaryHelp` and `ColorTheme` options, and the shared
+`terminal`/`outputProfile`/`session` invocation arguments for these six inputs.
+
+The follow-up fixes a real contract defect rather than adding evidence. The
+colour preview (`color_input.dart`), duration interpretation (`duration_input.dart`)
+and email domain interpretation (`url_email_input.dart`) selected
+`session._output` directly, bypassing `_writeShared`. That violated the
+single-serialized-writer and failure-retirement contracts: a failed selected
+output during a preview did not retire the session, so a later live-region or
+prompt write could still reach the failed writer. The session branch now uses
+the existing private `_SessionOutputSink`, which performs every write through
+`_writeShared`; the standalone `ScriptedInput`, `output:` and `terminal:` routes
+are unchanged. The email interpretation additionally follows `terminal.output`,
+matching the other two inputs. No shared editor behavior changed.
 
 ## Executed verification
 
 | Command | Result |
 | --- | --- |
-| `dart format --output=none --set-exit-if-changed lib/src/duration_input.dart test/formatted_values_migration_test.dart` | Passed: 2 files checked, 0 changed |
-| `dart test test/formatted_values_migration_test.dart test/number_input_test.dart test/network_input_test.dart test/email_input_test.dart test/color_input_test.dart test/duration_input_test.dart --reporter expanded` | Passed: 64 tests |
+| `dart format --output=none --set-exit-if-changed lib/src/color_input.dart lib/src/duration_input.dart lib/src/url_email_input.dart test/formatted_values_migration_test.dart` | Passed: 4 files checked, 0 changed |
+| `dart test test/formatted_values_migration_test.dart test/number_input_test.dart test/network_input_test.dart test/email_input_test.dart test/color_input_test.dart test/duration_input_test.dart test/terminal_session_failure_recovery_test.dart test/terminal_session_feedback_test.dart test/terminal_io_test.dart --reporter expanded` | Passed: 84 tests |
 | `dart analyze` | Passed: `No issues found!` |
-| `dart run tool/check_doc_links.dart` | Passed: 152 relative links in 43 Markdown files |
-| `dart test --reporter compact` | Passed: 724 tests |
+| `dart run tool/check_doc_links.dart` | Passed: 152 relative links in 45 Markdown files |
+| `dart test --reporter compact` | Passed: 748 tests |
 
-A mutation check confirmed the suite detects a removed active-format cue
-(`PortInput is missing its cue`) and, before the fix, detected both the verbose
-duration opening and the duration interpretation written outside the shared
-session output.
+Mutation and red/green checks: the suite detects a removed active-format cue
+(`PortInput is missing its cue`); before the migration fix it detected both the
+verbose duration opening and the duration interpretation written outside the
+shared session output; and before the follow-up fix each of the three preview
+scenarios failed with `late updates must not reach a failed writer` (and the
+email terminal scenario with `the interpretation must use the selected terminal
+output`).
 
 ## Limitations
 
@@ -86,12 +113,13 @@ makes no whole-library accessibility claim.
 
 Two further limitations are recorded rather than waived:
 
-- The colour preview, email interpretation and duration interpretation lines
-  are written to the session-owned output sink directly, as the pre-existing
-  colour and email previews already did. The editor change callback writes them
-  synchronously, so they are not driven by another producer, but they are not
-  routed through the session's serialized writer and no shared-writer failure
-  during a preview is exercised here.
+- The shared-writer failure scenario is deterministic scripted injection into
+  the selected sink for these three preview paths only. It does not exercise
+  native write failures, a failure while a modal help owns the screen, or the
+  fallback where cleanup also fails; those belong to the session-failure ticket.
+  Standalone `source`, `output:` and `terminal:` routing is asserted for the
+  email interpretation and preserved by construction, but not re-proved for
+  every component by a failure scenario.
 - A repository-wide `dart format --output=none --set-exit-if-changed .` still
   reports three files from earlier tickets (`test/linear_text_input_events_test.dart`,
   `test/native_text_input_capabilities_test.dart`,
