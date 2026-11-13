@@ -509,6 +509,40 @@ final class CronInput {
   late final TextInput _input;
   bool _active = false;
 
+  /// Minimal active-format cue: the field shape of the declared dialect.
+  String get _fieldShape => profile == CronProfile.unix
+      ? 'five fields: minute hour day-of-month month day-of-week'
+      : 'six fields: second minute hour day-of-month month day-of-week, plus an optional seventh year field (1970-2199)';
+
+  String get _syntaxNote => profile == CronProfile.unix
+      ? 'Fields accept *, a number, an a-b range, an a,b list, a /n step, and JAN-DEC or SUN-SAT names; 0 and 7 both select Sunday, and a stepped wildcard day still pairs with the weekday field.'
+      : 'Fields accept *, a number, an a-b range, an a,b list, a /n step and names; exactly one of day-of-month and day-of-week must be ?, and L, LW, L-n, nW, nth-weekday # and weekday L keep their documented meaning.';
+
+  String get _limitNote =>
+      'A valid expression is at most $maxExpressionLength UTF-16 code units, carries no leading or trailing space, and is validated for the selected profile before review; a rejected draft stays available for correction and later submission.';
+
+  String get _previewNote {
+    final config = preview;
+    if (config == null) {
+      return 'No matching preview is configured, so review covers only the expression and its declared profile.';
+    }
+    return 'The matching preview is a bounded set of matching civil instants for zone ${config.zone} between ${config.start.toIso8601String()} and ${config.end.toIso8601String()}, limited to ${config.count} instants, a work budget of ${config.budget} candidates and a provider timeout of ${config.providerTimeout}, interpreted from the qualified provider snapshot. It is a matching preview, not scheduler execution: it does not promise that a job runs then, gaps are skipped and folds are included.';
+  }
+
+  String _entryHelp({required bool linear}) {
+    final controls = linear
+        ? r'Type the expression and press Enter to review it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter reviews the draft. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+    return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_limitNote $_syntaxNote $_previewNote';
+  }
+
+  String _reviewHelp({required bool linear}) {
+    final controls = linear
+        ? r'/preview computes the bounded matching preview, /edit returns to the expression and /submit accepts the retained expression; a /cancel during a preview stops only that preview, and a second /cancel ends the prompt. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.'
+        : 'The actions are Edit, Preview and Submit; Tab or Shift-Tab changes the focused action, Enter activates it and the focused action is announced after every change. Preview is interruptible with Ctrl+C; Escape cancels the prompt and Ctrl+C interrupts it.';
+    return 'Help: Reviewing the retained expression for the ${profile.name} profile, $_fieldShape. $controls $_syntaxNote $_previewNote';
+  }
+
   bool _valid(String value) {
     if (value.length > maxExpressionLength || value.trim() != value) {
       return false;
@@ -755,10 +789,26 @@ final class CronInput {
     }
     final linear = mode == PromptMode.linear;
     final out = source.output;
+    final width = _textInputWidth(effectiveProfile);
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
+    // Guidance, validation and preview reports are measured against the
+    // declared geometry so a narrow output never overflows. Matching instants
+    // are reported as data and are never split.
+    //
+    // A rich editor owns the physical line with a carriage return and an
+    // erase-line sequence; a notice takes that line over the same way instead
+    // of being appended to the field the user just left.
+    void writeNotice(String text) {
+      if (!linear) out.write('\r\x1b[2K');
+      _writeWrappedText(out, text, width);
+    }
+
     var draft = initialValue;
-    out.writeln(
-      '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units. Enter an expression, then /preview, /edit or /submit; /cancel cancels.',
+    writeNotice(
+      '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units.',
+    );
+    writeNotice(
+      'Enter an expression, then /preview, /edit or /submit; /cancel cancels.${linear ? ' /help opens help.' : ' Ctrl+T opens help.'}',
     );
     try {
       while (true) {
@@ -769,6 +819,9 @@ final class CronInput {
           linear: linear,
           sequential: linear,
           maxLength: maxExpressionLength,
+          clearHelpCommand: true,
+          helpText: _entryHelp(linear: false),
+          linearHelpText: _entryHelp(linear: true),
           outputProfile: effectiveProfile,
           session: session,
           resizeObserver: linear ? null : source.resizeObserver,
@@ -778,15 +831,17 @@ final class CronInput {
         if (entry.action != 'submit') return InputEnded();
         draft = entry.value;
         if (!_valid(draft)) {
-          out.writeln('Invalid cron expression. Correct the retained draft.');
+          writeNotice('Invalid cron expression. Correct the retained draft.');
           continue;
         }
-        out.writeln('Review: $draft. /preview, /edit, or /submit.');
+        writeNotice(
+          'Review: $draft. /preview, /edit, or /submit${linear ? '; /help opens help or /cancel cancels' : ''}.',
+        );
         var focus = 0;
         const actions = ['Edit', 'Preview', 'Submit'];
         if (!linear) {
-          out.writeln(
-            'Review action: Edit. Tab or Shift-Tab changes action; Enter activates.',
+          writeNotice(
+            'Review action: Edit. Tab or Shift-Tab changes action; Enter activates; Ctrl+T opens help.',
           );
         }
         while (true) {
@@ -797,6 +852,8 @@ final class CronInput {
             linear: true,
             sequential: linear,
             extraCommands: const {'/preview', '/edit', '/submit'},
+            helpText: _reviewHelp(linear: false),
+            linearHelpText: _reviewHelp(linear: true),
             outputProfile: effectiveProfile,
             session: session,
             resizeObserver: linear ? null : source.resizeObserver,
@@ -805,7 +862,7 @@ final class CronInput {
                 : (key, text) {
                     if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
                       focus = (focus + (key == '\t' ? 1 : 2)) % actions.length;
-                      out.writeln('Review action: ${actions[focus]}.');
+                      writeNotice('Review action: ${actions[focus]}.');
                       return 'handled';
                     }
                     if ((key == '\r' || key == '\n') && text.isEmpty) {
@@ -853,7 +910,7 @@ final class CronInput {
               }
               return false;
             };
-            out.writeln(
+            writeNotice(
               'Calculating preview; Ctrl+C interrupts${linear ? ', /cancel cancels' : ', Escape cancels'}.',
             );
             final cancellable = CronPreviewConfig(
@@ -878,7 +935,7 @@ final class CronInput {
               inputKeys.onKey = null;
             }
             if (interrupted) return Interrupted();
-            out.writeln(
+            writeNotice(
               'Matching preview: ${result.status.name}; zone ${config.zone}; qualified provider snapshot timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
@@ -887,11 +944,11 @@ final class CronInput {
             if (!linear) {
               // Review state must never be implicit after a preview round: keep
               // the reviewer's action position and announce it again.
-              out.writeln('Review action: ${actions[focus]}.');
+              writeNotice('Review action: ${actions[focus]}.');
             }
             continue;
           }
-          out.writeln('Use /preview, /edit, or /submit.');
+          writeNotice('Use /preview, /edit, or /submit.');
         }
       }
     } finally {
