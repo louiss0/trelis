@@ -746,7 +746,12 @@ removes the last gesture, `x` clears, and Enter submits. In linear mode use
 `/capture`, `/declare`, `/remove`, `/clear`, and `/done`; `/cancel` cancels.
 Every capture returns to review: it never submits automatically. Escape exits
 armed capture before cancelling the prompt; Ctrl+C interrupts. These two
-reserved gestures cannot be captured live.
+reserved gestures cannot be captured live. Rich `Ctrl+T` and linear `/help`
+explain observed versus declared or ambiguous provenance, the reserved
+gestures, the observation requirement, the declaration vocabulary and sequence
+completion. Help is available before and after a capture but not while capture
+is armed, because the next key is the candidate gesture; the action line says
+so in each mode.
 
 Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`);
 for supplied `KeyChordInput` answers, separate gestures with commas. Modifiers
@@ -773,6 +778,15 @@ physical-key identification or global hotkey registration. Legacy byte-stream
 captures are marked `ambiguous` because the stream does not reliably identify
 all modifiers. Their empty modifier set must not be interpreted as proof that
 no modifier was held.
+
+Key capture `prompt` invocations accept `terminal`, `outputProfile` and
+`session` the same way as the shared editor. A rich synthetic source declares
+cursor support and positive geometry through its profile. A source that replays
+the console key record (`ESC [ 901 ; vk ; code ; state ~`) exercises the
+observed provenance path without claiming a physical keyboard. An attached
+prompt inherits its explicit `TerminalSession` configuration, shares its reader
+and writer, and can remain active while session feedback updates or while
+session help retains those updates for restoration on dismissal.
 
 ### DurationInput
 

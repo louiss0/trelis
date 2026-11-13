@@ -730,6 +730,7 @@ final class TerminalSession {
     Stdout? output,
     TerminalIo? terminal,
     OutputProfile? outputProfile,
+    _CaptureControl? capture,
   }) async {
     if (_closed) throw StateError('Terminal session is closed.');
     if (source != null ||
@@ -814,6 +815,7 @@ final class TerminalSession {
           outputProfile: _outputProfile,
           session: this,
         ),
+        capture: capture,
       );
     } finally {
       _activePrompt = false;
