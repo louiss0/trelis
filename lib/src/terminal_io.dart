@@ -73,7 +73,8 @@ abstract interface class TerminalIoResizeObserver {
 /// Reports both a prompt failure and a failure while restoring its terminal.
 ///
 /// The original operation error remains available to callers instead of being
-/// replaced by a cleanup error.
+/// replaced by a cleanup error. Its diagnostic deliberately does not stringify
+/// either error because application failures can contain sensitive input.
 final class TerminalRestorationException implements Exception {
   TerminalRestorationException(this.operationError, this.restorationError);
 
@@ -82,8 +83,24 @@ final class TerminalRestorationException implements Exception {
 
   @override
   String toString() =>
-      'TerminalRestorationException: prompt failed with $operationError; '
-      'terminal restoration also failed with $restorationError';
+      'TerminalRestorationException: prompt operation and terminal restoration failed.';
+}
+
+/// Reports both a scoped-session operation failure and a cleanup failure.
+///
+/// A session may have already acquired a reader, registered live regions, or
+/// entered a temporary screen when its callback fails. Callers retain both
+/// errors for programmatic handling; the diagnostic intentionally omits their
+/// text so a failure does not expose application data or secret drafts.
+final class TerminalSessionCleanupException implements Exception {
+  TerminalSessionCleanupException(this.operationError, this.cleanupError);
+
+  final Object operationError;
+  final Object cleanupError;
+
+  @override
+  String toString() =>
+      'TerminalSessionCleanupException: session operation and cleanup failed.';
 }
 
 /// A native or synthetic terminal acquisition that must be restored.
