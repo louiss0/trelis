@@ -7,7 +7,10 @@
 - **Implementation revision:** `0d0f7ea21677c7a2909b0a54897143d42a6b6a37`. It
   follows `2764317` (moving the slider family into its own library part),
   `f468ca3` (`Slider`), `22fec80` (`RangeSlider`), `89904d9` (`MaskedInput`),
-  `d4ce279` (stage-led help and layout coverage) and `7336353` (README).
+  `d4ce279` (stage-led help and layout coverage) and `7336353` (README). The
+  final verification below was re-run at `0b0ce7a`, whose `lib/` and `test/`
+  content is identical to `0d0f7ea`; only this record's wording changed after
+  that revision.
 - **Branch:** `ticket/backend-26-range-mask-migration`, based on integration
   `9d6ecbe` (`Merge branch 'ticket/backend-17-failure-recovery'`); the
   integration tip was unchanged when the branch was merged before this report.
