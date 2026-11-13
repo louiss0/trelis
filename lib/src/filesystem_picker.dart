@@ -2,10 +2,11 @@ part of 'text_input.dart';
 
 /// Selects an existing file without opening or changing it.
 final class FilePicker {
-  FilePicker(this.label, {this.base})
-    : _picker = _FilesystemPicker(label, base, PathTarget.file);
+  FilePicker(this.label, {this.base, this.colors = ColorThemes.terminalDefault})
+    : _picker = _FilesystemPicker(label, base, PathTarget.file, colors);
   final String label;
   final String? base;
+  final ColorTheme colors;
   final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
@@ -14,21 +15,31 @@ final class FilePicker {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) => _picker.prompt(
     source: source,
     mode: mode,
     userPreference: userPreference,
     applicationPreference: applicationPreference,
     output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
   );
 }
 
 /// Selects an existing directory without opening or changing it.
 final class DirectoryPicker {
-  DirectoryPicker(this.label, {this.base})
-    : _picker = _FilesystemPicker(label, base, PathTarget.directory);
+  DirectoryPicker(
+    this.label, {
+    this.base,
+    this.colors = ColorThemes.terminalDefault,
+  }) : _picker = _FilesystemPicker(label, base, PathTarget.directory, colors);
   final String label;
   final String? base;
+  final ColorTheme colors;
   final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
@@ -37,12 +48,18 @@ final class DirectoryPicker {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) => _picker.prompt(
     source: source,
     mode: mode,
     userPreference: userPreference,
     applicationPreference: applicationPreference,
     output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
   );
 }
 
@@ -67,11 +84,15 @@ final class _PickerEntry {
 }
 
 final class _FilesystemPicker {
-  _FilesystemPicker(this.label, this.base, this.target);
+  _FilesystemPicker(this.label, this.base, this.target, this.colors);
   final String label;
   final String? base;
   final PathTarget target;
+  final ColorTheme colors;
   bool _active = false;
+
+  String get _component =>
+      target == PathTarget.directory ? 'DirectoryPicker' : 'FilePicker';
 
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -79,36 +100,95 @@ final class _FilesystemPicker {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      final input = PathInput(label, base: base, target: target);
+      final input = PathInput(
+        label,
+        base: base,
+        target: target,
+        colors: colors,
+      );
+      Future<PromptResult<String>> run(
+        PromptSource source,
+        PromptMode mode, {
+        OutputProfile? outputProfile,
+        _Keys? keys,
+        TerminalSession? session,
+      }) => _browse(
+        source,
+        mode,
+        input,
+        outputProfile: outputProfile,
+        keys: keys,
+        session: session,
+      );
       if (source is SuppliedAnswer) {
         return await input.prompt(source: source);
+      }
+      if (session != null) {
+        return await session._promptRunner<String>(
+          run,
+          source: source,
+          mode: mode,
+          userPreference: userPreference,
+          applicationPreference: applicationPreference,
+          output: output,
+          terminal: terminal,
+          outputProfile: outputProfile,
+        );
       }
       final selected =
           mode ??
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selected,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<String>(
             selected,
             output ?? stderr,
-            (source, mode, restore) =>
-                _browse(source, mode, input, beforeClose: restore),
+            (source, mode, _) =>
+                run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _browse(source, selected, input);
+      return await run(source, selected, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -118,30 +198,63 @@ final class _FilesystemPicker {
     PromptSource source,
     PromptMode mode,
     PathInput input, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
+    final linear = mode == PromptMode.linear;
+    final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
+    void write(String text, TerminalColor foreground) {
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          out.writeln(
+            _colorText(line, foreground, colors.background, effectiveProfile),
+          );
+        }
+      }
+    }
+
     var current = base ?? Directory.current.path;
     var showHidden = false;
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       while (true) {
-        scripted.output.writeln(
+        write(
           '$label. Current directory: $current. Existing ${target.name} required.',
+          colors.foreground,
         );
-        scripted.output.writeln(
+        write(
           'Open N opens a directory; Choose N chooses an entry${target == PathTarget.directory ? '; Choose selects the current directory' : ''}. Path enters a literal path. Parent, Refresh, Hidden toggle are available.',
+          colors.muted,
         );
-        scripted.output.writeln(
+        write(
           'Hidden entries: ${showHidden ? 'shown' : 'hidden'}. Links require explicit per-open approval. The base is not a sandbox.',
+          colors.warning,
         );
         final entries = <_PickerEntry>[];
         try {
@@ -168,25 +281,40 @@ final class _FilesystemPicker {
             );
           }
           for (var i = 0; i < entries.length; i++) {
-            scripted.output.writeln(
+            write(
               '${i + 1}. ${path.basename(entries[i].path)} [${entries[i].type == FileSystemEntityType.file
                   ? 'file'
                   : entries[i].type == FileSystemEntityType.directory
                   ? 'directory'
                   : 'link'}]',
+              colors.foreground,
             );
           }
         } on FileSystemException catch (error) {
-          scripted.output.writeln(
+          write(
             'Cannot list $current: ${error.message}. Context retained; use Parent, Path or Refresh.',
+            colors.warning,
           );
         }
+        final browseHelp = _browseHelp(
+          component: _component,
+          linear: linear,
+          target: target,
+          current: current,
+          showHidden: showHidden,
+          entries: entries.length,
+        );
         final action = await _edit(
-          keys,
+          inputKeys,
           '',
-          scripted.output,
-          linear: mode == PromptMode.linear,
-          sequential: mode == PromptMode.linear,
+          out,
+          linear: linear,
+          sequential: linear,
+          clearHelpCommand: true,
+          helpText: browseHelp,
+          linearHelpText: browseHelp,
+          outputProfile: effectiveProfile,
+          session: session,
         );
         if (action.action == 'cancel') return Cancelled();
         if (action.action == 'interrupt') return Interrupted();
@@ -209,46 +337,49 @@ final class _FilesystemPicker {
             if (match[1] == 'choose' && target == PathTarget.directory) {
               final result = await _review(
                 scripted,
-                keys,
+                inputKeys,
                 mode,
+                effectiveProfile,
                 input,
                 current,
+                session: session,
               );
               if (result != null) return result;
               continue;
             }
-            scripted.output.writeln('An entry reference is required.');
+            write('An entry reference is required.', colors.warning);
             continue;
           }
           if (reference < 1 || reference > entries.length) {
-            scripted.output.writeln(
-              'Invalid entry reference; listing retained.',
-            );
+            write('Invalid entry reference; listing retained.', colors.warning);
             continue;
           }
           final entry = entries[reference - 1];
           if (!entry.isCurrent) {
-            scripted.output.writeln(
+            write(
               'Entry reference $reference is stale; refreshing instead of targeting a replacement.',
+              colors.warning,
             );
             continue;
           }
           if (match[1] == 'open') {
             final linked = entry.type == FileSystemEntityType.link;
             if (linked && match[3] == null) {
-              scripted.output.writeln(
+              write(
                 'Cannot open linked directory ${entry.path} without explicit opt-in; use open $reference links.',
+                colors.warning,
               );
               continue;
             }
             if (!linked && match[3] != null) {
-              scripted.output.writeln('Link approval only applies to links.');
+              write('Link approval only applies to links.', colors.warning);
               continue;
             }
             if (await FileSystemEntity.type(entry.path) !=
                 FileSystemEntityType.directory) {
-              scripted.output.writeln(
+              write(
                 'Cannot open ${entry.path}: not an accessible directory.',
+                colors.warning,
               );
               continue;
             }
@@ -258,16 +389,18 @@ final class _FilesystemPicker {
               var ancestor = await Directory(current).resolveSymbolicLinks();
               while (true) {
                 if (ancestor == resolved) {
-                  scripted.output.writeln(
+                  write(
                     'Cannot open ${entry.path}: linked-directory cycle to $resolved; current directory retained.',
+                    colors.warning,
                   );
                   break;
                 }
                 final parent = path.dirname(ancestor);
                 if (parent == ancestor) {
                   if (linked) {
-                    scripted.output.writeln(
+                    write(
                       'Linked traversal approved for this open: ${entry.path}.',
+                      colors.accent,
                     );
                   }
                   current = entry.path;
@@ -276,8 +409,9 @@ final class _FilesystemPicker {
                 ancestor = parent;
               }
             } on FileSystemException catch (error) {
-              scripted.output.writeln(
+              write(
                 'Cannot resolve linked directory ${entry.path}: ${error.message}; current directory retained.',
+                colors.warning,
               );
             }
             continue;
@@ -286,23 +420,43 @@ final class _FilesystemPicker {
                   entry.type != FileSystemEntityType.file) ||
               (target == PathTarget.directory &&
                   entry.type != FileSystemEntityType.directory)) {
-            scripted.output.writeln(
+            write(
               'Cannot choose ${entry.path}: target must be a ${target.name}.',
+              colors.warning,
             );
             continue;
           }
-          final result = await _review(scripted, keys, mode, input, entry.path);
+          final result = await _review(
+            scripted,
+            inputKeys,
+            mode,
+            effectiveProfile,
+            input,
+            entry.path,
+            session: session,
+          );
           if (result != null) return result;
           continue;
         }
         if (command == 'path') {
-          scripted.output.writeln('Enter literal path:');
+          write('Enter literal path:', colors.foreground);
+          final pathHelp = _literalPathHelp(
+            component: _component,
+            linear: linear,
+            target: target,
+            current: current,
+          );
           final entry = await _edit(
-            keys,
+            inputKeys,
             '',
-            scripted.output,
-            linear: mode == PromptMode.linear,
-            sequential: mode == PromptMode.linear,
+            out,
+            linear: linear,
+            sequential: linear,
+            clearHelpCommand: true,
+            helpText: pathHelp,
+            linearHelpText: pathHelp,
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (entry.action == 'cancel') return Cancelled();
           if (entry.action == 'interrupt') return Interrupted();
@@ -310,23 +464,25 @@ final class _FilesystemPicker {
           final candidate = input._candidate(entry.value, current);
           final error = await input._error(candidate);
           if (error != null) {
-            scripted.output.writeln('Cannot choose $candidate: $error');
+            write('Cannot choose $candidate: $error', colors.warning);
             continue;
           }
-          final result = await _review(scripted, keys, mode, input, candidate!);
+          final result = await _review(
+            scripted,
+            inputKeys,
+            mode,
+            effectiveProfile,
+            input,
+            candidate!,
+            session: session,
+          );
           if (result != null) return result;
           continue;
         }
-        scripted.output.writeln(
-          'Unknown action; listing and context retained.',
-        );
+        write('Unknown action; listing and context retained.', colors.warning);
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (keys == null) await inputKeys.close();
     }
   }
 
@@ -334,23 +490,66 @@ final class _FilesystemPicker {
     ScriptedInput scripted,
     _Keys keys,
     PromptMode mode,
+    OutputProfile effectiveProfile,
     PathInput input,
-    String candidate,
-  ) async {
+    String candidate, {
+    TerminalSession? session,
+  }) async {
+    final linear = mode == PromptMode.linear;
     final error = await input._error(candidate);
     if (error != null) {
-      scripted.output.writeln('Cannot choose $candidate: $error');
+      final wrapped = StringBuffer();
+      _writeWrappedText(
+        wrapped,
+        DisplayText.from('Cannot choose $candidate: $error').value,
+        _textInputWidth(effectiveProfile),
+      );
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          scripted.output.writeln(
+            _colorText(
+              line,
+              colors.warning,
+              colors.background,
+              effectiveProfile,
+            ),
+          );
+        }
+      }
       return null;
     }
-    scripted.output.writeln(
-      'Choose $candidate. Enter to accept, or type edit to return.',
+    final reviewHelp = _reviewHelp(
+      component: _component,
+      linear: linear,
+      candidate: candidate,
+      target: target,
     );
+    final reviewMessage =
+        'Choose $candidate. Enter to accept, or type edit to return.';
+    final wrapped = StringBuffer();
+    _writeWrappedText(
+      wrapped,
+      DisplayText.from(reviewMessage).value,
+      _textInputWidth(effectiveProfile),
+    );
+    for (final line in wrapped.toString().split('\n')) {
+      if (line.isNotEmpty) {
+        scripted.output.writeln(
+          _colorText(line, colors.accent, colors.background, effectiveProfile),
+        );
+      }
+    }
     final review = await _edit(
       keys,
       '',
       scripted.output,
-      linear: mode == PromptMode.linear,
-      sequential: mode == PromptMode.linear,
+      linear: linear,
+      sequential: linear,
+      clearHelpCommand: true,
+      helpText: reviewHelp,
+      linearHelpText: reviewHelp,
+      outputProfile: effectiveProfile,
+      session: session,
     );
     if (review.action == 'cancel') return Cancelled();
     if (review.action == 'interrupt') return Interrupted();
@@ -358,9 +557,81 @@ final class _FilesystemPicker {
     if (review.value.isNotEmpty) return null;
     final finalError = await input._error(candidate);
     if (finalError == null) return Accepted(candidate);
-    scripted.output.writeln('Cannot choose $candidate: $finalError');
+    final wrappedError = StringBuffer();
+    _writeWrappedText(
+      wrappedError,
+      DisplayText.from('Cannot choose $candidate: $finalError').value,
+      _textInputWidth(effectiveProfile),
+    );
+    for (final line in wrappedError.toString().split('\n')) {
+      if (line.isNotEmpty) {
+        scripted.output.writeln(
+          _colorText(line, colors.warning, colors.background, effectiveProfile),
+        );
+      }
+    }
     return null;
   }
+}
+
+/// Component help for the browse stage, led by the current location and stage.
+///
+/// It names every browser action, keeps displayed entry references distinct
+/// from filesystem identity, and protects the link-approval, no-sandbox and
+/// later-operation caveats that compact guidance can only abbreviate.
+String _browseHelp({
+  required String component,
+  required bool linear,
+  required PathTarget target,
+  required String current,
+  required bool showHidden,
+  required int entries,
+}) {
+  final wanted = switch (target) {
+    PathTarget.file => 'one existing file',
+    PathTarget.directory => 'one existing directory',
+    PathTarget.any => 'one existing target',
+  };
+  final controls = linear
+      ? r'Enter runs the typed action; exact /help and /cancel are commands, and /help is cleared instead of being run. Quote a literal leading backslash with another backslash, and double both leading backslashes of a UNC pair. Identified paste is literal; unframed paste cannot be distinguished from typing. Escape cancels; Ctrl+C interrupts.'
+      : 'Enter runs the typed action. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+  return 'Help: $component browses $current and returns $wanted. The listing shows $entries entries and hidden entries are ${showHidden ? 'shown' : 'hidden'}. Actions: open <n> enters a listed directory; choose <n> chooses a listed entry and shows it for review${target == PathTarget.directory ? '; choose without a number reviews the current directory' : ''}; path enters one literal native path; parent moves to the containing directory; refresh relists and replaces the displayed references; hidden toggles hidden entries. An entry number identifies the displayed listing rather than a filesystem identity, so an entry replaced after it was listed is reported as stale and the listing is refreshed instead of targeting the replacement. Links are never followed implicitly: open <n> links approves exactly that one open, a linked cycle or an unresolvable link keeps the current directory, and link approval has no effect on a non-link entry. The base is not a sandbox, so parent and path can leave it. Nothing is created, opened for reading or changed, and the selection is re-inspected at review, so later filesystem operations can still fail. $controls';
+}
+
+/// Component help for the literal-path stage of a browser.
+String _literalPathHelp({
+  required String component,
+  required bool linear,
+  required PathTarget target,
+  required String current,
+}) {
+  final wanted = switch (target) {
+    PathTarget.file => 'The target must be an existing file.',
+    PathTarget.directory => 'The target must be an existing directory.',
+    PathTarget.any => 'Any existing target type is accepted.',
+  };
+  final controls = linear
+      ? r'Enter submits the typed path for review; an empty line submits an empty path and is rejected. Exact /help and /cancel are commands, and /help is cleared instead of becoming the path; enter \/help for that literal path, quote a literal leading backslash with another backslash, and double both leading backslashes of a UNC pair. Identified paste is literal. Escape cancels; Ctrl+C interrupts.'
+      : 'Enter submits the typed path for review. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+  return 'Help: $component literal path. The path is literal and relative to $current, with no shell expansion, no quote stripping, no link canonicalization and no working-directory change; .. segments are retained and a drive-relative Windows path such as C:name is rejected. $wanted A path with an unusable name, an uninspectable target, or a parent that is not a directory is rejected rather than assumed absent. Review shows the resolved candidate before it is returned, this browser is not a sandbox, and a returned path is a snapshot: later filesystem operations can still fail. $controls';
+}
+
+/// Component help for the browser review stage.
+String _reviewHelp({
+  required String component,
+  required bool linear,
+  required String candidate,
+  required PathTarget target,
+}) {
+  final wanted = switch (target) {
+    PathTarget.file => 'that file',
+    PathTarget.directory => 'that directory',
+    PathTarget.any => 'that target',
+  };
+  final controls = linear
+      ? r'Enter accepts the reviewed candidate; type edit and press Enter to return to the listing without accepting. Exact /help and /cancel are commands, and /help is cleared instead of being accepted. Escape cancels; Ctrl+C interrupts.'
+      : 'Enter accepts the reviewed candidate; type edit to return to the listing without accepting. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+  return 'Help: $component review. The candidate ${DisplayText.from(candidate).value} was re-inspected at review and is returned only when it is still $wanted. The listing is retained, so typing edit returns to the same directory context. Nothing was created, opened for reading or changed, and the result is a snapshot rather than permission, so later filesystem operations can still fail. $controls';
 }
 
 int? _windowsAttributes(String candidate) {
