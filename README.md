@@ -225,6 +225,17 @@ the draft. EOF never submits. Framed paste is limited to 4096 UTF-16 code units
 and oversized insertions are rejected. Native tests cover the Windows console
 protocol, not actual clipboard or NVDA qualification.
 
+`Multiline.prompt` accepts `terminal`, `outputProfile` and `session` the same
+way as the shared editor, so a rich synthetic source declares cursor support and
+positive geometry through its profile. The focused line is repainted inside the
+declared width with `<`/`>` overflow markers around the caret, idle resize
+notifications reflow that line without editing the draft, and component help
+(`Ctrl+T` in rich mode, `/help` in linear mode) names the add-newline, finish,
+insert-tab, review, limit and validation behaviour instead of generic
+submit wording. An attached prompt inherits its `TerminalSession` configuration
+and can stay active while session feedback repaints; session help owns painting
+and restores the latest draft, caret and feedback on dismissal.
+
 ### Autocomplete
 
 `Autocomplete(label, suggestions: (query) => ...)` accepts independently valid
@@ -256,6 +267,13 @@ leftover draft must be added or discarded first. Linear mode adds the entered
 text, and `/list`, `/edit`, `/remove` and `/done` review, edit, remove and finish.
 Empty, too long, punctuated, misplaced combining-mark, duplicate and
 custom-validator failures each keep the draft and state the reason.
+
+`TagInput.prompt` accepts `terminal`, `outputProfile` and `session` on the same
+terms as `Multiline`, and its help names the add, focus, edit, remove, discard
+and finish actions plus the canonical style, limit and validator. The unaccepted
+draft remains visibly separate from the accepted tags across repaints, session
+feedback updates and idle resize, and `Finish` still submits only the accepted
+collection.
 
 ## MultiSelect
 
