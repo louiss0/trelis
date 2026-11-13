@@ -4961,14 +4961,22 @@ final class TimeInput {
           : PromptMode.linear;
     }
     final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
+    final resizeObserver = mode == PromptMode.rich
+        ? scripted.resizeObserver
+        : null;
     var value = initialValue ?? '';
-    out.writeln(
+    _writeWrappedText(
+      out,
       '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
+      width,
     );
-    out.writeln(
+    _writeWrappedText(
+      out,
       mode == PromptMode.linear
           ? 'Enter a time of day, not a date or timezone. /help describes the format; /cancel cancels.'
           : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      width,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -4983,6 +4991,7 @@ final class TimeInput {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            resizeObserver: resizeObserver,
             session: session,
           );
           if (edit.action == 'cancel') return Cancelled();
@@ -4991,15 +5000,24 @@ final class TimeInput {
           value = edit.value;
           final parsed = _parse(value);
           if (parsed != null) {
-            out.writeln(
+            _writeWrappedText(
+              out,
               'Review: $value is a time of day without date or timezone.',
+              width,
             );
             return Accepted(parsed);
           }
-          out.writeln('$_error Correct the retained draft.');
+          _writeWrappedText(out, '$_error Correct the retained draft.', width);
         }
       }
-      return await _runRich(inputKeys, out, value, effectiveProfile, session);
+      return await _runRich(
+        inputKeys,
+        out,
+        value,
+        effectiveProfile,
+        session,
+        resizeObserver,
+      );
     } finally {
       if (keys == null) await inputKeys.close();
     }
@@ -5011,7 +5029,9 @@ final class TimeInput {
     String draft,
     OutputProfile profile,
     TerminalSession? session,
+    TerminalResizeObserver? resizeObserver,
   ) async {
+    final width = _textInputWidth(profile);
     final labels = <String>['Hour', 'Minute', if (seconds) 'Second'];
     final clock = draft.split(' ').first.split(':');
     final fields = List<String>.generate(
@@ -5034,11 +5054,15 @@ final class TimeInput {
     }
 
     void show() {
-      out.writeln(
+      _writeWrappedText(
+        out,
         '$label. Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
+        width,
       );
-      out.writeln(
+      _writeWrappedText(
+        out,
         'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+        width,
       );
     }
 
@@ -5057,11 +5081,16 @@ final class TimeInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(linear: false),
           outputProfile: profile,
+          resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
             if (key.startsWith('\x1b[200~') &&
                 (key.contains(':') || key.contains(' '))) {
-              out.writeln('Paste only one time field at a time.');
+              _writeWrappedText(
+                out,
+                'Paste only one time field at a time.',
+                width,
+              );
               return 'handled';
             }
             if (key == '\t') return 'next';
@@ -5075,6 +5104,7 @@ final class TimeInput {
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
         if (edit.action == 'eof') return InputEnded();
+        _finishFieldLine(out, edit.action);
         if (isPeriod) {
           period = edit.value;
         } else {
@@ -5088,7 +5118,11 @@ final class TimeInput {
           } else {
             final currentValue = int.tryParse(edit.value);
             if (currentValue == null) {
-              out.writeln('Enter a complete numeric field before adjustment.');
+              _writeWrappedText(
+                out,
+                'Enter a complete numeric field before adjustment.',
+                width,
+              );
             } else {
               final min = focus == 0 && twelveHour ? 1 : 0;
               final max = focus == 0 ? (twelveHour ? 12 : 23) : 59;
@@ -5110,7 +5144,11 @@ final class TimeInput {
         continue;
       }
       if (focus == segmentCount) {
-        out.writeln('Edit formatted time; Enter finishes editing.');
+        _writeWrappedText(
+          out,
+          'Edit formatted time; Enter finishes editing.',
+          width,
+        );
         final edit = await _edit(
           keys,
           current(),
@@ -5118,6 +5156,7 @@ final class TimeInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(linear: false),
           outputProfile: profile,
+          resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
             if (key == '\t') return 'next';
@@ -5130,6 +5169,7 @@ final class TimeInput {
           show();
           continue;
         }
+        _finishFieldLine(out, edit.action);
         if (edit.action == 'next') {
           focus++;
           show();
@@ -5148,7 +5188,9 @@ final class TimeInput {
           fields[index] = index < editedClock.length ? editedClock[index] : '';
         }
         period = twelveHour && parts.length > 1 ? parts.skip(1).join(' ') : '';
-        if (_parse(current()) == null) out.writeln(_error);
+        if (_parse(current()) == null) {
+          _writeWrappedText(out, _error, width);
+        }
         show();
         continue;
       }
@@ -5159,6 +5201,7 @@ final class TimeInput {
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
         helpText: _help(linear: false),
         outputProfile: profile,
+        resizeObserver: resizeObserver,
         session: session,
         intercept: (key, text) {
           if (key == '\t') return 'next';
@@ -5170,6 +5213,9 @@ final class TimeInput {
       if (submit.action == 'cancel') return Cancelled();
       if (submit.action == 'interrupt') return Interrupted();
       if (submit.action == 'eof') return InputEnded();
+      // Every `submit` here comes from the intercept above, which returns before
+      // `_edit` terminates the editable line it displayed.
+      out.writeln();
       if (submit.action == 'next') {
         focus = 0;
         show();
@@ -5183,12 +5229,14 @@ final class TimeInput {
       if (submit.action == 'submit') {
         final parsed = _parse(current());
         if (parsed != null) {
-          out.writeln(
+          _writeWrappedText(
+            out,
             'Review: ${current()} is a time of day without date or timezone.',
+            width,
           );
           return Accepted(parsed);
         }
-        out.writeln(_error);
+        _writeWrappedText(out, _error, width);
         show();
       }
     }

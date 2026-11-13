@@ -8,6 +8,24 @@ final _richProfile = OutputProfile(
   geometry: OutputGeometry.fixed(columns: 40, rows: 8),
 );
 
+final _narrowProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 30, rows: 8),
+);
+
+/// Renders the emitted transcript as physical terminal lines: a carriage
+/// return followed by an erase-line sequence leaves only the rewritten tail of
+/// that line, so a repainted editable line is measured once.
+Iterable<String> _visibleLines(String text) => text
+    .split('\n')
+    .map(
+      (line) => line
+          .replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), '')
+          .split('\r')
+          .last,
+    )
+    .where((line) => line.isNotEmpty);
+
 void main() {
   test(
     'time keeps incomplete field drafts local before explicit review submit',
@@ -71,6 +89,160 @@ void main() {
     },
   );
 
+  test('narrow declared width wraps date guidance without losing it', () async {
+    final output = StringBuffer();
+
+    final result = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('29\t2\t2024\t\r\t\r'),
+            output,
+            outputProfile: _narrowProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+
+    expect((result as Accepted<CivilDate>).value.day, 29);
+    final lines = _visibleLines(output.toString()).toList();
+    for (final line in lines) {
+      expect(
+        line.length,
+        lessThanOrEqualTo(30),
+        reason: 'line exceeds the declared width: "$line"',
+      );
+    }
+    final guidance = lines.join();
+    expect(guidance, contains('CE 0001-9999'));
+    expect(guidance, contains('Arithmetic profile; date only, no timezone.'));
+    // Guidance never overwrites the field the user just left.
+    expect(
+      lines.where(
+        (line) => line.contains('> 29') && line.contains('Focus: month'),
+      ),
+      isEmpty,
+    );
+  });
+
+  test('narrow time guidance wraps in both interaction modes', () async {
+    for (final mode in [PromptMode.rich, PromptMode.linear]) {
+      final output = StringBuffer();
+
+      final result = await TimeInput('Departure').prompt(
+        source: ScriptedInput(
+          Stream.value(mode == PromptMode.rich ? '12\t34\t\r\t\r' : '12:34\r'),
+          output,
+          outputProfile: _narrowProfile,
+        ),
+        mode: mode,
+      );
+
+      expect(
+        (result as Accepted<({int hour, int minute, int? second})>).value,
+        (hour: 12, minute: 34, second: null),
+      );
+      final lines = _visibleLines(output.toString()).toList();
+      for (final line in lines) {
+        expect(
+          line.length,
+          lessThanOrEqualTo(30),
+          reason: '${mode.name} line exceeds the declared width: "$line"',
+        );
+      }
+      expect(lines.join(), contains('minutes only; 24-hour clock'));
+    }
+  });
+
+  test(
+    'rich time fields repaint at new idle geometry and release the watcher',
+    () async {
+      final keys = StreamController<String>();
+      var watcherCancelled = false;
+      final resized = StreamController<void>.broadcast(
+        onCancel: () => watcherCancelled = true,
+      );
+      final output = StringBuffer();
+      final observer = _ResizeObserver(
+        resized.stream,
+        () => (columns: 18, rows: 6),
+      );
+
+      final pending = TimeInput('Departure').prompt(
+        source: ScriptedInput(
+          keys.stream,
+          output,
+          outputProfile: _richProfile,
+          resizeObserver: observer,
+        ),
+        mode: PromptMode.rich,
+      );
+      await pumpEventQueue();
+      keys.add('12');
+      await pumpEventQueue();
+      final beforeResize = output.length;
+
+      resized.add(null);
+      await pumpEventQueue();
+
+      // A resize is a repaint only: the hour draft stays in the field and the
+      // editable line is redrawn at the observed geometry.
+      expect(output.length, greaterThan(beforeResize));
+      expect(_visibleLines(output.toString()).last, contains('12'));
+
+      keys.add('\t34\t\r\t\r');
+      expect(
+        (await pending as Accepted<({int hour, int minute, int? second})>)
+            .value,
+        (hour: 12, minute: 34, second: null),
+      );
+      await keys.close();
+      await resized.close();
+      expect(watcherCancelled, isTrue);
+    },
+  );
+
+  test(
+    'idle resize in the date review stage repaints without accepting the draft',
+    () async {
+      final keys = StreamController<String>();
+      final resized = StreamController<void>.broadcast();
+      final output = StringBuffer();
+      final observer = _ResizeObserver(
+        resized.stream,
+        () => (columns: 18, rows: 6),
+      );
+
+      final pending = DateInput('Date', order: DateFieldOrder.dayMonthYear)
+          .prompt(
+            source: ScriptedInput(
+              keys.stream,
+              output,
+              outputProfile: _richProfile,
+              resizeObserver: observer,
+            ),
+            mode: PromptMode.rich,
+          );
+      await pumpEventQueue();
+      keys.add('29\t2\t2024\t\r');
+      await pumpEventQueue();
+      final beforeResize = output.length;
+
+      resized.add(null);
+      await pumpEventQueue();
+
+      var completed = false;
+      unawaited(pending.then((_) => completed = true));
+
+      expect(output.length, greaterThan(beforeResize));
+      await pumpEventQueue();
+      expect(completed, isFalse, reason: 'a repaint must not accept the draft');
+
+      keys.add('\t\r');
+      expect((await pending as Accepted<CivilDate>).value.day, 29);
+      await keys.close();
+      await resized.close();
+    },
+  );
+
   test(
     'date and time provide field-specific help in rich and linear modes',
     () async {
@@ -101,4 +273,18 @@ void main() {
       );
     },
   );
+}
+
+final class _ResizeObserver implements TerminalResizeObserver {
+  _ResizeObserver(this.notifications, this._dimensions);
+
+  @override
+  final Stream<void> notifications;
+  final ({int columns, int rows})? Function() _dimensions;
+
+  @override
+  ({int columns, int rows})? readDimensions() => _dimensions();
+
+  @override
+  Duration get fallbackInterval => const Duration(days: 1);
 }
