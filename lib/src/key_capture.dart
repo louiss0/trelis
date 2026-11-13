@@ -43,46 +43,24 @@ final class Keypress {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      if (source is SuppliedAnswer) {
-        if (requireObservation) {
-          return Unavailable(
-            'A declared gesture does not satisfy the observation requirement.',
-          );
-        }
-        final parts = source.value.split('+');
-        final modifiers = <KeyModifier>{};
-        for (final part in parts.take(parts.length - 1)) {
-          final modifier = switch (part) {
-            'Ctrl' => KeyModifier.control,
-            'Alt' => KeyModifier.alt,
-            'Shift' => KeyModifier.shift,
-            'Meta' => KeyModifier.meta,
-            _ => null,
-          };
-          if (modifier == null || !modifiers.add(modifier)) {
-            return Unavailable('Invalid logical gesture declaration.');
-          }
-        }
-        final key = parts.last;
-        if (!RegExp(
-          r'^(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Enter|Tab|Escape|Space|Backspace|Delete|Insert|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$',
-        ).hasMatch(key)) {
-          return Unavailable('Invalid logical gesture declaration.');
-        }
-        return Accepted(
-          KeyGesture._(key, modifiers, KeyGestureProvenance.declared),
-        );
-      }
       return await _singleInteractive(
         label,
         requireObservation,
         source,
-        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
-        output,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+        session: session,
       );
     } finally {
       _active = false;
@@ -105,30 +83,24 @@ final class KeyChordInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      if (source is SuppliedAnswer) {
-        final gestures = <KeyGesture>[];
-        for (final declaration in source.value.split(',')) {
-          final result = await Keypress(
-            label,
-            requireObservation: requireObservation,
-          ).prompt(source: SuppliedAnswer(declaration));
-          if (result is Unavailable<KeyGesture>) {
-            return Unavailable(result.reason);
-          }
-          gestures.add((result as Accepted<KeyGesture>).value);
-        }
-        return Accepted(List.unmodifiable(gestures));
-      }
       return await _sequenceInteractive(
         label,
         requireObservation,
         source,
-        mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic,
-        output,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+        session: session,
         single: false,
       );
     } finally {
@@ -137,19 +109,61 @@ final class KeyChordInput {
   }
 }
 
+Future<PromptResult<KeyGesture>> _declaredGesture(
+  String declaration, {
+  required bool requireObservation,
+}) async {
+  if (requireObservation) {
+    return Unavailable(
+      'A declared gesture does not satisfy the observation requirement.',
+    );
+  }
+  final parts = declaration.split('+');
+  final modifiers = <KeyModifier>{};
+  for (final part in parts.take(parts.length - 1)) {
+    final modifier = switch (part) {
+      'Ctrl' => KeyModifier.control,
+      'Alt' => KeyModifier.alt,
+      'Shift' => KeyModifier.shift,
+      'Meta' => KeyModifier.meta,
+      _ => null,
+    };
+    if (modifier == null || !modifiers.add(modifier)) {
+      return Unavailable('Invalid logical gesture declaration.');
+    }
+  }
+  final key = parts.last;
+  if (!RegExp(
+    r'^(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Enter|Tab|Escape|Space|Backspace|Delete|Insert|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$',
+  ).hasMatch(key)) {
+    return Unavailable('Invalid logical gesture declaration.');
+  }
+  return Accepted(KeyGesture._(key, modifiers, KeyGestureProvenance.declared));
+}
+
 Future<PromptResult<KeyGesture>> _singleInteractive(
   String label,
   bool requireObservation,
-  PromptSource? source,
-  PromptMode mode,
+  PromptSource? source, {
+  PromptMode? mode,
+  PromptMode? userPreference,
+  PromptMode? applicationPreference,
   Stdout? output,
-) async {
+  TerminalIo? terminal,
+  OutputProfile? outputProfile,
+  TerminalSession? session,
+}) async {
   final result = await _sequenceInteractive(
     label,
     requireObservation,
     source,
-    mode,
-    output,
+    mode: mode,
+    userPreference: userPreference,
+    applicationPreference: applicationPreference,
+    output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
     single: true,
   );
   return switch (result) {
@@ -164,9 +178,14 @@ Future<PromptResult<KeyGesture>> _singleInteractive(
 Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
   String label,
   bool requireObservation,
-  PromptSource? source,
-  PromptMode mode,
-  Stdout? output, {
+  PromptSource? source, {
+  PromptMode? mode,
+  PromptMode? userPreference,
+  PromptMode? applicationPreference,
+  Stdout? output,
+  TerminalIo? terminal,
+  OutputProfile? outputProfile,
+  TerminalSession? session,
   required bool single,
 }) async {
   final capture = _CaptureControl();
@@ -174,20 +193,43 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
     ScriptedInput input,
     PromptMode selected, {
     void Function()? beforeClose,
+    OutputProfile? invocationProfile,
+    _Keys? sharedKeys,
+    TerminalSession? promptSession,
   }) async {
-    if (selected == PromptMode.rich && !input.supportsRich) {
-      return Unavailable('Rich interaction unavailable.');
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: invocationProfile,
+        source: input.outputProfile,
+        supportsRich: input.supportsRich,
+      ),
+      input._observedGeometry,
+    );
+    if (input._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (selected == PromptMode.rich &&
+        !effectiveProfile.supportsRichInteraction) {
+      return Unavailable(
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
+      );
     }
     if (selected == PromptMode.automatic) {
-      selected = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+      selected = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
-    final keys = _Keys(
-      input.input.transform(utf8.encoder),
-      flushEscapeOnEnd: true,
-    );
+    final keys =
+        sharedKeys ??
+        _Keys(input.input.transform(utf8.encoder), flushEscapeOnEnd: true);
     final gestures = <KeyGesture>[];
     var armed = false;
+    var help = false;
     final out = input.output;
+    final richFocusedAction =
+        '$label: c capture; d declare; r remove last; x clear; Enter submit; Ctrl+T help; Escape cancel.';
+    final linearFocusedAction =
+        '$label: /capture, /declare, /remove, /clear, /done, /help, /cancel.';
     void review() {
       out.writeln(
         'Review: ${gestures.isEmpty ? "empty" : gestures.map((g) => "${g.modifiers.map((m) => m.name).join('+')} ${g.key} (${g.provenance.name})").join(', ')}',
@@ -195,7 +237,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
     }
 
     out.writeln(
-      '$label: ${selected == PromptMode.rich ? "c capture; d declare; r remove last; x clear; Enter submit; Escape cancel." : "/capture, /declare, /remove, /clear, /done, /cancel."}',
+      selected == PromptMode.rich ? richFocusedAction : linearFocusedAction,
     );
     try {
       while (true) {
@@ -206,7 +248,10 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           if (key == null || key == '\x1a') return InputEnded();
           if (key == '\x03') return Interrupted();
           armed = false;
-          final observed = source == null ? _nativeGesture(key) : null;
+          // The native record format is produced by the Windows console
+          // adapter; a scripted source that replays the same record exercises
+          // the observation path without claiming a physical keyboard.
+          final observed = _nativeGesture(key);
           final legacy = _legacyGesture(key);
           if (key == '\x1b') {
             out.writeln('Capture cancelled.');
@@ -238,6 +283,13 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
               '/clear',
               '/done',
             },
+            linearHelpText: _keyCaptureHelp(
+              linear: true,
+              single: single,
+              requireObservation: requireObservation,
+            ),
+            outputProfile: effectiveProfile,
+            session: promptSession,
           );
           if (r.action == 'interrupt') return Interrupted();
           if (r.action == 'cancel') return Cancelled();
@@ -251,7 +303,36 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           final key = await keys.next();
           if (key == null || key == '\x1a') return InputEnded();
           if (key == '\x03') return Interrupted();
-          if (key == '\x1b') return Cancelled();
+          if (key == '\x14') {
+            if (help) continue;
+            help = true;
+            promptSession?._openModalHelp(useAlternateScreen: false);
+            out.writeln(
+              _keyCaptureHelp(
+                linear: false,
+                single: single,
+                requireObservation: requireObservation,
+              ),
+            );
+            continue;
+          }
+          if (key == '\x1b') {
+            if (!help) return Cancelled();
+            help = false;
+            void repaintFocusedAction() => out.writeln(richFocusedAction);
+            final activePrompt = promptSession;
+            if (activePrompt != null) {
+              activePrompt._dismissModalHelp(
+                showTranscriptDismissal: true,
+                repaintPrompt: repaintFocusedAction,
+              );
+            } else {
+              out.writeln('Help dismissed.');
+              repaintFocusedAction();
+            }
+            continue;
+          }
+          if (help) continue;
           action = switch (key) {
             'c' => '/capture',
             'd' => '/declare',
@@ -264,7 +345,11 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
         switch (action) {
           case '/capture':
             armed = true;
-            out.writeln('Capture next gesture; Escape cancels capture.');
+            out.writeln(
+              selected == PromptMode.rich
+                  ? 'Capture next gesture; Escape cancels capture and returns to review. Ctrl+T is a candidate while capture is armed.'
+                  : 'Capture next gesture; Escape cancels capture and returns to review. /help is captured as a gesture rather than opening help.',
+            );
           case '/remove':
             if (gestures.isNotEmpty) gestures.removeLast();
             review();
@@ -281,6 +366,11 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
               out,
               linear: true,
               sequential: true,
+              linearHelpText: _keyCaptureDeclarationHelp(
+                requireObservation: requireObservation,
+              ),
+              outputProfile: effectiveProfile,
+              session: promptSession,
             );
             if (r.action == 'interrupt') return Interrupted();
             if (r.action == 'cancel') {
@@ -288,10 +378,10 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
               continue;
             }
             if (r.action != 'submit') return InputEnded();
-            final result = await Keypress(
-              label,
+            final result = await _declaredGesture(
+              r.value,
               requireObservation: requireObservation,
-            ).prompt(source: SuppliedAnswer(r.value));
+            );
             if (result is Accepted<KeyGesture>) {
               if (single) gestures.clear();
               gestures.add(result.value);
@@ -316,23 +406,104 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       }
     } finally {
       try {
-        beforeClose?.call();
+        if (help) promptSession?._abortModalHelp();
       } finally {
-        await keys.close();
+        try {
+          beforeClose?.call();
+        } finally {
+          if (sharedKeys == null) await keys.close();
+        }
       }
     }
   }
 
-  if (source is ScriptedInput) return run(source, mode);
+  if (session != null) {
+    return session._promptRunner<List<KeyGesture>>(
+      (source, selected, {outputProfile, keys, session}) => run(
+        source as ScriptedInput,
+        selected,
+        invocationProfile: outputProfile,
+        sharedKeys: keys,
+        promptSession: session,
+      ),
+      source: source,
+      mode: mode,
+      userPreference: userPreference,
+      applicationPreference: applicationPreference,
+      output: output,
+      terminal: terminal,
+      outputProfile: outputProfile,
+      capture: capture,
+    );
+  }
+
+  if (source != null && terminal != null) {
+    throw ArgumentError('Specify either source or terminal, not both.');
+  }
+  if (output != null && terminal != null) {
+    throw ArgumentError('Specify either output or terminal, not both.');
+  }
+  if (source is SuppliedAnswer) {
+    if (single) {
+      return switch (await _declaredGesture(
+        source.value,
+        requireObservation: requireObservation,
+      )) {
+        Accepted<KeyGesture>(:final value) => Accepted([value]),
+        Unavailable<KeyGesture>(:final reason) => Unavailable(reason),
+        _ => InputEnded<List<KeyGesture>>(),
+      };
+    }
+    final gestures = <KeyGesture>[];
+    for (final declaration in source.value.split(',')) {
+      final result = await _declaredGesture(
+        declaration,
+        requireObservation: requireObservation,
+      );
+      if (result is Unavailable<KeyGesture>) {
+        return Unavailable(result.reason);
+      }
+      gestures.add((result as Accepted<KeyGesture>).value);
+    }
+    return Accepted(List.unmodifiable(gestures));
+  }
+  final selected =
+      mode ?? userPreference ?? applicationPreference ?? PromptMode.automatic;
+  if (source is ScriptedInput) {
+    return run(source, selected, invocationProfile: outputProfile);
+  }
   if (_terminalActive) {
     throw StateError('A terminal session is already active.');
   }
   _terminalActive = true;
   try {
+    if (terminal != null) {
+      final lease = terminal.acquire();
+      return await _restoreAfter(
+        () => run(
+          ScriptedInput(
+            terminal.input,
+            terminal.output,
+            supportsRich: terminal.supportsRich,
+            outputProfile: _terminalOutputProfile(terminal),
+            hardColorDisabled:
+                terminal.environment['NO_COLOR']?.isNotEmpty == true,
+          ),
+          selected,
+          invocationProfile: outputProfile,
+        ),
+        lease.restore,
+      );
+    }
     return await _terminal<List<KeyGesture>>(
-      mode,
+      selected,
       output ?? stderr,
-      (input, selected, restore) => run(input, selected, beforeClose: restore),
+      (input, selected, restore) => run(
+        input,
+        selected,
+        beforeClose: restore,
+        invocationProfile: outputProfile,
+      ),
       capture: capture,
     );
   } finally {
@@ -400,3 +571,41 @@ void _validateKeyLabel(String label) {
     throw ArgumentError.value(label, 'label');
   }
 }
+
+String _keyCaptureScope(bool single) => single
+    ? 'Keypress captures one logical gesture'
+    : 'KeyChordInput captures an ordered, non-empty sequence of gestures';
+
+String _keyCaptureObservation(bool requireObservation) => requireObservation
+    ? 'Observation is required: declared and ambiguous gestures cannot be accepted.'
+    : 'Observation is not required: declared and ambiguous gestures are accepted with their provenance retained.';
+
+String _keyCaptureProvenance() =>
+    'Legacy byte-stream captures report ambiguous provenance, and an empty modifier set does not prove that no modifier was held; native console observations report virtual-key letters and modifier state.';
+
+String _keyCaptureReserved() =>
+    'Escape cancels and Ctrl+C interrupts, so neither reserved gesture can be captured live.';
+
+String _keyCaptureHelp({
+  required bool linear,
+  required bool single,
+  required bool requireObservation,
+}) {
+  final scope = _keyCaptureScope(single);
+  final observation = _keyCaptureObservation(requireObservation);
+  final reserved = _keyCaptureReserved();
+  final provenance = _keyCaptureProvenance();
+  if (!linear) {
+    final reviewEdits = single
+        ? 'A new capture or declaration replaces the reviewed gesture; r and x remove it.'
+        : 'Each capture appends to the reviewed sequence; r removes the last gesture and x clears the sequence.';
+    return 'Help: $scope. c arms exactly one raw capture; the captured gesture is reviewed and never submitted automatically. Escape backs out of capture and returns to the reviewed gestures. While capture is armed every key is a candidate, so Ctrl+T opens this help only before or after a capture. $reviewEdits d declares one logical gesture such as Ctrl+Shift+A from the modifiers Ctrl, Alt, Shift and Meta; declarations are unverified and do not prove delivery or freedom from conflicts. $reserved $provenance $observation Enter submits the reviewed state.';
+  }
+  final reviewEdits = single
+      ? '/remove clears the reviewed gesture.'
+      : '/remove deletes the last reviewed gesture; /clear deletes the sequence.';
+  return 'Help: $scope. /capture arms exactly one raw capture and always returns to review; typing Escape during capture leaves capture and keeps the reviewed gestures. /declare enters one logical gesture such as Ctrl+Shift+A and Escape cancels declaration entry; declarations are unverified and do not prove delivery or freedom from conflicts. $reviewEdits /done submits the reviewed state; /cancel cancels; Ctrl+C interrupts. Exact /capture, /declare, /remove, /clear, /done, /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal and is not captured as a gesture. $reserved $provenance $observation';
+}
+
+String _keyCaptureDeclarationHelp({required bool requireObservation}) =>
+    'Help: A declaration joins the modifiers Ctrl, Alt, Shift and Meta, each at most once, with + to one key: an ASCII letter or digit, F1 to F12, Enter, Tab, Escape, Space, Backspace, Delete, Insert, Home, End, PageUp, PageDown, ArrowUp, ArrowDown, ArrowLeft or ArrowRight. Enter submits the declaration for review; Escape cancels declaration entry and keeps the reviewed gestures; Ctrl+C interrupts. Declarations are unverified and do not prove delivery or freedom from conflicts. ${_keyCaptureObservation(requireObservation)}';

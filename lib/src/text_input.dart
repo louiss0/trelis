@@ -729,6 +729,7 @@ final class TerminalSession {
     Stdout? output,
     TerminalIo? terminal,
     OutputProfile? outputProfile,
+    _CaptureControl? capture,
   }) async {
     if (_closed) throw StateError('Terminal session is closed.');
     if (source != null ||
@@ -813,6 +814,7 @@ final class TerminalSession {
           outputProfile: _outputProfile,
           session: this,
         ),
+        capture: capture,
       );
     } finally {
       _activePrompt = false;
@@ -1652,20 +1654,29 @@ Future<({String action, String value})> _edit(
           text = answer.join();
         } else if (linear && !provenance.contains(true)) {
           if (text == '/help') {
-            if (extraCommands.isNotEmpty) {
+            // A component that supplies stage-specific linear help keeps it even
+            // when the flow also advertises exact commands; otherwise a
+            // command-aware flow only lists its commands.
+            if (linearHelpText != null) {
+              _writeWrappedText(
+                output,
+                linearHelpText,
+                outputProfile == null ? null : _textInputWidth(outputProfile),
+              );
+              transcript?._event(TextInputPresentationEventKind.help);
+            } else if (extraCommands.isNotEmpty) {
               output.writeln(
                 'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
               );
             } else {
               _writeWrappedText(
                 output,
-                linearHelpText ??
-                    _textInputHelp(
-                      linear: true,
-                      required: required,
-                      maxLength: maxLength,
-                      supplementaryHelp: supplementaryHelp,
-                    ),
+                _textInputHelp(
+                  linear: true,
+                  required: required,
+                  maxLength: maxLength,
+                  supplementaryHelp: supplementaryHelp,
+                ),
                 outputProfile == null ? null : _textInputWidth(outputProfile),
               );
               transcript?._event(TextInputPresentationEventKind.help);
