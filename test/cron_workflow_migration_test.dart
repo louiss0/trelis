@@ -256,6 +256,24 @@ void main() {
     expect(text, contains('/cancel'));
     expect(text, contains('Identified paste is literal'));
     expect(text, contains('not scheduler execution'));
+
+    // A stray Ctrl+T in linear mode must not show rich-worded guidance.
+    final ctrlOutput = StringBuffer();
+    final interrupted =
+        await CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          preview: _config(),
+        ).prompt(
+          source: ScriptedInput(Stream.value('\x14\x03'), ctrlOutput),
+          mode: PromptMode.linear,
+        );
+    expect(interrupted, isA<Interrupted<CronExpression>>());
+    expect(
+      _unwrapped(ctrlOutput.toString()),
+      contains('Exact /help and /cancel are commands'),
+    );
+    expect(ctrlOutput.toString(), isNot(contains('Tab or Shift-Tab')));
   });
 
   test('cron rich review help names the focused action', () async {
