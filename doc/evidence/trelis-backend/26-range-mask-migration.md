@@ -9,8 +9,8 @@
   `f468ca3` (`Slider`), `22fec80` (`RangeSlider`), `89904d9` (`MaskedInput`),
   `d4ce279` (stage-led help and layout coverage) and `7336353` (README). The
   final verification below was re-run at `0b0ce7a`, whose `lib/` and `test/`
-  content is identical to `0d0f7ea`; only this record's wording changed after
-  that revision.
+  content is identical to `0d0f7ea`; every later commit in this branch changes
+  only evidence wording.
 - **Branch:** `ticket/backend-26-range-mask-migration`, based on integration
   `9d6ecbe` (`Merge branch 'ticket/backend-17-failure-recovery'`); the
   integration tip was unchanged when the branch was merged before this report.
