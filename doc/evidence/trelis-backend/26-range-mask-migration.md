@@ -89,7 +89,8 @@ Implementation notes:
   and `session`; an attached prompt goes through `TerminalSession._promptRunner`
   and inherits session input, output, mode and profile.
 - All three resolve `OutputProfile.resolve(invocation:, source:, supportsRich:)`
-  and `_constrainToObservedGeometry`, apply `NO_COLOR`, refuse an explicitly
+  and `_constrainToObservedGeometry`, apply `NO_COLOR` through that resolved
+  profile (no owned colour spans are emitted yet), refuse an explicitly
   requested rich mode that the effective profile cannot support, and select rich
   only for `automatic` when the profile permits rich interaction.
 - `Slider` and `RangeSlider` moved into `lib/src/range_input.dart`, a new part
