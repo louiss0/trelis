@@ -4,12 +4,12 @@
 
 ## Source and environment
 
-- **Implementation revision:** `43e0592`. It follows `1dea842` (profile
+- **Implementation revision:** `43e0592`, reached through `1dea842` (profile
   resolution and shared sessions), `3cac7dc` (stage-led help and wrapped
-  guidance), `b427110` (background updates, resize, outcomes), `dd9511a`
-  (README) and `43e0592` (mode-consistent help wording); the evidence record
-  itself is the commit that contains this file. Every command in the table
-  below was re-run at `43e0592`.
+  guidance), `b427110` (background updates, resize and outcomes) and
+  `dd9511a` (README). Every command in the table below was run at `43e0592`
+  and repeated at the branch tip, whose `lib/` and `test/` content is
+  identical; later commits change only this record.
 - **Branch:** `ticket/backend-28-cron-workflow-migration`, based on integration
   `9d6ecbe` (`Merge branch 'ticket/backend-17-failure-recovery'`). The
   integration tip was merged into this branch before this report was written.
