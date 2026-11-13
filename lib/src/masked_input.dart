@@ -51,6 +51,57 @@ final class MaskedValue {
 
 final class _MaskWorkLimit implements Exception {}
 
+/// The interaction stage that requested component help from [MaskedInput].
+///
+/// Help leads with the stage so slot editing, submission, interpretation and
+/// template choice do not share one undifferentiated generic editor page.
+enum _MaskHelpStage { slot, submit, interpretation, template, review }
+
+/// The display cells of one mask fragment using the shared measurement policy.
+int _maskCells(String text) =>
+    TextDisplayMap(text).entries
+        .fold(0, (total, entry) => total + entry.cellWidth);
+
+/// Wraps transcript notices so each one stays inside the declared width.
+///
+/// Inline editor repaints use [write] and are unaffected: only whole notices
+/// start a new line, so wrapping them cannot overwrite an editable line.
+final class _WrappedNotices implements StringSink {
+  _WrappedNotices(this._output, this._width);
+
+  final StringSink _output;
+  final int? Function() _width;
+
+  @override
+  void write(Object? object) => _output.write(object);
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      _output.writeAll(objects, separator);
+
+  @override
+  void writeCharCode(int charCode) => _output.writeCharCode(charCode);
+
+  @override
+  void writeln([Object? object = '']) {
+    final width = _width();
+    if (width == null) {
+      _output.writeln(object);
+      return;
+    }
+    _writeWrappedText(_output, '$object', width);
+  }
+}
+
+/// One mutable effective profile for a single prompt run.
+///
+/// An idle resize replaces the geometry while every helper keeps reading the
+/// same holder, so notices, layout and nested editors share one width policy.
+final class _ProfileBox {
+  _ProfileBox(this.value);
+  OutputProfile value;
+}
+
 final class MaskedInput {
   MaskedInput(
     this.label, {
@@ -104,7 +155,26 @@ final class MaskedInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      try {
+        return await session._promptRunner<MaskedValue>(
+          _run,
+          source: source,
+          mode: mode,
+          userPreference: userPreference,
+          applicationPreference: applicationPreference,
+          output: output,
+          terminal: terminal,
+          outputProfile: outputProfile,
+        );
+      } on _MaskWorkLimit {
+        return Unavailable('Mask decoding work limit exceeded.');
+      }
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
@@ -113,16 +183,44 @@ final class MaskedInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
-      if (source != null) return await _run(source, selected);
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
+      if (source != null) {
+        return await _run(source, selected, outputProfile: outputProfile);
+      }
       if (_terminalActive) {
         throw StateError('A terminal session is already active.');
       }
       _terminalActive = true;
       try {
+        if (terminal != null) {
+          final lease = terminal.acquire();
+          return await _restoreAfter(
+            () => _run(
+              ScriptedInput(
+                terminal.input,
+                terminal.output,
+                supportsRich: terminal.supportsRich,
+                outputProfile: _terminalOutputProfile(terminal),
+                hardColorDisabled:
+                    terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                resizeObserver: _terminalResizeObserver(terminal),
+              ),
+              selected,
+              outputProfile: outputProfile,
+            ),
+            lease.restore,
+          );
+        }
         return await _terminal<MaskedValue>(
           selected,
           output ?? stderr,
-          (source, mode, restore) => _run(source, mode, beforeClose: restore),
+          (nativeSource, nativeMode, _) =>
+              _run(nativeSource, nativeMode, outputProfile: outputProfile),
         );
       } finally {
         _terminalActive = false;
@@ -137,24 +235,56 @@ final class MaskedInput {
   Future<PromptResult<MaskedValue>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
-    if (source is ScriptedInput) {
-      if (mode == PromptMode.rich && !source.supportsRich) {
-        return Unavailable(
-          'Rich interaction unavailable; use linear or automatic mode.',
-        );
-      }
-      if (mode == PromptMode.automatic) {
-        mode = source.supportsRich ? PromptMode.rich : PromptMode.linear;
-      }
-      return _interactive(source, mode, beforeClose);
+    if (source is SuppliedAnswer) {
+      final matches = _decode(source.value);
+      return matches.length == 1
+          ? Accepted(matches.single)
+          : Unavailable('Invalid or ambiguous mask.');
     }
-    source as SuppliedAnswer;
-    final matches = _decode(source.value);
-    return matches.length == 1
-        ? Accepted(matches.single)
-        : Unavailable('Invalid or ambiguous mask.');
+    final scripted = source as ScriptedInput;
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
+      return Unavailable(
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
+      );
+    }
+    if (mode == PromptMode.automatic) {
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
+    }
+    final profileBox = _ProfileBox(effectiveProfile);
+    final out = _WrappedNotices(
+      scripted.output,
+      () => _textInputWidth(profileBox.value),
+    );
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    try {
+      return await _interactive(
+        scripted,
+        mode,
+        out,
+        inputKeys,
+        profileBox,
+        session,
+      );
+    } finally {
+      if (keys == null) await inputKeys.close();
+    }
   }
 
   String _slotDescriptions(MaskedValue value) => value.slots.indexed
@@ -236,105 +366,117 @@ final class MaskedInput {
   Future<PromptResult<MaskedValue>> _interactive(
     ScriptedInput source,
     PromptMode mode,
-    void Function()? beforeClose,
+    StringSink out,
+    _Keys keys,
+    _ProfileBox profileBox,
+    TerminalSession? session,
   ) async {
     if (templates.length == 1) {
-      if (mode == PromptMode.rich) return _richFixed(source, beforeClose);
-      return _linearFixed(source, beforeClose);
+      if (mode == PromptMode.rich) {
+        return _richFixed(source, out, keys, profileBox, session);
+      }
+      return _linearFixed(source, out, keys, profileBox, session);
     }
-    if (mode == PromptMode.linear) return _linearAdaptive(source, beforeClose);
-    final keys = _Keys(source.input.transform(utf8.encoder));
-    final out = source.output;
+    if (mode == PromptMode.linear) {
+      return _linearAdaptive(source, out, keys, profileBox, session);
+    }
     var draft = initialValue?.formatted ?? '';
     out.writeln(
-      '$label: Enter raw or formatted value. Escape cancels; Ctrl+C interrupts.',
+      '$label. Enter raw or formatted value. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
     );
-    try {
-      while (true) {
-        final edit = await _edit(
-          keys,
-          draft,
-          out,
-          linear: mode == PromptMode.linear,
-          sequential: mode == PromptMode.linear,
-        );
-        if (edit.action == 'cancel') return Cancelled();
-        if (edit.action == 'interrupt') return Interrupted();
-        if (edit.action != 'submit') return InputEnded();
-        draft = edit.value;
-        late final List<MaskedValue> matches;
-        try {
-          matches = _decode(draft);
-        } on _MaskWorkLimit {
-          out.writeln(
-            'Mask decoding work limit exceeded; draft preserved: $draft',
-          );
-          continue;
-        }
-        if (matches.length == 1) {
-          final result = Accepted(matches.single);
-          out.writeln(
-            'Selected template: ${result.value.template}. Raw: ${result.value.raw}. Formatted: ${result.value.formatted}.',
-          );
-          return await _richFixed(
-            source,
-            null,
-            selectedTemplate: templates.singleWhere(
-              (candidate) => candidate.name == result.value.template,
-            ),
-            initial: result.value,
-            keyInput: keys,
-          );
-        }
-        if (matches.length < 2) {
-          out.writeln('Invalid mask; draft preserved: $draft');
-          continue;
-        }
-        out.writeln('Ambiguous value. Draft preserved: $draft');
-        for (var i = 0; i < matches.length; i++) {
-          out.writeln(
-            '${i + 1}. ${matches[i].template}: ${_slotDescriptions(matches[i])}',
-          );
-        }
-        out.writeln('Choose a template number:');
-        final choice = await _edit(keys, '', out);
-        if (choice.action == 'cancel') return Cancelled();
-        if (choice.action == 'interrupt') return Interrupted();
-        if (choice.action != 'submit') return InputEnded();
-        final index = int.tryParse(choice.value);
-        if (index == null || index < 1 || index > matches.length) {
-          out.writeln('Invalid template number; draft preserved: $draft');
-          continue;
-        }
-        final selected = matches[index - 1];
+    while (true) {
+      final edit = await _edit(
+        keys,
+        draft,
+        out,
+        helpText: _help(linear: false, stage: _MaskHelpStage.interpretation),
+        outputProfile: profileBox.value,
+        session: session,
+        resizeObserver: source.resizeObserver,
+      );
+      if (edit.action == 'cancel') return Cancelled();
+      if (edit.action == 'interrupt') return Interrupted();
+      if (edit.action != 'submit') return InputEnded();
+      draft = edit.value;
+      late final List<MaskedValue> matches;
+      try {
+        matches = _decode(draft);
+      } on _MaskWorkLimit {
         out.writeln(
-          'Selected template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
+          'Mask decoding work limit exceeded; draft preserved: $draft',
+        );
+        continue;
+      }
+      if (matches.length == 1) {
+        final result = Accepted(matches.single);
+        out.writeln(
+          'Selected template: ${result.value.template}. Raw: ${result.value.raw}. Formatted: ${result.value.formatted}.',
         );
         return await _richFixed(
           source,
-          null,
+          out,
+          keys,
+          profileBox,
+          session,
           selectedTemplate: templates.singleWhere(
-            (candidate) => candidate.name == selected.template,
+            (candidate) => candidate.name == result.value.template,
           ),
-          initial: selected,
-          keyInput: keys,
+          initial: result.value,
         );
       }
-    } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
+      if (matches.length < 2) {
+        out.writeln('Invalid mask; draft preserved: $draft');
+        continue;
       }
+      out.writeln('Ambiguous value. Draft preserved: $draft');
+      for (var i = 0; i < matches.length; i++) {
+        out.writeln(
+          '${i + 1}. ${matches[i].template}: ${_slotDescriptions(matches[i])}',
+        );
+      }
+      out.writeln('Choose a template number:');
+      final choice = await _edit(
+        keys,
+        '',
+        out,
+        helpText: _help(linear: false, stage: _MaskHelpStage.template),
+        outputProfile: profileBox.value,
+        session: session,
+        resizeObserver: source.resizeObserver,
+      );
+      if (choice.action == 'cancel') return Cancelled();
+      if (choice.action == 'interrupt') return Interrupted();
+      if (choice.action != 'submit') return InputEnded();
+      final index = int.tryParse(choice.value);
+      if (index == null || index < 1 || index > matches.length) {
+        out.writeln('Invalid template number; draft preserved: $draft');
+        continue;
+      }
+      final selected = matches[index - 1];
+      out.writeln(
+        'Selected template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
+      );
+      return await _richFixed(
+        source,
+        out,
+        keys,
+        profileBox,
+        session,
+        selectedTemplate: templates.singleWhere(
+          (candidate) => candidate.name == selected.template,
+        ),
+        initial: selected,
+      );
     }
   }
 
   Future<PromptResult<MaskedValue>> _linearAdaptive(
     ScriptedInput source,
-    void Function()? beforeClose,
+    StringSink out,
+    _Keys keys,
+    _ProfileBox profileBox,
+    TerminalSession? session,
   ) async {
-    final keys = _Keys(source.input.transform(utf8.encoder));
-    final out = source.output;
     var draft = initialValue?.formatted ?? '';
     var selected = initialValue;
     var matches = <MaskedValue>[];
@@ -354,188 +496,346 @@ final class MaskedInput {
       initial,
       out,
       linear: true,
-      sequential: true,
+      sequential: !profileBox.value.supportsRichInteraction,
       extraCommands: commands,
+      linearHelpText: _help(linear: true, template: _activeTemplate(selected)),
+      helpText: _help(
+        linear: false,
+        stage: _MaskHelpStage.interpretation,
+        template: _activeTemplate(selected),
+      ),
+      outputProfile: profileBox.value,
+      session: session,
     );
-    try {
-      out.writeln(
-        r'/template chooses an ambiguous template; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      );
-      while (true) {
-        final editResult = await edit('', {
-          '/template',
-          '/value',
-          '/edit',
-          '/done',
-          '/review',
-        });
-        if (editResult.action == 'cancel') return Cancelled();
-        if (editResult.action == 'interrupt') return Interrupted();
-        if (editResult.action != 'submit' && editResult.action != 'command') {
-          return InputEnded();
+    out.writeln(
+      r'/template chooses an ambiguous template; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+    );
+    while (true) {
+      final editResult = await edit('', {
+        '/template',
+        '/value',
+        '/edit',
+        '/done',
+        '/review',
+      });
+      if (editResult.action == 'cancel') return Cancelled();
+      if (editResult.action == 'interrupt') return Interrupted();
+      if (editResult.action != 'submit' && editResult.action != 'command') {
+        return InputEnded();
+      }
+      if (editResult.action == 'submit' || editResult.value == '/value') {
+        if (editResult.value == '/value') {
+          out.writeln('Edit raw or formatted value:');
+          final entry = await edit(draft);
+          if (entry.action == 'cancel') return Cancelled();
+          if (entry.action == 'interrupt') return Interrupted();
+          if (entry.action != 'submit') return InputEnded();
+          draft = entry.value;
+        } else {
+          draft = editResult.value;
         }
-        if (editResult.action == 'submit' || editResult.value == '/value') {
-          if (editResult.value == '/value') {
-            out.writeln('Edit raw or formatted value:');
-            final entry = await edit(draft);
-            if (entry.action == 'cancel') return Cancelled();
-            if (entry.action == 'interrupt') return Interrupted();
-            if (entry.action != 'submit') return InputEnded();
-            draft = entry.value;
-          } else {
-            draft = editResult.value;
-          }
-          selected = null;
-          try {
-            matches = _decode(draft);
-          } on _MaskWorkLimit {
-            matches = [];
-            out.writeln(
-              'Mask decoding work limit exceeded; draft preserved: $draft',
-            );
-            continue;
-          }
-          if (matches.length == 1) {
-            selected = matches.single;
-            out.writeln(
-              'Template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
-            );
-          } else {
-            if (matches.length > 1) {
-              out.writeln('Ambiguous value; choose a template with /template:');
-              showTemplates();
-            } else {
-              out.writeln('Invalid mask; draft preserved: $draft');
-            }
-          }
-          continue;
-        }
-        if (editResult.value == '/edit') {
-          if (selected == null) {
-            out.writeln('Choose a template before correcting a slot.');
-            continue;
-          }
-          final current = selected;
-          final rules = templates
-              .singleWhere((template) => template.name == current.template)
-              .elements
-              .whereType<MaskSlot>()
-              .toList();
-          out.writeln('Slot number:');
-          final number = await edit();
-          if (number.action == 'cancel') return Cancelled();
-          if (number.action == 'interrupt') return Interrupted();
-          if (number.action != 'submit') return InputEnded();
-          final slot = int.tryParse(number.value);
-          if (slot == null || slot < 1 || slot > rules.length) {
-            out.writeln('Invalid slot number.');
-            continue;
-          }
-          out.writeln('Enter replacement grapheme, or empty to clear:');
-          final replacement = await edit();
-          if (replacement.action == 'cancel') return Cancelled();
-          if (replacement.action == 'interrupt') return Interrupted();
-          if (replacement.action != 'submit') return InputEnded();
-          if (replacement.value.isNotEmpty &&
-              (replacement.value.characters.length != 1 ||
-                  !rules[slot - 1].accepts(replacement.value))) {
-            out.writeln('Invalid slot value.');
-            continue;
-          }
-          final slots = List<String>.of(current.slots);
-          slots[slot - 1] = replacement.value;
-          var index = 0;
-          final template = templates.singleWhere(
-            (candidate) => candidate.name == current.template,
+        selected = null;
+        try {
+          matches = _decode(draft);
+        } on _MaskWorkLimit {
+          matches = [];
+          out.writeln(
+            'Mask decoding work limit exceeded; draft preserved: $draft',
           );
-          draft = template.elements
-              .map(
-                (element) =>
-                    element is MaskLiteral ? element.text : slots[index++],
-              )
-              .join();
-          selected = null;
-          try {
-            matches = _decode(slots.join());
-          } on _MaskWorkLimit {
-            matches = [];
-            out.writeln(
-              'Mask decoding work limit exceeded; draft preserved: $draft',
-            );
-            continue;
-          }
-          selected = MaskedValue(current.template, slots, draft);
+          continue;
+        }
+        if (matches.length == 1) {
+          selected = matches.single;
+          out.writeln(
+            'Template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
+          );
+        } else {
           if (matches.length > 1) {
-            selected = null;
-            out.writeln('Ambiguity reopened; draft preserved: $draft');
+            out.writeln('Ambiguous value; choose a template with /template:');
             showTemplates();
+          } else {
+            out.writeln('Invalid mask; draft preserved: $draft');
           }
+        }
+        continue;
+      }
+      if (editResult.value == '/edit') {
+        if (selected == null) {
+          out.writeln('Choose a template before correcting a slot.');
           continue;
         }
-        if (editResult.value == '/review') {
-          out.writeln('Draft: $draft');
-          if (selected != null) {
-            out.writeln(
-              'Template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
-            );
-          }
+        final current = selected;
+        final rules = templates
+            .singleWhere((template) => template.name == current.template)
+            .elements
+            .whereType<MaskSlot>()
+            .toList();
+        out.writeln('Slot number:');
+        final number = await edit();
+        if (number.action == 'cancel') return Cancelled();
+        if (number.action == 'interrupt') return Interrupted();
+        if (number.action != 'submit') return InputEnded();
+        final slot = int.tryParse(number.value);
+        if (slot == null || slot < 1 || slot > rules.length) {
+          out.writeln('Invalid slot number.');
+          continue;
+        }
+        out.writeln('Enter replacement grapheme, or empty to clear:');
+        final replacement = await edit();
+        if (replacement.action == 'cancel') return Cancelled();
+        if (replacement.action == 'interrupt') return Interrupted();
+        if (replacement.action != 'submit') return InputEnded();
+        if (replacement.value.isNotEmpty &&
+            (replacement.value.characters.length != 1 ||
+                !rules[slot - 1].accepts(replacement.value))) {
+          out.writeln('Invalid slot value.');
+          continue;
+        }
+        final slots = List<String>.of(current.slots);
+        slots[slot - 1] = replacement.value;
+        var index = 0;
+        final template = templates.singleWhere(
+          (candidate) => candidate.name == current.template,
+        );
+        draft = template.elements
+            .map(
+              (element) =>
+                  element is MaskLiteral ? element.text : slots[index++],
+            )
+            .join();
+        selected = null;
+        try {
+          matches = _decode(slots.join());
+        } on _MaskWorkLimit {
+          matches = [];
+          out.writeln(
+            'Mask decoding work limit exceeded; draft preserved: $draft',
+          );
+          continue;
+        }
+        selected = MaskedValue(current.template, slots, draft);
+        if (matches.length > 1) {
+          selected = null;
+          out.writeln('Ambiguity reopened; draft preserved: $draft');
           showTemplates();
-          continue;
         }
-        if (editResult.value == '/done') {
-          if (selected == null) {
-            out.writeln('Choose an unambiguous template before submitting.');
-            continue;
-          }
-          final rules = templates
-              .singleWhere((t) => t.name == selected!.template)
-              .elements
-              .whereType<MaskSlot>()
-              .toList();
-          if (selected.slots.indexed.any(
-            (e) => rules[e.$1].required && e.$2.isEmpty,
-          )) {
-            out.writeln('Required slots are incomplete.');
-            continue;
-          }
-          return Accepted(selected);
+        continue;
+      }
+      if (editResult.value == '/review') {
+        out.writeln('Draft: $draft');
+        if (selected != null) {
+          out.writeln(
+            'Template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
+          );
         }
-        if (matches.isEmpty) {
-          out.writeln('Submit a value with multiple valid templates first.');
-          continue;
-        }
-        out.writeln('Template number:');
         showTemplates();
-        final choice = await edit();
-        if (choice.action == 'cancel') return Cancelled();
-        if (choice.action == 'interrupt') return Interrupted();
-        if (choice.action != 'submit') return InputEnded();
-        final index = int.tryParse(choice.value);
-        if (index == null || index < 1 || index > matches.length) {
-          out.writeln('Invalid template number.');
+        continue;
+      }
+      if (editResult.value == '/done') {
+        if (selected == null) {
+          out.writeln('Choose an unambiguous template before submitting.');
           continue;
         }
-        selected = matches[index - 1];
-        draft = selected.formatted;
-        out.writeln(
-          'Selected template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
+        final rules = templates
+            .singleWhere((t) => t.name == selected!.template)
+            .elements
+            .whereType<MaskSlot>()
+            .toList();
+        if (selected.slots.indexed.any(
+          (e) => rules[e.$1].required && e.$2.isEmpty,
+        )) {
+          out.writeln('Required slots are incomplete.');
+          continue;
+        }
+        return Accepted(selected);
+      }
+      if (matches.isEmpty) {
+        out.writeln('Submit a value with multiple valid templates first.');
+        continue;
+      }
+      out.writeln('Template number:');
+      showTemplates();
+      final choice = await edit();
+      if (choice.action == 'cancel') return Cancelled();
+      if (choice.action == 'interrupt') return Interrupted();
+      if (choice.action != 'submit') return InputEnded();
+      final index = int.tryParse(choice.value);
+      if (index == null || index < 1 || index > matches.length) {
+        out.writeln('Invalid template number.');
+        continue;
+      }
+      selected = matches[index - 1];
+      draft = selected.formatted;
+      out.writeln(
+        'Selected template: ${selected.template}. Raw: ${selected.raw}. Formatted: ${selected.formatted}.',
+      );
+    }
+  }
+
+  /// The selected template for the current draft, when it is known.
+  MaskTemplate? _activeTemplate(MaskedValue? value) {
+    if (value == null) return null;
+    for (final template in templates) {
+      if (template.name == value.template) return template;
+    }
+    return null;
+  }
+
+  /// The declared slot and literal rules of one template.
+  String _templateShape(MaskTemplate template) {
+    final parts = <String>[];
+    var index = 0;
+    for (final element in template.elements) {
+      if (element is MaskLiteral) {
+        parts.add('literal "${element.text}"');
+      } else if (element is MaskSlot) {
+        index++;
+        parts.add(
+          'slot $index (${element.description}${element.required ? ', required' : ', optional'})',
         );
       }
-    } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
+    }
+    return parts.join(', ');
+  }
+
+  /// Component help for the requesting interaction stage.
+  ///
+  /// The opening sentence names the stage so slot editing, submission,
+  /// interpretation and template choice do not share one undifferentiated
+  /// generic editor page; the slot and literal rules stay available with it.
+  String _help({
+    required bool linear,
+    _MaskHelpStage stage = _MaskHelpStage.slot,
+    MaskTemplate? template,
+    int? slot,
+  }) {
+    final shape = template == null
+        ? ''
+        : 'Template ${template.name}: ${_templateShape(template)}. ';
+    final names = templates.map((t) => t.name).join(', ');
+    if (linear) {
+      return 'Help: Entering a masked value. $shape/template chooses one of $names; /edit corrects a single slot; /value replaces the whole raw or formatted value; /review lists the draft; /done accepts only when every required slot is filled. Literal characters are fixed formatting, not slot data. Exact /help and /cancel are commands; quote a command with a backslash. Identified paste is literal.';
+    }
+    return switch (stage) {
+      _MaskHelpStage.submit =>
+        'Help: Submitting. Enter accepts only when every required slot is filled; the accepted value keeps its template, raw slots, formatted spelling and interpretation. ${shape}Escape cancels and Ctrl+C interrupts.',
+      _MaskHelpStage.interpretation =>
+        'Help: Entering a raw or formatted value. Raw input is slot data only; formatted input must also match the literal characters. An ambiguous entry lists every template and interpretation instead of guessing. ${shape}Escape cancels and Ctrl+C interrupts.',
+      _MaskHelpStage.template =>
+        'Help: Choosing a template. Enter the number of the listed template; the chosen template applies its own literal formatting to the same slot data and reopens ambiguity if it still matches more than one. ${shape}Escape cancels and Ctrl+C interrupts.',
+      _MaskHelpStage.review =>
+        'Help: Reviewing the draft. The draft, template, raw and formatted spellings stay visible; correct one slot or the whole value before submitting. ${shape}Escape cancels and Ctrl+C interrupts.',
+      _MaskHelpStage.slot =>
+        'Help: Editing ${slot == null ? 'a slot' : 'slot $slot'}. One grapheme per slot; literal characters are fixed formatting rather than slot data. Left/Right move the caret between slots, Backspace clears the previous slot, Delete clears the focused slot and paste fills slots atomically. ${shape}Enter submits and Escape cancels; Ctrl+C interrupts.',
+    };
+  }
+
+  /// Renders the current masked draft at the declared width.
+  ///
+  /// The inline layout keeps the field-local caret inside the focused slot. A
+  /// narrow output clips around that slot with truthful overflow markers so the
+  /// focused field stays visible, and a stacked layout lists every slot and
+  /// literal when the focused field cannot fit on one line.
+  void _showMaskDraft({
+    required StringSink out,
+    required String label,
+    required MaskTemplate template,
+    required List<MaskSlot> rules,
+    required List<String> slots,
+    required int focus,
+    required int? width,
+  }) {
+    final caretAtEnd = focus >= slots.length;
+    final focusCue = caretAtEnd
+        ? 'slot ${slots.length} complete; caret after the last slot'
+        : 'slot ${focus + 1} of ${slots.length} (${rules[focus].description}); caret inside that slot';
+    out.writeln('$label. Template: ${template.name}. Focus: $focusCue.');
+    final pieces = <({String text, int cells, bool focused})>[];
+    var slotIndex = 0;
+    for (final element in template.elements) {
+      if (element is MaskLiteral) {
+        pieces.add((
+          text: element.text,
+          cells: _maskCells(element.text),
+          focused: false,
+        ));
+      } else {
+        final isFocused = slotIndex == focus;
+        final value = slots[slotIndex];
+        final text = isFocused ? '[$value]' : value;
+        pieces.add((text: text, cells: _maskCells(text), focused: isFocused));
+        slotIndex++;
       }
     }
+    final inline = pieces.map((piece) => piece.text).join();
+    final inlineCells =
+        pieces.fold<int>(0, (total, piece) => total + piece.cells) +
+        (caretAtEnd ? 1 : 0);
+    if (width == null || inlineCells <= width) {
+      out.writeln('> $inline${caretAtEnd ? '|' : ''}');
+    } else {
+      var focusedIndex = pieces.indexWhere((piece) => piece.focused);
+      if (focusedIndex < 0) {
+        focusedIndex = pieces.isEmpty ? 0 : pieces.length - 1;
+      }
+      final budget = width - 2;
+      final focusedCells = pieces.isEmpty ? 0 : pieces[focusedIndex].cells;
+      if (budget < focusedCells + (caretAtEnd ? 1 : 0)) {
+        var index = 0;
+        for (final element in template.elements) {
+          if (element is MaskLiteral) {
+            out.writeln('  literal "${element.text}"');
+          } else {
+            final isFocused = index == focus;
+            final value = slots[index];
+            out.writeln(
+              'Slot ${index + 1}: ${value.isEmpty ? 'empty' : value} (${rules[index].description})${isFocused ? ' [focused]' : ''}.',
+            );
+            index++;
+          }
+        }
+      } else {
+        var start = focusedIndex;
+        var end = focusedIndex + 1;
+        var used = focusedCells;
+        var grew = true;
+        while (grew) {
+          grew = false;
+          if (start > 0 && used + pieces[start - 1].cells <= budget) {
+            start--;
+            used += pieces[start].cells;
+            grew = true;
+          }
+          if (end < pieces.length && used + pieces[end].cells <= budget) {
+            used += pieces[end].cells;
+            end++;
+            grew = true;
+          }
+        }
+        final window = pieces
+            .sublist(start, end)
+            .map((piece) => piece.text)
+            .join();
+        out.writeln(
+          '> ${start > 0 ? '<' : ''}$window${caretAtEnd ? '|' : ''}${end < pieces.length ? '>' : ''}',
+        );
+      }
+    }
+    out.writeln(
+      caretAtEnd
+          ? 'Enter submits; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.'
+          : 'Left/Right move the caret; Enter submits; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+    );
   }
 
   Future<PromptResult<MaskedValue>> _richFixed(
     ScriptedInput source,
-    void Function()? beforeClose, {
+    StringSink out,
+    _Keys keys,
+    _ProfileBox profileBox,
+    TerminalSession? session, {
     MaskTemplate? selectedTemplate,
     MaskedValue? initial,
-    _Keys? keyInput,
   }) async {
     final template = selectedTemplate ?? templates.single;
     initial ??= initialValue;
@@ -543,29 +843,59 @@ final class MaskedInput {
     final slots = initial == null
         ? List<String>.filled(rules.length, '')
         : List<String>.of(initial.slots);
-    final keys = keyInput ?? _Keys(source.input.transform(utf8.encoder));
-    final out = source.output;
     var focus = initial == null ? 0 : slots.length;
     var provenance = initial?.interpretation ?? MaskInterpretation.automatic;
     int? lastTyped;
     var edited = false;
     var ambiguityAnnounced = false;
-    void show() {
-      out.writeln('$label. Template: ${template.name}.');
-      for (var i = 0; i < slots.length; i++) {
-        out.writeln(
-          'Slot ${i + 1}: ${slots[i].isEmpty ? "empty" : slots[i]} (${rules[i].description})${i == focus ? " [focused]" : ""}.',
-        );
-      }
-    }
+    var help = false;
+    void show() => _showMaskDraft(
+      out: out,
+      label: label,
+      template: template,
+      rules: rules,
+      slots: slots,
+      focus: focus,
+      width: _textInputWidth(profileBox.value),
+    );
 
+    show();
+    session?._setPromptRepaint(show);
+    final stopResize = _watchIdleResize(
+      observer: source.resizeObserver,
+      profile: () => profileBox.value,
+      onGeometry: (geometry) => profileBox.value = geometry,
+      repaint: show,
+      keys: keys,
+      helpOpen: () => help,
+    );
     try {
-      show();
       while (true) {
         final key = await keys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x1b') return Cancelled();
+        if (key == '\x1b') {
+          if (!help) return Cancelled();
+          help = false;
+          out.writeln('Help dismissed.');
+          show();
+          continue;
+        }
+        if (key == '\x14') {
+          if (help) continue;
+          help = true;
+          out.writeln(
+            focus >= slots.length
+                ? _help(
+                    linear: false,
+                    stage: _MaskHelpStage.submit,
+                    template: template,
+                  )
+                : _help(linear: false, template: template, slot: focus + 1),
+          );
+          continue;
+        }
+        if (help) continue;
         if (key == '\x1b[999~') {
           out.writeln('Paste rejected: exceeds 4096 UTF-16 code units.');
           continue;
@@ -585,7 +915,20 @@ final class MaskedInput {
               out.writeln(
                 'Mask decoding work limit exceeded; edit preserved paste: $paste',
               );
-              final correction = await _edit(keys, paste, out);
+              final correction = await _edit(
+                keys,
+                paste,
+                out,
+                helpText: _help(
+                  linear: false,
+                  template: template,
+                  slot: focus < slots.length ? focus + 1 : null,
+                ),
+                outputProfile: profileBox.value,
+                session: session,
+                resizeObserver: source.resizeObserver,
+              );
+              session?._setPromptRepaint(show);
               if (correction.action == 'cancel') return Cancelled();
               if (correction.action == 'interrupt') return Interrupted();
               if (correction.action != 'submit') return InputEnded();
@@ -611,7 +954,19 @@ final class MaskedInput {
             out.writeln(
               'Choose a number, or press Enter to keep the current value:',
             );
-            final choice = await _edit(keys, '', out);
+            final choice = await _edit(
+              keys,
+              '',
+              out,
+              helpText: _help(
+                linear: false,
+                stage: _MaskHelpStage.template,
+                template: template,
+              ),
+              outputProfile: profileBox.value,
+              session: session,
+              resizeObserver: source.resizeObserver,
+            );
             if (choice.action == 'cancel') return Cancelled();
             if (choice.action == 'interrupt') return Interrupted();
             if (choice.action != 'submit') return InputEnded();
@@ -621,15 +976,18 @@ final class MaskedInput {
               out.writeln('Selected template: ${selected.template}.');
               return await _richFixed(
                 source,
-                null,
+                out,
+                keys,
+                profileBox,
+                session,
                 selectedTemplate: templates.singleWhere(
                   (t) => t.name == selected.template,
                 ),
                 initial: selected,
-                keyInput: keys,
               );
             }
             show();
+            session?._setPromptRepaint(show);
             continue;
           }
           if (matches.length == 1 && matches.single.template == template.name) {
@@ -696,7 +1054,19 @@ final class MaskedInput {
                   );
                 }
                 out.writeln('Choose a template number:');
-                final choice = await _edit(keys, '', out);
+                final choice = await _edit(
+                  keys,
+                  '',
+                  out,
+                  helpText: _help(
+                    linear: false,
+                    stage: _MaskHelpStage.template,
+                    template: template,
+                  ),
+                  outputProfile: profileBox.value,
+                  session: session,
+                  resizeObserver: source.resizeObserver,
+                );
                 if (choice.action == 'cancel') return Cancelled();
                 if (choice.action == 'interrupt') return Interrupted();
                 if (choice.action != 'submit') return InputEnded();
@@ -709,12 +1079,14 @@ final class MaskedInput {
                 out.writeln('Selected template: ${selected.template}.');
                 return await _richFixed(
                   source,
-                  null,
+                  out,
+                  keys,
+                  profileBox,
+                  session,
                   selectedTemplate: templates.singleWhere(
                     (t) => t.name == selected.template,
                   ),
                   initial: selected,
-                  keyInput: keys,
                 );
               }
             }
@@ -770,27 +1142,23 @@ final class MaskedInput {
         show();
       }
     } finally {
-      if (keyInput == null) {
-        try {
-          beforeClose?.call();
-        } finally {
-          await keys.close();
-        }
-      }
+      stopResize();
+      if (session != null) session._setPromptRepaint(null);
     }
   }
 
   Future<PromptResult<MaskedValue>> _linearFixed(
     ScriptedInput source,
-    void Function()? beforeClose,
+    StringSink out,
+    _Keys keys,
+    _ProfileBox profileBox,
+    TerminalSession? session,
   ) async {
     final template = templates.single;
     final rules = template.elements.whereType<MaskSlot>().toList();
     var slots = initialValue == null
         ? List<String>.filled(rules.length, '')
         : List<String>.of(initialValue!.slots);
-    final out = source.output;
-    final keys = _Keys(source.input.transform(utf8.encoder));
     String? pendingDraft;
     String formatted() {
       var index = 0;
@@ -818,124 +1186,115 @@ final class MaskedInput {
       initial,
       out,
       linear: true,
-      sequential: true,
+      sequential: !profileBox.value.supportsRichInteraction,
       extraCommands: commands,
+      linearHelpText: _help(linear: true, template: template),
+      outputProfile: profileBox.value,
+      session: session,
     );
-    try {
-      out.writeln(
-        r'/edit corrects a slot; /value edits the formatted value; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      );
-      show();
-      while (true) {
-        final command = await edit('', {'/edit', '/value', '/done', '/review'});
-        if (command.action == 'cancel') return Cancelled();
-        if (command.action == 'interrupt') return Interrupted();
-        if (command.action != 'submit' && command.action != 'command') {
-          return InputEnded();
-        }
-        if (command.action == 'command' && command.value == '/review') {
-          show();
-          continue;
-        }
-        if (command.action == 'command' && command.value == '/done') {
-          if (pendingDraft != null) {
-            out.writeln(
-              'Resolve the preserved draft with /value before submitting.',
-            );
-            continue;
-          }
-          if (slots.indexed.any((e) => rules[e.$1].required && e.$2.isEmpty)) {
-            out.writeln('Required slots are incomplete.');
-            continue;
-          }
-          return Accepted(
-            MaskedValue(template.name, List.unmodifiable(slots), formatted()),
-          );
-        }
-        if (command.action == 'command' && command.value == '/edit') {
-          out.writeln('Slot number:');
-          final number = await edit();
-          if (number.action == 'cancel') return Cancelled();
-          if (number.action == 'interrupt') return Interrupted();
-          if (number.action != 'submit') return InputEnded();
-          final index = int.tryParse(number.value);
-          if (index == null || index < 1 || index > slots.length) {
-            out.writeln('Invalid slot number.');
-            continue;
-          }
-          out.writeln('Enter replacement grapheme, or empty to clear:');
-          final replacement = await edit();
-          if (replacement.action == 'cancel') return Cancelled();
-          if (replacement.action == 'interrupt') return Interrupted();
-          if (replacement.action != 'submit') return InputEnded();
-          if (replacement.value.isNotEmpty &&
-              (replacement.value.characters.length != 1 ||
-                  !rules[index - 1].accepts(replacement.value))) {
-            out.writeln('Invalid slot value.');
-            continue;
-          }
-          slots[index - 1] = replacement.value;
-          show();
-          continue;
-        }
-        var value = command.value;
-        if (command.action == 'command' && command.value == '/value') {
-          out.writeln('Edit formatted value:');
-          final entry = await edit(pendingDraft ?? formatted());
-          if (entry.action == 'cancel') return Cancelled();
-          if (entry.action == 'interrupt') return Interrupted();
-          if (entry.action != 'submit') return InputEnded();
-          value = entry.value;
-        }
-        pendingDraft = value;
-        late final List<MaskedValue> matches;
-        try {
-          matches = _decode(value);
-        } on _MaskWorkLimit {
-          out.writeln(
-            'Mask decoding work limit exceeded; draft preserved: $value',
-          );
-          continue;
-        }
-        if (matches.length == 1) {
-          pendingDraft = null;
-          slots = List.of(matches.single.slots);
-          show();
-        } else if (matches.length > 1) {
-          out.writeln('Choose an interpretation; draft preserved: $value');
-          for (var i = 0; i < matches.length; i++) {
-            final description = matches[i].slots.indexed
-                .map(
-                  (e) => 'slot ${e.$1 + 1}: ${e.$2.isEmpty ? "empty" : e.$2}',
-                )
-                .join(', ');
-            out.writeln(
-              '${i + 1}. ${matches[i].interpretation.name}: $description',
-            );
-          }
-          final choice = await edit();
-          if (choice.action == 'cancel') return Cancelled();
-          if (choice.action == 'interrupt') return Interrupted();
-          if (choice.action != 'submit') return InputEnded();
-          final index = int.tryParse(choice.value);
-          if (index == null || index < 1 || index > matches.length) {
-            out.writeln(
-              'Invalid interpretation number; draft preserved: $value',
-            );
-          } else {
-            pendingDraft = null;
-            slots = List.of(matches[index - 1].slots);
-            show();
-          }
-        } else {
-          out.writeln('Invalid value; draft: $value');
-        }
+    out.writeln(
+      r'/edit corrects a slot; /value edits the formatted value; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+    );
+    show();
+    while (true) {
+      final command = await edit('', {'/edit', '/value', '/done', '/review'});
+      if (command.action == 'cancel') return Cancelled();
+      if (command.action == 'interrupt') return Interrupted();
+      if (command.action != 'submit' && command.action != 'command') {
+        return InputEnded();
       }
-    } finally {
+      if (command.action == 'command' && command.value == '/review') {
+        show();
+        continue;
+      }
+      if (command.action == 'command' && command.value == '/done') {
+        if (pendingDraft != null) {
+          out.writeln(
+            'Resolve the preserved draft with /value before submitting.',
+          );
+          continue;
+        }
+        if (slots.indexed.any((e) => rules[e.$1].required && e.$2.isEmpty)) {
+          out.writeln('Required slots are incomplete.');
+          continue;
+        }
+        return Accepted(
+          MaskedValue(template.name, List.unmodifiable(slots), formatted()),
+        );
+      }
+      if (command.action == 'command' && command.value == '/edit') {
+        out.writeln('Slot number:');
+        final number = await edit();
+        if (number.action == 'cancel') return Cancelled();
+        if (number.action == 'interrupt') return Interrupted();
+        if (number.action != 'submit') return InputEnded();
+        final index = int.tryParse(number.value);
+        if (index == null || index < 1 || index > slots.length) {
+          out.writeln('Invalid slot number.');
+          continue;
+        }
+        out.writeln('Enter replacement grapheme, or empty to clear:');
+        final replacement = await edit();
+        if (replacement.action == 'cancel') return Cancelled();
+        if (replacement.action == 'interrupt') return Interrupted();
+        if (replacement.action != 'submit') return InputEnded();
+        if (replacement.value.isNotEmpty &&
+            (replacement.value.characters.length != 1 ||
+                !rules[index - 1].accepts(replacement.value))) {
+          out.writeln('Invalid slot value.');
+          continue;
+        }
+        slots[index - 1] = replacement.value;
+        show();
+        continue;
+      }
+      var value = command.value;
+      if (command.action == 'command' && command.value == '/value') {
+        out.writeln('Edit formatted value:');
+        final entry = await edit(pendingDraft ?? formatted());
+        if (entry.action == 'cancel') return Cancelled();
+        if (entry.action == 'interrupt') return Interrupted();
+        if (entry.action != 'submit') return InputEnded();
+        value = entry.value;
+      }
+      pendingDraft = value;
+      late final List<MaskedValue> matches;
       try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
+        matches = _decode(value);
+      } on _MaskWorkLimit {
+        out.writeln(
+          'Mask decoding work limit exceeded; draft preserved: $value',
+        );
+        continue;
+      }
+      if (matches.length == 1) {
+        pendingDraft = null;
+        slots = List.of(matches.single.slots);
+        show();
+      } else if (matches.length > 1) {
+        out.writeln('Choose an interpretation; draft preserved: $value');
+        for (var i = 0; i < matches.length; i++) {
+          final description = matches[i].slots.indexed
+              .map((e) => 'slot ${e.$1 + 1}: ${e.$2.isEmpty ? "empty" : e.$2}')
+              .join(', ');
+          out.writeln(
+            '${i + 1}. ${matches[i].interpretation.name}: $description',
+          );
+        }
+        final choice = await edit();
+        if (choice.action == 'cancel') return Cancelled();
+        if (choice.action == 'interrupt') return Interrupted();
+        if (choice.action != 'submit') return InputEnded();
+        final index = int.tryParse(choice.value);
+        if (index == null || index < 1 || index > matches.length) {
+          out.writeln('Invalid interpretation number; draft preserved: $value');
+        } else {
+          pendingDraft = null;
+          slots = List.of(matches[index - 1].slots);
+          show();
+        }
+      } else {
+        out.writeln('Invalid value; draft: $value');
       }
     }
   }

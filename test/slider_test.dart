@@ -16,7 +16,11 @@ void main() {
         initialValue: '2',
       );
       final result = slider.prompt(
-        source: ScriptedInput(input.stream, StringBuffer()),
+        source: ScriptedInput(
+          input.stream,
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       input.add('\t\r9\x1b');
@@ -50,7 +54,11 @@ void main() {
     );
     expect(
       await range.prompt(
-        source: ScriptedInput(Stream.value('\t\t\t\t\r'), StringBuffer()),
+        source: ScriptedInput(
+          Stream.value('\t\t\t\t\r'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       ),
       isA<InputEnded<(String, String)>>(),
@@ -70,6 +78,7 @@ void main() {
         source: ScriptedInput(
           Stream.value('\t\r\x1b[D\x7f3\r\t\r'),
           StringBuffer(),
+          outputProfile: _richProfile,
         ),
         mode: PromptMode.rich,
       );
@@ -84,11 +93,19 @@ void main() {
       final a = StreamController<String>();
       final b = StreamController<String>();
       final first = slider.prompt(
-        source: ScriptedInput(a.stream, StringBuffer()),
+        source: ScriptedInput(
+          a.stream,
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       final second = range.prompt(
-        source: ScriptedInput(b.stream, StringBuffer()),
+        source: ScriptedInput(
+          b.stream,
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       expect(
@@ -136,7 +153,9 @@ void main() {
     ]) {
       final input = StreamController<String>();
       final output = StringBuffer();
-      final future = run(ScriptedInput(input.stream, output));
+      final future = run(
+        ScriptedInput(input.stream, output, outputProfile: _richProfile),
+      );
       input.add('\x14\x1b');
       await Future<void>.delayed(const Duration(milliseconds: 150));
       input.add('\x03');
@@ -219,7 +238,11 @@ void main() {
       );
       expect(
         await range.prompt(
-          source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+          source: ScriptedInput(
+            Stream.value('\x03'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         ),
         isA<Interrupted<(String, String)>>(),
@@ -276,7 +299,11 @@ void main() {
         initialUpper: '5',
       );
       final result = await range.prompt(
-        source: ScriptedInput(Stream.value('\x1b[C\t\x1b[C\t\t\t\r'), out),
+        source: ScriptedInput(
+          Stream.value('\x1b[C\t\x1b[C\t\t\t\r'),
+          out,
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<(String, String)>).value, ('3', '6'));
@@ -332,7 +359,11 @@ void main() {
         initialValue: '0.4',
       );
       final result = await slider.prompt(
-        source: ScriptedInput(Stream.value('\x1b[C\t\t\r'), output),
+        source: ScriptedInput(
+          Stream.value('\x1b[C\t\t\r'),
+          output,
+          outputProfile: _richProfile,
+        ),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<String>).value, '0.6');
@@ -379,3 +410,8 @@ void main() {
     );
   });
 }
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 60, rows: 12),
+);

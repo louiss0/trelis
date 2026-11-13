@@ -328,15 +328,28 @@ accepted value exposes `template`, `slots`, `formatted`, `raw` and the
 interpretation used, and `interpretation` (`automatic`, `raw` or `formatted`)
 states how the entered text should be read.
 
-With one template, rich mode edits slot by slot and announces each slot's
-description, content and focus; Escape cancels and Ctrl+C interrupts. Linear mode
-offers `/edit` for one slot, `/value` for the whole formatted value, `/review`
-and `/done`. With several templates an ambiguous value is listed with its slot
-contents and the template is chosen by number, or through `/template` in linear
-mode. Paste is accepted as single-line printable text and is rejected when it
-exceeds the template capacity or the 4096-code-unit frame bound; a paste that
-needs template resolution is listed rather than guessed. Decoding has a bounded
-work limit, and exceeding it preserves the draft for correction.
+With one template, rich mode edits slot by slot. The draft is shown inline
+with the caret inside the focused slot and its bracket marker (`1-[2]`), or with
+the caret after the last slot (`1-2|`). A narrow output clips the inline draft
+around the focused slot with truthful `<` and `>` overflow markers; when even
+that slot cannot fit, the layout stacks one slot per line with its description
+and the literal text. Every view names the focused slot and its rule. Escape
+cancels, Ctrl+T opens component help for the focused slot or the submit stage,
+and Ctrl+C interrupts. Linear mode offers `/edit` for one slot, `/value` for the
+whole formatted value, `/review` and `/done`. With several templates an
+ambiguous value is listed with its slot contents and the template is chosen by
+number, or through `/template` in linear mode. Paste is accepted as single-line
+printable text and is rejected when it exceeds the template capacity or the
+4096-code-unit frame bound; a paste that needs template resolution is listed
+rather than guessed. Decoding has a bounded work limit, and exceeding it
+preserves the draft for correction. Ctrl+T in rich mode or `/help` in linear
+mode leads with the current stage (slot editing, submission, interpretation or
+template choice) and keeps the slot and literal rules beside it. Guidance wraps
+within the declared geometry and an idle resize repaints the draft without
+changing a slot. `MaskedInput.prompt` accepts `terminal`, `outputProfile` and
+`session` like the shared editor; an attached prompt inherits its session
+configuration and an explicitly requested rich mode is unavailable unless the
+profile declares cursor support and positive geometry.
 
 MaskedInput is a format prompt, not a secret prompt: slot contents are shown.
 Use `Password` for secrets.
@@ -359,6 +372,16 @@ cancelling; Ctrl+T opens help and Ctrl+C interrupts. Linear range entry asks for
 each endpoint and a separate review/submit. Invalid text remains editable.
 A supplied range uses the literal `Lower,Upper` spelling, for example `2,8`;
 it must satisfy the same constraints. EOF does not submit a draft.
+
+Ctrl+T in rich mode or `/help` in linear mode leads with the current stage (the
+focused value or endpoint, an edit action, the submit action, or endpoint entry)
+and keeps the bounds, step, units, precision and pair review in the same block.
+Guidance wraps within the declared geometry, an idle resize repaints the current
+control without changing the draft or accepting it, and an explicitly requested
+rich mode is unavailable unless the profile declares cursor support and positive
+geometry. Both prompts accept `terminal`, `outputProfile` and `session` like the
+shared editor, and an attached prompt inherits its session configuration while
+session feedback repaints.
 
 ## TreeSelect
 
