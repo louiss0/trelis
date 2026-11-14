@@ -408,6 +408,18 @@ preorder and remain stable during a session, including when branches close.
 and `/cancel` are exact commands; quote a command with a backslash, and double
 a leading backslash. Identified paste is literal; unframed paste cannot be
 distinguished from typing. EOF never accepts a partial command or answer.
+
+`TreeSelect` accepts `terminal`, `outputProfile`, `session` and an optional
+`ColorTheme` like the shared editor; an attached prompt inherits its session
+configuration, an explicitly requested rich mode is unavailable unless the
+profile declares cursor support and positive geometry, and idle session
+feedback repaints the retained expansion and focus. Every row is one typed
+presentation of the stable reference, path, focus, default, expansion state and
+selectability, so a narrow declared width wraps the path without splitting a
+state marker or an unavailable reason. Component help leads with the requesting
+stage (navigating the tree, or entering a node reference) and repeats the
+current path, the default and every node that cannot be accepted with its
+reason.
 ### SearchSelect
 
 `SearchSelect<T>(label, choices, defaultValue: ...)` returns one enabled choice
@@ -449,6 +461,15 @@ backslash; other backslashes remain literal (for example `C:\work` and a UNC
 path entered with its leading backslash doubled). Identified paste is literal.
 A supplied answer is a comma-separated complete permutation of original numeric
 references, subject to the same anchor rules; an empty list uses an empty string.
+
+`SortableSelect` accepts `terminal`, `outputProfile`, `session` and an optional
+`ColorTheme`. Every row is one typed presentation of the identity's stable
+reference, current position, focus, locked-anchor reason and pick-up state, so a
+narrow declared width wraps the label without splitting those markers, and an
+idle resize repaints the current order without dropping a picked-up identity.
+Component help leads with the requesting stage (ordering the list, moving a
+picked-up identity, entering a reference, or entering a destination position)
+and names every locked anchor with its reason and displayed reference.
 
 ## CommandPalette
 

@@ -1,7 +1,36 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 60, rows: 20),
+);
+
+/// A scripted source that declares rich facts for an in-place interaction.
+ScriptedInput _rich(Stream<String> input, StringSink output) =>
+    ScriptedInput(input, output, outputProfile: _richProfile);
+
 void main() {
+  test(
+    'linear help explains tree workflow while requesting a reference',
+    () async {
+      final out = StringBuffer();
+      final result =
+          await TreeSelect<String>('Pick', [
+            TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+          ]).prompt(
+            source: ScriptedInput(
+              Stream.value('/open\r/help\r1\r/choose\r2\r'),
+              out,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'b');
+      expect(out.toString(), contains('Help: Entering a node reference'));
+      expect(out.toString(), contains('stable node reference'));
+      expect(out.toString(), contains('selectable'));
+    },
+  );
   test('linear discloses default even when it is nested', () async {
     final out = StringBuffer();
     await TreeSelect<String>('Pick', [
@@ -20,7 +49,7 @@ void main() {
         TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
       ], defaultValue: 'b');
       final result = await tree.prompt(
-        source: ScriptedInput(Stream.value('\r'), out),
+        source: _rich(Stream.value('\r'), out),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<String>).value, 'b');
@@ -67,10 +96,7 @@ void main() {
         await TreeSelect<String>('Pick', [
           TreeNode('a', 'A', selectable: true, children: [TreeNode('b', 'B')]),
         ]).prompt(
-          source: ScriptedInput(
-            Stream.value('\x1b[C\x1b[C\x1b[D\x1b[D\r'),
-            out,
-          ),
+          source: _rich(Stream.value('\x1b[C\x1b[C\x1b[D\x1b[D\r'), out),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'a');
@@ -117,7 +143,7 @@ void main() {
     final tree = TreeSelect<String>('Pick', []);
     expect(
       await tree.prompt(
-        source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+        source: _rich(Stream.value('\r'), StringBuffer()),
         mode: PromptMode.rich,
       ),
       isA<InputEnded<String>>(),
@@ -161,7 +187,7 @@ void main() {
           TreeNode('a', 'A', disabledReason: 'offline'),
           TreeNode('b', 'B'),
         ]).prompt(
-          source: ScriptedInput(Stream.value('\r'), StringBuffer()),
+          source: _rich(Stream.value('\r'), StringBuffer()),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'b');
@@ -174,7 +200,7 @@ void main() {
           await TreeSelect<String>('Pick', [
             TreeNode('a', 'A', childrenUnavailableReason: 'not loaded'),
           ]).prompt(
-            source: ScriptedInput(Stream.value('\r\x1b[C\x03'), out),
+            source: _rich(Stream.value('\r\x1b[C\x03'), out),
             mode: PromptMode.rich,
           );
       expect(result, isA<Interrupted<String>>());
@@ -208,7 +234,7 @@ void main() {
         await TreeSelect<String>('Pick', [
           TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
         ]).prompt(
-          source: ScriptedInput(Stream.value('\r\x1b[C\x1b[C\r'), out),
+          source: _rich(Stream.value('\r\x1b[C\x1b[C\r'), out),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<String>).value, 'b');

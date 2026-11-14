@@ -31,7 +31,7 @@ part 'filesystem_picker.dart';
 part 'number_input.dart';
 part 'autocomplete.dart';
 part 'search_select.dart';
-part 'sortable_select.dart';
+part 'tree_order.dart';
 
 part 'command_palette.dart';
 part 'key_capture.dart';
@@ -3723,6 +3723,9 @@ final class Choice<T> {
   final String? disabledReason;
 }
 
+/// The expansion state a tree row presents, independent of selectability.
+enum _TreeRowState { leaf, expanded, collapsed, childrenUnavailable }
+
 /// One displayed choice row.
 ///
 /// Every public choice family composes its rows through this typed record so a
@@ -3730,6 +3733,13 @@ final class Choice<T> {
 /// default and an unavailable reason stay separate facts. The markers are also
 /// the row's atomic units: wrapping may move one to the next line but never
 /// splits it.
+///
+/// The tree and order families extend the same record instead of inventing a
+/// second row: a tree row adds its expansion state, its selectability and its
+/// staleness beside focus and default, and an order row adds the identity's
+/// current position, its locked anchor reason and a pick-up state. Marker order
+/// is selection, position, focus, default, tree state, selectability, lock,
+/// movement and unavailability.
 final class _ChoiceRow {
   const _ChoiceRow({
     required this.reference,
@@ -3739,6 +3749,14 @@ final class _ChoiceRow {
     this.focused = false,
     this.isDefault = false,
     this.disabledReason,
+    this.treeState,
+    this.childrenUnavailableReason,
+    this.selectable,
+    this.position,
+    this.positionCount,
+    this.lockedReason,
+    this.moving = false,
+    this.current = true,
   });
 
   /// The stable choice reference displayed for this row, independent of order.
@@ -3754,11 +3772,51 @@ final class _ChoiceRow {
   final bool isDefault;
   final String? disabledReason;
 
+  /// The tree family's expansion state, or null for a non-tree row.
+  final _TreeRowState? treeState;
+
+  /// Explains a branch whose children are not currently available.
+  final String? childrenUnavailableReason;
+
+  /// Whether a tree node may be accepted, or null for a non-tree row.
+  ///
+  /// Expansion and selectability are independent: a selectable branch can be
+  /// opened, and a leaf may still be unselectable.
+  final bool? selectable;
+
+  /// The order family's one-based display position for this identity.
+  final int? position;
+  final int? positionCount;
+
+  /// The order family's permanent position that other identities cannot cross.
+  final String? lockedReason;
+
+  /// The identity is picked up and currently follows the focus.
+  final bool moving;
+
+  /// The source still reports this node in the current path.
+  final bool current;
+
+  String? get _treeStateMarker => switch (treeState) {
+    null => null,
+    _TreeRowState.leaf => '[leaf]',
+    _TreeRowState.expanded => '[expanded]',
+    _TreeRowState.collapsed => '[collapsed]',
+    _TreeRowState.childrenUnavailable =>
+      '[children unavailable: $childrenUnavailableReason]',
+  };
+
   List<String> get markers => [
     if (checked != null) checked! ? '[checked]' : '[unchecked]',
+    if (position != null) '[position $position of $positionCount]',
     if (focused) '[focused]',
     if (isDefault) '[default]',
+    ?_treeStateMarker,
+    if (selectable != null) selectable! ? '[selectable]' : '[not selectable]',
+    if (lockedReason != null) '[locked: $lockedReason]',
+    if (moving) '[moving]',
     if (disabledReason != null) '[unavailable: $disabledReason]',
+    if (!current) '[unavailable: no longer available]',
   ];
 
   String get text =>
@@ -4597,371 +4655,6 @@ final class MultiSelect<T> {
     } finally {
       if (session != null) session._setPromptRepaint(null);
       if (keys == null) await inputKeys.close();
-    }
-  }
-}
-
-/// A node in a TreeSelect hierarchy. Branches are not selectable by default.
-final class TreeNode<T> {
-  TreeNode(
-    this.value,
-    this.label, {
-    List<TreeNode<T>> children = const [],
-    this.selectable,
-    this.disabledReason,
-    this.childrenUnavailableReason,
-  }) : children = List.unmodifiable(children) {
-    Choice(value, label, disabledReason: disabledReason);
-    if (childrenUnavailableReason != null) {
-      Choice(value, label, disabledReason: childrenUnavailableReason);
-      if (children.isNotEmpty) {
-        throw ArgumentError('Unavailable children cannot be supplied.');
-      }
-    }
-  }
-  final T value;
-  final String label;
-  final List<TreeNode<T>> children;
-  final bool? selectable;
-  final String? disabledReason;
-
-  /// Explains why this branch's children are not currently available.
-  final String? childrenUnavailableReason;
-  bool get canSelect =>
-      selectable ?? (children.isEmpty && childrenUnavailableReason == null);
-}
-
-/// Selects one node independently of expanding or traversing branches.
-final class TreeSelect<T> {
-  TreeSelect(
-    this.label,
-    List<TreeNode<T>> nodes, {
-    this.isCurrent,
-    this.defaultValue,
-  }) : nodes = List.unmodifiable(nodes) {
-    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
-      throw ArgumentError.value(label, 'label');
-    }
-    final identities = <T>{};
-    void validate(List<TreeNode<T>> nodes) {
-      for (final node in nodes) {
-        if (!identities.add(node.value)) {
-          throw ArgumentError('Node identities must be unique.');
-        }
-        validate(node.children);
-      }
-    }
-
-    validate(this.nodes);
-    if (defaultValue != null && !identities.contains(defaultValue)) {
-      throw ArgumentError('Default identity is not a node.');
-    }
-  }
-  final String label;
-  final List<TreeNode<T>> nodes;
-  final T? defaultValue;
-
-  /// Optional currentness check for nodes that can disappear during a prompt.
-  final bool Function(T value)? isCurrent;
-  bool _active = false;
-
-  Future<PromptResult<T>> prompt({
-    PromptSource? source,
-    PromptMode? mode,
-    PromptMode? userPreference,
-    PromptMode? applicationPreference,
-    Stdout? output,
-  }) async {
-    if (_active) throw StateError('A prompt session is already active.');
-    _active = true;
-    try {
-      final selected =
-          mode ??
-          userPreference ??
-          applicationPreference ??
-          PromptMode.automatic;
-      if (source != null) return await _run(source, selected);
-      if (_terminalActive) {
-        throw StateError('A terminal session is already active.');
-      }
-      _terminalActive = true;
-      try {
-        return await _terminal<T>(
-          selected,
-          output ?? stderr,
-          (source, mode, restore) => _run(source, mode, beforeClose: restore),
-        );
-      } finally {
-        _terminalActive = false;
-      }
-    } finally {
-      _active = false;
-    }
-  }
-
-  Future<PromptResult<T>> _run(
-    PromptSource source,
-    PromptMode mode, {
-    void Function()? beforeClose,
-  }) async {
-    final all = <(TreeNode<T>, List<TreeNode<T>>)>[];
-    void collect(List<TreeNode<T>> level, List<TreeNode<T>> path) {
-      for (final node in level) {
-        final current = [...path, node];
-        all.add((node, current));
-        collect(node.children, current);
-      }
-    }
-
-    collect(nodes, []);
-    bool currentPath(List<TreeNode<T>> path) =>
-        isCurrent == null || path.every((node) => isCurrent!(node.value));
-    if (source is SuppliedAnswer) {
-      final n = int.tryParse(source.value);
-      if (n == null ||
-          n < 1 ||
-          n > all.length ||
-          !all[n - 1].$1.canSelect ||
-          all[n - 1].$1.disabledReason != null ||
-          !currentPath(all[n - 1].$2)) {
-        return Unavailable('Supply an enabled selectable node reference.');
-      }
-      return Accepted(all[n - 1].$1.value);
-    }
-    final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
-      return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
-      );
-    }
-    if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
-    }
-    final out = scripted.output;
-    final expanded = <T>{};
-    final enabledRoot = nodes.indexWhere((node) => node.disabledReason == null);
-    var focus = nodes.isEmpty ? null : nodes[enabledRoot < 0 ? 0 : enabledRoot];
-    if (defaultValue != null) {
-      final row = all.firstWhere((r) => r.$1.value == defaultValue);
-      focus = row.$1;
-      expanded.addAll(row.$2.take(row.$2.length - 1).map((node) => node.value));
-    }
-    var current = <TreeNode<T>>[];
-    List<(TreeNode<T>, List<TreeNode<T>>)> visible() => all
-        .where(
-          (row) => row.$2
-              .take(row.$2.length - 1)
-              .every((n) => expanded.contains(n.value)),
-        )
-        .toList();
-    String path(List<TreeNode<T>> nodes) =>
-        nodes.map((n) => n.label).join(' / ');
-    void show() {
-      out.writeln('$label TreeSelect:');
-      if (all.isEmpty) out.writeln('No nodes available.');
-      if (mode == PromptMode.linear) {
-        out.writeln('Path: ${current.isEmpty ? 'root' : path(current)}');
-        if (defaultValue != null) {
-          final row = all.firstWhere((r) => r.$1.value == defaultValue);
-          out.writeln(
-            'Default: ${path(row.$2)} (reference ${all.indexOf(row) + 1})${row.$1.canSelect ? '' : ' [not selectable]'}${row.$1.disabledReason == null ? '' : ' [unavailable: ${row.$1.disabledReason}]'}${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
-          );
-        }
-      }
-      final rows = mode == PromptMode.linear
-          ? all.where(
-              (r) =>
-                  (current.isNotEmpty && identical(r.$1, current.last)) ||
-                  (r.$2.length == current.length + 1 &&
-                      (current.isEmpty ||
-                          identical(r.$2[current.length - 1], current.last))),
-            )
-          : visible();
-      for (final row in rows) {
-        final node = row.$1;
-        out.writeln(
-          '${all.indexOf(row) + 1}. ${path(row.$2)}${mode == PromptMode.rich && identical(node, focus) ? ' [focused]' : ''}${defaultValue != null && node.value == defaultValue ? ' [default]' : ''} ${node.childrenUnavailableReason != null
-              ? '[children unavailable: ${node.childrenUnavailableReason}]'
-              : node.children.isEmpty
-              ? '[leaf]'
-              : expanded.contains(node.value)
-              ? '[expanded]'
-              : '[collapsed]'} ${node.canSelect ? '[selectable]' : '[not selectable]'}${node.disabledReason == null ? '' : ' [unavailable: ${node.disabledReason}]'}${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
-        );
-      }
-    }
-
-    out.writeln(
-      mode == PromptMode.linear
-          ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
-          : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-    );
-    show();
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
-    try {
-      if (mode == PromptMode.linear) {
-        while (true) {
-          final action = await _edit(
-            keys,
-            '',
-            out,
-            linear: true,
-            sequential: true,
-            extraCommands: const {'/open', '/up', '/choose'},
-          );
-          if (action.action == 'cancel') return Cancelled();
-          if (action.action == 'interrupt') return Interrupted();
-          if (action.action != 'command' && action.action != 'submit') {
-            return InputEnded();
-          }
-          if (action.action != 'command') {
-            out.writeln('Use /open, /up or /choose.');
-            continue;
-          }
-          if (action.value == '/up') {
-            if (current.isNotEmpty) {
-              current = current.sublist(0, current.length - 1);
-            } else {
-              out.writeln('Already at root.');
-            }
-            show();
-            continue;
-          }
-          out.writeln('Enter node reference:');
-          final reference = await _edit(
-            keys,
-            '',
-            out,
-            linear: true,
-            sequential: true,
-            extraCommands: const {'/open', '/up', '/choose'},
-          );
-          if (reference.action == 'cancel') return Cancelled();
-          if (reference.action == 'interrupt') return Interrupted();
-          if (reference.action == 'command') {
-            out.writeln('Enter a node reference.');
-            continue;
-          }
-          if (reference.action != 'submit') return InputEnded();
-          final n = int.tryParse(reference.value);
-          if (n == null || n < 1 || n > all.length) {
-            out.writeln('Enter a valid node reference.');
-            continue;
-          }
-          final row = all[n - 1];
-          final node = row.$1;
-          if (!currentPath(row.$2)) {
-            out.writeln('Node is no longer available.');
-            continue;
-          }
-          if (action.value == '/open') {
-            if (row.$2.length != current.length + 1 ||
-                (current.isNotEmpty &&
-                    !identical(row.$2[current.length - 1], current.last))) {
-              out.writeln('Open a node in the current path.');
-              continue;
-            }
-            if (node.childrenUnavailableReason != null) {
-              out.writeln(
-                'Children unavailable: ${node.childrenUnavailableReason}.',
-              );
-              continue;
-            }
-            if (node.children.isEmpty) {
-              out.writeln('Node has no children.');
-              continue;
-            }
-            expanded.add(node.value);
-            current = row.$2;
-            show();
-            continue;
-          }
-          if (!node.canSelect) {
-            out.writeln('Node is not selectable.');
-            continue;
-          }
-          if (node.disabledReason != null) {
-            out.writeln('Unavailable: ${node.disabledReason}.');
-            continue;
-          }
-          out.writeln('Accepted: ${path(row.$2)}.');
-          return Accepted(node.value);
-        }
-      }
-      var help = false;
-      while (true) {
-        final key = await keys.next();
-        if (key == null || key == '\x1a') return InputEnded();
-        if (key == '\x03') return Interrupted();
-        if (key == '\x1b') {
-          if (!help) return Cancelled();
-          help = false;
-          show();
-          continue;
-        }
-        if (key == '\x14') {
-          help = true;
-          out.writeln(
-            'Help: Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses; Escape dismisses help.',
-          );
-          continue;
-        }
-        if (help) continue;
-        final rows = visible();
-        final index = rows.indexWhere((r) => identical(r.$1, focus));
-        if (key == '\x1b[A' && index > 0) focus = rows[index - 1].$1;
-        if (key == '\x1b[B' && index >= 0 && index + 1 < rows.length) {
-          focus = rows[index + 1].$1;
-        }
-        if (key == '\x1b[C' && index >= 0 && !currentPath(rows[index].$2)) {
-          out.writeln('Node is no longer available.');
-          continue;
-        }
-        if (key == '\x1b[C' && focus?.childrenUnavailableReason != null) {
-          out.writeln(
-            'Children unavailable: ${focus!.childrenUnavailableReason}.',
-          );
-        }
-        if (key == '\x1b[C' && focus != null && focus.children.isNotEmpty) {
-          if (!expanded.add(focus.value)) focus = focus.children.first;
-        }
-        if (key == '\x1b[D' && focus != null) {
-          if (!expanded.remove(focus.value) &&
-              index >= 0 &&
-              rows[index].$2.length > 1) {
-            focus = rows[index].$2[rows[index].$2.length - 2];
-          }
-        }
-        if (key == '\r' || key == '\n') {
-          if (focus == null) {
-            out.writeln('No node available.');
-            continue;
-          }
-          if (index < 0 || !currentPath(rows[index].$2)) {
-            out.writeln('Node is no longer available.');
-            continue;
-          }
-          if (!focus.canSelect) {
-            out.writeln('Node is not selectable.');
-            continue;
-          }
-          if (focus.disabledReason != null) {
-            out.writeln('Unavailable: ${focus.disabledReason}.');
-            continue;
-          }
-          out.writeln(
-            'Accepted: ${path(all.firstWhere((r) => identical(r.$1, focus)).$2)}.',
-          );
-          return Accepted(focus.value);
-        }
-        show();
-      }
-    } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
     }
   }
 }
