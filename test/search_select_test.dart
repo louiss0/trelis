@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:prompty/prompty.dart';
+// The typed query/results projection is an internal presentation contract, not
+// part of the public authoring surface: read it through its narrow seam.
+import 'package:prompty/src/presentation.dart';
 import 'package:test/test.dart';
 
 import 'support/async_search_fixture.dart';

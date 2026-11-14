@@ -319,9 +319,11 @@ final class Autocomplete {
             out.writeln(
               'Accepted into pending answer: ${safe(pending)}. Use /submit to finish or /edit to change.',
             );
+            // Candidates are response-local: the ordinal identifies a position
+            // in this response, never a source-stable reference, so it is not
+            // recorded in the reference slot.
             transcript?._event(
               TextInputPresentationEventKind.candidateAccepted,
-              reference: index,
               text: candidate,
             );
           } else {

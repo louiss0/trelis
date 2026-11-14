@@ -111,4 +111,46 @@ void main() {
     expect((result as Accepted<String>).value, 'America/New_York');
     expect(out.toString(), contains('2025c'));
   });
+  test('rich and linear help state the matching and identity rules', () async {
+    for (final mode in [PromptMode.rich, PromptMode.linear]) {
+      final out = StringBuffer();
+      final result = await TimezoneSelect('Zone').prompt(
+        source: _scriptedInput(
+          mode == PromptMode.rich
+              ? Stream.value('\x14\x1bUS/Eastern\r\r')
+              : Stream.value('/help\rUS/Eastern\r105\r'),
+          out,
+        ),
+        mode: mode,
+      );
+
+      expect((result as Accepted<String>).value, 'America/New_York');
+      // Guidance is wrapped at the declared width, so compare one whitespace-
+      // normalised document rather than depending on line breaks.
+      final text = out.toString().replaceAll(RegExp(r'\s+'), ' ');
+      expect(
+        text,
+        contains('Help: TimezoneSelect'),
+        reason: '${mode.name} help is timezone-specific',
+      );
+      expect(text, contains('city names and aliases'));
+      expect(text, contains('canonical identity'));
+      expect(text, contains('no offset or current time'));
+    }
+  });
+  test('hidden instructions keep the timezone help route', () async {
+    final out = StringBuffer();
+    final result =
+        await TimezoneSelect(
+          'Zone',
+          instructions: InstructionDisplay.hidden,
+        ).prompt(
+          source: _scriptedInput(Stream.value('/help\rUS/Eastern\r105\r'), out),
+          mode: PromptMode.linear,
+        );
+
+    expect((result as Accepted<String>).value, 'America/New_York');
+    expect(out.toString(), contains('/help for help'));
+    expect(out.toString(), contains('Help: TimezoneSelect'));
+  });
 }
