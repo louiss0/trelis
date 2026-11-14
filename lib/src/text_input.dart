@@ -317,6 +317,7 @@ final class TerminalSession {
   final PromptMode? _applicationPreference;
   final OutputProfile? _outputProfile;
   _Keys? _keys;
+  Stream<String>? _keysInput;
   final List<TerminalSessionFeedbackRegion> _feedback = [];
   final Map<int, int> _liveGenerations = {};
   final Map<int, String> _feedbackSnapshots = {};
@@ -374,6 +375,33 @@ final class TerminalSession {
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
     _keys?.fail(error, stackTrace);
+  }
+
+  /// Returns the session-owned reader for [input].
+  ///
+  /// A session keeps one reader per selected input stream, so buffered input,
+  /// open escape sequences and paste provenance survive sequential prompts
+  /// without resubscribing. When the selected input changes — the real console
+  /// selects a fresh stream for every prompt — the reader that retirement can
+  /// fail has to follow it, and the replaced reader is closed so it stops
+  /// observing a stream this session no longer offers.
+  Future<_Keys> _readerFor(Stream<String> input) async {
+    final current = _keys;
+    if (current != null && identical(_keysInput, input)) return current;
+    _keys = null;
+    _keysInput = null;
+    await current?.close();
+    final keys = _Keys(input.transform(utf8.encoder));
+    _keys = keys;
+    _keysInput = input;
+    final failure = _sharedWriterFailure;
+    final failureStackTrace = _sharedWriterFailureStackTrace;
+    if (_closed && failure != null && failureStackTrace != null) {
+      // Retirement happened while the previous reader was being closed. The
+      // new reader must still end rather than park a prompt on a dead session.
+      keys.fail(failure, failureStackTrace);
+    }
+    return keys;
   }
 
   /// Performs one serialized shared-output action and retires the session if
@@ -720,6 +748,9 @@ final class TerminalSession {
       await _keys?.close();
     } catch (error, stackTrace) {
       recordFailure(error, stackTrace);
+    } finally {
+      _keys = null;
+      _keysInput = null;
     }
     if (cleanupError != null) {
       Error.throwWithStackTrace(cleanupError!, cleanupStackTrace!);
@@ -761,7 +792,6 @@ final class TerminalSession {
           _applicationPreference ??
           PromptMode.automatic;
       if (_source != null) {
-        _keys ??= _Keys(_source.input.transform(utf8.encoder));
         return await runner(
           ScriptedInput(
             const Stream<String>.empty(),
@@ -773,20 +803,21 @@ final class TerminalSession {
           ),
           selected,
           outputProfile: _outputProfile,
-          keys: _keys,
+          keys: await _readerFor(_source.input),
           session: this,
         );
       }
       if (_terminalIo != null) {
         final lease = _terminalIo.acquire();
+        final input = _terminalIo.input;
         // A session-owned reader lets retirement end an idle prompt and keeps
         // buffered input across sequential prompts, exactly as it does for a
-        // scripted source.
-        _keys ??= _Keys(_terminalIo.input.transform(utf8.encoder));
+        // scripted source. An adapter that selects a fresh stream per prompt
+        // gets a reader for that stream instead of a stale one.
         return await _restoreAfter(
-          () => runner(
+          () async => runner(
             ScriptedInput(
-              _terminalIo.input,
+              input,
               _SessionOutputSink(this),
               supportsRich: _terminalIo.supportsRich,
               outputProfile: _terminalOutputProfile(_terminalIo),
@@ -796,7 +827,7 @@ final class TerminalSession {
             ),
             selected,
             outputProfile: _outputProfile,
-            keys: _keys,
+            keys: await _readerFor(input),
             session: this,
           ),
           lease.restore,
@@ -810,25 +841,50 @@ final class TerminalSession {
       return await _terminal<T>(
         selected,
         _output,
-        (nativeSource, nativeMode, _) => runner(
-          ScriptedInput(
-            nativeSource.input,
-            _SessionOutputSink(this),
-            supportsRich: nativeSource.supportsRich,
-            outputProfile: nativeSource.outputProfile,
-            transcript: nativeSource.transcript,
-            resizeObserver: nativeSource.resizeObserver,
-            observedGeometry: nativeSource._observedGeometry,
-            hardColorDisabled: nativeSource._hardColorDisabled,
-          ),
-          nativeMode,
-          outputProfile: _outputProfile,
-          session: this,
-        ),
+        (nativeSource, nativeMode, _) =>
+            _promptOnNativeConsole(nativeSource, nativeMode, runner),
         capture: capture,
       );
     } finally {
       _activePrompt = false;
+    }
+  }
+
+  /// Runs one prompt over the native console transport this session acquired.
+  ///
+  /// The console transport lives for exactly one prompt, so its reader is
+  /// scoped to that prompt instead of being kept across prompts. The session
+  /// still owns it, so a retired session ends an idle console read with the
+  /// original failure instead of waiting for the next keystroke.
+  Future<PromptResult<T>> _promptOnNativeConsole<T>(
+    ScriptedInput nativeSource,
+    PromptMode nativeMode,
+    _SessionPromptRunner<T> runner,
+  ) async {
+    final keys = await _readerFor(nativeSource.input);
+    try {
+      return await runner(
+        ScriptedInput(
+          nativeSource.input,
+          _SessionOutputSink(this),
+          supportsRich: nativeSource.supportsRich,
+          outputProfile: nativeSource.outputProfile,
+          transcript: nativeSource.transcript,
+          resizeObserver: nativeSource.resizeObserver,
+          observedGeometry: nativeSource._observedGeometry,
+          hardColorDisabled: nativeSource._hardColorDisabled,
+        ),
+        nativeMode,
+        outputProfile: _outputProfile,
+        keys: keys,
+        session: this,
+      );
+    } finally {
+      if (identical(_keys, keys)) {
+        _keys = null;
+        _keysInput = null;
+      }
+      await keys.close();
     }
   }
 }
@@ -2025,12 +2081,16 @@ class _Keys {
   /// delivered: a detached repaint and its session can observe the same writer
   /// failure, and the reader must not receive it twice.
   void fail(Object error, StackTrace stackTrace) {
-    if (_failure != null || _controller.isClosed) return;
+    if (_failure != null || _closed || _controller.isClosed) return;
     _failure = error;
     _controller.addError(error, stackTrace);
   }
 
+  bool _closed = false;
+
   Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
     _timer?.cancel();
     await _subscription.cancel();
     await _iterator.cancel();

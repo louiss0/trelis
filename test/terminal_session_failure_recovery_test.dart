@@ -439,6 +439,101 @@ void main() {
   );
 
   test(
+    'a session owns one reader per selected input across sequential prompts',
+    () async {
+      final output = StringBuffer();
+      var firstDetached = false;
+      final first = StreamController<String>(
+        onCancel: () => firstDetached = true,
+      );
+      final second = StreamController<String>();
+      // The real console selects a fresh input stream for every prompt, so a
+      // session-owned reader must follow the currently selected input instead
+      // of staying attached to the previous prompt's stream.
+      final terminal = _PerPromptTerminal([
+        first.stream,
+        second.stream,
+      ], output);
+      first.add('alpha\r');
+      second.add('beta\r');
+
+      final results = await TerminalSession.run(
+        (session) async => [
+          await TextInput('First')
+              .prompt(session: session)
+              .timeout(_promptTimeout),
+          await TextInput('Second')
+              .prompt(session: session)
+              .timeout(_promptTimeout),
+        ],
+        terminal: terminal,
+        mode: PromptMode.linear,
+      );
+
+      expect(
+        [
+          for (final result in results)
+            result is Accepted<String> ? result.value : result,
+        ],
+        ['alpha', 'beta'],
+      );
+      expect(
+        firstDetached,
+        isTrue,
+        reason: 'the replaced reader must not keep observing its input',
+      );
+      expect(terminal.events, [
+        'acquire',
+        'restore',
+        'acquire',
+        'restore',
+      ], reason: 'each prompt must still acquire and restore its own lease');
+      await first.close();
+      await second.close();
+    },
+  );
+
+  test('retirement ends the prompt of the currently selected input', () async {
+    final failure = StateError('shared writer failed');
+    final output = _ConditionalThrowingSink(
+      failure,
+      (text) => text.contains('Index: tick'),
+    );
+    final first = StreamController<String>();
+    final second = StreamController<String>();
+    final terminal = _PerPromptTerminal([first.stream, second.stream], output);
+    late Spinner spinner;
+
+    final run = TerminalSession.run(
+      (session) async {
+        spinner = Spinner('Index')..start(session: session);
+        final accepted = await TextInput('First')
+            .prompt(session: session)
+            .timeout(_promptTimeout);
+        expect(accepted, isA<Accepted<String>>());
+        final parked = TextInput('Second').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        try {
+          spinner.update('tick');
+        } catch (error) {
+          expect(error, same(failure));
+        }
+        // The replaced reader is the only input this prompt can still be
+        // answered from, so retirement has to reach it.
+        return await parked.timeout(_promptTimeout);
+      },
+      terminal: terminal,
+      mode: PromptMode.linear,
+    );
+    first.add('alpha\r');
+
+    await expectLater(run, throwsA(same(failure)));
+    expect(terminal.events, ['acquire', 'restore', 'acquire', 'restore']);
+    await first.close();
+    await second.close();
+  });
+
+  test(
     'a terminal-backed session restores its lease after a shared write failure',
     () async {
       final failure = StateError('shared writer failed');
@@ -460,6 +555,8 @@ void main() {
     },
   );
 }
+
+const _promptTimeout = Duration(seconds: 2);
 
 OutputProfile _richProfile({
   int rows = 8,
@@ -545,6 +642,33 @@ final class _ConditionalThrowingSink implements StringSink {
 
   @override
   void writeln([Object? object = '']) => _write('$object\n');
+}
+
+/// A terminal adapter whose selected input and lease change per prompt, as the
+/// real console owns one input stream for the duration of one prompt.
+final class _PerPromptTerminal implements TerminalIo {
+  _PerPromptTerminal(this._inputs, this.output);
+
+  final List<Stream<String>> _inputs;
+  @override
+  final StringSink output;
+  @override
+  bool get supportsRich => false;
+  @override
+  Map<String, String?> get environment => const {};
+
+  final List<String> events = [];
+  int _acquired = 0;
+
+  @override
+  Stream<String> get input => _inputs[_acquired - 1];
+
+  @override
+  TerminalLease acquire() {
+    _acquired++;
+    events.add('acquire');
+    return TerminalLease(() => events.add('restore'));
+  }
 }
 
 final class _RecordingTerminal implements TerminalIo {

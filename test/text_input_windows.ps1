@@ -63,7 +63,7 @@ $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
 $redirect = if ($Scenario -eq 'redirected') { "2> '$file.stderr'" } else { '' }
 $term = if ($Scenario -like 'dumb-*') { "`$env:TERM='dumb';" } else { "" }
-$line = "$term Set-Location '$root'; while (!(Test-Path '$file.ready')) { Start-Sleep -Milliseconds 50 }; & '$dart' run test/text_input_native_app.dart $Scenario $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$line = "$term Set-Location '$root'; while (!(Test-Path '$file.ready')) { Start-Sleep -Milliseconds 50 }; & '$dart' run test/text_input_native_app.dart $Scenario '$file.trigger' $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -162,6 +162,10 @@ try {
   'dumb-rich' { }
   'redirected' { [NativeProbe]::Text("`r") }
   'stdout' { [NativeProbe]::Text("`r") }
+  # The app injects its own shared-writer failure while its prompt is parked
+  # on the native read, so this scenario needs no injected keys: the release
+  # file only proves the acquired console state was observed first.
+  'session-retire' { Set-Content -Path "$file.trigger" -Value 'go' }
   'paste' { [NativeProbe]::Text("$([char]27)[200~/cancel$([char]27)[201~`r") }
   'unicode' { [NativeProbe]::Text("$([char]::ConvertFromUtf32(0x1f600))`r") }
   'interrupt' { [NativeProbe]::Key([char]3,67,8) }
@@ -178,7 +182,7 @@ try {
   if ($actual.Contains([char]27) -or !$actual.Contains('Name')) { throw 'unstable stdout transcript' }
   $actual = ($actual -split "`r?`n")[-1]
  }
- $expected = switch ($Scenario) { 'linear-cursor' { 'alphXa' } 'linear-long' { ('0123456789' * 29) + '012345678X9' } 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } }
+ $expected = switch ($Scenario) { 'linear-cursor' { 'alphXa' } 'linear-long' { ('0123456789' * 29) + '012345678X9' } 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } 'session-retire' { 'retired' } }
  if($Scenario -like 'help-*') {
   $expected=if($Scenario.Contains('interrupt')){'interrupt'}elseif($Scenario.Contains('eof')){'eof'}elseif($isPassword){'accepted'}else{'alphXa'}
   if([NativeProbe]::ScreenText().Contains('Help:')){throw 'help screen survived prompt exit'}
@@ -191,4 +195,4 @@ try {
  if($before -ne $after){throw "console state changed: $before -> $after"}
  Set-Content $Report "text input $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "text input $Scenario FAIL $_"; throw }
-finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.ready","$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
+finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.ready","$file.done","$file.stderr","$file.trigger" -Force -ErrorAction SilentlyContinue }

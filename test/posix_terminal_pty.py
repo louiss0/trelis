@@ -66,6 +66,9 @@ def main():
         ('eof', [(b'Name', b'\x04')], 'eof'),
         ('error', [(b'Failure', b'\r'), (b'Name', b'\r')], 'alpha'),
         ('repeat', [(b'Name', b'\r'), (b'Name', b'\r')], 'alpha,alpha'),
+        # A session-owned reader over the real console must end an idle prompt
+        # when its shared writer fails, without waiting for a keystroke.
+        ('session-retire', [], 'retired'),
     ]:
         run(scenario, inputs, expected)
     run('dumb-auto', [(b'Name', b'\r')], 'alpha', term='dumb')
