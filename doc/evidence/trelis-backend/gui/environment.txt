@@ -1,0 +1,1 @@
+nvda-command=; nvda-process-count=0
