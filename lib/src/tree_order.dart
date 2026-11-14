@@ -284,10 +284,15 @@ final class TreeSelect<T> {
       ].join(' ');
     }
 
-    final width = _textInputWidth(effectiveProfile);
+    // Guidance and rows follow the current output geometry, so a resize repaint
+    // wraps to the observed width instead of the invocation width.
     void write(String text, TerminalColor foreground) {
       final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      _writeWrappedText(
+        wrapped,
+        DisplayText.from(text).value,
+        _textInputWidth(effectiveProfile),
+      );
       for (final line in wrapped.toString().split('\n')) {
         if (line.isNotEmpty) {
           out.writeln(
@@ -358,7 +363,7 @@ final class TreeSelect<T> {
         _writeChoiceRow(
           out,
           rowFor(row),
-          width: width,
+          width: _textInputWidth(effectiveProfile),
           foreground: mode == PromptMode.rich && identical(row.$1, focus)
               ? colors.accent
               : colors.foreground,

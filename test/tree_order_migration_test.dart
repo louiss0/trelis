@@ -28,7 +28,12 @@ final class _ResizeObserver implements TerminalResizeObserver {
 }
 
 final class _FakeTerminal implements TerminalIo, TerminalIoOutputProfile {
-  _FakeTerminal(this.input, this.output, this.outputProfile);
+  _FakeTerminal(
+    this.input,
+    this.output,
+    this.outputProfile, {
+    this.environment = const {},
+  });
 
   @override
   final Stream<String> input;
@@ -40,7 +45,7 @@ final class _FakeTerminal implements TerminalIo, TerminalIoOutputProfile {
   final OutputProfile outputProfile;
 
   @override
-  Map<String, String?> get environment => const {};
+  final Map<String, String?> environment;
 
   final List<String> events = [];
 
@@ -53,6 +58,21 @@ final class _FakeTerminal implements TerminalIo, TerminalIoOutputProfile {
     return TerminalLease(() => events.add('restore'));
   }
 }
+
+final _colorProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  colorDepth: ColorDepth.indexed256,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 20),
+);
+
+/// A distinguishable palette so each semantic role is recognisable in output.
+final _palette = ColorThemes.terminalDefault.copyWith(
+  foreground: TerminalColor.indexed(12),
+  muted: TerminalColor.indexed(8),
+  accent: TerminalColor.indexed(10),
+  success: TerminalColor.indexed(2),
+  warning: TerminalColor.indexed(9),
+);
 
 /// Renders the emitted transcript as physical terminal lines: a carriage
 /// return followed by an erase-line sequence leaves only the rewritten tail of
@@ -482,15 +502,27 @@ void main() {
       );
     }
 
-    // Help owns the screen until it is dismissed, so a resize does not repaint
-    // underneath it.
+    // A later help request is wrapped at the observed width too, because the
+    // effective profile follows the resize.
     keys.add('\x14');
     await pumpEventQueue();
     final duringHelp = output.length;
+    for (final line in _componentLines(
+      output.toString().substring(beforeResize),
+    )) {
+      expect(
+        line.length,
+        lessThanOrEqualTo(30),
+        reason: 'post-resize line exceeds the observed width: "$line"',
+      );
+    }
+
+    // Help owns the screen until it is dismissed, so a resize does not repaint
+    // underneath it.
     resized.add(null);
     await pumpEventQueue();
     expect(output.length, duringHelp);
-    keys.add('\x1b');
+    keys.add('\x1bx');
 
     keys.add('\x1b[C\x1b[C\r');
     expect(((await pending) as Accepted<String>).value, 'b');
@@ -549,4 +581,374 @@ void main() {
     await resized.close();
     expect(watcherCancelled, isTrue);
   });
+  test('tree uses its palette for rows, reasons and acceptance', () async {
+    final output = StringBuffer();
+    final result =
+        await TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', disabledReason: 'offline'),
+          TreeNode('b', 'B'),
+        ], colors: _palette).prompt(
+          source: ScriptedInput(
+            Stream.value('/choose\r1\r/choose\r2\r'),
+            output,
+            outputProfile: _colorProfile,
+          ),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'b');
+    final text = output.toString();
+    // Warning refusal, success acceptance and the component foreground are
+    // distinct semantic roles rather than one undifferentiated span.
+    expect(text, contains('\x1b[38;5;9;'));
+    expect(text, contains('\x1b[38;5;2;'));
+    expect(text, contains('\x1b[38;5;12;'));
+
+    final terminal = _FakeTerminal(
+      Stream.value('/choose\r1\r/choose\r2\r'),
+      StringBuffer(),
+      _colorProfile,
+      environment: {'NO_COLOR': '1'},
+    );
+    final suppressed = await TreeSelect<String>('Pick', [
+      TreeNode('a', 'A', disabledReason: 'offline'),
+      TreeNode('b', 'B'),
+    ], colors: _palette).prompt(terminal: terminal, mode: PromptMode.linear);
+    expect((suppressed as Accepted<String>).value, 'b');
+    expect(terminal.output.toString(), isNot(contains('\x1b[38;5;9;')));
+    expect(terminal.output.toString(), contains('unavailable: offline'));
+  });
+
+  test('order uses its palette for movement, locks and acceptance', () async {
+    final output = StringBuffer();
+    final result =
+        await SortableSelect<String>('Order', [
+          Choice('a', 'A'),
+          Choice('x', 'Anchor', disabledReason: 'fixed'),
+        ], colors: _palette).prompt(
+          source: ScriptedInput(
+            Stream.value(' \x1b[B \r\r'),
+            output,
+            outputProfile: _colorProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['a', 'x']);
+    final text = output.toString();
+    expect(text, contains('\x1b[38;5;10;')); // focused accent
+    expect(text, contains('\x1b[38;5;9;')); // lock refusal warning
+    expect(text, contains('\x1b[38;5;2;')); // acceptance success
+  });
+
+  test('incomplete tree and order actions never accept an answer', () async {
+    final tree = TreeSelect<String>('Pick', [
+      TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+    ]);
+    // Expansion without Enter and an unfinished rich interaction end with input.
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(
+          Stream.value('\x1b[C\x1b[C'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<InputEnded<String>>(),
+    );
+    // A chosen command whose reference never arrives is not an answer either.
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value('/choose\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<InputEnded<String>>(),
+    );
+
+    final order = SortableSelect<String>('Order', [
+      Choice('a', 'A'),
+      Choice('b', 'B'),
+    ]);
+    // A picked-up item that is never dropped is not a submitted order.
+    expect(
+      await order.prompt(
+        source: ScriptedInput(
+          Stream.value(' \x1b[B'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<InputEnded<List<String>>>(),
+    );
+    expect(
+      await order.prompt(
+        source: ScriptedInput(Stream.value('/move\r2\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<InputEnded<List<String>>>(),
+    );
+  });
+
+  test(
+    'a failed shared writer ends a tree prompt with the original failure',
+    () async {
+      final failure = StateError('shared writer failed');
+      final output = _ThrowingSink(failure);
+      final input = StreamController<String>();
+      late TerminalSession closed;
+
+      await expectLater(
+        TerminalSession.run(
+          (session) {
+            closed = session;
+            return TreeSelect<String>('Pick', [
+              TreeNode('a', 'A'),
+            ]).prompt(session: session);
+          },
+          source: ScriptedInput(
+            input.stream,
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        throwsA(same(failure)),
+      );
+      // A retired scope cannot revive a registration after the writer failed.
+      expect(() => Spinner('Late').start(session: closed), throwsStateError);
+      expect(output.text, isNot(contains('Accepted')));
+      await input.close();
+    },
+  );
+
+  test(
+    'a failed shared writer ends an order prompt with the original failure',
+    () async {
+      final failure = StateError('shared writer failed');
+      final output = _ThrowingSink(failure);
+      final input = StreamController<String>();
+
+      await expectLater(
+        TerminalSession.run(
+          (session) => SortableSelect<String>('Order', [
+            Choice('a', 'A'),
+          ]).prompt(session: session),
+          source: ScriptedInput(
+            input.stream,
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        ),
+        throwsA(same(failure)),
+      );
+      expect(output.text, isNot(contains('Accepted')));
+      await input.close();
+    },
+  );
+
+  test('rich tree and order paint transcript rows without owning the caret', () async {
+    // A monochrome rich profile: the components compose rows and notices only.
+    // No cursor addressing, erase-line, alternate-screen or caret sequence is
+    // emitted, so the shared editor keeps caret and viewport ownership in the
+    // modes that have one.
+    final treeOutput = StringBuffer();
+    final tree =
+        await TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+        ]).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[C\x1b[C\r'),
+            treeOutput,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((tree as Accepted<String>).value, 'b');
+    expect(treeOutput.toString(), isNot(contains('\x1b')));
+
+    final orderOutput = StringBuffer();
+    final order =
+        await SortableSelect<String>('Order', [
+          Choice('a', 'A'),
+          Choice('b', 'B'),
+        ]).prompt(
+          source: ScriptedInput(
+            Stream.value(' \x1b[B\r\r'),
+            orderOutput,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((order as Accepted<List<String>>).value, ['b', 'a']);
+    expect(orderOutput.toString(), isNot(contains('\x1b')));
+  });
+
+  test('tree keeps every terminal outcome distinct', () async {
+    final tree = TreeSelect<String>('Pick', [TreeNode('a', 'A')]);
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<Cancelled<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(
+          Stream.value('\x1bx'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<Cancelled<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<Interrupted<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(
+          Stream.value('\x03'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<Interrupted<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(Stream.value(''), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<InputEnded<String>>(),
+    );
+    expect(
+      await tree.prompt(
+        source: ScriptedInput(
+          Stream.value(''),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<InputEnded<String>>(),
+    );
+    expect(
+      await tree.prompt(source: SuppliedAnswer('2')),
+      isA<Unavailable<String>>(),
+    );
+    expect(
+      await TreeSelect<String>('Pick', [TreeNode('a', 'A')]).prompt(
+        source: ScriptedInput(Stream.value(''), StringBuffer()),
+        mode: PromptMode.rich,
+      ),
+      isA<Unavailable<String>>(),
+    );
+  });
+
+  test('order keeps every terminal outcome distinct', () async {
+    final order = SortableSelect<String>('Order', [
+      Choice('a', 'A'),
+      Choice('b', 'B'),
+    ]);
+    expect(
+      await order.prompt(
+        source: ScriptedInput(Stream.value('/cancel\r'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<Cancelled<List<String>>>(),
+    );
+    expect(
+      await order.prompt(
+        source: ScriptedInput(
+          Stream.value('\x1bx'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<Cancelled<List<String>>>(),
+    );
+    expect(
+      await order.prompt(
+        source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<Interrupted<List<String>>>(),
+    );
+    expect(
+      await order.prompt(
+        source: ScriptedInput(
+          Stream.value('\x03'),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<Interrupted<List<String>>>(),
+    );
+    expect(
+      await order.prompt(
+        source: ScriptedInput(Stream.value(''), StringBuffer()),
+        mode: PromptMode.linear,
+      ),
+      isA<InputEnded<List<String>>>(),
+    );
+    expect(
+      await order.prompt(
+        source: ScriptedInput(
+          Stream.value(''),
+          StringBuffer(),
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      ),
+      isA<InputEnded<List<String>>>(),
+    );
+    expect(
+      await order.prompt(source: SuppliedAnswer('1,3')),
+      isA<Unavailable<List<String>>>(),
+    );
+    expect(
+      await SortableSelect<String>('Order', [Choice('a', 'A')]).prompt(
+        source: ScriptedInput(Stream.value(''), StringBuffer()),
+        mode: PromptMode.rich,
+      ),
+      isA<Unavailable<List<String>>>(),
+    );
+  });
+}
+
+final class _ThrowingSink implements StringSink {
+  _ThrowingSink(this.error);
+
+  final Object error;
+  final StringBuffer _recording = StringBuffer();
+
+  String get text => _recording.toString();
+
+  Never _throw(Object? value) {
+    _recording.write(value);
+    throw error;
+  }
+
+  @override
+  void write(Object? object) => _throw(object);
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      _throw(objects.join(separator));
+
+  @override
+  void writeCharCode(int charCode) => _throw(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => _throw('$object\n');
 }
