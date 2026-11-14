@@ -26,7 +26,7 @@
 
 ## Public behavior exercised
 
-`test/async_search_migration_test.dart` (24 tests) invokes only the public
+`test/async_search_migration_test.dart` (25 tests) invokes only the public
 constructors, `prompt` methods and the public `ScriptedInput.transcript`
 recording seam. `test/search_select_test.dart` (34), `test/autocomplete_test.dart`
 (32), `test/command_palette_test.dart` (7) and `test/timezone_select_test.dart`
@@ -124,8 +124,9 @@ public `TextInputTranscript` with stable run-local ids:
 - Verified with those fixtures: obsolete success and obsolete error; late
   completions after cancellation and after input end; cancellation and EOF while
   a request is outstanding; results arriving while help owns the screen; the
-  retained draft after help dismissal; concurrent feedback with an asynchronous
-  result inside one `TerminalSession`.
+  retained draft after help dismissal; and concurrent feedback with an
+  asynchronous result or suggestion response inside one `TerminalSession`, in
+  both linear and rich interaction.
 - A `SwitchableSink` injects a selected-output failure while a request is
   outstanding. The prompt ends with the original injected error (it is not
   swallowed and not retried), and the sink records no further accepted output,
@@ -139,10 +140,10 @@ public `TextInputTranscript` with stable run-local ids:
 | `dart format --output=none --set-exit-if-changed lib/src/presentation.dart lib/src/text_input.dart lib/src/autocomplete.dart lib/src/search_select.dart lib/prompty.dart test/async_search_migration_test.dart test/search_select_test.dart test/autocomplete_test.dart test/support/async_search_fixture.dart` | Passed: `Formatted 9 files (0 changed)` |
 | `dart analyze` | Passed: `No issues found!` |
 | `dart run tool/check_doc_links.dart` | Passed: `Checked 154 relative links in 51 Markdown files.` |
-| `dart test test/async_search_migration_test.dart test/search_select_test.dart test/autocomplete_test.dart test/command_palette_test.dart test/timezone_select_test.dart test/native_async_fixture_test.dart --reporter expanded` | Passed: 110 tests |
-| `dart test --reporter compact` | Passed: 861 tests |
+| `dart test test/async_search_migration_test.dart test/search_select_test.dart test/autocomplete_test.dart test/command_palette_test.dart test/timezone_select_test.dart test/native_async_fixture_test.dart --reporter expanded` | Passed: 111 tests |
+| `dart test --reporter compact` | Passed: 862 tests |
 
-The whole-suite count includes the 837 tests that passed on `f83e7d1`; the 24
+The whole-suite count includes the 837 tests that passed on `f83e7d1`; the 25
 new tests are this ticket's projection, event, help and fault coverage. No
 existing test was deleted or weakened, and no golden output was regenerated.
 

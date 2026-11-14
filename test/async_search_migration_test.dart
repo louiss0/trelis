@@ -811,5 +811,40 @@ void main() {
         await input.close();
       },
     );
+
+    test(
+      'rich suggestions and background feedback share one session',
+      () async {
+        final requests = PendingRequests<List<String>>();
+        final input = StreamController<String>();
+        final output = StringBuffer();
+        final transcript = TextInputTranscript();
+        await TerminalSession.run(
+          (session) async {
+            final region = session.startFeedbackRegion();
+            final prompt = Autocomplete(
+              'Name',
+              suggestions: requests.record,
+            ).prompt(session: session);
+            input.add('Ada');
+            await settleUntil(() => requests.requested('Ada'));
+            region.write('Background: loading index');
+            await settle();
+            requests.complete('Ada', ['Adaline']);
+            await settleUntil(
+              () => _results(transcript)?.phase == QueryResultsPhase.ready,
+            );
+            expect(output.toString(), contains('Background: loading index'));
+            expect(output.toString(), contains('1 suggestions; none active.'));
+            input.add('\t\r');
+            expect(((await prompt) as Accepted<String>).value, 'Adaline');
+            region.retire();
+          },
+          source: _scripted(input.stream, output, transcript: transcript),
+          mode: PromptMode.rich,
+        );
+        await input.close();
+      },
+    );
   });
 }
