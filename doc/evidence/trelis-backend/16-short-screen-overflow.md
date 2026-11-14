@@ -58,3 +58,13 @@ views, but it does not establish physical scrolling, scrollback, font-width,
 alternate-screen, or caret behavior in a real terminal. Windows GUI and NVDA,
 Linux/macOS CI/native runs, shared-writer fault injection, and final backend
 acceptance evidence remain pending their dedicated tickets and gate.
+
+## Final-review revalidation
+
+The final backend review found that retired feedback snapshots were retained for
+the whole session, so every help dismissal replayed history and one failure kept
+marking later short-screen status. Retired regions now drop their snapshot, help
+defers only the lines that arrive while it owns painting, and the severity
+marker follows the newest emitted feedback line (`5af2d4f`). The `[!]` indicator
+immediately after a failure, asserted above, still holds. See
+[final-review-fixes.md](final-review-fixes.md).

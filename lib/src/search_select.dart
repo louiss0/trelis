@@ -176,17 +176,7 @@ final class SearchSelect<T> {
       return Accepted(choices[n - 1].value);
     }
     final input = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: input.outputProfile,
-        supportsRich: input.supportsRich,
-      ),
-      input._observedGeometry,
-    );
-    if (input._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(input, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',

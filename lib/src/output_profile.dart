@@ -150,14 +150,27 @@ final class OutputProfile {
     );
   }
 
-  OutputProfile copyWith({ColorDepth? colorDepth}) => OutputProfile(
-    cursor: cursor,
-    alternateScreen: alternateScreen,
-    styles: styles,
+  /// Replaces the named facts and preserves every other declared fact.
+  ///
+  /// Resolution, geometry observation and per-invocation restrictions each
+  /// change one fact; a single-field copy forced every caller to reconstruct
+  /// the complete profile by hand.
+  OutputProfile copyWith({
+    CapabilitySupport? cursor,
+    CapabilitySupport? alternateScreen,
+    CapabilitySupport? styles,
+    ColorDepth? colorDepth,
+    GlyphSet? glyphs,
+    OutputGeometry? geometry,
+    AmbiguousWidth? ambiguousWidth,
+  }) => OutputProfile(
+    cursor: cursor ?? this.cursor,
+    alternateScreen: alternateScreen ?? this.alternateScreen,
+    styles: styles ?? this.styles,
     colorDepth: colorDepth ?? this.colorDepth,
-    glyphs: glyphs,
-    geometry: geometry,
-    ambiguousWidth: ambiguousWidth,
+    glyphs: glyphs ?? this.glyphs,
+    geometry: geometry ?? this.geometry,
+    ambiguousWidth: ambiguousWidth ?? this.ambiguousWidth,
   );
 
   /// Whether the minimum safe facts for rich synthetic output are present.

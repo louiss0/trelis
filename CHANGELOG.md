@@ -33,3 +33,10 @@
   recorded in `doc/ticket-31-regression-evidence.md`; the whole-library
   Windows Terminal + NVDA baseline in `doc/nvda-inventory.md` has not been
   performed, so no accessibility qualification is claimed.
+- Corrections from the final backend review: a component colour is applied to
+  each wrapped line instead of being measured as text, rejected answers use the
+  palette error role, protected text is encoded by one display-escaping policy,
+  feedback that has retired is not replayed after help, a running standalone
+  feedback region truly owns its sink, and `terminalSgr`/`terminalStyledText`
+  never invent a colour for a depth that cannot show one. Evidence is in
+  `doc/evidence/trelis-backend/final-review-fixes.md`.

@@ -19,9 +19,9 @@ final class TreeNode<T> {
     this.disabledReason,
     this.childrenUnavailableReason,
   }) : children = List.unmodifiable(children) {
-    Choice(value, label, disabledReason: disabledReason);
+    _checkChoiceText(label, disabledReason);
     if (childrenUnavailableReason != null) {
-      Choice(value, label, disabledReason: childrenUnavailableReason);
+      _checkChoiceText(label, childrenUnavailableReason);
       if (children.isNotEmpty) {
         throw ArgumentError('Unavailable children cannot be supplied.');
       }
@@ -184,17 +184,7 @@ final class TreeSelect<T> {
       return Accepted(all[n - 1].$1.value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    var effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -286,21 +276,14 @@ final class TreeSelect<T> {
 
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(
-        wrapped,
-        DisplayText.from(text).value,
-        _textInputWidth(effectiveProfile),
-      );
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      _textInputWidth(effectiveProfile),
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     int referenceOf((TreeNode<T>, List<TreeNode<T>>) row) =>
         all.indexOf(row) + 1;
@@ -719,17 +702,7 @@ final class SortableSelect<T> {
       return Accepted(answer());
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    var effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -743,21 +716,14 @@ final class SortableSelect<T> {
     final out = scripted.output;
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(
-        wrapped,
-        DisplayText.from(text).value,
-        _textInputWidth(effectiveProfile),
-      );
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      _textInputWidth(effectiveProfile),
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     var focus = 0;
     var moving = false;

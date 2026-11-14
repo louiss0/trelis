@@ -117,17 +117,7 @@ final class Autocomplete {
   }) async {
     if (promptSource is SuppliedAnswer) return _input._run(promptSource, mode);
     final source = promptSource as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: source.outputProfile,
-        supportsRich: source.supportsRich,
-      ),
-      source._observedGeometry,
-    );
-    if (source._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(source, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; use linear or automatic mode.',

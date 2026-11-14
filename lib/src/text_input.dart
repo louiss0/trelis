@@ -239,12 +239,7 @@ OutputProfile _constrainToObservedGeometry(
       profile.geometry.isAutomatic) {
     return profile;
   }
-  return OutputProfile(
-    cursor: profile.cursor,
-    alternateScreen: profile.alternateScreen,
-    styles: profile.styles,
-    colorDepth: profile.colorDepth,
-    glyphs: profile.glyphs,
+  return profile.copyWith(
     geometry: OutputGeometry.fixed(
       columns: profile.geometry.columns! < observed.columns!
           ? profile.geometry.columns!
@@ -253,8 +248,30 @@ OutputProfile _constrainToObservedGeometry(
           ? profile.geometry.rows!
           : observed.rows!,
     ),
-    ambiguousWidth: profile.ambiguousWidth,
   );
+}
+
+/// Resolves the effective output profile of one scripted invocation.
+///
+/// The invocation declaration, the source declaration, the legacy rich hint
+/// and the observed geometry are combined once, and a source that reports a
+/// hard restriction (a non-empty `NO_COLOR`) cannot be styled by a declared
+/// colour depth. Components call this instead of repeating the order.
+OutputProfile _effectiveOutputProfile(
+  ScriptedInput scripted,
+  OutputProfile? invocation,
+) {
+  final resolved = _constrainToObservedGeometry(
+    OutputProfile.resolve(
+      invocation: invocation,
+      source: scripted.outputProfile,
+      supportsRich: scripted.supportsRich,
+    ),
+    scripted._observedGeometry,
+  );
+  return scripted._hardColorDisabled
+      ? resolved.copyWith(colorDepth: ColorDepth.none)
+      : resolved;
 }
 
 enum PromptMode { rich, linear, automatic }
@@ -304,10 +321,23 @@ String _presentationSignature(QueryResultsPresentation presentation) => [
 final _noScreenOwner = Object();
 final _screenOwners = Expando<Object>('prompty terminal screen owner');
 
+/// One shared screen claim held by running standalone feedback.
+///
+/// Several independent feedback regions may present on one sink, so the claim
+/// is reference-counted rather than exclusive. It still excludes a session: a
+/// scoped owner requires the whole screen, while standalone feedback would
+/// keep writing unscoped status lines into it.
+final class _StandaloneFeedbackClaim {
+  int _owners = 1;
+}
+
 Object? _screenOwner(StringSink output) {
   final owner = _screenOwners[output as Object];
   return identical(owner, _noScreenOwner) ? null : owner;
 }
+
+bool _hasSessionOwner(StringSink output) =>
+    _screenOwner(output) is TerminalSession;
 
 void _claimScreen(StringSink output, Object owner) {
   if (_screenOwner(output) != null) {
@@ -385,7 +415,25 @@ final class TerminalSession {
   Stream<String>? _keysInput;
   final List<TerminalSessionFeedbackRegion> _feedback = [];
   final Map<int, int> _liveGenerations = {};
+
+  /// The latest line of each live region, in registration order.
+  ///
+  /// A retired region has no live line: its outcome is transcript history, so
+  /// it neither contributes a label to the compact summary nor replays when
+  /// modal help returns.
   final Map<int, String> _feedbackSnapshots = {};
+
+  /// Lines that arrived while modal help owned painting, keyed by region.
+  ///
+  /// They are written once when help returns, in first-deferral order. A later
+  /// update of the same region replaces its deferred line instead of growing
+  /// the session's memory.
+  final Map<int, String> _deferredFeedback = {};
+
+  /// Whether the newest emitted feedback line reported a warning, error or
+  /// explicit outcome. A retired failure stays reviewable in the transcript
+  /// without marking every later status.
+  bool _lastFeedbackLineImportant = false;
   int _nextRegionId = 1;
   void Function()? _promptRepaint;
   bool _activePrompt = false;
@@ -436,6 +484,8 @@ final class TerminalSession {
     }
     _feedback.clear();
     _liveGenerations.clear();
+    _feedbackSnapshots.clear();
+    _deferredFeedback.clear();
     // The active prompt cannot be answered through a retired session, so it
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
@@ -503,6 +553,7 @@ final class TerminalSession {
     if (_liveGenerations[region._id] != region._generation) return;
     _liveGenerations.remove(region._id);
     _feedback.remove(region);
+    _feedbackSnapshots.remove(region._id);
     if (!_modalHelp && _feedbackNeedsCompaction) {
       _paintCompactFeedback();
       _writeShared(() => _promptRepaint?.call());
@@ -529,6 +580,7 @@ final class TerminalSession {
       line.contains(': completed');
 
   bool get _hasImportantFeedback =>
+      _lastFeedbackLineImportant ||
       _feedbackSnapshots.values.any(_isImportantFeedback);
 
   bool get _feedbackNeedsCompaction {
@@ -590,7 +642,11 @@ final class TerminalSession {
     // worker may keep reporting progress during help, but it must not write
     // into the alternate screen or transcript between help lines.
     _feedbackSnapshots[region._id] = line;
-    if (_modalHelp) return;
+    _lastFeedbackLineImportant = _isImportantFeedback(line);
+    if (_modalHelp) {
+      _deferredFeedback[region._id] = line;
+      return;
+    }
     // One session-owned writer delivers a complete region update before the
     // prompt repaint. Clearing the editable line first prevents a status
     // write from overwriting the physical caret; the editor retains the
@@ -634,12 +690,32 @@ final class TerminalSession {
   }
 
   void _restoreLatestComposite() {
+    final deferred = [..._deferredFeedback.values];
+    _deferredFeedback.clear();
     if (_feedbackNeedsCompaction) {
+      // Full reviewable notices survive the modal interval even when the live
+      // portion has no rows; ordinary updates are summarized by the compact
+      // line instead of growing the transcript.
+      final important = [
+        for (final line in deferred)
+          if (_isImportantFeedback(line)) line,
+      ];
+      if (important.isNotEmpty) {
+        _writeShared(() {
+          if (_promptRepaint != null && _feedbackRich) {
+            _output.write('\r\x1b[2K');
+          }
+          for (final line in important) {
+            _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+          }
+        });
+      }
       _paintCompactFeedback();
       return;
     }
+    if (deferred.isEmpty) return;
     _writeShared(() {
-      for (final line in _feedbackSnapshots.values) {
+      for (final line in deferred) {
         _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
       }
     });
@@ -706,26 +782,46 @@ final class TerminalSession {
   /// This is used by the feedback components to reject an independent writer
   /// while a session owns the selected screen. It never creates a shared
   /// global session: callers must explicitly attach to [run].
+  ///
+  /// The returned token registers the claim, so a session cannot take the same
+  /// screen while standalone feedback is writing it. Release it with
+  /// [releaseStandaloneFeedbackOutput] when the feedback finishes.
   static void ensureStandaloneOutputAvailable(StringSink output) {
-    if (_screenOwner(output) != null) {
+    if (_hasSessionOwner(output)) {
       throw StateError(
         'This output already has a terminal screen owner; attach to its TerminalSession instead.',
       );
     }
   }
 
+  /// Registers standalone feedback as a writer of [output] and returns its
+  /// release token.
+  ///
+  /// Standalone feedback remains source-compatible with other standalone
+  /// feedback: a second region joins the existing claim and the sink is only
+  /// released when the last region finishes. It must not, however, paint
+  /// through an explicit session, or start one.
   static Object claimStandaloneFeedbackOutput(StringSink output) {
-    // Standalone feedback remains source-compatible with other standalone
-    // feedback. It must not, however, paint through an explicit session.
+    final owner = _screenOwner(output);
+    if (owner is _StandaloneFeedbackClaim) {
+      owner._owners++;
+      return owner;
+    }
     ensureStandaloneOutputAvailable(output);
-    return Object();
+    final claim = _StandaloneFeedbackClaim();
+    _screenOwners[output as Object] = claim;
+    return claim;
   }
 
   /// Releases a claim returned by [claimStandaloneFeedbackOutput].
-  static void releaseStandaloneFeedbackOutput(
-    StringSink output,
-    Object owner,
-  ) {}
+  static void releaseStandaloneFeedbackOutput(StringSink output, Object owner) {
+    if (owner is! _StandaloneFeedbackClaim) return;
+    if (!identical(_screenOwner(output), owner)) return;
+    owner._owners--;
+    if (owner._owners <= 0) {
+      _screenOwners[output as Object] = _noScreenOwner;
+    }
+  }
 
   /// Runs [callback] with a scoped terminal owner and returns its result after
   /// releasing any session-owned scripted reader.
@@ -809,6 +905,8 @@ final class TerminalSession {
     }
     _feedback.clear();
     _liveGenerations.clear();
+    _feedbackSnapshots.clear();
+    _deferredFeedback.clear();
     try {
       await _keys?.close();
     } catch (error, stackTrace) {
@@ -1022,10 +1120,42 @@ void _writeWrappedText(
   int? width, {
   Iterable<String> atomicText = const [],
 }) {
-  if (width == null) {
-    output.writeln(text);
-    return;
+  for (final line in _wrapText(text, width, atomicText: atomicText)) {
+    output.writeln(line);
   }
+}
+
+/// Wraps [text] to [width] display cells and styles each emitted line.
+///
+/// Escaping and measurement happen before any style control is added: a
+/// component style is an instruction to the terminal rather than display
+/// content, so measuring it would charge its spelling to the line and the
+/// safety renderer would correctly show it as literal text instead.
+void _writeWrappedColorText(
+  StringSink output,
+  String text,
+  int? width, {
+  required TerminalColor foreground,
+  required TerminalColor background,
+  required OutputProfile? outputProfile,
+  Iterable<String> atomicText = const [],
+}) {
+  for (final line in _wrapText(text, width, atomicText: atomicText)) {
+    if (line.isEmpty) continue;
+    output.writeln(_colorText(line, foreground, background, outputProfile));
+  }
+}
+
+/// Splits [text] into the display lines that fit [width] cells.
+///
+/// A null [width] keeps the text on one line. Each returned line is already
+/// display-safe; the caller may still add terminal controls around it.
+List<String> _wrapText(
+  String text,
+  int? width, {
+  Iterable<String> atomicText = const [],
+}) {
+  if (width == null) return [text];
   // DisplayText's visible control spelling is one protected display unit: a
   // wrap may precede it but must not split `\\u{202E}` into misleading pieces.
   // Callers may protect further meaningful units, such as a choice row's state
@@ -1048,18 +1178,20 @@ void _writeWrappedText(
     offset = match.end;
   }
   addMeasured(text.substring(offset));
+  final lines = <String>[];
   var line = StringBuffer();
   var cells = 0;
   for (final piece in pieces) {
     if (cells > 0 && cells + piece.cells > width) {
-      output.writeln(line);
+      lines.add(line.toString());
       line = StringBuffer();
       cells = 0;
     }
     line.write(piece.text);
     cells += piece.cells;
   }
-  output.writeln(line);
+  lines.add(line.toString());
+  return lines;
 }
 
 /// Terminates the editable line that a segmented field editor leaves current.
@@ -1102,15 +1234,13 @@ void _renderTextInputOpening(
     ),
   );
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
-  _writeWrappedText(
+  _writeWrappedColorText(
     output,
-    _colorText(
-      '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
-      colors.foreground,
-      colors.background,
-      outputProfile,
-    ),
+    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
     width,
+    foreground: colors.foreground,
+    background: colors.background,
+    outputProfile: outputProfile,
   );
   final resolvedInstructions = instructions == InstructionDisplay.themeDefault
       ? InstructionDisplay.expanded
@@ -1175,15 +1305,13 @@ void _renderTextInputValidation(
       ),
     ),
   );
-  _writeWrappedText(
+  _writeWrappedColorText(
     output,
-    _colorText(
-      _slot(composition, PresentationSlot.validation).text!.value,
-      colors.error,
-      colors.background,
-      outputProfile,
-    ),
+    _slot(composition, PresentationSlot.validation).text!.value,
     outputProfile == null ? null : _textInputWidth(outputProfile),
+    foreground: colors.error,
+    background: colors.background,
+    outputProfile: outputProfile,
   );
 }
 
@@ -1193,13 +1321,13 @@ String _colorText(
   TerminalColor background,
   OutputProfile? profile,
 ) {
-  if (profile == null ||
-      profile.colorDepth == ColorDepth.none ||
-      profile.colorDepth == ColorDepth.automatic ||
-      (isTerminalDefault(foreground) && isTerminalDefault(background))) {
-    return text;
-  }
-  return '\x1b[${terminalSgr(foreground, background: false, depth: profile.colorDepth)};${terminalSgr(background, background: true, depth: profile.colorDepth)}m$text\x1b[0m';
+  if (profile == null) return text;
+  return terminalStyledText(
+    text,
+    foreground: foreground,
+    background: background,
+    depth: profile.colorDepth,
+  );
 }
 
 bool _terminalActive = false;
@@ -1467,17 +1595,7 @@ final class TextInput {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -1551,6 +1669,7 @@ final class TextInput {
             scripted.output,
             message,
             outputProfile: effectiveProfile,
+            colors: colors,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -1564,6 +1683,7 @@ final class TextInput {
             scripted.output,
             error,
             outputProfile: effectiveProfile,
+            colors: colors,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -2747,17 +2867,7 @@ final class Password {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -3046,17 +3156,7 @@ abstract class _BooleanPrompt {
       return value == null ? Unavailable('Supply yes or no.') : Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -3071,19 +3171,18 @@ abstract class _BooleanPrompt {
     final width = _textInputWidth(effectiveProfile);
     var draft = initialValue;
 
-    void writeStyled(String text, TerminalColor foreground) {
-      // Measure and escape application text before adding terminal controls;
-      // otherwise the safety renderer would correctly spell the controls out
-      // as visible text instead of applying this component-owned style.
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, text, width);
-      final lines = wrapped.toString().split('\n');
-      for (var i = 0; i < lines.length - 1; i++) {
-        out.writeln(
-          _colorText(lines[i], foreground, colors.background, effectiveProfile),
+    void writeStyled(String text, TerminalColor foreground) =>
+        // Measure and escape application text before adding terminal controls;
+        // otherwise the safety renderer would correctly spell the controls out
+        // as visible text instead of applying this component-owned style.
+        _writeWrappedColorText(
+          out,
+          text,
+          width,
+          foreground: foreground,
+          background: colors.background,
+          outputProfile: effectiveProfile,
         );
-      }
-    }
 
     void renderDraft() =>
         writeStyled('Draft: ${_state(draft)}.', colors.accent);
@@ -3315,14 +3414,7 @@ final class Multiline {
       return error == null ? Accepted(value) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    final effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -3784,18 +3876,26 @@ final class Multiline {
   }
 }
 
+/// Rejects a choice-family label or reason that cannot be displayed.
+///
+/// The tree and order families validate through this too, instead of building
+/// a throwaway [Choice] only to reach its checks.
+void _checkChoiceText(String label, String? reason) {
+  if (label.trim().isEmpty ||
+      label.runes.any((c) => c < 32 || c == 127) ||
+      (reason != null &&
+          (reason.trim().isEmpty ||
+              reason.runes.any((c) => c < 32 || c == 127)))) {
+    throw ArgumentError(
+      'Choice labels and reasons must be nonempty safe text.',
+    );
+  }
+}
+
 /// One choice, identified independently of its display label.
 final class Choice<T> {
   Choice(this.value, this.label, {this.disabledReason}) {
-    if (label.trim().isEmpty ||
-        label.runes.any((c) => c < 32 || c == 127) ||
-        (disabledReason != null &&
-            (disabledReason!.trim().isEmpty ||
-                disabledReason!.runes.any((c) => c < 32 || c == 127)))) {
-      throw ArgumentError(
-        'Choice labels and reasons must be nonempty safe text.',
-      );
-    }
+    _checkChoiceText(label, disabledReason);
   }
   final T value;
   final String label;
@@ -3911,19 +4011,15 @@ void _writeChoiceRow(
   required TerminalColor foreground,
   required ColorTheme colors,
   required OutputProfile? profile,
-}) {
-  final wrapped = StringBuffer();
-  _writeWrappedText(
-    wrapped,
-    DisplayText.from(row.text).value,
-    width,
-    atomicText: row.markers,
-  );
-  for (final line in wrapped.toString().split('\n')) {
-    if (line.isEmpty) continue;
-    output.writeln(_colorText(line, foreground, colors.background, profile));
-  }
-}
+}) => _writeWrappedColorText(
+  output,
+  DisplayText.from(row.text).value,
+  width,
+  foreground: foreground,
+  background: colors.background,
+  outputProfile: profile,
+  atomicText: row.markers,
+);
 
 final class Select<T> extends _SingleChoice<T> {
   Select(
@@ -4090,17 +4186,7 @@ abstract class _SingleChoice<T> {
       return Accepted(choices[n - 1].value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -4113,17 +4199,14 @@ abstract class _SingleChoice<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      width,
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     var focus = defaultValue == null
         ? -1
@@ -4439,17 +4522,7 @@ final class MultiSelect<T> {
       ]);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -4462,17 +4535,14 @@ final class MultiSelect<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      width,
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     final selected = <int>{
@@ -4903,17 +4973,7 @@ final class TimeInput {
       return value == null ? Unavailable(_error) : Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -5369,14 +5429,7 @@ final class TagInput {
       return Unavailable('Supply a collection using SuppliedTags.');
     }
     final input = source as ScriptedInput;
-    final effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: input.outputProfile,
-        supportsRich: input.supportsRich,
-      ),
-      input._observedGeometry,
-    );
+    final effectiveProfile = _effectiveOutputProfile(input, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',

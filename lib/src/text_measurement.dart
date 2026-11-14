@@ -41,7 +41,7 @@ final class TextDisplayMap {
 
 final class TextDisplayEntry {
   TextDisplayEntry._(this.original, {required bool ambiguousIsWide})
-    : display = _display(original),
+    : display = displaySafe(original),
       cellWidth = _width(original, ambiguousIsWide: ambiguousIsWide);
 
   final String original;
@@ -49,7 +49,7 @@ final class TextDisplayEntry {
   final int cellWidth;
 
   static int _width(String cluster, {required bool ambiguousIsWide}) {
-    final visible = _display(cluster);
+    final visible = displaySafe(cluster);
     // Controls, formats, bidi formatting and tabs are rendered as their
     // visible `\\u{XXXX}` spelling. A tab is never emitted as whitespace.
     if (visible != cluster) return visible.length;
@@ -71,28 +71,36 @@ final class TextDisplayEntry {
     // under the pinned Unicode-16 table and declared ambiguous-width policy.
     return termunicode.widthCp(runes.first, cjk: ambiguousIsWide);
   }
+}
 
-  static String _display(String value) {
-    final runes = value.runes.toList();
-    final hasVisibleBase = runes.any(
-      (rune) =>
-          !termunicode.isNonPrintableCp(rune) && termunicode.widthCp(rune) > 0,
-    );
-    final result = StringBuffer();
-    for (final rune in runes) {
-      if ((termunicode.isNonPrintableCp(rune) &&
-              !(rune == 0x200d && hasVisibleBase && runes.last != 0x200d)) ||
-          rune == 0x061c ||
-          (rune >= 0x200e && rune <= 0x200f) ||
-          (rune >= 0x202a && rune <= 0x202e) ||
-          (rune >= 0x2066 && rune <= 0x2069)) {
-        result.write(r'\u{');
-        result.write(rune.toRadixString(16).toUpperCase().padLeft(4, '0'));
-        result.write('}');
-      } else {
-        result.writeCharCode(rune);
-      }
+/// The single display-escaping policy for text that may contain terminal
+/// instructions or directionality controls.
+///
+/// Control, format, separator, surrogate, unassigned and private-use code
+/// points become their visible `\\u{XXXX}` spelling, and a joiner stays part of
+/// a visible cluster. Measured display entries and protected presentation
+/// content both use this policy, so the same text is never spelled one way by
+/// the layout path and another by an unwrapped one.
+String displaySafe(String value) {
+  final runes = value.runes.toList();
+  final hasVisibleBase = runes.any(
+    (rune) =>
+        !termunicode.isNonPrintableCp(rune) && termunicode.widthCp(rune) > 0,
+  );
+  final result = StringBuffer();
+  for (final rune in runes) {
+    if ((termunicode.isNonPrintableCp(rune) &&
+            !(rune == 0x200d && hasVisibleBase && runes.last != 0x200d)) ||
+        rune == 0x061c ||
+        (rune >= 0x200e && rune <= 0x200f) ||
+        (rune >= 0x202a && rune <= 0x202e) ||
+        (rune >= 0x2066 && rune <= 0x2069)) {
+      result.write(r'\u{');
+      result.write(rune.toRadixString(16).toUpperCase().padLeft(4, '0'));
+      result.write('}');
+    } else {
+      result.writeCharCode(rune);
     }
-    return result.toString();
   }
+  return result.toString();
 }

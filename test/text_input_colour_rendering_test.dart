@@ -28,6 +28,49 @@ void main() {
     },
   );
 
+  test('a colour request without a colour depth never names a colour', () {
+    final foreground = TerminalColor.rgb(1, 2, 3);
+    final background = TerminalColor.indexed(7);
+
+    expect(
+      terminalSgr(foreground, background: false, depth: ColorDepth.none),
+      '39',
+    );
+    expect(
+      terminalSgr(background, background: true, depth: ColorDepth.none),
+      '49',
+    );
+    expect(
+      terminalSgr(foreground, background: false, depth: ColorDepth.rgb),
+      '38;2;1;2;3',
+    );
+    expect(
+      terminalSgr(background, background: true, depth: ColorDepth.indexed256),
+      '48;5;7',
+    );
+  });
+
+  test('styled text drops styling that the declared depth cannot express', () {
+    expect(
+      terminalStyledText(
+        'x',
+        foreground: TerminalColor.rgb(1, 2, 3),
+        background: TerminalColor.rgb(4, 5, 6),
+        depth: ColorDepth.none,
+      ),
+      'x',
+    );
+    expect(
+      terminalStyledText(
+        'x',
+        foreground: TerminalColor.rgb(1, 2, 3),
+        background: TerminalColor.rgb(4, 5, 6),
+        depth: ColorDepth.rgb,
+      ),
+      '\x1b[38;2;1;2;3;48;2;4;5;6mx\x1b[0m',
+    );
+  });
+
   test('TextInput styles owned rich content and restores it', () async {
     final out = StringBuffer();
     await TextInput('Name', colors: palette).prompt(
@@ -62,4 +105,57 @@ void main() {
       expect(out.toString(), isNot(contains('\x1b[38;')));
     },
   );
+
+  test(
+    'wrapped labels carry component style as controls, not visible escapes',
+    () async {
+      final out = StringBuffer();
+      await TextInput('Name', required: true, colors: palette).prompt(
+        source: ScriptedInput(
+          Stream.value('Ada\r'),
+          out,
+          outputProfile: _rgbProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+
+      expect(
+        out.toString(),
+        contains('\x1b[38;2;1;2;3;48;2;4;5;6mName (Required).\x1b[0m'),
+      );
+      expect(
+        out.toString(),
+        isNot(contains(r'\u{001B}')),
+        reason: 'a component style is not display content',
+      );
+    },
+  );
+
+  test('rejected answers are styled with the palette error role', () async {
+    final out = StringBuffer();
+    await TextInput(
+      'Name',
+      validate: (value) => value == 'bad' ? 'Rejected name.' : null,
+      colors: palette,
+    ).prompt(
+      source: ScriptedInput(
+        Stream<String>.fromIterable(['bad\r', 'Ada\r']),
+        out,
+        outputProfile: _rgbProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+
+    expect(
+      out.toString(),
+      contains('\x1b[38;2;15;16;17;48;2;4;5;6mRejected name.\x1b[0m'),
+    );
+  });
 }
+
+final _rgbProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  styles: CapabilitySupport.supported,
+  colorDepth: ColorDepth.rgb,
+  geometry: OutputGeometry.fixed(columns: 40, rows: 10),
+);

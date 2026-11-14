@@ -81,6 +81,44 @@ void main() {
     expect(output.toString(), contains('[status] [!] Feedback (0)'));
   });
 
+  test('a retired failure does not mark later short-screen status', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+
+    await TerminalSession.run(
+      (session) async {
+        final index = Spinner('Index')..start(session: session);
+        final prompt = TextInput('Project').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        index.finish(FeedbackOutcome.failed, detail: 'offline');
+        Text('Cache stale', kind: TextKind.warning).present(session: session);
+        final later = Spinner('Upload')..start(session: session);
+        later.update('reading');
+        input.add('demo\r');
+        await input.close();
+        await prompt;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        supportsRich: true,
+        outputProfile: _profile(1),
+      ),
+    );
+
+    expect(output.toString(), contains('[status] [!] Feedback (0)'));
+    final composed = output
+        .toString()
+        .split('\n')
+        .lastWhere((line) => line.contains('[status] Feedback'));
+    expect(
+      composed.contains('[!]'),
+      isFalse,
+      reason: 'the severity indicator describes current feedback',
+    );
+    expect(composed, endsWith('[status] Feedback (1): Upload'));
+  });
+
   test(
     'short-session composition recovers after resize without duplicate events',
     () async {

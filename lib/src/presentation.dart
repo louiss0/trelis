@@ -5,33 +5,20 @@
 /// component, or write to a terminal.
 library;
 
+import 'text_measurement.dart';
+
 /// Semantic content that a structure may place.
 enum PresentationSlot { label, context, body, validation }
 
 /// Text which has been encoded for display and is not terminal instructions.
+///
+/// The encoding is [displaySafe], the same policy the layout path measures, so
+/// protected content is spelled identically whether it is wrapped or emitted
+/// on an unwrapped line.
 final class DisplayText {
   DisplayText._(this.value);
 
-  factory DisplayText.from(String text) {
-    final escaped = StringBuffer();
-    for (final rune in text.runes) {
-      final isControl =
-          (rune >= 0 && rune <= 0x1f) || (rune >= 0x7f && rune <= 0x9f);
-      final isBidi =
-          rune == 0x061c ||
-          (rune >= 0x200e && rune <= 0x200f) ||
-          (rune >= 0x202a && rune <= 0x202e) ||
-          (rune >= 0x2066 && rune <= 0x2069);
-      if (isControl || isBidi) {
-        escaped.write(r'\u{');
-        escaped.write(rune.toRadixString(16).toUpperCase().padLeft(4, '0'));
-        escaped.write('}');
-      } else {
-        escaped.writeCharCode(rune);
-      }
-    }
-    return DisplayText._(escaped.toString());
-  }
+  factory DisplayText.from(String text) => DisplayText._(displaySafe(text));
 
   final String value;
 }
