@@ -3876,18 +3876,26 @@ final class Multiline {
   }
 }
 
+/// Rejects a choice-family label or reason that cannot be displayed.
+///
+/// The tree and order families validate through this too, instead of building
+/// a throwaway [Choice] only to reach its checks.
+void _checkChoiceText(String label, String? reason) {
+  if (label.trim().isEmpty ||
+      label.runes.any((c) => c < 32 || c == 127) ||
+      (reason != null &&
+          (reason.trim().isEmpty ||
+              reason.runes.any((c) => c < 32 || c == 127)))) {
+    throw ArgumentError(
+      'Choice labels and reasons must be nonempty safe text.',
+    );
+  }
+}
+
 /// One choice, identified independently of its display label.
 final class Choice<T> {
   Choice(this.value, this.label, {this.disabledReason}) {
-    if (label.trim().isEmpty ||
-        label.runes.any((c) => c < 32 || c == 127) ||
-        (disabledReason != null &&
-            (disabledReason!.trim().isEmpty ||
-                disabledReason!.runes.any((c) => c < 32 || c == 127)))) {
-      throw ArgumentError(
-        'Choice labels and reasons must be nonempty safe text.',
-      );
-    }
+    _checkChoiceText(label, disabledReason);
   }
   final T value;
   final String label;

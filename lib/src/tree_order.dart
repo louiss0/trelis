@@ -19,9 +19,9 @@ final class TreeNode<T> {
     this.disabledReason,
     this.childrenUnavailableReason,
   }) : children = List.unmodifiable(children) {
-    Choice(value, label, disabledReason: disabledReason);
+    _checkChoiceText(label, disabledReason);
     if (childrenUnavailableReason != null) {
-      Choice(value, label, disabledReason: childrenUnavailableReason);
+      _checkChoiceText(label, childrenUnavailableReason);
       if (children.isNotEmpty) {
         throw ArgumentError('Unavailable children cannot be supplied.');
       }
