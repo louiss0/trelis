@@ -177,5 +177,20 @@ The preference probe had been red because synthetic `.` input used virtual key
 `46` (`VK_DELETE`) instead of `VK_OEM_PERIOD`; the probe now emits the proper
 OEM virtual keys for punctuation. Its registry restoration remained in the
 existing `finally` block. `dart test --reporter expanded` also passed with
-**946 tests**. A fresh six-job CI matrix at this revision is still required
-before platform acceptance can be claimed.
+**946 tests**.
+
+The fresh [six-job CI matrix](https://github.com/louiss0/trelis/actions/runs/43644894551)
+then completed `success` for `b8013e6` (the follow-up evidence revision):
+
+| Job | Result |
+| --- | --- |
+| Dart, Windows (`windows_x64`) | 946 tests; format 150 unchanged; analysis clean; 158 links in 56 Markdown files |
+| Dart, Ubuntu (`linux_x64`) | 946 tests; format 150 unchanged; analysis clean; 158 links in 56 Markdown files |
+| Dart, macOS (`macos_arm64`) | 946 tests; format 150 unchanged; analysis clean; 158 links in 56 Markdown files |
+| POSIX native, Ubuntu | all ten PTY scenarios passed, including signal interruption and terminal restoration |
+| POSIX native, macOS | all ten PTY scenarios passed, including signal interruption and terminal restoration |
+| Windows native | all 17 public TextInput lifecycle scenarios and six ConPTY cases passed |
+
+The runner matrix used pinned Dart `3.13.2`. This is fresh platform evidence for
+the follow-up code. It does not provide ticket 32's visible-GUI/NVDA evidence or
+make the separate ticket-33 gate decision.

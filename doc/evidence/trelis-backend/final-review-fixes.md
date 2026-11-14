@@ -232,5 +232,13 @@ dart test test/terminal_session_modal_help_test.dart \
 
 `test/number_input_native_checks.ps1` also passed its rich, linear, and guarded
 preference-change cases. `dart test --reporter expanded` passed with **946
-tests**. A fresh six-job CI run is required before these local follow-up repairs
-are counted as platform evidence.
+tests**.
+
+The follow-up revision's
+[CI run 43644894551](https://github.com/louiss0/trelis/actions/runs/43644894551)
+completed successfully on Windows, Ubuntu, and macOS. Each Dart job reported
+946 passing tests, 150 formatted files unchanged, no analysis issues, and 158
+checked links in 56 Markdown files. Both POSIX native PTY jobs passed all ten
+scenarios; Windows native passed its 17 TextInput scenarios and six ConPTY
+cases. The separate visible-GUI/NVDA and evidence-gate tickets remain outside
+this scripted and platform-native evidence.
