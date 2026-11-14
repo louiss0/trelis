@@ -14,8 +14,10 @@ structural themes, and makes no whole-library accessibility claim.
   integration tip.
 - **Implementation revision:** `c3e03ee` (public-surface contraction,
   Autocomplete identity repair, compatibility inventory, help gap closure and
-  the three format-only test repairs). Commits after it on this branch are
-  documentation and evidence only and do not change production code or tests.
+  the three format-only test repairs). `577fcf3` adds only this report and the
+  README/CHANGELOG migration guidance, and changes no production code or test. Every
+  command below was last re-run on `577fcf3`, so the numbers describe the tree
+  this report is committed in.
 - **Date:** 2026-11-13.
 - **Environment:** Microsoft Windows NT 10.0.26200.0 (`windows_x64`), Dart SDK
   3.13.2 stable (`dart --version`).
@@ -247,7 +249,7 @@ NT 10.0.26200.0 with Dart SDK 3.13.2:
 | `dart test test/component_acceptance_matrix_test.dart` | Passed: 144 tests |
 | `dart test test/async_search_migration_test.dart test/search_select_test.dart test/autocomplete_test.dart test/command_palette_test.dart test/timezone_select_test.dart test/password_test.dart test/url_input_test.dart test/key_capture_test.dart test/presentation_safety_test.dart test/public_compatibility_inventory_test.dart test/text_input_help_test.dart` | Passed: 178 tests |
 | `dart test test/linear_text_input_events_test.dart test/native_text_input_capabilities_test.dart test/terminal_session_short_screen_test.dart` | Passed: 11 tests after the format-only repair |
-| `git merge integration/trelis-backend-tracer-bullets` | See the branch report; the required merge was attempted before reporting |
+| `git merge integration/trelis-backend-tracer-bullets` | `Already up to date.` — the integration tip was still `13b524b`, so the tested revision did not change |
 
 The whole-suite count is 910 tests inherited from the integration tip plus 13
 tests added here (one Autocomplete identity regression, eight compatibility
