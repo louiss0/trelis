@@ -20,3 +20,12 @@ Windows, Dart SDK selected by the repository, scripted streams and recording `St
 ## Limitations
 
 This is scripted public behavior, not native PTY, visible terminal, resize-at-short-height, alternate-screen help, or Linux/macOS CI evidence. The live writer clears and repaints the active rich editor; it does not claim a general-purpose terminal widget/layout framework or qualification of physical terminal rendering. Those broader B-RESIZE/B-MODAL/B-PLATFORM/B-GUI requirements remain for their dedicated tickets and final gate.
+
+## Final-review revalidation
+
+The final backend review found that the standalone feedback claim token was a
+no-op, so a session could take a screen that unowned standalone feedback was
+already writing into. The claim is now reference-counted on the selected sink
+(`5f5e4bb`) with public tests in `test/terminal_session_feedback_test.dart`;
+independent standalone feedback on one sink and the session-first rejection
+remain unchanged. See [final-review-fixes.md](final-review-fixes.md).
