@@ -297,6 +297,41 @@ void main() {
       expect(output.toString(), isNot(contains('Label \u202E value')));
     },
   );
+  test('display escaping does not depend on declared geometry', () async {
+    // Application text is encoded once, by one policy. A private-use code
+    // point is not a terminal instruction, but it must reach the terminal in
+    // the same visible spelling whether or not the output declares a width.
+    Future<({String output, String value})> promptWith(
+      OutputProfile? profile,
+    ) async {
+      final output = StringBuffer();
+      final result = TextInput('Name \u{E000}', initialValue: '\u{E000}')
+          .prompt(
+            source: ScriptedInput(
+              Stream.value('\r'),
+              output,
+              outputProfile: profile ?? const OutputProfile(),
+            ),
+            mode: profile == null ? null : PromptMode.rich,
+          );
+      return (
+        output: output.toString(),
+        value: (await result as Accepted<String>).value,
+      );
+    }
+
+    final wrapped = await promptWith(richProfile);
+    final plain = await promptWith(null);
+
+    expect(wrapped.output, contains(r'\u{E000}'));
+    expect(
+      plain.output,
+      contains(r'\u{E000}'),
+      reason: 'the safety spelling is not a layout decision',
+    );
+    expect(wrapped.value, '\u{E000}');
+    expect(plain.value, '\u{E000}');
+  });
   test(
     'rich rendering anchors the physical caret at the editable region',
     () async {
