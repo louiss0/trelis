@@ -197,17 +197,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
     _Keys? sharedKeys,
     TerminalSession? promptSession,
   }) async {
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: invocationProfile,
-        source: input.outputProfile,
-        supportsRich: input.supportsRich,
-      ),
-      input._observedGeometry,
-    );
-    if (input._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(input, invocationProfile);
     if (selected == PromptMode.rich &&
         !effectiveProfile.supportsRichInteraction) {
       return Unavailable(

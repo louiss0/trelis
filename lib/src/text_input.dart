@@ -251,6 +251,29 @@ OutputProfile _constrainToObservedGeometry(
   );
 }
 
+/// Resolves the effective output profile of one scripted invocation.
+///
+/// The invocation declaration, the source declaration, the legacy rich hint
+/// and the observed geometry are combined once, and a source that reports a
+/// hard restriction (a non-empty `NO_COLOR`) cannot be styled by a declared
+/// colour depth. Components call this instead of repeating the order.
+OutputProfile _effectiveOutputProfile(
+  ScriptedInput scripted,
+  OutputProfile? invocation,
+) {
+  final resolved = _constrainToObservedGeometry(
+    OutputProfile.resolve(
+      invocation: invocation,
+      source: scripted.outputProfile,
+      supportsRich: scripted.supportsRich,
+    ),
+    scripted._observedGeometry,
+  );
+  return scripted._hardColorDisabled
+      ? resolved.copyWith(colorDepth: ColorDepth.none)
+      : resolved;
+}
+
 enum PromptMode { rich, linear, automatic }
 
 /// Selects how much optional TextInput opening guidance is shown.
@@ -1572,17 +1595,7 @@ final class TextInput {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -2854,17 +2867,7 @@ final class Password {
       return Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -3153,17 +3156,7 @@ abstract class _BooleanPrompt {
       return value == null ? Unavailable('Supply yes or no.') : Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -3421,14 +3414,7 @@ final class Multiline {
       return error == null ? Accepted(value) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    final effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -4192,17 +4178,7 @@ abstract class _SingleChoice<T> {
       return Accepted(choices[n - 1].value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -4538,17 +4514,7 @@ final class MultiSelect<T> {
       ]);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -4999,17 +4965,7 @@ final class TimeInput {
       return value == null ? Unavailable(_error) : Accepted(value);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -5465,14 +5421,7 @@ final class TagInput {
       return Unavailable('Supply a collection using SuppliedTags.');
     }
     final input = source as ScriptedInput;
-    final effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: input.outputProfile,
-        supportsRich: input.supportsRich,
-      ),
-      input._observedGeometry,
-    );
+    final effectiveProfile = _effectiveOutputProfile(input, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',

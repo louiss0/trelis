@@ -167,17 +167,7 @@ final class URLInput {
       return error == null ? Accepted(source.value) : Unavailable(error);
     }
     final scripted = source as ScriptedInput;
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: scripted.outputProfile,
-        supportsRich: scripted.supportsRich,
-      ),
-      scripted._observedGeometry,
-    );
-    if (scripted._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',

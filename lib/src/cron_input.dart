@@ -766,17 +766,7 @@ final class CronInput {
     if (source is! ScriptedInput) {
       return Unavailable('Unsupported cron input source.');
     }
-    var effectiveProfile = _constrainToObservedGeometry(
-      OutputProfile.resolve(
-        invocation: outputProfile,
-        source: source.outputProfile,
-        supportsRich: source.supportsRich,
-      ),
-      source._observedGeometry,
-    );
-    if (source._hardColorDisabled) {
-      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
-    }
+    final effectiveProfile = _effectiveOutputProfile(source, outputProfile);
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
