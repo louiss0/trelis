@@ -10,8 +10,9 @@
   and selected-output faults), on base
   `74c5171bdd794b69262558130aa64195b68ec57b`. `git merge
   integration/trelis-backend-tracer-bullets` reported `Already up to date.`, so
-  the integration tip had not moved. The results below were produced on that
-  code and re-run on `766bbed` (documentation only).
+  the integration tip had not moved. Every command below was last re-run on
+  `4eb63a8` (which adds one length-checked rich feedback/fault test and this
+  report); later commits on the branch are documentation-only.
 - **Branch:** `ticket/backend-23-async-search-migration`
 - **Date:** 2026-11-13
 - **Environment:** Microsoft Windows NT 10.0.26200.0 (`windows_x64`), Dart SDK
