@@ -385,7 +385,25 @@ final class TerminalSession {
   Stream<String>? _keysInput;
   final List<TerminalSessionFeedbackRegion> _feedback = [];
   final Map<int, int> _liveGenerations = {};
+
+  /// The latest line of each live region, in registration order.
+  ///
+  /// A retired region has no live line: its outcome is transcript history, so
+  /// it neither contributes a label to the compact summary nor replays when
+  /// modal help returns.
   final Map<int, String> _feedbackSnapshots = {};
+
+  /// Lines that arrived while modal help owned painting, keyed by region.
+  ///
+  /// They are written once when help returns, in first-deferral order. A later
+  /// update of the same region replaces its deferred line instead of growing
+  /// the session's memory.
+  final Map<int, String> _deferredFeedback = {};
+
+  /// Whether the newest emitted feedback line reported a warning, error or
+  /// explicit outcome. A retired failure stays reviewable in the transcript
+  /// without marking every later status.
+  bool _lastFeedbackLineImportant = false;
   int _nextRegionId = 1;
   void Function()? _promptRepaint;
   bool _activePrompt = false;
@@ -436,6 +454,8 @@ final class TerminalSession {
     }
     _feedback.clear();
     _liveGenerations.clear();
+    _feedbackSnapshots.clear();
+    _deferredFeedback.clear();
     // The active prompt cannot be answered through a retired session, so it
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
@@ -503,6 +523,7 @@ final class TerminalSession {
     if (_liveGenerations[region._id] != region._generation) return;
     _liveGenerations.remove(region._id);
     _feedback.remove(region);
+    _feedbackSnapshots.remove(region._id);
     if (!_modalHelp && _feedbackNeedsCompaction) {
       _paintCompactFeedback();
       _writeShared(() => _promptRepaint?.call());
@@ -529,6 +550,7 @@ final class TerminalSession {
       line.contains(': completed');
 
   bool get _hasImportantFeedback =>
+      _lastFeedbackLineImportant ||
       _feedbackSnapshots.values.any(_isImportantFeedback);
 
   bool get _feedbackNeedsCompaction {
@@ -590,7 +612,11 @@ final class TerminalSession {
     // worker may keep reporting progress during help, but it must not write
     // into the alternate screen or transcript between help lines.
     _feedbackSnapshots[region._id] = line;
-    if (_modalHelp) return;
+    _lastFeedbackLineImportant = _isImportantFeedback(line);
+    if (_modalHelp) {
+      _deferredFeedback[region._id] = line;
+      return;
+    }
     // One session-owned writer delivers a complete region update before the
     // prompt repaint. Clearing the editable line first prevents a status
     // write from overwriting the physical caret; the editor retains the
@@ -634,12 +660,32 @@ final class TerminalSession {
   }
 
   void _restoreLatestComposite() {
+    final deferred = [..._deferredFeedback.values];
+    _deferredFeedback.clear();
     if (_feedbackNeedsCompaction) {
+      // Full reviewable notices survive the modal interval even when the live
+      // portion has no rows; ordinary updates are summarized by the compact
+      // line instead of growing the transcript.
+      final important = [
+        for (final line in deferred)
+          if (_isImportantFeedback(line)) line,
+      ];
+      if (important.isNotEmpty) {
+        _writeShared(() {
+          if (_promptRepaint != null && _feedbackRich) {
+            _output.write('\r\x1b[2K');
+          }
+          for (final line in important) {
+            _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+          }
+        });
+      }
       _paintCompactFeedback();
       return;
     }
+    if (deferred.isEmpty) return;
     _writeShared(() {
-      for (final line in _feedbackSnapshots.values) {
+      for (final line in deferred) {
         _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
       }
     });
@@ -809,6 +855,8 @@ final class TerminalSession {
     }
     _feedback.clear();
     _liveGenerations.clear();
+    _feedbackSnapshots.clear();
+    _deferredFeedback.clear();
     try {
       await _keys?.close();
     } catch (error, stackTrace) {

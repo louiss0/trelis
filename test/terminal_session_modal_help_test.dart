@@ -72,6 +72,47 @@ void main() {
   );
 
   test(
+    'dismissing help does not replay feedback the transcript already holds',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+
+      await TerminalSession.run(
+        (session) async {
+          final prompt = TextInput('Project').prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          Text('Cache warm', kind: TextKind.success).present(session: session);
+          // Two complete help intervals. Retired feedback belongs to history,
+          // so returning from help must not print it again.
+          for (var cycle = 0; cycle < 2; cycle++) {
+            input.add('\x14');
+            await Future<void>.delayed(Duration.zero);
+            input.add('\x1b');
+            await Future<void>.delayed(Duration.zero);
+          }
+          input.add('demo\r');
+          await input.close();
+          await prompt;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          supportsRich: true,
+          outputProfile: _alternateProfile,
+        ),
+      );
+
+      expect(
+        RegExp(RegExp.escape('Success: Cache warm')).allMatches(
+          output.toString(),
+        ).length,
+        1,
+        reason: 'a retained snapshot is not a second transcript record',
+      );
+    },
+  );
+
+  test(
     'transcript help pauses feedback painting and cleans up on interruption',
     () async {
       final output = StringBuffer();
