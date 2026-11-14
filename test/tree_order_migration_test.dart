@@ -13,6 +13,20 @@ final _narrowProfile = OutputProfile(
   geometry: OutputGeometry.fixed(columns: 24, rows: 6),
 );
 
+final class _ResizeObserver implements TerminalResizeObserver {
+  _ResizeObserver(this.notifications, this._dimensions);
+
+  @override
+  final Stream<void> notifications;
+  final ({int columns, int rows})? Function() _dimensions;
+
+  @override
+  ({int columns, int rows})? readDimensions() => _dimensions();
+
+  @override
+  Duration get fallbackInterval => const Duration(days: 1);
+}
+
 final class _FakeTerminal implements TerminalIo, TerminalIoOutputProfile {
   _FakeTerminal(this.input, this.output, this.outputProfile);
 
@@ -424,4 +438,115 @@ void main() {
       expect(orderTerminal.events, ['acquire', 'restore']);
     },
   );
+  test('tree repaints at a new idle geometry and keeps its focus', () async {
+    final keys = StreamController<String>();
+    var watcherCancelled = false;
+    final resized = StreamController<void>.broadcast(
+      onCancel: () => watcherCancelled = true,
+    );
+    final output = StringBuffer();
+    final observer = _ResizeObserver(
+      resized.stream,
+      () => (columns: 30, rows: 8),
+    );
+
+    final pending =
+        TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+        ]).prompt(
+          source: ScriptedInput(
+            keys.stream,
+            output,
+            outputProfile: _richProfile,
+            resizeObserver: observer,
+          ),
+          mode: PromptMode.rich,
+        );
+    await pumpEventQueue();
+    final beforeResize = output.length;
+
+    resized.add(null);
+    await pumpEventQueue();
+
+    // A resize is a repaint only: the expansion and focus survive and the rows
+    // are drawn again inside the observed width.
+    expect(output.length, greaterThan(beforeResize));
+    final tail = _componentLines(output.toString().substring(beforeResize))
+        .toList();
+    expect(tail.join(''), contains('[focused]'));
+    for (final line in tail) {
+      expect(
+        line.length,
+        lessThanOrEqualTo(30),
+        reason: 'resized line exceeds the observed width: "$line"',
+      );
+    }
+
+    // Help owns the screen until it is dismissed, so a resize does not repaint
+    // underneath it.
+    keys.add('\x14');
+    await pumpEventQueue();
+    final duringHelp = output.length;
+    resized.add(null);
+    await pumpEventQueue();
+    expect(output.length, duringHelp);
+    keys.add('\x1b');
+
+    keys.add('\x1b[C\x1b[C\r');
+    expect(((await pending) as Accepted<String>).value, 'b');
+    await keys.close();
+    await resized.close();
+    expect(watcherCancelled, isTrue);
+  });
+
+  test('order repaints at a new idle geometry and keeps its pick-up', () async {
+    final keys = StreamController<String>();
+    var watcherCancelled = false;
+    final resized = StreamController<void>.broadcast(
+      onCancel: () => watcherCancelled = true,
+    );
+    final output = StringBuffer();
+    final observer = _ResizeObserver(
+      resized.stream,
+      () => (columns: 30, rows: 8),
+    );
+
+    final pending =
+        SortableSelect<String>('Order', [
+          Choice('a', 'A'),
+          Choice('b', 'B'),
+        ]).prompt(
+          source: ScriptedInput(
+            keys.stream,
+            output,
+            outputProfile: _richProfile,
+            resizeObserver: observer,
+          ),
+          mode: PromptMode.rich,
+        );
+    await pumpEventQueue();
+    keys.add(' ');
+    await pumpEventQueue();
+
+    final beforeResize = output.length;
+    resized.add(null);
+    await pumpEventQueue();
+
+    final tail = _componentLines(output.toString().substring(beforeResize))
+        .toList();
+    expect(tail.join(''), contains('[moving]'));
+    for (final line in tail) {
+      expect(
+        line.length,
+        lessThanOrEqualTo(30),
+        reason: 'resized line exceeds the observed width: "$line"',
+      );
+    }
+
+    keys.add('\r\r');
+    expect(((await pending) as Accepted<List<String>>).value, ['a', 'b']);
+    await keys.close();
+    await resized.close();
+    expect(watcherCancelled, isTrue);
+  });
 }

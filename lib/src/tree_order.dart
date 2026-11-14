@@ -377,6 +377,7 @@ final class TreeSelect<T> {
     show();
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
+    void Function() stopResize = () {};
     try {
       if (mode == PromptMode.linear) {
         while (true) {
@@ -482,6 +483,14 @@ final class TreeSelect<T> {
         }
       }
       var help = false;
+      stopResize = _watchIdleResize(
+        observer: scripted.resizeObserver,
+        profile: () => effectiveProfile,
+        onGeometry: (geometry) => effectiveProfile = geometry,
+        repaint: show,
+        keys: inputKeys,
+        helpOpen: () => help,
+      );
       while (true) {
         final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
@@ -558,6 +567,7 @@ final class TreeSelect<T> {
         show();
       }
     } finally {
+      stopResize();
       if (session != null) session._setPromptRepaint(null);
       if (keys == null) await inputKeys.close();
     }
@@ -726,10 +736,15 @@ final class SortableSelect<T> {
           : PromptMode.linear;
     }
     final out = scripted.output;
-    final width = _textInputWidth(effectiveProfile);
+    // Guidance and rows follow the current output geometry, so a resize repaint
+    // wraps to the observed width instead of the invocation width.
     void write(String text, TerminalColor foreground) {
       final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      _writeWrappedText(
+        wrapped,
+        DisplayText.from(text).value,
+        _textInputWidth(effectiveProfile),
+      );
       for (final line in wrapped.toString().split('\n')) {
         if (line.isNotEmpty) {
           out.writeln(
@@ -761,7 +776,7 @@ final class SortableSelect<T> {
           lockedReason: choice.disabledReason,
           moving: moving && focused,
         ),
-        width: width,
+        width: _textInputWidth(effectiveProfile),
         foreground: focused ? colors.accent : colors.foreground,
         colors: colors,
         profile: effectiveProfile,
@@ -853,6 +868,7 @@ final class SortableSelect<T> {
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
+    void Function() stopResize = () {};
     try {
       if (mode == PromptMode.linear) {
         var stage = 0;
@@ -928,6 +944,14 @@ final class SortableSelect<T> {
         }
       }
       var help = false;
+      stopResize = _watchIdleResize(
+        observer: scripted.resizeObserver,
+        profile: () => effectiveProfile,
+        onGeometry: (geometry) => effectiveProfile = geometry,
+        repaint: show,
+        keys: inputKeys,
+        helpOpen: () => help,
+      );
       while (true) {
         final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
@@ -994,6 +1018,7 @@ final class SortableSelect<T> {
         }
       }
     } finally {
+      stopResize();
       if (session != null) session._setPromptRepaint(null);
       if (keys == null) await inputKeys.close();
     }
