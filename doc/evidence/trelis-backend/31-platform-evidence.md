@@ -2,23 +2,27 @@
 
 ## Verdict: automated cross-platform matrix passing at one revision
 
-Accepted source revision: `65a7940` on
+Accepted source revision: `22d016f` on
 `ticket/backend-31-platform-evidence`, whose merge base is integration
-`29a7286` (identical to `origin/main` at the time of the run).
+`29a7286` (identical to `origin/main` at the time of the runs).
 Workflow: `.github/workflows/platform-regression.yml`, Dart 3.13.2.
-
-Run [43618507564](https://github.com/louiss0/trelis/actions/runs/43618507564)
-completed `success` for every job:
+Run [43619157387](https://github.com/louiss0/trelis/actions/runs/43619157387)
+completed `success` for every job at that revision:
 
 | Job | Runner image | Result |
 | --- | --- | --- |
-| dart (windows-latest) | `windows-2025-vs2026` | pass, 926 tests |
-| dart (ubuntu-latest) | `ubuntu-26.04` | pass, 926 tests |
-| dart (macos-latest) | `macos-26-arm64` | pass, 926 tests |
+| dart (windows-latest) | `windows-2025-vs2026` | pass, 927 tests |
+| dart (ubuntu-latest) | `ubuntu-26.04` | pass, 927 tests |
+| dart (macos-latest) | `macos-26-arm64` | pass, 927 tests |
 | posix-native (ubuntu-latest) | `ubuntu-26.04` | pass, ten PTY scenarios |
 | posix-native (macos-latest) | `macos-26-arm64` | pass, ten PTY scenarios |
 | windows-native | `windows-2025-vs2026` | pass, 17 TextInput scenarios + six ConPTY cases |
 
+The preceding run
+[43618507564](https://github.com/louiss0/trelis/actions/runs/43618507564) was
+already fully green at `65a7940` with 926 tests; `22d016f` adds the macOS
+negative-placement test and changes no production code. Later commits on the
+branch change documentation only and cover no other code.
 Each Dart job also reported `Formatted 150 files (0 changed)`,
 `No issues found!` from `dart analyze`, and
 `Checked 155 relative links in 55 Markdown files.`
@@ -60,8 +64,11 @@ positive shape as the negative format and keeps the sign in the affixes, so
 the format string never matched a sign placement and every macOS system
 convention was discarded. `65a7940` classifies the placement from
 `negativePrefix`/`negativeSuffix` and the probe was removed in the same
-commit. The earlier unrecognised `negativeSign` selector this ticket already
-repaired aborted the process (exit 134) instead of reporting a result.
+commit. `22d016f` pins the placement itself: the system-default test only
+showed that some convention resolved, so a wrong or missing placement could
+still have passed it. The earlier unrecognised `negativeSign` selector this
+ticket already repaired aborted the process (exit 134) instead of reporting a
+result.
 
 **macOS native PTY — `rich: terminal attributes not restored`.**
 The restored local flags read `536872395` against `1483` before the session:
