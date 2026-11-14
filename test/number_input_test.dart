@@ -266,6 +266,20 @@ void main() {
     );
   });
 
+  test('macOS system default keeps a leading negative sign', () async {
+    if (!Platform.isMacOS) return;
+    // The Decimal style reports a leading minus sign in its negative affixes
+    // on the en_US CI runners. Resolving without a sign placement, or with a
+    // different one, has to show up here rather than pass as "resolved".
+    final result = await NumberInput('Count')
+        .prompt(source: SuppliedAnswer('-123'));
+    expect(result, isA<Accepted<NumericAnswer?>>(), reason: '$result');
+    expect(
+      (result as Accepted<NumericAnswer?>).value!.coefficient,
+      BigInt.from(-123),
+    );
+  });
+
   test(
     'Linux resolves non-C LC_NUMERIC conventions and category precedence',
     () async {
