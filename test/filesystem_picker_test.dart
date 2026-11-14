@@ -303,8 +303,18 @@ void main() {
       mode: PromptMode.linear,
     );
     expect(result, isA<InputEnded<String>>());
-    expect(out.toString(), contains('Target must exist'));
     expect(removed, isTrue);
+    // The removed selection is refused with its protected reason. The reason is
+    // either the exact absence wording or the fail-closed inspection message:
+    // the native last error is read by a second FFI call and can be lost (see
+    // doc/evidence/trelis-backend/27-filesystem-migration.md), and the contract
+    // deliberately refuses rather than inferring absence, so neither wording
+    // may be demanded as the only truthful one.
+    expect(out.toString(), contains('Cannot choose ${file.path}:'));
+    expect(
+      out.toString(),
+      anyOf(contains('Target must exist'), contains('Cannot inspect target')),
+    );
   });
   test('parent navigation at a filesystem root remains at that root', () async {
     final root = path.rootPrefix(Directory.current.path);

@@ -117,8 +117,12 @@ separately for the path and browser wiring, then restored).
   remain owned by their dedicated tickets and the final gate.
 - Rich presentation is written to the transcript rather than an alternate
   screen, so vertical overflow is ordinary terminal scrollback. Only wrapping
-  inside the declared width was verified, and only through substring assertions
-  that avoid tokens a wrap could split.
+  inside the declared width was verified. The wrap claim was initially recorded
+  as "substring assertions that avoid tokens a wrap could split"; that was
+  wrong, and the merge validation described at the end of this record shows two
+  phrases straddling a line boundary. Content assertions now rebuild the
+  displayed text across line boundaries instead of assuming a phrase lands
+  inside one line.
 - A lone trailing Escape at end of input reports `InputEnded` rather than
   cancellation, because the shared key parser only flushes a pending Escape for
   a session-owned reader. The tests therefore send a following inert key or use
@@ -142,11 +146,91 @@ separately for the path and browser wiring, then restored).
   `test/terminal_session_short_screen_test.dart`); they are unmodified here and
   belong to their own tickets. The command was run and reported exactly those
   three files.
-- One full-suite run executed while this record was being finalized reported
-  `test/filesystem_picker_test.dart: acceptance rechecks a selection removed
-  during review` as failed; the assertion detail was not captured. The following
-  ten full-suite runs and twenty isolated runs of that test passed. That
-  scenario deletes the fixture during the review message and then re-inspects
-  it, which is pre-existing behavior of the shared inspection policy rather than
-  a new code path, so it is recorded as an observed one-off full-suite flake
-  instead of a pass.
+- Absence is not directly observable on Windows: `_pathInspectionFailure`
+  calls `GetFileAttributesW` and then reads `GetLastError()` through a second
+  FFI call, and that read is not atomic with the failing call. The slot can be
+  lost, so a genuinely absent target is sometimes reported as
+  `Cannot inspect target (Windows error 0).` instead of `Target must exist.`
+  The rate measured here is about 0.05% per test invocation under concurrent
+  load (7/12800 in an independent reproduction), and a single-isolate API probe
+  measured 14/20000 on a short base and 2/20000 on a long base, so it does not
+  depend on path length. The component stays fail-closed throughout - the
+  target is refused, `FilePicker` still ends with `InputEnded` and the removed
+  selection is still never accepted - and error 0 is never treated as absence.
+  Only the protected *reason* wording varies, so `test/filesystem_picker_test.dart`
+  and `test/path_input_behavior_test.dart` assert the refusal contract
+  (candidate named, refusal present, either truthful reason, no acceptance)
+  instead of exact native error fidelity. What is proven is that the last-error
+  slot can be lost between two adjacent FFI calls and that the rate tracks
+  allocation between them; the exact mechanism (GC or other Win32 work on the
+  same OS thread versus isolate thread migration) is **not** proven, and the
+  POSIX `access()`/`errno` branch has the same two-call hazard in principle but
+  is untested on this Windows-only host. An atomic native capture is a
+  dedicated follow-up, not part of this repair.
+- The previously recorded one-off suite failure of `test/filesystem_picker_test.dart:
+  acceptance rechecks a selection removed during review` is this same hazard
+  plus an over-specified assertion, not the delete-during-review re-inspection
+  policy and not a product regression. It is recorded separately from the pass
+  claims above, and it can still occur at the measured rate until the atomic
+  capture lands.
+## Merge validation and repair
+
+Merging `ticket/backend-27-filesystem-migration` into
+`integration/trelis-backend-tracer-bullets` with `--no-ff` produced merge commit
+`8e54b8c` (parents `74c5171` and `5b00c62`) with no conflicts, no deleted files
+and every earlier migration, the guarded writer and the reader retirement
+intact. Nothing in the branch reverted the integration tip, which is already an
+ancestor of the ticket tip.
+
+The first validation at that merge failed two of the 57 targeted tests:
+`test/path_input_behavior_test.dart: rich entry preserves invalid draft and
+context` (`contains('Target must exist')`) and
+`test/filesystem_migration_test.dart: rich help is stage-led and preserves the
+draft` (`contains('no link canonicalization')`). Both are wrap-position
+dependent: they used `Directory.current.path` as the base and a declared
+100-column geometry, so the phrase only stayed inside one line at the ticket
+worktree's path length. Probing the same tree from seven working-directory
+lengths (31, 38, 44, 56, 73, 92 and 116 characters, via temporary junctions)
+also exposed a third one, `rich review help returns to the same review stage`,
+whose `RegExp('Resolved candidate:')` count is 0 when the wording straddles a
+break. Those assertions were the defect, not the wrapping: the shared writer
+deliberately breaks at display cells, keeping the separator space at the start
+of the continuation line or splitting a long token.
+
+The repair keeps every assertion, and only stops assuming a phrase fits one
+line. `test/filesystem_migration_test.dart` and
+`test/path_input_behavior_test.dart` rebuild the displayed text with `\r`/`\n`
+removed before matching content, and three tests are now parameterized over an
+explicit short and long base so a worktree-length change cannot hide the same
+fragility again: the two path-entry scenarios plus the path-review help
+scenario. The two absence assertions assert the refusal contract instead of
+native error fidelity (see the last limitation above).
+
+Verification at integration `13b524b` (three later merges, `091164f` ticket 17,
+`0c219fa` ticket 22 and `13b524b` ticket 23, landed after `8e54b8c`; none
+touches these four files) with this repair applied:
+
+| Command | Result |
+| --- | --- |
+| `dart analyze` | Passed: `No issues found!` |
+| `dart format --output=none --set-exit-if-changed` on the three changed test files | Passed: `Formatted 3 files (0 changed)` |
+| `dart format --output=none --set-exit-if-changed .` | Only the three pre-existing unformatted files listed above |
+| `dart run tool/check_doc_links.dart` | Passed: 154 relative links in 58 Markdown files |
+| `dart test` on the five path/filesystem suites | Passed: 60 tests |
+| `dart test` on the acceptance-matrix and session suites | Passed: 165 tests |
+| `dart test --reporter compact` | Passed: 913 tests |
+| Same five suites from working-directory lengths 31, 38, 44, 56, 73, 92 and 116 | Passed: 60 tests at every length |
+
+Mutation checks at the same revision, each restored to the committed source
+afterwards (verified by blob hash): omitting the per-open link-approval warning
+fails the caveat test; weakening the absence wording to `Missing target.` fails
+the path-entry test; dropping the link-canonicalization clause fails the
+path-entry help tests; and making the inspection branch accept an absent or
+removed target fails both `acceptance rechecks a selection removed during
+review` (it becomes `Accepted` instead of `InputEnded`) and the two
+parameterized path-entry scenarios. The repaired assertions therefore still
+fail when a required warning is omitted or a refused target becomes acceptable.
+
+This record is committed after the validation above, so its own commit hash is
+recorded in the ticket tracker rather than here. The repair changes tests and
+this document only; no production file changed.

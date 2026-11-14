@@ -29,6 +29,16 @@ final _testTheme = ColorTheme(
   border: TerminalColor.indexed(8),
 );
 
+/// The transcript with the writer's line breaks removed.
+///
+/// The shared writer wraps at display cells, so a continuation line starts with
+/// the preserved separator space and a long token is split across the boundary.
+/// Content assertions therefore cannot rely on a phrase landing inside one
+/// line: removing `\r`/`\n` rebuilds the text the user actually reads without
+/// changing any content.
+String _displaySafeText(String transcript) =>
+    transcript.replaceAll('\n', '').replaceAll('\r', '');
+
 void main() {
   group('PathInput source ownership', () {
     test('rich entry needs declared cursor support and geometry', () async {
@@ -161,32 +171,43 @@ void main() {
   });
 
   group('PathInput stage help', () {
-    test('rich help is stage-led and preserves the draft', () async {
-      final out = StringBuffer();
-      final result =
-          await PathInput(
-            'Path',
-            base: Directory.current.path,
-            allowNonexistent: true,
-          ).prompt(
-            source: ScriptedInput(
-              Stream.value('\x14\x1bdraft\r\r'),
-              out,
-              outputProfile: _richProfile,
-            ),
-            mode: PromptMode.rich,
-          );
-      expect((result as Accepted<String>).value, endsWith('draft'));
-      final transcript = out.toString();
-      expect(transcript, contains('Help: PathInput accepts one literal'));
-      expect(transcript, contains('no link canonicalization'));
-      expect(transcript, contains('drive-relative Windows path'));
-      expect(transcript, contains('snapshot'));
-      expect(transcript, contains('per-open approval'));
-      expect(transcript, contains('Ctrl+T opens this help'));
-      expect(transcript, contains('Help dismissed.'));
-      expect(transcript, isNot(contains('Cursor position')));
-    });
+    // Both base lengths are exercised because the writer wraps at display
+    // cells: an assertion on literal content must not depend on where a line
+    // breaks, which is exactly what a worktree-length base used to hide.
+    for (final longBase in [false, true]) {
+      test('rich help is stage-led and preserves the draft '
+          '(${longBase ? 'long' : 'short'} base)', () async {
+        final root = await Directory.systemTemp.createTemp('path-help-wrap-');
+        addTearDown(() => root.delete(recursive: true));
+        final base = await Directory(
+          path.join(root.path, longBase ? 'long-${'x' * 60}' : 'b'),
+        ).create();
+        final out = StringBuffer();
+        final result =
+            await PathInput(
+              'Path',
+              base: base.path,
+              allowNonexistent: true,
+            ).prompt(
+              source: ScriptedInput(
+                Stream.value('\x14\x1bdraft\r\r'),
+                out,
+                outputProfile: _richProfile,
+              ),
+              mode: PromptMode.rich,
+            );
+        expect((result as Accepted<String>).value, endsWith('draft'));
+        final transcript = _displaySafeText(out.toString());
+        expect(transcript, contains('Help: PathInput accepts one literal'));
+        expect(transcript, contains('no link canonicalization'));
+        expect(transcript, contains('drive-relative Windows path'));
+        expect(transcript, contains('snapshot'));
+        expect(transcript, contains('per-open approval'));
+        expect(transcript, contains('Ctrl+T opens this help'));
+        expect(transcript, contains('Help dismissed.'));
+        expect(transcript, isNot(contains('Cursor position')));
+      });
+    }
 
     test(
       'linear help is component-specific and never becomes a path',
@@ -237,32 +258,43 @@ void main() {
       );
     });
 
-    test('rich review help returns to the same review stage', () async {
-      final out = StringBuffer();
-      final result =
-          await PathInput(
-            'Path',
-            base: Directory.current.path,
-            allowNonexistent: true,
-          ).prompt(
-            source: ScriptedInput(
-              Stream.value('draft\r\x14\x1b\r'),
-              out,
-              outputProfile: _richProfile,
-            ),
-            mode: PromptMode.rich,
-          );
-      expect((result as Accepted<String>).value, endsWith('draft'));
-      final transcript = out.toString();
-      expect(transcript, contains('Help: PathInput review'));
-      expect(transcript, contains('Help dismissed.'));
-      expect(
-        transcript.indexOf('Help: PathInput review'),
-        lessThan(transcript.indexOf('Help dismissed.')),
-      );
-      // Dismissal returns to the same review stage instead of accepting.
-      expect(RegExp('Resolved candidate:').allMatches(transcript).length, 1);
-    });
+    // Both base lengths are exercised because the writer wraps at display
+    // cells: the review wording and the candidate are separated by line breaks
+    // whose position moves with the base length.
+    for (final longBase in [false, true]) {
+      test('rich review help returns to the same review stage '
+          '(${longBase ? 'long' : 'short'} base)', () async {
+        final root = await Directory.systemTemp.createTemp('path-review-wrap-');
+        addTearDown(() => root.delete(recursive: true));
+        final base = await Directory(
+          path.join(root.path, longBase ? 'long-${'x' * 60}' : 'b'),
+        ).create();
+        final out = StringBuffer();
+        final result =
+            await PathInput(
+              'Path',
+              base: base.path,
+              allowNonexistent: true,
+            ).prompt(
+              source: ScriptedInput(
+                Stream.value('draft\r\x14\x1b\r'),
+                out,
+                outputProfile: _richProfile,
+              ),
+              mode: PromptMode.rich,
+            );
+        expect((result as Accepted<String>).value, endsWith('draft'));
+        final transcript = _displaySafeText(out.toString());
+        expect(transcript, contains('Help: PathInput review'));
+        expect(transcript, contains('Help dismissed.'));
+        expect(
+          transcript.indexOf('Help: PathInput review'),
+          lessThan(transcript.indexOf('Help dismissed.')),
+        );
+        // Dismissal returns to the same review stage instead of accepting.
+        expect(RegExp('Resolved candidate:').allMatches(transcript).length, 1);
+      });
+    }
 
     test(
       'documented escaping still enters a literal command-shaped path',
@@ -385,7 +417,7 @@ void main() {
         );
 
         expect((result as Accepted<String>).value, file.path);
-        final transcript = output.toString();
+        final transcript = _displaySafeText(output.toString());
         expect(transcript, contains('Listing: entries'));
         expect(transcript, contains('Choose ${file.path}'));
       },
@@ -409,7 +441,7 @@ void main() {
         (result as Accepted<String>).value,
         path.join(dir.path, 'answer.txt'),
       );
-      final transcript = out.toString();
+      final transcript = _displaySafeText(out.toString());
       expect(transcript, contains('Help: FilePicker browses'));
       expect(transcript, contains('Help dismissed.'));
       expect(
@@ -524,7 +556,7 @@ void main() {
           (result as Accepted<String>).value,
           path.join(dir.path, 'answer.txt'),
         );
-        final transcript = out.toString();
+        final transcript = _displaySafeText(out.toString());
         expect(transcript, contains('\x1b[38;5;'));
         expect(transcript, contains('not a sandbox'));
         expect(
@@ -619,7 +651,7 @@ void main() {
         ),
         isA<Cancelled<String>>(),
       );
-      expect(out.toString(), contains('type edit'));
+      expect(_displaySafeText(out.toString()), contains('type edit'));
 
       final pathOut = StringBuffer();
       expect(
@@ -633,7 +665,10 @@ void main() {
         ),
         isA<Cancelled<String>>(),
       );
-      expect(pathOut.toString(), contains('type edit to correct'));
+      expect(
+        _displaySafeText(pathOut.toString()),
+        contains('type edit to correct'),
+      );
     });
 
     test('visible safety caveats survive help and dismissal', () async {
@@ -650,7 +685,7 @@ void main() {
         ),
         mode: PromptMode.rich,
       );
-      final transcript = out.toString();
+      final transcript = _displaySafeText(out.toString());
       expect(transcript, contains('Links require explicit per-open approval'));
       expect(transcript, contains('The base is not a sandbox.'));
       expect(transcript, contains('Help: FilePicker browses'));
