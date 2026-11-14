@@ -83,7 +83,7 @@ try {
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  if ($Scenario -like 'help-*') {
   $isPassword=$Scenario.Contains('password')
-  if($isPassword){[NativeProbe]::Text('secret')}else{[NativeProbe]::Key([char]0,0x25,0)}
+  if($isPassword){[NativeProbe]::Text('TrelisCanary7Q9')}else{[NativeProbe]::Key([char]0,0x25,0)}
   Start-Sleep -Milliseconds 300
   $editor=[NativeProbe]::EditorState()
   $screen=[NativeProbe]::ScreenText()
@@ -91,7 +91,7 @@ try {
   Start-Sleep -Milliseconds 300
   $help=[NativeProbe]::ScreenText()
   if(!$help.Contains('Help:')){throw 'help did not open'}
-  if($help.Contains('secret')){throw 'help disclosed hidden entry'}
+  if($help.Contains('TrelisCanary7Q9')){throw 'help disclosed hidden entry'}
   # Reopening help must not nest screens or lose the original editor.
   [NativeProbe]::Key([char]20,84,8)
   Start-Sleep -Milliseconds 300
@@ -149,7 +149,10 @@ try {
    [NativeProbe]::Text('X')
    Start-Sleep -Milliseconds 300
    $edited=[NativeProbe]::EditorState()
-   if($edited -notmatch "^[0-9]+:${row}:> <[0-9]+8X9$"){throw "long-line insertion left stale or wrapped text: $edited"}
+   # The shared viewport reserves overflow-marker cells. The final 9 may
+   # remain visible or be truthfully clipped; the accepted answer below must
+   # still contain it. Both shapes must stay on the same editable row.
+   if($edited -notmatch "^[0-9]+:${row}:> <[0-9]+8X(?:9|>)$"){throw "long-line insertion left stale or wrapped text: $edited"}
    [NativeProbe]::Text("`r")
   }
   'repeat' { [NativeProbe]::Text("`r`r") }

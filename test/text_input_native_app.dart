@@ -28,7 +28,7 @@ Future<void> main(List<String> args) async {
       print(switch (result) {
         Accepted<String>(:final value) =>
           scenario.contains('password')
-              ? (value == 'secret' ? 'accepted' : 'wrong')
+              ? (value == 'TrelisCanary7Q9' ? 'accepted' : 'wrong')
               : value,
         Interrupted<String>() => 'interrupt',
         Cancelled<String>() => 'cancel',
