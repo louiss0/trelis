@@ -6,6 +6,11 @@ import 'package:test/test.dart';
 import 'autocomplete_native_app.dart' as autocomplete;
 import 'search_select_native_app.dart' as search_select;
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
 void main() {
   test('autocomplete keeps current suggestions after stale response', () async {
     final input = StreamController<String>();
@@ -15,7 +20,11 @@ void main() {
           'Name',
           suggestions: autocomplete.controlledSuggestions('stale'),
         ).prompt(
-          source: ScriptedInput(input.stream, output),
+          source: ScriptedInput(
+            input.stream,
+            output,
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         );
     input.add('a');
@@ -40,7 +49,11 @@ void main() {
           Choice('a', 'A'),
           Choice('b', 'B'),
         ], search: search_select.controlledSearch('failure')).prompt(
-          source: ScriptedInput(input.stream, output),
+          source: ScriptedInput(
+            input.stream,
+            output,
+            outputProfile: _richProfile,
+          ),
           mode: PromptMode.rich,
         );
     input.add('fail');

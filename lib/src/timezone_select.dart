@@ -7,7 +7,15 @@ final class TimezoneSelect {
     String label, {
     String? defaultValue,
     Map<String, String> unavailable = const {},
-  }) : _select = _createTimezoneSelect(label, defaultValue, unavailable);
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : _select = _createTimezoneSelect(
+         label,
+         defaultValue,
+         unavailable,
+         instructions,
+         supplementaryHelp,
+       );
 
   final SearchSelect<String> _select;
 
@@ -17,12 +25,18 @@ final class TimezoneSelect {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) => _select.prompt(
     source: source,
     mode: mode,
     userPreference: userPreference,
     applicationPreference: applicationPreference,
     output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
   );
 }
 
@@ -30,6 +44,8 @@ SearchSelect<String> _createTimezoneSelect(
   String label,
   String? defaultValue,
   Map<String, String> unavailable,
+  InstructionDisplay instructions,
+  List<String> supplementaryHelp,
 ) {
   if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
     throw ArgumentError.value(label, 'label');
@@ -49,6 +65,8 @@ SearchSelect<String> _createTimezoneSelect(
   return SearchSelect<String>._timezone(
     '$label (IANA tzdata 2025c; search identifiers, city names and aliases; no offset previews)',
     choices,
+    instructions: instructions,
+    supplementaryHelp: supplementaryHelp,
     defaultValue: defaultValue == null ? null : _canonicalZone(defaultValue),
     matches: (choice, query) {
       final q = query.toLowerCase();

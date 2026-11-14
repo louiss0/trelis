@@ -13,6 +13,14 @@
 library;
 
 export 'src/text_input.dart';
+export 'src/presentation.dart'
+    show
+        DisplayText,
+        QueryResultRow,
+        QueryResultsIdentityModel,
+        QueryResultsNotice,
+        QueryResultsPhase,
+        QueryResultsPresentation;
 export 'src/feedback.dart';
 export 'src/output_profile.dart';
 export 'src/color_theme.dart';

@@ -8,11 +8,15 @@ final class CommandPalette<T> {
     List<Choice<T>> commands, {
     T? defaultValue,
     FutureOr<List<Choice<T>>> Function(String query)? search,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : _select = SearchSelect<T>._palette(
          label,
          commands,
          defaultValue: defaultValue,
          search: search,
+         instructions: instructions,
+         supplementaryHelp: supplementaryHelp,
        );
 
   final SearchSelect<T> _select;
@@ -23,11 +27,17 @@ final class CommandPalette<T> {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) => _select.prompt(
     source: source,
     mode: mode,
     userPreference: userPreference,
     applicationPreference: applicationPreference,
     output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
   );
 }

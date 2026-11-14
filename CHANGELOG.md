@@ -10,6 +10,11 @@
   one, with editable defaults, persistent validation guidance, reviewable final
   state and the layered `Accepted`, `Cancelled`, `Interrupted`, `InputEnded` and
   `Unavailable` outcomes.
+- Presentation recording separates the current editable view from ordered,
+  identified events. Query and results events carry a typed projection that
+  states idle/loading/ready/empty/failure explicitly, keeps source-stable choice
+  references distinct from response-local autocomplete candidates, and records a
+  candidate acceptance separately from the prompt outcome.
 - Windows and POSIX terminal backends that own the selected input and output
   streams, check and restore native console state, reject concurrent sessions
   and refuse rich output on non-capable terminals such as `TERM=dumb`.
