@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:prompty/prompty.dart';
 
@@ -74,10 +75,24 @@ String _outcome(PromptResult<String> result) => switch (result) {
   Accepted<String>(:final value) => 'accepted:$value',
 };
 
+OutputProfile _visibleTerminalProfile() => OutputProfile(
+  cursor: CapabilitySupport.supported,
+  alternateScreen: CapabilitySupport.unsupported,
+  styles: CapabilitySupport.supported,
+  colorDepth: ColorDepth.none,
+  glyphs: GlyphSet.ascii,
+  geometry: OutputGeometry.fixed(
+    columns: stderr.terminalColumns,
+    rows: stderr.terminalLines,
+  ),
+);
+
 Future<void> main(List<String> args) async {
   final result = await runGuiEvidenceProbe(
     includeSecret: !args.contains('--no-secret'),
-    outputProfile: args.contains('--ascii') ? asciiOutputProfile : null,
+    outputProfile: args.contains('--ascii')
+        ? asciiOutputProfile
+        : _visibleTerminalProfile(),
   );
   // Do not print the accepted password: only the outcome is evidence.
   print('GUI-PROBE:$result');
