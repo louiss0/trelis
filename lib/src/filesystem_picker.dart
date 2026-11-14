@@ -234,17 +234,14 @@ final class _FilesystemPicker {
     final linear = mode == PromptMode.linear;
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      width,
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     var current = base ?? Directory.current.path;
     var showHidden = false;
@@ -506,24 +503,14 @@ final class _FilesystemPicker {
     final linear = mode == PromptMode.linear;
     final error = await input._error(candidate);
     if (error != null) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(
-        wrapped,
+      _writeWrappedColorText(
+        scripted.output,
         DisplayText.from('Cannot choose $candidate: $error').value,
         _textInputWidth(effectiveProfile),
+        foreground: colors.warning,
+        background: colors.background,
+        outputProfile: effectiveProfile,
       );
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          scripted.output.writeln(
-            _colorText(
-              line,
-              colors.warning,
-              colors.background,
-              effectiveProfile,
-            ),
-          );
-        }
-      }
       return null;
     }
     final reviewHelp = _reviewHelp(
@@ -534,19 +521,14 @@ final class _FilesystemPicker {
     );
     final reviewMessage =
         'Choose $candidate. Enter to accept, or type edit to return.';
-    final wrapped = StringBuffer();
-    _writeWrappedText(
-      wrapped,
+    _writeWrappedColorText(
+      scripted.output,
       DisplayText.from(reviewMessage).value,
       _textInputWidth(effectiveProfile),
+      foreground: colors.accent,
+      background: colors.background,
+      outputProfile: effectiveProfile,
     );
-    for (final line in wrapped.toString().split('\n')) {
-      if (line.isNotEmpty) {
-        scripted.output.writeln(
-          _colorText(line, colors.accent, colors.background, effectiveProfile),
-        );
-      }
-    }
     final review = await _edit(
       keys,
       '',

@@ -3103,19 +3103,18 @@ abstract class _BooleanPrompt {
     final width = _textInputWidth(effectiveProfile);
     var draft = initialValue;
 
-    void writeStyled(String text, TerminalColor foreground) {
-      // Measure and escape application text before adding terminal controls;
-      // otherwise the safety renderer would correctly spell the controls out
-      // as visible text instead of applying this component-owned style.
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, text, width);
-      final lines = wrapped.toString().split('\n');
-      for (var i = 0; i < lines.length - 1; i++) {
-        out.writeln(
-          _colorText(lines[i], foreground, colors.background, effectiveProfile),
+    void writeStyled(String text, TerminalColor foreground) =>
+        // Measure and escape application text before adding terminal controls;
+        // otherwise the safety renderer would correctly spell the controls out
+        // as visible text instead of applying this component-owned style.
+        _writeWrappedColorText(
+          out,
+          text,
+          width,
+          foreground: foreground,
+          background: colors.background,
+          outputProfile: effectiveProfile,
         );
-      }
-    }
 
     void renderDraft() =>
         writeStyled('Draft: ${_state(draft)}.', colors.accent);
@@ -3943,19 +3942,15 @@ void _writeChoiceRow(
   required TerminalColor foreground,
   required ColorTheme colors,
   required OutputProfile? profile,
-}) {
-  final wrapped = StringBuffer();
-  _writeWrappedText(
-    wrapped,
-    DisplayText.from(row.text).value,
-    width,
-    atomicText: row.markers,
-  );
-  for (final line in wrapped.toString().split('\n')) {
-    if (line.isEmpty) continue;
-    output.writeln(_colorText(line, foreground, colors.background, profile));
-  }
-}
+}) => _writeWrappedColorText(
+  output,
+  DisplayText.from(row.text).value,
+  width,
+  foreground: foreground,
+  background: colors.background,
+  outputProfile: profile,
+  atomicText: row.markers,
+);
 
 final class Select<T> extends _SingleChoice<T> {
   Select(
@@ -4145,17 +4140,14 @@ abstract class _SingleChoice<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      width,
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     var focus = defaultValue == null
         ? -1
@@ -4494,17 +4486,14 @@ final class MultiSelect<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      width,
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     final selected = <int>{

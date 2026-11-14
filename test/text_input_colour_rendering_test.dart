@@ -67,11 +67,7 @@ void main() {
     'wrapped labels carry component style as controls, not visible escapes',
     () async {
       final out = StringBuffer();
-      await TextInput(
-        'Name',
-        required: true,
-        colors: palette,
-      ).prompt(
+      await TextInput('Name', required: true, colors: palette).prompt(
         source: ScriptedInput(
           Stream.value('Ada\r'),
           out,

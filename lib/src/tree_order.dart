@@ -286,21 +286,14 @@ final class TreeSelect<T> {
 
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(
-        wrapped,
-        DisplayText.from(text).value,
-        _textInputWidth(effectiveProfile),
-      );
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      _textInputWidth(effectiveProfile),
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     int referenceOf((TreeNode<T>, List<TreeNode<T>>) row) =>
         all.indexOf(row) + 1;
@@ -743,21 +736,14 @@ final class SortableSelect<T> {
     final out = scripted.output;
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(
-        wrapped,
-        DisplayText.from(text).value,
-        _textInputWidth(effectiveProfile),
-      );
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      _textInputWidth(effectiveProfile),
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     var focus = 0;
     var moving = false;

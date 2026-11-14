@@ -209,17 +209,14 @@ final class PathInput {
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
     final linear = mode == PromptMode.linear;
-    void write(String text, TerminalColor foreground) {
-      final wrapped = StringBuffer();
-      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
-      for (final line in wrapped.toString().split('\n')) {
-        if (line.isNotEmpty) {
-          out.writeln(
-            _colorText(line, foreground, colors.background, effectiveProfile),
-          );
-        }
-      }
-    }
+    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+      out,
+      DisplayText.from(text).value,
+      width,
+      foreground: foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
+    );
 
     write(
       '$label. Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
