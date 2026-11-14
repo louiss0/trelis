@@ -103,9 +103,9 @@ void main() {
       );
 
       expect(
-        RegExp(RegExp.escape('Success: Cache warm')).allMatches(
-          output.toString(),
-        ).length,
+        RegExp(RegExp.escape('Success: Cache warm'))
+            .allMatches(output.toString())
+            .length,
         1,
         reason: 'a retained snapshot is not a second transcript record',
       );
