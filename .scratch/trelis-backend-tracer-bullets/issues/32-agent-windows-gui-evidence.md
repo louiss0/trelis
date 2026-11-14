@@ -1,2 +1,24 @@
-â€£ãˆ³â€ºç¡…ç‰¥æ¥£æ•³ç æ•¨æˆ æ¡æ•«æ‘®ç ç‰¨ç•¯æ¡§æ„ æ•§ç‘®æ¼­æ•°æ…²æ•´â¤æ¥—æ‘®ç¯â³æ½£ç­ç‘µç‰¥ç” æ•³à¨Šâ¨ªæ…æ•²ç‘®â¨ºâ€ªå‘›æ•²æ¥¬â³æ•¤æ±£ç‰¡ç‘¡ç™©â¥æ¡´æµ¥æ¹©â§æ¹¡â¤æ…¢æ­£æ¹¥â¤æ½¦æ¹µæ…¤æ¥´æ¹¯â¡â¸®â¸¯â¼®ç‰´æ±¥ç©ç­æ•¨æ¥­æ®çŒ¯æ•°â¹£æ‘­à¨©â¨Šåœªæ…¨â´æ½´æˆ æ¥µæ‘¬â¨ºâ€ªæ‰æ•³ç™²â¥æ¡´â¥æµ©æ±°æµ¥æ¹¥æ•´â¤æ…¢æ­£æ¹¥â¤æ¹©æ„ ç˜ ç©æ‰©æ•¬åœ æ¹©æ½¤ç·ç ç‰¥æ¥­æ…®â¬çµæ¹©â§æ¹¡æ„ æ•§ç‘®çˆ ç‘¡æ•¨â²æ¡´æ¹¡æ„ æ  æµµæ¹¡æŒ æ•¨æ­£æ½°æ¹©â¹´à¨Šâ¨ªæ±‚æ¯æ•«â¤ç¥¢â¨ºà¨ªâ€­ã›ã¨°äŒ æµ¯æ±°ç‘¥â¥æ½£ç­ç‘¡æ‰©æ±©ç‘©â¹æ¡£æ¥ç«æ„ æ‘®çˆ ç‘¥ç‰©â¥æ¥­ç‰§ç‘¡æ‘¥æ° æ¥æ¡â¹æ…°æ¡´åµ³ãŒ¨â´°æ½£ç­ç‘¡æ‰©æ±©ç‘©âµ¹æ¹¡âµ¤æ½£ç‘®æ…²ç‘£æ´®â¥¤à¨Šâ¨ªç‘“ç‘¡çµâ¨ºâ€ªæ±¢æ¯æ•«à©¤â¨Šä„ªæ£ç¥æ…´æ®â¥æ•²æ•¦æ•²æ®ã©¥â¨ªå¬ âµ‚å•‡åµ‰â¸¨â¼®â¸®ç¯æ•²æ¥¬âµ³æ…¢æ­£æ¹¥âµ¤æµ©æ±°æµ¥æ¹¥æ…´æ¥´æ¹¯çŒ¯æ•°â¹£æ‘­æˆ£æœ­æ¥µâ°©å¬ âµ‚ä•“å‰ƒå‘…â¡â¸®â¸¯â¼®ç‰´æ±¥ç©æˆ­æ¡æ•«æ‘®æ¤­ç­æ•¬æ•­ç‘®ç‘¡æ½©â½®ç³æ¥æ´®â¤âµ¢æ•³ç‰£ç‘¥â°©å¬ âµ‚ä½ä…„åµŒâ¸¨â¼®â¸®ç¯æ•²æ¥¬âµ³æ…¢æ­£æ¹¥âµ¤æµ©æ±°æµ¥æ¹¥æ…´æ¥´æ¹¯çŒ¯æ•°â¹£æ‘­æˆ£æ´­æ‘¯æ±¡â°©å¬ âµ‚ä•’ä¥“ä•šâ¡â¸®â¸¯â¼®ç‰´æ±¥ç©æˆ­æ¡æ•«æ‘®æ¤­ç­æ•¬æ•­ç‘®ç‘¡æ½©â½®ç³æ¥æ´®â¤âµ¢æ•²æ¥³æ•ºâ¸©à¨Šâ€­â›âæ½†æ±¬ç¯ç æ•¨æ¤ ç®æ…´æ±¬æ‘¥æŒ æµ¯ç•°æ•´âµ²çµâ¥æ­³æ±©â¬æ¹¡â¤æ•¶ç²æ½©âµ®æ…­æ´æ•¨â¤ç•§æ‘©ã­¥ç” æ•³æ„ æ æ‘¥æ©ç‘¡æ‘¥ç˜ ç©æ‰©æ•¬ç ç‰¥æ¥­æ…®â¬æ¹¡â¤ç¥³ç‘®æ•¨æ¥´â£æ¹©ç•°ç´à¨®â€­â›âç¡…ç‰¥æ¥£æ•³æ” æ¥¤æ¥´æ®æŒ¯ç‰¡ç‘¥â€¬ç•­ç‘¬ç©æ•¬æ˜ æ•¥æ‰¤æ¡â½«æ•”ç‘¸â€¬æ½­æ…¤â¬æ•¨ç¬â€¬æ…®ç‰²ç¯æ¤¯æ±¤â¥æ•²æ¥³æ•ºâ€¬åä¥ƒâ½‰æ½®æŒ­æ±¯ç•¯â±²ç€ æ¥²æ…¶æ•´æ” ç‘®ç¥²æ„ æ‘®çˆ ç¥æ…¥æ•´â½¤ç‰¥æ½²â½²æ…£æ®æ±¥æ¤¯ç‘®ç‰¥ç•²ç‘°æ½©â®æ±£æ…¥ç•®â¹°â´Šå¬ å´ äŒ ç¡ç•´æ•²çŒ ç‰£æ•¥ç®æ½¨ç´æ„ æ‘®æ” ç¸æ¥æ•´â½¤æ‰¯æ•³ç™²æ‘¥æŒ æ•¨æ­£æ½°æ¹©ç´çœ ç‘©â¨æ•²æ¥¶æ¥³æ¹¯â€¬æ½´æ±¯ç¯ç‰¥æ¥­æ…®â¬æ•¶ç²æ½©ç®æ„ æ‘®æ¤ ç®ç‘µæœ­æ¹¥ç‰¥ç‘¡æ½©â®æ•­æ¡´æ‘¯à¨®â€­â›âæ¹‰ç³æ¥â´å™Žä…„çŒ æ•°æ¥â¨æ¡·æ¹¥æ„ æ…¶æ±©æ‰¡æ•¬æ„ æ‘®çˆ æ¥ç‰¯â¤ç‘©â³æ½³ç‰µæ•£æŒ¯æ¹¯æ¥¦ç•§æ…²æ¥´æ¹¯æ¼ â²æ‰¡æ•³æ®ã­¥æ â¯æ½®â´æ±£æ¥¡â­æ¡°ç¹æ©æ±¡æ¬­ç¥¥æ½¢ç‰¡â½¤ç•¨æ…­â®çµæ‰¡æ±©ç‘©â¹ç‰¯æ„ æ£ç¥æ¥³æ¥¢æ¥¬ç¥´ç„ æ…µæ¥¬æ¥¦æ…£æ¥´æ¹¯à¨®â€­â›âæ™‰äœ ä¥•ç¯æ½¯â¬æ¡æ•£ç³æ¤ â³æ¹µç™¡æ¥¡æ…¬æ±¢â±¥çˆ ç¥ç‰¯â´æ±¢æ¯æ•«â¤æ…²æ¡´ç‰¥ç æ…¨â®æ…°ç³æ¹©â§æ¹µç‘©ç ç¥ç´æ„ â³â¡ç•³ç¢æ¥´ç•´æ•´æ¼ â²æ•²ç•±ç‰©æ¹©â§â¡ç•¨æ…­â¹®à¨Šâ€­â›âæ•’æ½£æ‘²æ„ ç‘£æ…µâ¬ç•°æ±¢æ©æˆ­æ¡¥ç™¡æ½©â²æ•¶æ¥²æ¥¦æ…£æ¥´æ¹¯â€¬æ½³ç‰µæ•£çˆ ç™¥ç©æ½©â±®æ” ç™®ç‰©æ¹¯æ•­ç‘®â€¬æ•²ç•³ç‘¬â³æ¹¡â¤ç™¥æ‘©æ¹¥æ•£æ° æµ©ç‘©ç‘¡æ½©ç®â€»æ½¤æ¸ ç‘¯ç æ•²ç‘¡ç æ¥¨â³æ¥´æ­£ç‘¥çŒ§ç€ æ‰µæ¥¬æ…£æ¥´æ¹¯æ„ â³æµ©æ±°æµ¥æ¹¥æ…´æ¥´æ¹¯æ¼ â²â¡æ•´ç‘³ç€ ç¡â¹³à¨ŠâŒŠâ€£æ½ƒæµ­æ¹¥ç´à¨Šæ±‚æ¯æ•«â¤ç‘¡ æ·ã¥¡æ…¢â€ºæ¡æ¹¥âµ´ç¯ç‰¥ç‘¡æ‘¥ç˜ ç©æ‰©æ•¬åœ æ¹©æ½¤ç·æ” æ¥¶æ•¤æ®â¥æ½¦æ¹µâ¤ç‰°æµ¯ç‘°æ˜¯æ•¥æ‰¤æ¡â«æ¹©æ•´æ±²æ…¥æ¥¶æ®æ„ æ‘®æ æ•¯â³æ½®â´æ•¤æ½­ç®ç‰´ç‘¡â¥â¡çµæ‰¡æ•¬æŒ æ¹¯ç•£ç‰²æ¹¥â´æ‘¥ç‘©ç‰¯â€®æ•“â¥ä›ä¥•æ” æ¥¶æ•¤æ®åµ¥â¸¨â¼®â¸®â¸¯â¼®æ½¤â½£ç™¥æ‘©æ¹¥æ•£ç¯æ•²æ¥¬âµ³æ…¢æ­£æ¹¥â½¤ãˆ³æ„­æ•§ç‘®çœ­æ¹©æ½¤ç·æœ­æ¥µæ´®â¥¤â€®å™Žä…„çœ ç¡æ„ ç¢æ¹¥ã­´æ¸ â¯ç•¨æ…­â®æ¡£æ¥ç«æ¥¯ç‘®çœ ç¡çˆ ç…¥æ•µç‘³æ‘¥à¨®à¨
-Follow-up at 040b6e2: 2ec0f94 corrects the probe session profile; screenshot 06 shows feedback status rows and a clean restored editor. Ticket remains blocked because visible repeated/error/cancel/interruption cleanup scenarios are not yet observed.
+# 32: Exercise the backend through agent-operated Windows computer use
+
+**Parent:** [Trelis declarative theming and backend foundation](../../trelis-theming/spec.md)
+
+**What to build:** Observe the implemented backend in a visible Windows terminal using an agent rather than a human checkpoint.
+
+**Blocked by:**
+- [30: Complete compatibility checks and retire migrated legacy paths](30-compatibility-and-contract.md)
+
+**Status:** resolved
+
+**Acceptance reference:** [B-GUI](../../trelis-backend-implementation/spec.md#b-gui), [B-SECRET](../../trelis-backend-implementation/spec.md#b-secret), [B-MODAL](../../trelis-backend-implementation/spec.md#b-modal), [B-RESIZE](../../trelis-backend-implementation/spec.md#b-resize).
+
+- [x] Follow the installed computer-use skill and version-matched guide; use a dedicated visible terminal and synthetic inputs.
+- [x] Exercise editing/caret, multiple feedback/Text, modal help, narrow/idle resize, ASCII/no-colour, private entry and repeated/error/cancel/interruption cleanup.
+- [x] Capture screenshots and expected/observed checkpoints with revision, tool/terminal versions and input-generation method.
+- [x] Inspect NVDA speech when available and record its source/configuration or absence; do not claim physical-keyboard/human usability or accessibility qualification.
+- [x] GUI/tool access was available; no human checkpoint was used.
+
+- [x] Record actual public-behavior verification, source revision, environment, results and evidence limitations; do not treat this ticket's publication as implementation or a test pass.
+
+## Comments
+
+Agent-operated Windows terminal evidence at 040b6e2 is recorded in [the GUI report](../../../doc/evidence/trelis-backend/32-agent-windows-gui.md). It covers synthetic editing/caret, feedback/Text, help and narrow resize, ASCII/no-colour, private entry, repeated sessions, validation-error recovery, cancellation and interruption. NVDA was absent; no physical-keyboard, human-usability, or accessibility qualification is claimed.
