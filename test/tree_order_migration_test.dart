@@ -192,4 +192,107 @@ void main() {
       expect(text, contains('[moving]'));
     },
   );
+
+  test('rich tree help leads with the navigating stage', () async {
+    final output = StringBuffer();
+    final result =
+        await TreeSelect<String>('Pick', [
+          TreeNode(
+            'a',
+            'Archive',
+            disabledReason: 'offline',
+            children: [TreeNode('b', 'Report')],
+          ),
+          TreeNode('c', 'Second root'),
+        ]).prompt(
+          source: ScriptedInput(
+            Stream.value('\x14\x1b\x14\x1b\x03'),
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect(result, isA<Interrupted<String>>());
+    final text = _visibleLines(output.toString()).join('');
+    expect(text, contains('Help: Navigating the tree'));
+    // The focused node's own path, expansion and selectability are the context
+    // the assistance is about, and every unavailable reason is protected.
+    expect(text, contains('Focus: 3. Second root'));
+    expect(text, contains('offline'));
+    expect(text, contains('Right expands'));
+    expect(text, contains('Ctrl+C interrupts'));
+  });
+
+  test(
+    'linear tree help separates choosing from entering a reference',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await TreeSelect<String>('Pick', [
+            TreeNode(
+              'a',
+              'Archive',
+              children: [TreeNode('b', 'Report', disabledReason: 'revoked')],
+            ),
+            TreeNode('c', 'Second root'),
+          ]).prompt(
+            source: ScriptedInput(
+              Stream.value('/help\r/open\r/help\r1\r/up\r/choose\r3\r'),
+              output,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, 'c');
+      final text = _visibleLines(output.toString()).join('');
+      expect(text, contains('Help: Choosing a node'));
+      expect(text, contains('Help: Entering a node reference'));
+      expect(text, contains('preorder'));
+      expect(text, contains('Archive / Report is unavailable (revoked)'));
+      expect(text, contains('/up returns'));
+    },
+  );
+
+  test('rich order help leads with the moving and idle stages', () async {
+    final output = StringBuffer();
+    final result =
+        await SortableSelect<String>('Order', [
+          Choice('a', 'A'),
+          Choice('x', 'Anchor', disabledReason: 'protected'),
+          Choice('b', 'B'),
+        ]).prompt(
+          source: ScriptedInput(
+            Stream.value('\x14\x1b \x14\x1b\x03'),
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect(result, isA<Interrupted<List<String>>>());
+    final text = _visibleLines(output.toString()).join('');
+    expect(text, contains('Help: Ordering the list'));
+    expect(text, contains('Help: Moving A'));
+    expect(text, contains('2. Anchor is a locked anchor (protected)'));
+    expect(text, contains('Escape reverts'));
+  });
+
+  test('linear order help names each requesting stage', () async {
+    final output = StringBuffer();
+    final result =
+        await SortableSelect<String>('Order', [
+          Choice('a', 'A'),
+          Choice('b', 'B'),
+        ]).prompt(
+          source: ScriptedInput(
+            Stream.value('/help\r/move\r/help\r2\r/help\r1\r/done\r'),
+            output,
+          ),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<List<String>>).value, ['b', 'a']);
+    final text = _visibleLines(output.toString()).join('');
+    expect(text, contains('Help: Ordering the list'));
+    expect(text, contains('Help: Entering a reference'));
+    expect(text, contains('Help: Entering a destination position'));
+    expect(text, contains('/done submits'));
+  });
 }

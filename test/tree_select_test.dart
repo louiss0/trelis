@@ -26,7 +26,7 @@ void main() {
             mode: PromptMode.linear,
           );
       expect((result as Accepted<String>).value, 'b');
-      expect(out.toString(), contains('Help: TreeSelect'));
+      expect(out.toString(), contains('Help: Entering a node reference'));
       expect(out.toString(), contains('stable node reference'));
       expect(out.toString(), contains('selectable'));
     },

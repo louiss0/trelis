@@ -1,5 +1,14 @@
 part of 'text_input.dart';
 
+/// The interaction stage that requested component help from a tree prompt.
+///
+/// Help leads with the stage so navigating the visible nodes and entering a
+/// stable reference do not share one undifferentiated paragraph.
+enum _TreeHelpStage { navigating, reference }
+
+/// The interaction stage that requested component help from an order prompt.
+enum _OrderHelpStage { ordering, moving, reference, destination }
+
 /// A node in a TreeSelect hierarchy. Branches are not selectable by default.
 final class TreeNode<T> {
   TreeNode(
@@ -215,8 +224,66 @@ final class TreeSelect<T> {
         .toList();
     String path(List<TreeNode<T>> nodes) =>
         nodes.map((n) => n.label).join(' / ');
-    const linearHelp =
-        r'Help: TreeSelect. /open asks for a stable node reference in the current path and enters its children; /up returns to the parent. /choose asks for a stable node reference and accepts it only if selectable and available. Expandability and selectability are independent. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+
+    /// Component help for the requesting interaction stage.
+    ///
+    /// The current path, the focused row and the displayed default stay beside
+    /// the controls, and every node that cannot be accepted is named with its
+    /// protected reason.
+    String helpText({
+      required bool linear,
+      _TreeHelpStage stage = _TreeHelpStage.navigating,
+      _ChoiceRow? focusRow,
+    }) {
+      final titles = switch (stage) {
+        _TreeHelpStage.navigating =>
+          linear ? 'Choosing a node' : 'Navigating the tree',
+        _TreeHelpStage.reference => 'Entering a node reference',
+      };
+      final controls = switch (stage) {
+        _TreeHelpStage.reference => 'A node reference is the number displayed for a node. References are assigned once in preorder and stay stable while branches open and close, so a reference is checked against the current path before anything happens. /open accepts only a direct child of the current path and enters its children; /choose accepts the referenced node only when it is selectable and currently available. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
+        _TreeHelpStage.navigating when linear => 'Enter an exact command: /open asks for a stable node reference in the current path and enters its children; /up returns to the parent; /choose asks for a stable node reference and accepts it only when it is selectable and available. Expandability and selectability are independent. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
+        _TreeHelpStage.navigating => 'Up/Down move the focus between visible nodes; Right expands a branch or enters its first child; Left collapses a branch or moves to the parent; Enter accepts the focused node only when it is selectable and available; Ctrl+T dismisses help; Escape cancels and Ctrl+C interrupts.',
+      };
+      final defaultText = defaultValue == null
+          ? 'No node is marked as the default.'
+          : () {
+              final row = all.firstWhere((r) => r.$1.value == defaultValue);
+              return 'Default: ${path(row.$2)} (reference ${all.indexOf(row) + 1}).';
+            }();
+      final blocked = <String>[];
+      for (final row in all) {
+        final node = row.$1;
+        final label = '${all.indexOf(row) + 1}. ${path(row.$2)}';
+        if (node.disabledReason != null) {
+          blocked.add(
+            '$label is unavailable (${node.disabledReason}) and cannot be accepted',
+          );
+        } else if (node.childrenUnavailableReason != null) {
+          blocked.add(
+            '$label has unavailable children (${node.childrenUnavailableReason}) and cannot be opened',
+          );
+        } else if (!node.canSelect) {
+          blocked.add('$label is not selectable and cannot be accepted');
+        }
+        if (!currentPath(row.$2)) {
+          blocked.add('$label is no longer available');
+        }
+      }
+      final blockedText = blocked.isEmpty
+          ? 'Every node is currently selectable and available.'
+          : 'Not acceptable: ${blocked.join('; ')}.';
+      return [
+        'Help: $titles.',
+        if (focusRow != null) 'Focus: ${focusRow.text}.',
+        if (linear)
+          'Current path: ${current.isEmpty ? 'root' : path(current)}.',
+        controls,
+        defaultText,
+        blockedText,
+      ].join(' ');
+    }
+
     final width = _textInputWidth(effectiveProfile);
     void write(String text, TerminalColor foreground) {
       final wrapped = StringBuffer();
@@ -319,7 +386,7 @@ final class TreeSelect<T> {
             linear: true,
             sequential: true,
             extraCommands: const {'/open', '/up', '/choose'},
-            linearHelpText: linearHelp,
+            linearHelpText: helpText(linear: true),
             outputProfile: effectiveProfile,
             session: session,
           );
@@ -349,7 +416,10 @@ final class TreeSelect<T> {
             linear: true,
             sequential: true,
             extraCommands: const {'/open', '/up', '/choose'},
-            linearHelpText: linearHelp,
+            linearHelpText: helpText(
+              linear: true,
+              stage: _TreeHelpStage.reference,
+            ),
             outputProfile: effectiveProfile,
             session: session,
           );
@@ -419,8 +489,13 @@ final class TreeSelect<T> {
         }
         if (key == '\x14') {
           help = true;
+          final items = visible();
+          final focused = items.indexWhere((r) => identical(r.$1, focus));
           write(
-            'Help: Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses; Escape dismisses help.',
+            helpText(
+              linear: false,
+              focusRow: focused < 0 ? null : rowFor(items[focused]),
+            ),
             colors.foreground,
           );
           continue;
@@ -724,6 +799,46 @@ final class SortableSelect<T> {
       return true;
     }
 
+    /// Component help for the requesting interaction stage.
+    ///
+    /// The stage title names what the prompt is asking for, the stable reference
+    /// and destination rules stay beside it, and every locked anchor is named
+    /// with its protected reason.
+    String helpText({
+      required bool linear,
+      _OrderHelpStage stage = _OrderHelpStage.ordering,
+    }) {
+      final focusedLabel = order.isEmpty ? '' : choices[order[focus]].label;
+      final titles = switch (stage) {
+        _OrderHelpStage.ordering => 'Ordering the list',
+        _OrderHelpStage.moving => 'Moving $focusedLabel',
+        _OrderHelpStage.reference => 'Entering a reference',
+        _OrderHelpStage.destination => 'Entering a destination position',
+      };
+      final controls = switch (stage) {
+        _OrderHelpStage.moving => 'Up/Down move the picked-up identity one position at a time; Space or Enter drops it where it is; Escape reverts the whole move to where it started; Ctrl+T dismisses help and Ctrl+C interrupts.',
+        _OrderHelpStage.reference => 'Enter the stable number of the identity to move. References never change when positions do, so a reference always names the same identity; a locked anchor cannot be moved. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
+        _OrderHelpStage.destination =>
+          'Enter a destination position from 1 to ${order.length}. The identity moves to that position and the identities between them shift one place; a move may not cross a locked anchor, and a refused move keeps the current order. Exact /help and /cancel are commands.',
+        _OrderHelpStage.ordering when linear => 'Enter an exact command: /move asks for a stable choice reference and then a destination position; /done submits the order shown. Every row keeps its own position and locked state. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
+        _OrderHelpStage.ordering => 'Up/Down move the focus; Space picks up or drops an identity; while moving, Up/Down move it and Enter drops it; while idle, Enter submits the shown order; Escape reverts a move before it cancels; Ctrl+T dismisses help and Ctrl+C interrupts.',
+      };
+      final locked = [
+        for (var i = 0; i < choices.length; i++)
+          if (choices[i].disabledReason != null)
+            '${i + 1}. ${choices[i].label} is a locked anchor (${choices[i].disabledReason}) and keeps its position',
+      ];
+      final lockedText = locked.isEmpty
+          ? 'No identity is locked.'
+          : 'Locked anchors: ${locked.join('; ')}.';
+      return [
+        'Help: $titles.',
+        controls,
+        'Ordering ${order.length} identities.',
+        lockedText,
+      ].join(' ');
+    }
+
     show();
     write(
       mode == PromptMode.rich
@@ -745,6 +860,14 @@ final class SortableSelect<T> {
             linear: true,
             sequential: true,
             extraCommands: const {'/move', '/done'},
+            linearHelpText: helpText(
+              linear: true,
+              stage: switch (stage) {
+                1 => _OrderHelpStage.reference,
+                2 => _OrderHelpStage.destination,
+                _ => _OrderHelpStage.ordering,
+              },
+            ),
             outputProfile: effectiveProfile,
             session: session,
           );
@@ -820,7 +943,10 @@ final class SortableSelect<T> {
         if (key == '\x14') {
           help = true;
           write(
-            'Help: Up/Down navigate or move; Space picks up or drops; Enter drops or submits; Escape reverts or cancels.',
+            helpText(
+              linear: false,
+              stage: moving ? _OrderHelpStage.moving : _OrderHelpStage.ordering,
+            ),
             colors.foreground,
           );
           continue;
