@@ -7,7 +7,11 @@ void main() {
     final result = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
         .prompt(
           mode: PromptMode.rich,
-          source: ScriptedInput(Stream.value('29/2/2024\r\t\r'), output),
+          source: ScriptedInput(
+            Stream.value('29/2/2024\r\t\r'),
+            output,
+            outputProfile: _dateRichProfile,
+          ),
         );
     expect(result, isA<Accepted<CivilDate>>());
     expect(output.toString(), contains('Review action: Submit'));
@@ -20,9 +24,15 @@ void main() {
           source: ScriptedInput(
             Stream.value('29/2/2024\r\r\t\t\r\t\r'),
             output,
+            outputProfile: _dateRichProfile,
           ),
         );
     expect(result, isA<Accepted<CivilDate>>());
     expect(output.toString().split('Focus: day').length, greaterThan(2));
   });
 }
+
+final _dateRichProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);

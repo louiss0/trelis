@@ -190,13 +190,28 @@ nonempty labels, plus an optional `defaultValue` that must be one of them. Both
 return the chosen identity; `Radio` changes only how the list is presented.
 
 Rich mode lists every choice with `[focused]`, `[default]` and
-`[unavailable: reason]` markers. Up/Down move between choices, Enter accepts the
-focused enabled choice, Ctrl+T opens help, Escape cancels and Ctrl+C interrupts.
-Linear mode pages the list ten at a time, announces `Page n of m`, and accepts a
-stable choice number, with `/next` and `/previous` for pages. A disabled or
-out-of-range reference keeps the listing and explains why, and an accepted
-answer prints `Accepted: <label>`. A `SuppliedAnswer` is a stable choice number
-for an enabled choice; anything else is unavailable.
+`[unavailable: reason]` markers. Up/Down move the focus between choices, Enter
+accepts the focused enabled choice, Ctrl+T opens component help, Escape
+dismisses help before it cancels, and Ctrl+C interrupts. Linear mode pages the
+list ten at a time, announces `Page n of m`, and accepts a stable choice
+number, with `/next` and `/previous` for pages. A disabled or out-of-range
+reference keeps the listing and explains why, and an accepted answer prints
+`Accepted: <label>`. A `SuppliedAnswer` is a stable choice number for an
+enabled choice; anything else is unavailable.
+
+Rows are composed once for both single-choice families: the stable reference,
+the radio marker, `[focused]`, `[default]` and a protected
+`[unavailable: reason]` stay separate facts, while long labels and feedback
+wrap within the declared width instead of splitting a state marker. Component
+help names every unavailable choice with its reason, including choices that
+are paged away, plus the displayed default and this family's controls.
+
+Both families accept an optional `ColorTheme`. `prompt` also accepts
+`terminal`, `outputProfile` and `session` like the shared editor: an attached
+prompt inherits its `TerminalSession` configuration, and a rich synthetic
+source declares cursor support and positive geometry through its profile.
+Colour is emitted only when the effective profile permits it and is suppressed
+by `NO_COLOR`.
 
 ## Multiline
 
@@ -224,6 +239,17 @@ counts grapheme clusters including line separators. Failed validation retains
 the draft. EOF never submits. Framed paste is limited to 4096 UTF-16 code units
 and oversized insertions are rejected. Native tests cover the Windows console
 protocol, not actual clipboard or NVDA qualification.
+
+`Multiline.prompt` accepts `terminal`, `outputProfile` and `session` the same
+way as the shared editor, so a rich synthetic source declares cursor support and
+positive geometry through its profile. The focused line is repainted inside the
+declared width with `<`/`>` overflow markers around the caret, idle resize
+notifications reflow that line without editing the draft, and component help
+(`Ctrl+T` in rich mode, `/help` in linear mode) names the add-newline, finish,
+insert-tab, review, limit and validation behaviour instead of generic
+submit wording. An attached prompt inherits its `TerminalSession` configuration
+and can stay active while session feedback repaints; session help owns painting
+and restores the latest draft, caret and feedback on dismissal.
 
 ### Autocomplete
 
@@ -257,6 +283,13 @@ text, and `/list`, `/edit`, `/remove` and `/done` review, edit, remove and finis
 Empty, too long, punctuated, misplaced combining-mark, duplicate and
 custom-validator failures each keep the draft and state the reason.
 
+`TagInput.prompt` accepts `terminal`, `outputProfile` and `session` on the same
+terms as `Multiline`, and its help names the add, focus, edit, remove, discard
+and finish actions plus the canonical style, limit and validator. The unaccepted
+draft remains visibly separate from the accepted tags across repaints, session
+feedback updates and idle resize, and `Finish` still submits only the accepted
+collection.
+
 ## MultiSelect
 
 `MultiSelect<T>` returns selected identities in the original choice order. Empty
@@ -274,6 +307,17 @@ numbers, for example `2,1`; an empty string means the empty set. References
 must be unique and enabled, without whitespace, and satisfy count constraints.
 Supplied answers are literal and do not interpret prompt commands.
 
+Rows use the same shared choice presentation as `Select` and `Radio`, so the
+stable reference, `[checked]`/`[unchecked]`, `[focused]`, `[default]` and a
+protected `[unavailable: reason]` stay separate and survive wrapping. Rich
+Ctrl+T help and linear `/help` name the toggle, filter, bulk, review and page
+actions, the configured bounds and every unavailable reason, including choices
+hidden by the current filter. Toggling, bound rejection, review and acceptance
+messages wrap within the declared width and use the component palette when the
+effective profile permits colour. `MultiSelect` also accepts an optional
+`ColorTheme`, and `prompt` accepts `terminal`, `outputProfile` and `session`
+like the shared editor.
+
 ## MaskedInput
 
 `MaskedInput` fills structured formats. A `MaskTemplate('code', [...])` names a
@@ -284,15 +328,28 @@ accepted value exposes `template`, `slots`, `formatted`, `raw` and the
 interpretation used, and `interpretation` (`automatic`, `raw` or `formatted`)
 states how the entered text should be read.
 
-With one template, rich mode edits slot by slot and announces each slot's
-description, content and focus; Escape cancels and Ctrl+C interrupts. Linear mode
-offers `/edit` for one slot, `/value` for the whole formatted value, `/review`
-and `/done`. With several templates an ambiguous value is listed with its slot
-contents and the template is chosen by number, or through `/template` in linear
-mode. Paste is accepted as single-line printable text and is rejected when it
-exceeds the template capacity or the 4096-code-unit frame bound; a paste that
-needs template resolution is listed rather than guessed. Decoding has a bounded
-work limit, and exceeding it preserves the draft for correction.
+With one template, rich mode edits slot by slot. The draft is shown inline
+with the caret inside the focused slot and its bracket marker (`1-[2]`), or with
+the caret after the last slot (`1-2|`). A narrow output clips the inline draft
+around the focused slot with truthful `<` and `>` overflow markers; when even
+that slot cannot fit, the layout stacks one slot per line with its description
+and the literal text. Every view names the focused slot and its rule. Escape
+cancels, Ctrl+T opens component help for the focused slot or the submit stage,
+and Ctrl+C interrupts. Linear mode offers `/edit` for one slot, `/value` for the
+whole formatted value, `/review` and `/done`. With several templates an
+ambiguous value is listed with its slot contents and the template is chosen by
+number, or through `/template` in linear mode. Paste is accepted as single-line
+printable text and is rejected when it exceeds the template capacity or the
+4096-code-unit frame bound; a paste that needs template resolution is listed
+rather than guessed. Decoding has a bounded work limit, and exceeding it
+preserves the draft for correction. Ctrl+T in rich mode or `/help` in linear
+mode leads with the current stage (slot editing, submission, interpretation or
+template choice) and keeps the slot and literal rules beside it. Guidance wraps
+within the declared geometry and an idle resize repaints the draft without
+changing a slot. `MaskedInput.prompt` accepts `terminal`, `outputProfile` and
+`session` like the shared editor; an attached prompt inherits its session
+configuration and an explicitly requested rich mode is unavailable unless the
+profile declares cursor support and positive geometry.
 
 MaskedInput is a format prompt, not a secret prompt: slot contents are shown.
 Use `Password` for secrets.
@@ -315,6 +372,16 @@ cancelling; Ctrl+T opens help and Ctrl+C interrupts. Linear range entry asks for
 each endpoint and a separate review/submit. Invalid text remains editable.
 A supplied range uses the literal `Lower,Upper` spelling, for example `2,8`;
 it must satisfy the same constraints. EOF does not submit a draft.
+
+Ctrl+T in rich mode or `/help` in linear mode leads with the current stage (the
+focused value or endpoint, an edit action, the submit action, or endpoint entry)
+and keeps the bounds, step, units, precision and pair review in the same block.
+Guidance wraps within the declared geometry, an idle resize repaints the current
+control without changing the draft or accepting it, and an explicitly requested
+rich mode is unavailable unless the profile declares cursor support and positive
+geometry. Both prompts accept `terminal`, `outputProfile` and `session` like the
+shared editor, and an attached prompt inherits its session configuration while
+session feedback repaints.
 
 ## TreeSelect
 
@@ -426,6 +493,15 @@ draft. Both review the parsed date and its ISO spelling before `/submit` or
 `/edit` accepts or returns to the draft, and `/cancel` cancels. Errors name the
 offending field, width, repertoire or calendar range and keep the draft.
 
+`DateInput.prompt` also accepts `terminal`, `outputProfile` and `session` like
+the shared editor, and an attached prompt inherits its session configuration
+while feedback repaints. Ctrl+T in rich mode or `/help` in linear mode leads
+with the current stage (the focused field or review) and then the format and
+workflow. Guidance wraps within the declared geometry, an idle resize repaints
+the current editor without changing the draft, and an explicitly requested rich
+mode is unavailable unless the profile declares cursor support and positive
+geometry.
+
 Automatic resolution is narrow: Windows reports one full-year numeric short-date
 profile, Gregorian or Buddhist, with ASCII, Thai or Arabic-Indic digits, and the
 Linux and macOS attempts cover the same narrow numeric full-year profiles. Any
@@ -461,6 +537,21 @@ prompt. A preview is civil-time matching, not scheduler execution. Provider
 identity, work bounds and the unqualified dialect gaps are recorded in
 [doc/cron-preview-evidence.md](doc/cron-preview-evidence.md).
 
+`CronInput` runs on the shared backend: it accepts `terminal`, `outputProfile`
+and `session`, resolves the invocation/source/legacy profile precedence, refuses
+an explicitly requested rich mode that the effective profile cannot support, and
+keeps every guidance line, validation message and preview report inside the
+declared geometry. An attached prompt inherits its session's input, output, mode
+and profile, shares the session-owned key stream and repaints through the
+session writer, so background feedback and an idle resize repaint the retained
+draft without accepting or changing it. Ctrl+T or `/help` opens component help
+that leads with the requesting stage (entry or review), keeps the dialect field
+shape, the 4096-code-unit limit, the accepted syntax and the bounded
+matching-preview limitation in the same block, and names the review actions.
+This is scripted public-behavior evidence only; native PTY, CI and visible
+terminal probes remain outstanding. See
+[the cron migration evidence](doc/evidence/trelis-backend/28-cron-workflow-migration.md).
+
 ### TimeInput
 
 `TimeInput('Start')` accepts strict 24-hour `HH:mm` time-of-day values.
@@ -472,10 +563,15 @@ nullable `second`; it does not contain or imply a date, timezone or instant.
 
 Rich interaction uses Tab to reach labeled segments, formatted editing and
 Submit. Up/Down or `+`/`-` adjust the focused segment without carry or wrap;
-formatted editing is available through the Edit action. Enter a valid formatted
-value before adjusting segments. Linear interaction accepts the same exact
-format, retaining invalid drafts for correction. Terminal and screen-reader
-support is subject to the qualifications documented above.
+formatted editing is available through the Edit action. Each labeled field is a
+local draft, so an incomplete hour, minute, second or period stays in its own
+field until the whole time is valid at Submit. Linear interaction accepts the
+same exact format, retaining invalid drafts for correction. Ctrl+T in rich mode
+or `/help` in linear mode leads with the requested stage and then the accepted
+format. `TimeInput.prompt` accepts `terminal`, `outputProfile` and `session` the
+same way as `DateInput`; guidance wraps within the declared geometry and an idle
+resize repaints the editor without changing the draft. Terminal and
+screen-reader support is subject to the qualifications documented above.
 
 ### TimezoneSelect
 
@@ -563,18 +659,29 @@ back to US formatting. A `convention` is an explicit override, while a
 snapshot remains active for the whole prompt, so preference changes affect only
 the next invocation.
 
-Instructions state required/optional state, mode, separators, exact bounds and
-precision, and concrete ASCII/native, grouped/ungrouped, positive and negative
-examples before editing. Accepted `NumericAnswer` values retain the original
+Entry opens with a compact cue naming the required/optional state, mode, and
+the active decimal and grouping separators. Ctrl+T in rich mode or `/help` in
+linear mode opens component help with the exact bounds and precision, the digit
+repertoire, and concrete ASCII/native, grouped/ungrouped, positive and negative
+examples. Accepted `NumericAnswer` values retain the original
 `spelling` and exact base-ten `coefficient`/`scale` without binary rounding.
 Malformed grouping, mixed digit scripts, alternate signs, exponents, currency,
 percent and special values are rejected rather than normalized.
+
+Like the other formatted-value inputs, `NumberInput` accepts `instructions`
+(`themeDefault`, `compact`, `expanded` or `hidden` for the editing guidance
+only), `supplementaryHelp` appended to its component help, a component
+`ColorTheme`, and `terminal`, `outputProfile` and `session` on `prompt`. The
+active-format cue and component help stay available under every instruction
+policy; colour is emitted only when the selected profile permits it.
 
 ### Port and IP address entry
 
 `PortInput` accepts ASCII decimal ports 1-65535. Set `allowZero: true` only
 when zero means a caller-defined automatic allocation/bind request. It does
-not check availability or bind a socket.
+not check availability or bind a socket. The opening shows only the accepted
+range; component help states that zero requests automatic allocation and that
+availability and reachability are not checked.
 
 `IPAddressInput` accepts numeric IPv4 and IPv6 without resolving hostnames or
 checking reachability. Set `cidr: true` to require an address and prefix;
@@ -582,7 +689,9 @@ checking reachability. Set `cidr: true` to require an address and prefix;
 `prefixLength` without masking host bits. Set `scoped: true` to allow an IPv6
 zone, written `%` followed by ASCII letters, digits, underscore, hyphen, or
 dot. The separate `zone` is environment-dependent and is not checked for
-interface existence. Brackets and URL escaping are not interpreted.
+interface existence. Brackets and URL escaping are not interpreted. The
+opening shows a compact address/prefix/zone cue; component help gives the full
+grammar and the zone, host-bit, reachability and interface caveats.
 
 ### URLInput and EmailInput
 
@@ -592,6 +701,12 @@ Punycode checks, nontransitional processing and DNS-length verification
 without native libraries. The source URLs are recorded in
 `lib/src/uts46.dart`; the Unicode license is in `lib/src/uts46_LICENSE`.
 This is local syntax processing, not a DNS or reachability check.
+
+`EmailInput` opens with a compact SMTP mailbox cue naming whether an SMTPUTF8
+local part is allowed. Component help gives the bare-mailbox grammar, the
+SMTPUTF8 requirement and the fact that deliverability and transport
+availability are not checked. An accepted answer still prints the labeled
+domain interpretation or the transport address literal.
 
 ### ColorInput
 
@@ -619,7 +734,9 @@ color spaces are excluded. No value is silently repaired.
 
 Both rich and linear entry show textual sRGB, alpha, and normalized HSL hue as
 valid drafts are entered. Rounded hex is explicitly an approximate preview and
-never replaces the answer. No color perception is needed.
+never replaces the answer. No color perception is needed. The opening shows a
+compact sRGB cue; Ctrl+T or `/help` gives the full accepted syntax, the alpha
+order, the decimal-digit limit and the excluded expressions and colour spaces.
 
 ### Key capture
 
@@ -629,7 +746,12 @@ removes the last gesture, `x` clears, and Enter submits. In linear mode use
 `/capture`, `/declare`, `/remove`, `/clear`, and `/done`; `/cancel` cancels.
 Every capture returns to review: it never submits automatically. Escape exits
 armed capture before cancelling the prompt; Ctrl+C interrupts. These two
-reserved gestures cannot be captured live.
+reserved gestures cannot be captured live. Rich `Ctrl+T` and linear `/help`
+explain observed versus declared or ambiguous provenance, the reserved
+gestures, the observation requirement, the declaration vocabulary and sequence
+completion. Help is available before and after a capture but not while capture
+is armed, because the next key is the candidate gesture; the action line says
+so in each mode.
 
 Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`);
 for supplied `KeyChordInput` answers, separate gestures with commas. Modifiers
@@ -657,13 +779,22 @@ captures are marked `ambiguous` because the stream does not reliably identify
 all modifiers. Their empty modifier set must not be interpreted as proof that
 no modifier was held.
 
+Key capture `prompt` invocations accept `terminal`, `outputProfile` and
+`session` the same way as the shared editor. A rich synthetic source declares
+cursor support and positive geometry through its profile. A source that replays
+the console key record (`ESC [ 901 ; vk ; code ; state ~`) exercises the
+observed provenance path without claiming a physical keyboard. An attached
+prompt inherits its explicit `TerminalSession` configuration, shares its reader
+and writer, and can remain active while session feedback updates or while
+session help retains those updates for restoration on dismissal.
+
 ### DurationInput
 
 Select `DurationInputMode.elapsed` or `DurationInputMode.calendarRelative` when constructing the input; entry never changes the mode. Supply one or more space-separated, case-sensitive tokens such as `1h 30m` or `1y 2mo 0.5s`. Amounts use ASCII digits and optional dot fractions, with no grouping; units cannot repeat. A sign is permitted only with `signed: true`, and applies to the entire expression. The original spelling is retained in `DurationValue.draft`.
 
 Elapsed tokens are `w d h m s ms us`. A day is exactly 24 hours and a week seven days. Calendar-relative mode additionally accepts `y mo`; its `y mo w d` amounts must be whole and remain unapplied components. Sub-day amounts are elapsed quantities. No date, zone, application order, DST policy, endpoint or total is inferred for a period.
 
-Fractions must convert exactly to integer microseconds; there is no rounding. The maximum magnitude is 9223372036854775807 for the elapsed total and for each calendar component, and drafts are limited to 1024 characters. The default is nonnegative, with zero accepted. `signed: true` permits a global sign; `minimumMicroseconds` optionally bounds elapsed values. `allowZero: false` rejects an all-zero value in either mode; calendar periods have no arbitrary built-in ordering or elapsed minimum. Microsecond resolution does not promise scheduler accuracy. Rich and linear input both show a textual interpretation while editing; invalid drafts remain editable.
+Fractions must convert exactly to integer microseconds; there is no rounding. The maximum magnitude is 9223372036854775807 for the elapsed total and for each calendar component, and drafts are limited to 1024 characters. The default is nonnegative, with zero accepted. `signed: true` permits a global sign; `minimumMicroseconds` optionally bounds elapsed values. `allowZero: false` rejects an all-zero value in either mode; calendar periods have no arbitrary built-in ordering or elapsed minimum. Microsecond resolution does not promise scheduler accuracy. Rich and linear input both show a textual interpretation while editing; invalid drafts remain editable. Entry opens with a compact mode cue naming the unit set and whether a global sign is allowed; component help carries the full token grammar, the exact-microsecond and magnitude bounds, and the unapplied-period caveat.
 
 ### Concurrent task feedback
 

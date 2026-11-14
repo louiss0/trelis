@@ -3,6 +3,13 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+/// Synthetic rich output declares positive geometry; the legacy rich hint is
+/// not geometry evidence.
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+);
+
 void main() {
   test(
     'snake policy preserves Unicode and uses word-aware separators',
@@ -58,7 +65,11 @@ void main() {
   test('rich draft must be explicitly discarded before finish', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
-      source: ScriptedInput(Stream.value('unfinished\t\r\x18\t\r'), output),
+      source: ScriptedInput(
+        Stream.value('unfinished\t\r\x18\t\r'),
+        output,
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<List<String>>).value, isEmpty);
@@ -101,6 +112,7 @@ void main() {
           'one\rtwo\r\x7f\x1b[D\r\x01\x1b[3~\x1b[3~\x1b[3~first\r\t\r',
         ),
         output,
+        outputProfile: _richProfile,
       ),
       mode: PromptMode.rich,
     );
@@ -109,15 +121,24 @@ void main() {
   });
   test('rich slash command text remains a literal draft', () async {
     final result = await TagInput('Tags').prompt(
-      source: ScriptedInput(Stream.value('/done\r\x03'), StringBuffer()),
+      source: ScriptedInput(
+        Stream.value('/done\r\x03'),
+        StringBuffer(),
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect(result, isA<Interrupted<List<String>>>());
   });
   test('automatic mode previews drafts on rich-capable source', () async {
     final output = StringBuffer();
-    final result = await TagInput('Tags')
-        .prompt(source: ScriptedInput(Stream.value('NewTag\r\t\r'), output));
+    final result = await TagInput('Tags').prompt(
+      source: ScriptedInput(
+        Stream.value('NewTag\r\t\r'),
+        output,
+        outputProfile: _richProfile,
+      ),
+    );
     expect((result as Accepted<List<String>>).value, ['new-tag']);
     expect(output.toString(), contains('Preview: new-tag'));
   });
@@ -139,6 +160,7 @@ void main() {
       source: ScriptedInput(
         Stream.value('one\rtwo\r\x7f\r\x01\x1b[3~\x1b[3~\x1b[3~NewTag\r\t\r'),
         output,
+        outputProfile: _richProfile,
       ),
       mode: PromptMode.rich,
     );
@@ -151,6 +173,7 @@ void main() {
       source: ScriptedInput(
         Stream.value('one\rtwo\r\x7f\x7f\x1b[3~\t\r'),
         output,
+        outputProfile: _richProfile,
       ),
       mode: PromptMode.rich,
     );
@@ -194,7 +217,11 @@ void main() {
   test('rich mode previews canonical draft without rewriting input', () async {
     final output = StringBuffer();
     final result = await TagInput('Tags').prompt(
-      source: ScriptedInput(Stream.value('NewTag\r\t\r'), output),
+      source: ScriptedInput(
+        Stream.value('NewTag\r\t\r'),
+        output,
+        outputProfile: _richProfile,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<List<String>>).value, ['new-tag']);

@@ -22,7 +22,14 @@ final class ColorValue {
 
 /// Textual sRGB color entry.
 final class ColorInput {
-  ColorInput(String label, {this.required = true, String initialValue = ''}) {
+  ColorInput(
+    String label, {
+    this.required = true,
+    String initialValue = '',
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -30,15 +37,24 @@ final class ColorInput {
       throw ArgumentError.value(initialValue, 'initialValue');
     }
     _input = TextInput._(
-      '$label (CSS Color 4 sRGB: #RGB, #RGBA, #RRGGBB, #RRGGBBAA, literal RGB/HSL and static names; alpha last; hue wraps modulo 360 degrees; ASCII decimals up to 12 digits)',
+      '$label (CSS sRGB color: hex, RGB, HSL, or static name).',
       required: required,
       initialValue: initialValue,
       onChanged: _showPreview,
       validate: (value) =>
           value.isEmpty && !required || _parseColor(value) != null ? null : 'Enter a valid sRGB color: hex, static name, or literal RGB/HSL. RGB channels must be 0-255 or 0-100%; HSL saturation and lightness 0-100%; alpha 0-1 or 0-100%. Use at most 12 digits per number; expressions and other color spaces are not supported.',
+      instructions: instructions,
+      supplementaryHelp: [
+        'Color format: CSS Color 4 sRGB #RGB, #RGBA, #RRGGBB, #RRGGBBAA, literal RGB/HSL, and static names. Alpha is last, hue wraps modulo 360 degrees, and ASCII decimals use at most 12 digits. Expressions and other colour spaces are not supported.',
+        ...supplementaryHelp,
+      ],
+      colors: colors,
     );
   }
   final bool required;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ColorTheme colors;
   late final TextInput _input;
   StringSink? _sink;
   bool _active = false;
@@ -71,13 +87,18 @@ final class ColorInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     _sink = source is ScriptedInput
         ? source.output
         : source == null
-        ? (output ?? stderr)
+        ? (session != null
+              ? _SessionOutputSink(session)
+              : output ?? terminal?.output ?? stderr)
         : null;
     try {
       final result = await _input.prompt(
@@ -86,6 +107,9 @@ final class ColorInput {
         userPreference: userPreference,
         applicationPreference: applicationPreference,
         output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+        session: session,
       );
       if (result is Accepted<String>) {
         final value = result.value.isEmpty ? null : _parseColor(result.value)!;

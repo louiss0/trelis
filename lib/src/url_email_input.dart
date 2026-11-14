@@ -255,18 +255,34 @@ bool _strictIpv4(String value) {
 
 /// One bare SMTP transport mailbox; validity does not imply deliverability.
 final class EmailInput {
-  EmailInput(String label, {this.smtpUtf8 = false, String initialValue = ''}) {
+  EmailInput(
+    String label, {
+    this.smtpUtf8 = false,
+    String initialValue = '',
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    this.colors = ColorThemes.terminalDefault,
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (initialValue.isNotEmpty && _validate(initialValue) != null) {
       throw ArgumentError('Invalid initial email address.');
     }
     _input = TextInput(
-      '$label (bare SMTP address${smtpUtf8 ? '; SMTPUTF8 support required for Unicode local parts' : '; ASCII local part'}, no deliverability check)',
+      '$label (bare SMTP address${smtpUtf8 ? '; SMTPUTF8 local part allowed' : '; ASCII local part'}).',
       initialValue: initialValue,
       required: true,
       validate: _validate,
+      instructions: instructions,
+      supplementaryHelp: [
+        'Email format: one bare SMTP mailbox${smtpUtf8 ? '; SMTPUTF8 is required for Unicode local parts' : '; local parts must be ASCII'}. IDNA domains and address literals are accepted. Deliverability and transport availability are not checked.',
+        ...supplementaryHelp,
+      ],
+      colors: colors,
     );
   }
   final bool smtpUtf8;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ColorTheme colors;
   late final TextInput _input;
 
   String? _validate(String value) {
@@ -340,6 +356,9 @@ final class EmailInput {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
     final result = await _input.prompt(
       source: source,
@@ -347,10 +366,17 @@ final class EmailInput {
       userPreference: userPreference,
       applicationPreference: applicationPreference,
       output: output,
+      terminal: terminal,
+      outputProfile: outputProfile,
+      session: session,
     );
     if (result is Accepted<String> && source is! SuppliedAnswer) {
       final domain = result.value.substring(result.value.lastIndexOf('@') + 1);
-      final sink = source is ScriptedInput ? source.output : output ?? stderr;
+      final sink = source is ScriptedInput
+          ? source.output
+          : session != null
+          ? _SessionOutputSink(session)
+          : output ?? terminal?.output ?? stderr;
       if (domain.startsWith('[')) {
         sink.writeln('Transport address literal: $domain.');
       } else {
