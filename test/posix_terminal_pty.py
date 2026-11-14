@@ -34,6 +34,24 @@ def user_state(attributes):
     return state
 
 
+def stop(process):
+    """Stop the launched command and any process it started."""
+    if process.poll() is not None:
+        return
+    for sent in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            # The child leads its own process group, so this also stops a VM
+            # child that outlived its launcher.
+            os.killpg(process.pid, sent)
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            process.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 def run(scenario, inputs, expected, term=None):
     master, slave = pty.openpty()
     # A fresh PTY commonly has zero geometry. Configure the real terminal;
@@ -44,43 +62,56 @@ def run(scenario, inputs, expected, term=None):
         ['dart', 'run', 'test/text_input_native_app.dart', scenario],
         stdin=slave, stderr=slave, stdout=subprocess.PIPE,
         env={**os.environ, 'TERM': term or 'xterm'},
+        # The launched command is not necessarily the process that owns the
+        # prompt: `dart` runs the script in a child VM process (observed as
+        # dart.exe -> dartvm.exe). Giving the child its own process group lets
+        # an external interrupt address the application the way a terminal
+        # does, instead of only the launcher. It also keeps a group signal away
+        # from this harness and its CI shell.
+        start_new_session=True,
     )
     transcript = bytearray()
     terminal_output = bytearray()
+    signalled = False
     try:
         for prompt, data in inputs:
             deadline = time.monotonic() + 30
             while prompt not in transcript:
                 if process.poll() is not None:
                     stdout, _ = process.communicate()
-                    raise AssertionError(f'{scenario}: process exited before {prompt!r}: stdout={stdout!r}, terminal={transcript!r}')
+                    raise AssertionError(f'{scenario}: process exited before {prompt!r}: stdout={stdout!r}, terminal={bytes(terminal_output)!r}')
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise AssertionError(f'timed out waiting for {prompt!r}: {transcript!r}')
+                    raise AssertionError(f'timed out waiting for {prompt!r}: {bytes(terminal_output)!r}')
                 if select.select([master], [], [], min(remaining, 0.1))[0]:
                     chunk = os.read(master, 65536)
                     transcript.extend(chunk)
                     terminal_output.extend(chunk)
             transcript.clear()
             if data is None:
-                os.kill(process.pid, signal.SIGINT)
+                signalled = True
+                os.killpg(process.pid, signal.SIGINT)
             else:
                 os.write(master, data)
         stdout, _ = process.communicate(timeout=30)
         while select.select([master], [], [], 0)[0]:
             terminal_output.extend(os.read(master, 65536))
         after = termios.tcgetattr(slave)
-        if process.returncode != 0 or stdout.decode().strip() != expected:
-            raise AssertionError(f'{scenario}: exit={process.returncode}, stdout={stdout!r}, terminal={transcript!r}')
+        # A group interrupt can also reach the launcher, which may exit with
+        # the signal status while the application handles the interrupt and
+        # prints its own result. A process that failed to handle the interrupt
+        # prints nothing, so the printed result stays the real assertion.
+        statuses = {0, -signal.SIGINT} if signalled else {0}
+        if (process.returncode not in statuses
+                or stdout.decode().strip() != expected):
+            raise AssertionError(f'{scenario}: exit={process.returncode}, stdout={stdout!r}, terminal={bytes(terminal_output)!r}')
         if term == 'dumb' and b'\x1b' in terminal_output:
-            raise AssertionError(f'{scenario}: unexpected escape sequence: {terminal_output!r}')
+            raise AssertionError(f'{scenario}: unexpected escape sequence: {bytes(terminal_output)!r}')
         if user_state(before) != user_state(after):
             raise AssertionError(f'{scenario}: terminal attributes not restored: {before!r} -> {after!r}')
         print(f'{scenario}: PASS ({expected})')
     finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
+        stop(process)
         os.close(master)
         os.close(slave)
 
@@ -90,7 +121,12 @@ def main():
         ('rich', [(b'Name', b'\r')], 'alpha'),
         ('escape', [(b'Name', b'\x1b')], 'cancel'),
         ('interrupt', [(b'Name', b'\x03')], 'interrupt'),
-        ('signal', [(b'Name', None)], 'interrupt'),
+        # An external interrupt is only meaningful once the prompt is reading
+        # input: the native reader installs its SIGINT watcher when it starts
+        # listening, which happens after the opening frame paints. Typing and
+        # waiting for the echoed draft proves the reader is live, so the
+        # signal cannot race the opening.
+        ('signal', [(b'Name', b'qx'), (b'alphaqx', None)], 'interrupt'),
         ('eof', [(b'Name', b'\x04')], 'eof'),
         ('error', [(b'Failure', b'\r'), (b'Name', b'\r')], 'alpha'),
         ('repeat', [(b'Name', b'\r'), (b'Name', b'\r')], 'alpha,alpha'),
