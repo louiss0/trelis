@@ -5,12 +5,14 @@
 
 ## Source and environment
 
-- **Implementation revision:** `f83e7d1` (partial migration, preserved) advanced
-  by this work; the merge revision and the exact re-run revision are recorded in
-  the ticket's `## Answer` comment, which is written after
-  `git merge integration/trelis-backend-tracer-bullets` reported its result.
-- **Branch:** `ticket/backend-23-async-search-migration`, base
-  `74c5171bdd794b69262558130aa64195b68ec57b`.
+- **Implementation revision:** `0c178a5e89c2b37d4b8b4356cb1912788c343a4d`
+  (typed projection, recorded events, live stage help, deterministic fixtures
+  and selected-output faults), on base
+  `74c5171bdd794b69262558130aa64195b68ec57b`. `git merge
+  integration/trelis-backend-tracer-bullets` reported `Already up to date.`, so
+  the integration tip had not moved. The results below were produced on that
+  code and re-run on `766bbed` (documentation only).
+- **Branch:** `ticket/backend-23-async-search-migration`
 - **Date:** 2026-11-13
 - **Environment:** Microsoft Windows NT 10.0.26200.0 (`windows_x64`), Dart SDK
   3.13.2 stable (`dart --version`).
