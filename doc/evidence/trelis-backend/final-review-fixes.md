@@ -190,3 +190,47 @@ before the corresponding implementation and passing after it.
   informational lines when no rows remain; only warnings, errors and explicit
   outcomes are written in full. That is the ticket-16 behaviour, now without the
   retained-snapshot replay.
+
+## Follow-up corrections for ticket 31
+
+Revision `cf33023` on `ticket/backend-31-platform-evidence` addresses the
+follow-up review against integration `07da9ba`. It is local, focused evidence;
+it does not amend the historical full-suite or CI results above.
+
+- **Modal notices:** a deferred feedback occurrence now has a sequence identity.
+  Important notices remain in arrival order even if a later ordinary update from
+  the same `MultiSpinner` region replaces its live snapshot. The restoration
+  filter compares sequence identity, not displayed text, so equal text from
+  separate regions and repeated equal notices remain separate events.
+- **ZWJ display spelling:** `displaySafe` applies its policy one grapheme at a
+  time, exactly as `TextDisplayMap` does. A dangling joiner is now visible in
+  both unwrapped and wrapped presentation; supported emoji ZWJ clusters stay
+  intact.
+- **Profile/API gaps:** `OutputProfile.isAutomatic` owns the all-facts predicate
+  that `TextInput` previously duplicated. `copyWith` documentation states that
+  its non-null automatic sentinels clear declared facts. `terminalStyledText`
+  documents that it does not escape application text and requires display-safe
+  input.
+- **Native preference fixture:** the Windows test injector previously assigned
+  `.` virtual key 46 (`VK_DELETE`), so the preference-change draft lost its
+  grouping separator. It now emits OEM punctuation virtual keys, and the
+  existing registry-restoring `finally` branch passed.
+
+Red was observed before each implementation: the modal test found zero retained
+`compile: failed: broken` lines, `DisplayText.from('a\u200Db')` retained a raw
+joiner, and the profile test could not resolve `isAutomatic`. After the fixes,
+this focused command passed with **94 tests** on Windows 11 (`10.0.26200.0`),
+Dart `3.13.2`:
+
+```text
+dart test test/terminal_session_modal_help_test.dart \
+  test/terminal_session_short_screen_test.dart test/text_input_test.dart \
+  test/text_measurement_test.dart test/output_profile_text_input_test.dart \
+  test/text_input_colour_rendering_test.dart test/number_input_test.dart \
+  test/formatted_values_migration_test.dart --reporter expanded
+```
+
+`test/number_input_native_checks.ps1` also passed its rich, linear, and guarded
+preference-change cases. `dart test --reporter expanded` passed with **946
+tests**. A fresh six-job CI run is required before these local follow-up repairs
+are counted as platform evidence.
