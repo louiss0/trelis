@@ -4,22 +4,24 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('automatic mode stays linear when output has cursor but no dimensions',
-      () async {
-    final output = StringBuffer();
+  test(
+    'automatic mode stays linear when output has cursor but no dimensions',
+    () async {
+      final output = StringBuffer();
 
-    final result = await TextInput('Name').prompt(
-      terminal: _Terminal(
-        Stream.value('/cancel\r'),
-        output,
-        const OutputProfile(cursor: CapabilitySupport.supported),
-      ),
-    );
+      final result = await TextInput('Name').prompt(
+        terminal: _Terminal(
+          Stream.value('/cancel\r'),
+          output,
+          const OutputProfile(cursor: CapabilitySupport.supported),
+        ),
+      );
 
-    expect(result, isA<Cancelled<String>>());
-    expect(output.toString(), contains('Current text: /cancel'));
-    expect(output.toString(), isNot(contains('\x1b[2K')));
-  });
+      expect(result, isA<Cancelled<String>>());
+      expect(output.toString(), contains('Current text: /cancel'));
+      expect(output.toString(), isNot(contains('\x1b[2K')));
+    },
+  );
 
   test('a prompt leaves alternate output before interruption', () async {
     final output = StringBuffer();
@@ -71,7 +73,11 @@ void main() {
       TextInput('Name').prompt(terminal: terminal),
       throwsA(
         isA<TerminalRestorationException>()
-            .having((error) => error.operationError, 'operation error', inputFailure)
+            .having(
+              (error) => error.operationError,
+              'operation error',
+              inputFailure,
+            )
             .having(
               (error) => error.restorationError,
               'restoration error',

@@ -37,23 +37,28 @@ void main() {
     expect(transcript.events.map((event) => event.id), [1, 2, 3, 4, 5, 6]);
   });
 
-  test('fresh identical help requests retain distinct event identities', () async {
-    final transcript = TextInputTranscript();
-    final result = await TextInput('Name').prompt(
-      source: ScriptedInput(
-        Stream.value('\x14\x1b\x14\x1banswer\r'),
-        StringBuffer(),
-        transcript: transcript,
-      ),
-      mode: PromptMode.linear,
-    );
+  test(
+    'fresh identical help requests retain distinct event identities',
+    () async {
+      final transcript = TextInputTranscript();
+      final result = await TextInput('Name').prompt(
+        source: ScriptedInput(
+          Stream.value('\x14\x1b\x14\x1banswer\r'),
+          StringBuffer(),
+          transcript: transcript,
+        ),
+        mode: PromptMode.linear,
+      );
 
-    expect((result as Accepted<String>).value, 'answer');
-    expect(
-      transcript.events.where((event) => event.kind == TextInputPresentationEventKind.help).map((event) => event.id),
-      [2, 3],
-    );
-  });
+      expect((result as Accepted<String>).value, 'answer');
+      expect(
+        transcript.events
+            .where((event) => event.kind == TextInputPresentationEventKind.help)
+            .map((event) => event.id),
+        [2, 3],
+      );
+    },
+  );
 
   test(
     'current view records a caret-only edit without creating history',
