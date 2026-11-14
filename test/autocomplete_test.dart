@@ -3,13 +3,34 @@ import 'dart:async';
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+import 'support/async_search_fixture.dart';
+
 final _richProfile = OutputProfile(
   cursor: CapabilitySupport.supported,
   geometry: OutputGeometry.fixed(columns: 100, rows: 30),
 );
 
-ScriptedInput _scriptedInput(Stream<String> input, StringSink output) =>
-    ScriptedInput(input, output, outputProfile: _richProfile);
+ScriptedInput _scriptedInput(
+  Stream<String> input,
+  StringSink output, {
+  TextInputTranscript? transcript,
+}) => ScriptedInput(
+  input,
+  output,
+  outputProfile: _richProfile,
+  transcript: transcript,
+);
+
+int _helpEvents(TextInputTranscript transcript) => transcript.events
+    .where((event) => event.kind == TextInputPresentationEventKind.help)
+    .length;
+
+QueryResultsPresentation? _lastResults(TextInputTranscript transcript) {
+  final occurrences = transcript.events
+      .where((event) => event.kind == TextInputPresentationEventKind.results)
+      .toList();
+  return occurrences.isEmpty ? null : occurrences.last.results;
+}
 
 void main() {
   test('explicit rich mode requires declared geometry without querying suggestions', () async {
@@ -60,22 +81,31 @@ void main() {
     () async {
       final input = StreamController<String>();
       final output = StringBuffer();
+      final transcript = TextInputTranscript();
       final pending = Completer<List<String>>();
       final prompt = Autocomplete('Name', suggestions: (_) => pending.future)
           .prompt(
-            source: _scriptedInput(input.stream, output),
+            source: _scriptedInput(
+              input.stream,
+              output,
+              transcript: transcript,
+            ),
             mode: PromptMode.rich,
           );
       input.add('\x14');
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await settleUntil(() => _helpEvents(transcript) == 1);
       pending.complete(['Ada']);
-      await Future<void>.delayed(Duration.zero);
+      await settleUntil(
+        () => _lastResults(transcript)?.phase == QueryResultsPhase.ready,
+      );
       expect(output.toString(), isNot(contains('1 suggestions; none active.')));
       input.add('\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await awaitLoneEscape();
+      await settleUntil(
+        () => output.toString().contains('1 suggestions; none active.'),
+      );
       input.add('\x03');
       expect(await prompt, isA<Interrupted<String>>());
-      expect(output.toString(), contains('1 suggestions; none active.'));
       await input.close();
     },
   );
@@ -107,6 +137,7 @@ void main() {
     () async {
       final input = StreamController<String>();
       final output = StringBuffer();
+      final transcript = TextInputTranscript();
       final prompt =
           Autocomplete(
             'Name',
@@ -114,14 +145,18 @@ void main() {
             instructions: InstructionDisplay.hidden,
             supplementaryHelp: ['Use a preferred name.'],
           ).prompt(
-            source: _scriptedInput(input.stream, output),
+            source: _scriptedInput(
+              input.stream,
+              output,
+              transcript: transcript,
+            ),
             mode: PromptMode.rich,
           );
       input.add('\x14');
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await settleUntil(() => _helpEvents(transcript) == 1);
       expect(output.toString(), contains('Use a preferred name.'));
       input.add('\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await awaitLoneEscape();
       input.add('\x03');
       expect(await prompt, isA<Interrupted<String>>());
       await input.close();
@@ -149,6 +184,7 @@ void main() {
     () async {
       final input = StreamController<String>();
       final output = StringBuffer();
+      final transcript = TextInputTranscript();
       final pending = Completer<List<String>>();
       await TerminalSession.run(
         (session) async {
@@ -157,20 +193,24 @@ void main() {
             suggestions: (_) => pending.future,
           ).prompt(session: session);
           input.add('\x14');
-          await Future<void>.delayed(const Duration(milliseconds: 30));
+          await settleUntil(() => _helpEvents(transcript) == 1);
           pending.complete(['Ada']);
-          await Future<void>.delayed(Duration.zero);
+          await settleUntil(
+            () => _lastResults(transcript)?.phase == QueryResultsPhase.ready,
+          );
           expect(
             output.toString(),
             isNot(contains('1 suggestions; none active.')),
           );
           input.add('\x1b');
-          await Future<void>.delayed(const Duration(milliseconds: 120));
+          await awaitLoneEscape();
+          await settleUntil(
+            () => output.toString().contains('1 suggestions; none active.'),
+          );
           input.add('\x03');
           expect(await prompt, isA<Interrupted<String>>());
-          expect(output.toString(), contains('1 suggestions; none active.'));
         },
-        source: _scriptedInput(input.stream, output),
+        source: _scriptedInput(input.stream, output, transcript: transcript),
         mode: PromptMode.rich,
       );
       await input.close();
@@ -209,7 +249,7 @@ void main() {
         mode: PromptMode.rich,
       );
       input.add('A\x14\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await awaitLoneEscape();
       input.add('\r');
       expect((await result as Accepted<String>).value, 'A');
       expect(
@@ -289,7 +329,7 @@ void main() {
             mode: PromptMode.rich,
           );
       input.add('A\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await awaitLoneEscape();
       input.add('\r');
       expect((await result as Accepted<String>).value, 'A');
       await input.close();
@@ -324,31 +364,33 @@ void main() {
       mode: PromptMode.rich,
     );
     input.add('A\x1b[B\x14\x1b');
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await awaitLoneEscape();
     input.add('\r\r');
     expect((await result as Accepted<String>).value, 'Ada');
     await input.close();
   });
   test('late rich results cannot replace newer suggestions', () async {
-    final requests = <String, Completer<List<String>>>{};
+    final requests = PendingRequests<List<String>>();
     final input = StreamController<String>();
-    final result =
-        Autocomplete(
-          'Name',
-          suggestions: (query) =>
-              requests.putIfAbsent(query, Completer<List<String>>.new).future,
-        ).prompt(
-          source: _scriptedInput(input.stream, StringBuffer()),
-          mode: PromptMode.rich,
-        );
+    final transcript = TextInputTranscript();
+    final result = Autocomplete('Name', suggestions: requests.record).prompt(
+      source: _scriptedInput(
+        input.stream,
+        StringBuffer(),
+        transcript: transcript,
+      ),
+      mode: PromptMode.rich,
+    );
     input.add('a');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await settleUntil(() => requests.requested('a'));
     input.add('b');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    requests['ab']!.complete(['Newest']);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    requests['a']!.complete(['Stale']);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await settleUntil(() => requests.requested('ab'));
+    requests.complete('ab', ['Newest']);
+    await settleUntil(
+      () => _lastResults(transcript)?.phase == QueryResultsPhase.ready,
+    );
+    requests.complete('a', ['Stale']);
+    await settle();
     input.add('\t\r');
     expect((await result as Accepted<String>).value, 'Newest');
     await input.close();
@@ -363,7 +405,7 @@ void main() {
             mode: PromptMode.rich,
           );
       input.add('ab\x1b[D\x1b[B\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await awaitLoneEscape();
       input.add('X\r');
       expect((await result as Accepted<String>).value, 'aXb');
       await input.close();
@@ -416,23 +458,25 @@ void main() {
   test(
     'late linear results cannot replace results for the edited query',
     () async {
-      final requests = <String, Completer<List<String>>>{};
+      final requests = PendingRequests<List<String>>();
       final input = StreamController<String>();
-      final result =
-          Autocomplete(
-            'Name',
-            suggestions: (query) =>
-                requests.putIfAbsent(query, Completer<List<String>>.new).future,
-          ).prompt(
-            source: _scriptedInput(input.stream, StringBuffer()),
-            mode: PromptMode.linear,
-          );
+      final transcript = TextInputTranscript();
+      final result = Autocomplete('Name', suggestions: requests.record).prompt(
+        source: _scriptedInput(
+          input.stream,
+          StringBuffer(),
+          transcript: transcript,
+        ),
+        mode: PromptMode.linear,
+      );
       input.add('a\r/edit\rb\r');
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      requests['ab']!.complete(['Newest']);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      requests['a']!.complete(['Stale']);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await settleUntil(() => requests.requested('ab'));
+      requests.complete('ab', ['Newest']);
+      await settleUntil(
+        () => _lastResults(transcript)?.phase == QueryResultsPhase.ready,
+      );
+      requests.complete('a', ['Stale']);
+      await settle();
       input.add('1\r/submit\r');
       expect((await result as Accepted<String>).value, 'Newest');
       await input.close();
@@ -461,9 +505,9 @@ void main() {
       mode: PromptMode.rich,
     );
     input.add('x\x1b');
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await awaitLoneEscape();
     input.add('\x1b');
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await awaitLoneEscape();
     expect(await result, isA<Cancelled<String>>());
     await input.close();
   });
@@ -503,30 +547,24 @@ void main() {
   test(
     'obsolete suggestion errors do not disturb current candidates',
     () async {
-      final requests = <String, Completer<List<String>>>{};
+      final requests = PendingRequests<List<String>>();
       final input = StreamController<String>();
       final out = StringBuffer();
-      final result =
-          Autocomplete(
-            'Name',
-            suggestions: (q) =>
-                requests.putIfAbsent(q, Completer<List<String>>.new).future,
-          ).prompt(
-            source: _scriptedInput(input.stream, out),
-            mode: PromptMode.rich,
-          );
+      final transcript = TextInputTranscript();
+      final result = Autocomplete('Name', suggestions: requests.record).prompt(
+        source: _scriptedInput(input.stream, out, transcript: transcript),
+        mode: PromptMode.rich,
+      );
       input.add('a');
-      while (!requests.containsKey('a')) {
-        await Future<void>.delayed(Duration.zero);
-      }
+      await settleUntil(() => requests.requested('a'));
       input.add('b');
-      while (!requests.containsKey('ab')) {
-        await Future<void>.delayed(Duration.zero);
-      }
-      requests['ab']!.complete(['Current']);
-      await Future<void>.delayed(Duration.zero);
-      requests['a']!.completeError(StateError('obsolete'));
-      await Future<void>.delayed(Duration.zero);
+      await settleUntil(() => requests.requested('ab'));
+      requests.complete('ab', ['Current']);
+      await settleUntil(
+        () => _lastResults(transcript)?.phase == QueryResultsPhase.ready,
+      );
+      requests.fail('a', StateError('obsolete'));
+      await settle();
       input.add('\t\r');
       expect((await result as Accepted<String>).value, 'Current');
       expect(out.toString(), isNot(contains('Suggestions unavailable.')));
@@ -539,18 +577,21 @@ void main() {
       final pending = Completer<List<String>>();
       final input = StreamController<String>();
       final out = StringBuffer();
+      final transcript = TextInputTranscript();
       final result = Autocomplete('Name', suggestions: (_) => pending.future)
           .prompt(
-            source: _scriptedInput(input.stream, out),
+            source: _scriptedInput(input.stream, out, transcript: transcript),
             mode: PromptMode.rich,
           );
       input.add('draft\t\r');
       expect((await result as Accepted<String>).value, 'draft');
       expect(out.toString(), isNot(contains('Accepted into editable text:')));
+      expect(_lastResults(transcript)?.phase, QueryResultsPhase.loading);
       final snapshot = out.toString();
       pending.complete(['Late']);
-      await Future<void>.delayed(Duration.zero);
+      await settle();
       expect(out.toString(), snapshot);
+      expect(_lastResults(transcript)?.phase, QueryResultsPhase.loading);
       await input.close();
     },
   );
@@ -567,7 +608,7 @@ void main() {
     expect(await result, isA<Cancelled<String>>());
     final snapshot = out.toString();
     pending.completeError(StateError('late'));
-    await Future<void>.delayed(Duration.zero);
+    await settle();
     expect(out.toString(), snapshot);
     await input.close();
   });

@@ -1,5 +1,9 @@
 # Ticket 23: async search migration — progress, not acceptance
 
+> Superseded by [23-async-search-migration.md](23-async-search-migration.md),
+> which records the completed migration and its executed verification. This note
+> is kept as the pre-merge progress record.
+
 Environment: Windows x64, Dart SDK 3.13.2, 2026-11-13. Base revision: `74c5171bdd794b69262558130aa64195b68ec57b` (contains `10de1bc`). The evidence applies to the code committed with this report, before any later merge or edits. Synthetic scripted input and output profiles were used; this is not native terminal, cross-platform CI, or accessibility evidence.
 
 - `dart analyze`: `No issues found!`.

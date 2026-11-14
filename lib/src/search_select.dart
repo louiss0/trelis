@@ -198,6 +198,7 @@ final class SearchSelect<T> {
           : PromptMode.linear;
     }
     final out = input.output;
+    final transcript = input.transcript;
     String safe(String value) => DisplayText.from(value).value;
     final additionalHelp = supplementaryHelp.map(safe).join(' ');
     final inputKeys = keys ?? _Keys(input.input.transform(utf8.encoder));
@@ -218,6 +219,13 @@ final class SearchSelect<T> {
     var invalidFocus = false;
     var hadResultsFocus = false;
     var helpVisible = false;
+    var lastResultsSignature = '';
+    String domainHelp() => switch (_kind) {
+      'CommandPalette' =>
+        'A reference identifies a command; accepting it does not run it.',
+      'TimezoneSelect' => 'Matching covers IANA identifiers, city names and aliases; the canonical identity is returned and no offset or current time is consulted.',
+      _ => '',
+    };
     List<int> visible() => search == null
         ? [
             for (var i = 0; i < choices.length; i++)
@@ -230,38 +238,105 @@ final class SearchSelect<T> {
               if (current.containsKey(i)) i,
           ];
     Choice<T> item(int i) => search == null ? choices[i] : current[i]!;
-    void show() {
+    List<int> displayed() => mode == PromptMode.linear
+        ? visible().skip(page * size).take(size).toList()
+        : visible();
+
+    // The typed projection is built before any output, and only for a current,
+    // open presentation: stale responses are rejected above it.
+    QueryResultsPresentation project() {
       final matches = visible();
-      out.writeln(
-        '${safe(label)} $_kind: ${matches.length} results for "${safe(query)}".',
-      );
-      if (loading) {
-        out.writeln('Searching; results cannot be accepted yet.');
-      } else if (failed) {
-        if (invalidIdentities) {
-          out.writeln('Search returned unknown or duplicate identities.');
-        }
-        out.writeln('Search unavailable; edit the query to retry.');
-      } else if (matches.isEmpty) {
-        out.writeln('No matching choices; edit the query.');
+      final phase = loading
+          ? QueryResultsPhase.loading
+          : failed
+          ? QueryResultsPhase.failure
+          : matches.isEmpty
+          ? QueryResultsPhase.empty
+          : QueryResultsPhase.ready;
+      final rows = <QueryResultRow>[];
+      for (var position = 0; position < displayed().length; position++) {
+        final index = displayed()[position];
+        final choice = item(index);
+        rows.add(
+          QueryResultRow(
+            label: DisplayText.from(choice.label),
+            position: position + 1,
+            reference: index + 1,
+            focused: index == focus,
+            isDefault: defaultValue != null && choice.value == defaultValue,
+            unavailableReason: choice.disabledReason == null
+                ? null
+                : DisplayText.from(choice.disabledReason!),
+          ),
+        );
       }
-      if (invalidFocus) {
+      final pageCount = mode == PromptMode.linear
+          ? (matches.length + size - 1) ~/ size
+          : null;
+      return QueryResultsPresentation(
+        component: _kind,
+        label: DisplayText.from(label),
+        query: DisplayText.from(query),
+        phase: phase,
+        identityModel: QueryResultsIdentityModel.sourceStableChoice,
+        totalResults: matches.length,
+        rows: rows,
+        notices: [
+          if (phase == QueryResultsPhase.failure) ...[
+            if (invalidIdentities) QueryResultsNotice.invalidIdentities,
+            QueryResultsNotice.retryByEditing,
+          ],
+          if (invalidFocus) QueryResultsNotice.focusedResultRemoved,
+        ],
+        page: pageCount == null ? null : page + 1,
+        pageCount: pageCount,
+      );
+    }
+
+    void recordResults() {
+      final projection = project();
+      final signature = _presentationSignature(projection);
+      if (signature == lastResultsSignature) return;
+      lastResultsSignature = signature;
+      transcript?._event(
+        TextInputPresentationEventKind.results,
+        results: projection,
+      );
+    }
+
+    void show() {
+      final projection = project();
+      out.writeln(
+        '${projection.label.value} ${projection.component}: ${projection.totalResults} results for "${projection.query.value}".',
+      );
+      switch (projection.phase) {
+        case QueryResultsPhase.loading:
+          out.writeln('Searching; results cannot be accepted yet.');
+        case QueryResultsPhase.failure:
+          if (projection.notices.contains(
+            QueryResultsNotice.invalidIdentities,
+          )) {
+            out.writeln('Search returned unknown or duplicate identities.');
+          }
+          out.writeln('Search unavailable; edit the query to retry.');
+        case QueryResultsPhase.empty:
+          out.writeln('No matching choices; edit the query.');
+        case QueryResultsPhase.idle || QueryResultsPhase.ready:
+          break;
+      }
+      if (projection.notices.contains(
+        QueryResultsNotice.focusedResultRemoved,
+      )) {
         out.writeln(
           'Previously focused choice is removed or unavailable; navigate to choose another.',
         );
       }
-      if (mode == PromptMode.linear && matches.isNotEmpty) {
-        out.writeln(
-          'Page ${page + 1} of ${(matches.length + size - 1) ~/ size}.',
-        );
+      if (projection.pageCount != null && projection.totalResults > 0) {
+        out.writeln('Page ${projection.page} of ${projection.pageCount}.');
       }
-      for (final i
-          in mode == PromptMode.linear
-              ? matches.skip(page * size).take(size)
-              : matches) {
-        final c = item(i);
+      for (final row in projection.rows) {
         out.writeln(
-          '${i + 1}. ${safe(c.label)}${i == focus ? ' [focused]' : ''}${defaultValue != null && c.value == defaultValue ? ' [default]' : ''}${c.disabledReason == null ? '' : ' [unavailable: ${safe(c.disabledReason!)}]'}',
+          '${row.reference}. ${row.label.value}${row.focused ? ' [focused]' : ''}${row.isDefault ? ' [default]' : ''}${row.unavailableReason == null ? '' : ' [unavailable: ${row.unavailableReason!.value}]'}',
         );
       }
     }
@@ -287,6 +362,7 @@ final class SearchSelect<T> {
       loading = true;
       failed = false;
       invalidIdentities = false;
+      recordResults();
       void apply(List<Choice<T>> results) {
         if (closed || requestId != generation) return;
         final next = <int, Choice<T>>{};
@@ -296,9 +372,8 @@ final class SearchSelect<T> {
             loading = false;
             failed = true;
             invalidIdentities = true;
-            if (!helpVisible) {
-              out.writeln('Search returned unknown or duplicate identities.');
-            }
+            recordResults();
+            if (!helpVisible) show();
             return;
           }
           next[index] = candidate;
@@ -311,11 +386,6 @@ final class SearchSelect<T> {
             (!current.containsKey(focus) ||
                 current[focus]!.disabledReason != null)) {
           invalidFocus = true;
-          if (!helpVisible) {
-            out.writeln(
-              'Previously focused choice is removed or unavailable; navigate to choose another.',
-            );
-          }
         } else if (current.containsKey(focus)) {
           invalidFocus = false;
         }
@@ -326,6 +396,7 @@ final class SearchSelect<T> {
           );
           focus = enabled < 0 ? items.first : items[enabled];
         }
+        recordResults();
         if (!helpVisible) show();
       }
 
@@ -333,8 +404,19 @@ final class SearchSelect<T> {
         if (closed || requestId != generation) return;
         loading = false;
         failed = true;
-        if (!helpVisible) {
-          out.writeln('Search unavailable; edit the query to retry.');
+        recordResults();
+        if (!helpVisible) show();
+      }
+
+      // A projection or a write that fails in a detached continuation cannot
+      // return a value to the awaiting prompt, so the failure ends the prompt
+      // with its original error instead of being swallowed or retried against
+      // a sink the session already lost.
+      void guarded(void Function() step) {
+        try {
+          step();
+        } catch (error, stackTrace) {
+          inputKeys.fail(error, stackTrace);
         }
       }
 
@@ -343,7 +425,10 @@ final class SearchSelect<T> {
         if (response is List<Choice<T>>) {
           apply(response);
         } else {
-          Future<List<Choice<T>>>.value(response).then(apply, onError: fail);
+          Future<List<Choice<T>>>.value(response).then(
+            (results) => guarded(() => apply(results)),
+            onError: (Object error) => guarded(() => fail(error)),
+          );
           out.writeln('Searching.');
         }
       } catch (error) {
@@ -365,6 +450,8 @@ final class SearchSelect<T> {
       }
       hadResultsFocus = true;
       out.writeln('Results focused.');
+      transcript?._event(TextInputPresentationEventKind.resultsFocused);
+      recordResults();
       show();
     }
 
@@ -373,25 +460,72 @@ final class SearchSelect<T> {
           (!explicitReference && invalidFocus) ||
           !visible().contains(index)) {
         out.writeln('Choose a current result reference.');
+        transcript?._event(
+          TextInputPresentationEventKind.rejected,
+          reference: index + 1,
+        );
         return null;
       }
       final c = item(index);
       if (c.disabledReason != null) {
         out.writeln('Unavailable: ${safe(c.disabledReason!)}.');
+        transcript?._event(
+          TextInputPresentationEventKind.rejected,
+          reference: index + 1,
+          text: c.disabledReason,
+        );
         return null;
       }
       out.writeln('Accepted: ${safe(c.label)}.');
+      transcript?._event(
+        TextInputPresentationEventKind.candidateAccepted,
+        reference: index + 1,
+        text: c.label,
+      );
       return Accepted(c.value);
+    }
+
+    String stageHelp() {
+      final projection = project();
+      return switch (projection.phase) {
+        QueryResultsPhase.loading => 'Searching; no result can be accepted until the current request completes.',
+        QueryResultsPhase.failure =>
+          'Search unavailable; editing the query retries it.',
+        QueryResultsPhase.empty => 'No result matches the current query.',
+        QueryResultsPhase.ready || QueryResultsPhase.idle =>
+          '${projection.totalResults} current results${projection.pageCount == null ? '' : ', page ${projection.page} of ${projection.pageCount}'}.',
+      };
+    }
+
+    String focusHelp() {
+      final rows = project().rows;
+      final focused = rows.where((row) => row.focused).toList();
+      final defaults = rows.where((row) => row.isDefault).toList();
+      final unavailable = rows.where((row) => !row.isAvailable).length;
+      return [
+        if (focused.isNotEmpty)
+          'Focused: ${focused.first.label.value}${focused.first.unavailableReason == null ? '' : ' (unavailable: ${focused.first.unavailableReason!.value})'}.',
+        if (defaults.isNotEmpty && focused.isEmpty)
+          'Default: ${defaults.first.label.value}${defaults.first.unavailableReason == null ? '' : ' (unavailable: ${defaults.first.unavailableReason!.value})'}.',
+        if (unavailable > 0)
+          '$unavailable displayed results are unavailable; accepting one explains its reason.',
+      ].join(' ');
     }
 
     session?._setPromptGeometry(effectiveProfile.geometry);
     session?._setPromptRepaint(show);
     out.writeln(
-      instructions == InstructionDisplay.hidden
-          ? '${safe(label)}. ${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.'
-          : mode == PromptMode.linear
-          ? '${safe(label)}. Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-          : '${safe(label)}. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      _instructionIntro(
+        instructions,
+        hidden:
+            '${safe(label)}. ${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
+        compact: mode == PromptMode.linear
+            ? '${safe(label)}. Enter a query, then a result reference. /help for help.'
+            : '${safe(label)}. Type a query; Enter enters results; Enter accepts a focused result. Ctrl+T help.',
+        expanded: mode == PromptMode.linear
+            ? '${safe(label)}. Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+            : '${safe(label)}. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      ),
     );
     try {
       if (mode == PromptMode.linear) {
@@ -405,13 +539,27 @@ final class SearchSelect<T> {
             linear: true,
             sequential: true,
             clearHelpCommand: true,
+            transcript: transcript,
             extraCommands: editing
                 ? const {}
                 : const {'/search', '/next', '/previous', '/list'},
             onSubmit: (v) => literal = v,
-            linearHelpText: editing
-                ? 'Help: $_kind query. Enter opens matching results without accepting a choice. $additionalHelp'
-                : 'Help: $_kind results. Enter a source-stable reference to accept an enabled current result. /search edits the query; /next and /previous change pages; /list reviews results. $additionalHelp',
+            linearHelpText: null,
+            liveLinearHelpText: () => editing
+                ? _joinHelp([
+                    'Help: $_kind query. Type to query; Enter opens matching results without accepting a choice.',
+                    if (loading) 'A previous search is still pending; no result can be accepted yet.',
+                    domainHelp(),
+                    additionalHelp,
+                  ])
+                : _joinHelp([
+                    'Help: $_kind results. Enter a source-stable reference to accept an enabled current result; the same reference identifies the choice across queries.',
+                    stageHelp(),
+                    focusHelp(),
+                    '/search edits the query, /next and /previous change pages and /list reviews results.',
+                    domainHelp(),
+                    additionalHelp,
+                  ]),
             session: session,
             outputProfile: effectiveProfile,
             onChanged: editing
@@ -438,9 +586,11 @@ final class SearchSelect<T> {
                 editing = true;
               case '/next':
                 if ((page + 1) * size < visible().length) page++;
+                recordResults();
                 show();
               case '/previous':
                 if (page > 0) page--;
+                recordResults();
                 show();
               case '/list':
                 show();
@@ -454,6 +604,7 @@ final class SearchSelect<T> {
           if (result != null) return result;
           if (n == null || n < 1 || n > choices.length) {
             out.writeln('Enter a current result reference.');
+            transcript?._event(TextInputPresentationEventKind.rejected);
           }
         }
       }
@@ -469,10 +620,16 @@ final class SearchSelect<T> {
             session: session,
             outputProfile: effectiveProfile,
             resizeObserver: input.resizeObserver,
+            transcript: transcript,
             transientHelp:
                 effectiveProfile.alternateScreen == CapabilitySupport.supported,
-            helpText:
-                'Help: edit query; Enter opens results without accepting. Tab or Up/Down also enters results. Escape dismisses help. $additionalHelp',
+            liveHelpText: () => _joinHelp([
+              'Help: $_kind query. Type to query; Enter opens results without accepting.',
+              'Tab or Up/Down also enters results. Escape dismisses help, then cancels; Ctrl+C interrupts.',
+              if (loading) 'A previous search is still pending; no result can be accepted yet.',
+              domainHelp(),
+              additionalHelp,
+            ]),
             onHelpDismissed: show,
             onHelpVisibilityChanged: (visible) => helpVisible = visible,
             onChanged: (v) {
@@ -518,8 +675,16 @@ final class SearchSelect<T> {
           help = true;
           helpVisible = true;
           session?._openModalHelp(useAlternateScreen: false);
+          transcript?._event(TextInputPresentationEventKind.help);
           out.writeln(
-            'Help: Tab traverses query, results and Cancel; arrows navigate results; Enter accepts a focused enabled result or Cancel; typing edits query. Escape dismisses help. $additionalHelp',
+            _joinHelp([
+              'Help: $_kind results.',
+              'Tab traverses query, results and Cancel; arrows navigate results; Enter accepts a focused enabled result or Cancel; typing edits query; Escape dismisses help, then cancels; Ctrl+C interrupts.',
+              stageHelp(),
+              focusHelp(),
+              domainHelp(),
+              additionalHelp,
+            ]),
           );
           continue;
         }
@@ -549,6 +714,7 @@ final class SearchSelect<T> {
                 )];
             preferred = focus;
           }
+          recordResults();
           show();
         } else if (key == '\r' || key == '\n') {
           final result = accept(focus);
@@ -557,6 +723,7 @@ final class SearchSelect<T> {
           final data = key.substring(6, key.length - 6);
           if (data.runes.any((r) => r < 32 || r == 127)) {
             out.writeln('Paste rejected: single-line printable text only.');
+            transcript?._event(TextInputPresentationEventKind.rejected);
           } else {
             query += data;
             actionFocus = false;

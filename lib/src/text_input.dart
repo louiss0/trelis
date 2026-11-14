@@ -60,7 +60,10 @@ final class Unavailable<T> extends PromptResult<T> {
 
 /// The kind of a meaningful, ordered TextInput presentation occurrence.
 ///
-/// Repaints and current editable views are deliberately not events.
+/// Repaints and current editable views are deliberately not events. Query and
+/// results occurrences record the projection that was actually presented, so
+/// acceptance, retry availability and help access are observed facts rather
+/// than inferences from a painted snapshot.
 enum TextInputPresentationEventKind {
   opened,
   help,
@@ -69,6 +72,21 @@ enum TextInputPresentationEventKind {
   cancelled,
   interrupted,
   inputEnded,
+
+  /// A query/results state was presented; the event's `results` carries the
+  /// typed projection.
+  results,
+
+  /// The interaction moved from the query stage to a results stage.
+  resultsFocused,
+
+  /// A candidate or source-stable reference was accepted into the draft answer.
+  /// It is not the prompt's acceptance outcome.
+  candidateAccepted,
+
+  /// The presented action was refused; the event's `reference` and `text`
+  /// identify it when known.
+  rejected,
 }
 
 /// An immutable current editable view. This is distinct from committed
@@ -94,6 +112,8 @@ final class TextInputPresentationEvent {
     this.text,
     this.isLiteral = false,
     this.containsPaste = false,
+    this.reference,
+    this.results,
   });
 
   final int id;
@@ -101,6 +121,12 @@ final class TextInputPresentationEvent {
   final String? text;
   final bool isLiteral;
   final bool containsPaste;
+
+  /// The displayed source-stable reference, when the occurrence concerns one.
+  final int? reference;
+
+  /// The typed query/results projection that was presented, when applicable.
+  final QueryResultsPresentation? results;
 }
 
 /// Public recording seam for a scripted TextInput presentation.
@@ -120,6 +146,8 @@ final class TextInputTranscript {
     String? text,
     bool isLiteral = false,
     bool containsPaste = false,
+    int? reference,
+    QueryResultsPresentation? results,
   }) {
     _events.add(
       TextInputPresentationEvent(
@@ -128,6 +156,8 @@ final class TextInputTranscript {
         text: text,
         isLiteral: isLiteral,
         containsPaste: containsPaste,
+        reference: reference,
+        results: results,
       ),
     );
   }
@@ -235,6 +265,41 @@ enum PromptMode { rich, linear, automatic }
 /// Essential prompt context and a route to full help remain visible for every
 /// value.
 enum InstructionDisplay { themeDefault, compact, expanded, hidden }
+
+/// Applies an instruction display policy to a component's opening guidance.
+///
+/// [InstructionDisplay.hidden] keeps only the component's label and its actual
+/// help route: hidden guidance must not hide help access. [themeDefault] keeps
+/// the reference presentation's expanded guidance until a structure supplies a
+/// component/stage default.
+String _instructionIntro(
+  InstructionDisplay policy, {
+  required String hidden,
+  required String compact,
+  required String expanded,
+}) => switch (policy) {
+  InstructionDisplay.hidden => hidden,
+  InstructionDisplay.compact => compact,
+  InstructionDisplay.themeDefault || InstructionDisplay.expanded => expanded,
+};
+
+/// Joins the non-empty parts of component help guidance.
+String _joinHelp(Iterable<String> parts) =>
+    parts.where((part) => part.isNotEmpty).join(' ');
+
+/// Identifies the presentation facts a query/results occurrence records, so a
+/// repaint of identical facts does not duplicate presentation history.
+String _presentationSignature(QueryResultsPresentation presentation) => [
+  presentation.phase.name,
+  presentation.identityModel.name,
+  presentation.query.value,
+  presentation.totalResults,
+  presentation.page,
+  for (final notice in presentation.notices) notice.name,
+  for (final row in presentation.rows)
+    '${row.reference}/${row.position}/${row.label.value}/'
+        '${row.focused}/${row.isDefault}/${row.unavailableReason?.value}',
+].join('|');
 
 final _noScreenOwner = Object();
 final _screenOwners = Expando<Object>('prompty terminal screen owner');
@@ -1474,6 +1539,8 @@ Future<({String action, String value})> _edit(
   List<String> supplementaryHelp = const [],
   String? helpText,
   String? linearHelpText,
+  String Function()? liveHelpText,
+  String Function()? liveLinearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
   void Function()? onHelpDismissed,
@@ -1754,7 +1821,8 @@ Future<({String action, String value})> _edit(
         }
         _writeWrappedText(
           output,
-          helpText ??
+          liveHelpText?.call() ??
+              helpText ??
               _textInputHelp(
                 linear: false,
                 required: required,
@@ -1790,7 +1858,10 @@ Future<({String action, String value})> _edit(
           text = answer.join();
         } else if (linear && !provenance.contains(true)) {
           if (text == '/help') {
-            final componentHelp = linearHelpText;
+            // Component help is evaluated when help is requested, so an
+            // asynchronous stage or state that changed since the editor
+            // opened is described truthfully instead of from a stale string.
+            final componentHelp = liveLinearHelpText?.call() ?? linearHelpText;
             if (componentHelp != null) {
               // A component that supplies its own command-aware help keeps that
               // content; the exact command spellings are appended rather than

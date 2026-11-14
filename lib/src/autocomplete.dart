@@ -142,18 +142,60 @@ final class Autocomplete {
       return _rich(source, effectiveProfile, keys: keys, session: session);
     }
     final out = source.output;
+    final transcript = source.transcript;
     String safe(String value) => DisplayText.from(value).value;
     out.writeln(
-      instructions == InstructionDisplay.hidden
-          ? '${safe(label)}. /help for help.'
-          : '${safe(label)}. Enter a query; select a number, /submit, /edit, /help or /cancel.',
+      _instructionIntro(
+        instructions,
+        hidden: '${safe(label)}. /help for help.',
+        compact:
+            '${safe(label)}. Enter a query; then a candidate number or /submit. /help for help.',
+        expanded:
+            '${safe(label)}. Enter a query; select a number, /submit, /edit, /help or /cancel.',
+      ),
     );
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var pending = initialValue;
     var editing = true;
     var candidates = <String>[];
     var generation = 0;
+    var loading = false;
+    var failed = false;
     var closed = false;
+    var lastResultsSignature = '';
+    QueryResultsPresentation projection({int? focus}) => _candidateProjection(
+      label: label,
+      query: pending,
+      candidates: candidates,
+      loading: loading,
+      failed: failed,
+      focus: focus,
+    );
+    void recordResults({int? focus}) {
+      final current = projection(focus: focus);
+      final signature = _presentationSignature(current);
+      if (signature == lastResultsSignature) return;
+      lastResultsSignature = signature;
+      transcript?._event(
+        TextInputPresentationEventKind.results,
+        results: current,
+      );
+    }
+
+    String stageHelp() {
+      if (loading) {
+        return 'Suggestions are still pending; none can be accepted.';
+      }
+      if (failed) {
+        return 'Suggestions are unavailable; editing the query retries them.';
+      }
+      if (candidates.isEmpty) return 'No candidate matches the pending answer.';
+      return '${candidates.length} candidates for the pending answer.';
+    }
+
+    String candidateHelp() => candidates.isEmpty
+        ? 'Candidates are response-local suggestions; a number only copies the current response into the pending answer.'
+        : 'Candidates are response-local suggestions; a number copies one from the current response into the pending answer: ${[for (var i = 0; i < candidates.length; i++) '${i + 1} ${safe(candidates[i])}'].join(', ')}.';
     try {
       while (true) {
         var literal = false;
@@ -164,13 +206,23 @@ final class Autocomplete {
           linear: true,
           sequential: true,
           clearHelpCommand: true,
+          transcript: transcript,
           session: session,
           outputProfile: effectiveProfile,
           allowCommandPrefixes: true,
           maxLength: editing ? maxLength : null,
           extraCommands: editing ? const {} : const {'/submit', '/edit'},
-          linearHelpText:
-              '${editing ? 'Help: Autocomplete query. Enter requests suggestions; your text remains the pending answer. /cancel cancels.' : 'Help: Autocomplete results. A number copies a candidate into the pending answer; /submit validates and finishes; /edit changes the query.'} ${supplementaryHelp.map(safe).join(' ')}',
+          linearHelpText: null,
+          liveLinearHelpText: () => _joinHelp([
+            editing
+                ? 'Help: Autocomplete query. Enter requests suggestions; your text remains the pending answer. /cancel cancels.'
+                : 'Help: Autocomplete results. A number copies a candidate into the pending answer; /submit validates and finishes; /edit changes the query.',
+            stageHelp(),
+            if (!editing) candidateHelp(),
+            if (maxLength != null)
+              'The answer is limited to $maxLength graphemes.',
+            supplementaryHelp.map(safe).join(' '),
+          ]),
           onSubmit: (value) => literal = value,
         );
         if (result.action == 'cancel') return Cancelled();
@@ -187,15 +239,36 @@ final class Autocomplete {
           }
           pending = result.value;
           candidates = [];
+          failed = false;
+          loading = true;
           final request = ++generation;
           void apply(List<String> items) {
             if (closed || request != generation) return;
+            loading = false;
+            failed = false;
             candidates = items
                 .where((item) => !item.runes.any((r) => r < 32 || r == 127))
                 .toList();
             out.writeln('${candidates.length} suggestions.');
             for (var i = 0; i < candidates.length; i++) {
               out.writeln('${i + 1}. ${safe(candidates[i])}');
+            }
+            recordResults();
+          }
+
+          void fail(Object error) {
+            if (closed || request != generation) return;
+            loading = false;
+            failed = true;
+            out.writeln('Suggestions unavailable.');
+            recordResults();
+          }
+
+          void guarded(void Function() step) {
+            try {
+              step();
+            } catch (error, stackTrace) {
+              inputKeys.fail(error, stackTrace);
             }
           }
 
@@ -206,21 +279,19 @@ final class Autocomplete {
             } else {
               out.writeln('Loading suggestions.');
               Future<List<String>>.value(response).then(
-                apply,
-                onError: (Object error) {
-                  if (!closed && request == generation) {
-                    out.writeln('Suggestions unavailable.');
-                  }
-                },
+                (items) => guarded(() => apply(items)),
+                onError: (Object error) => guarded(() => fail(error)),
               );
             }
-          } catch (_) {
-            out.writeln('Suggestions unavailable.');
+          } catch (error) {
+            fail(error);
           }
+          recordResults();
           out.writeln(
             'Pending answer: ${safe(pending)}. Choose a number or /submit, /edit, /help, /cancel.',
           );
           editing = false;
+          transcript?._event(TextInputPresentationEventKind.resultsFocused);
         } else if (result.action == 'command' && result.value == '/submit') {
           final error = _error(pending);
           if (error != null) {
@@ -231,6 +302,9 @@ final class Autocomplete {
         } else if (result.action == 'command' && result.value == '/edit') {
           generation++;
           candidates = [];
+          loading = false;
+          failed = false;
+          lastResultsSignature = '';
           editing = true;
         } else {
           final index = literal ? null : int.tryParse(result.value);
@@ -238,16 +312,23 @@ final class Autocomplete {
             final candidate = candidates[index - 1];
             if (maxLength != null && candidate.characters.length > maxLength!) {
               out.writeln('Candidate exceeds maximum length.');
+              transcript?._event(TextInputPresentationEventKind.rejected);
               continue;
             }
             pending = candidate;
             out.writeln(
               'Accepted into pending answer: ${safe(pending)}. Use /submit to finish or /edit to change.',
             );
+            transcript?._event(
+              TextInputPresentationEventKind.candidateAccepted,
+              reference: index,
+              text: candidate,
+            );
           } else {
             out.writeln(
               'Choose a listed number or /submit, /edit, /help, /cancel.',
             );
+            transcript?._event(TextInputPresentationEventKind.rejected);
           }
         }
       }
@@ -269,11 +350,17 @@ final class Autocomplete {
     TerminalSession? session,
   }) async {
     final out = source.output;
+    final transcript = source.transcript;
     String safe(String value) => DisplayText.from(value).value;
     out.writeln(
-      instructions == InstructionDisplay.hidden
-          ? '${safe(label)}. Ctrl+T for help.'
-          : '${safe(label)}. Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
+      _instructionIntro(
+        instructions,
+        hidden: '${safe(label)}. Ctrl+T for help.',
+        compact:
+            '${safe(label)}. Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',
+        expanded:
+            '${safe(label)}. Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
+      ),
     );
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var value = initialValue;
@@ -283,7 +370,9 @@ final class Autocomplete {
     var generation = 0;
     var open = true;
     var loading = false;
+    var failed = false;
     var closed = false;
+    var lastResultsSignature = '';
     String? deferredNotice;
     var helpVisible = false;
     void notice(String text) {
@@ -294,6 +383,41 @@ final class Autocomplete {
       }
     }
 
+    QueryResultsPresentation projection({
+      QueryResultsNotice? notice,
+      bool idle = false,
+    }) => _candidateProjection(
+      label: label,
+      query: query == '\u0000' ? value : query,
+      candidates: candidates,
+      loading: loading,
+      failed: failed,
+      focus: focus,
+      idle: idle,
+      notices: [?notice],
+    );
+    void recordResults({QueryResultsNotice? notice, bool idle = false}) {
+      final current = projection(notice: notice, idle: idle);
+      final signature = _presentationSignature(current);
+      if (signature == lastResultsSignature) return;
+      lastResultsSignature = signature;
+      transcript?._event(
+        TextInputPresentationEventKind.results,
+        results: current,
+      );
+    }
+
+    String stageHelp() {
+      if (loading) {
+        return 'Suggestions are still pending; none can be accepted.';
+      }
+      if (failed) {
+        return 'Suggestions are unavailable; editing the query retries them.';
+      }
+      if (candidates.isEmpty) return 'No candidate matches the current text.';
+      return '${candidates.length} candidates; ${focus < 0 ? 'none active' : 'active: ${safe(candidates[focus])}'}.';
+    }
+
     void changed(String text) {
       if (text == query) return;
       query = text;
@@ -301,14 +425,34 @@ final class Autocomplete {
       open = true;
       candidates = [];
       loading = true;
+      failed = false;
+      recordResults();
       final request = ++generation;
       void apply(List<String> items) {
         if (closed || request != generation) return;
         loading = false;
+        failed = false;
         candidates = items
             .where((item) => !item.runes.any((r) => r < 32 || r == 127))
             .toList();
+        recordResults();
         notice('${candidates.length} suggestions; none active.');
+      }
+
+      void fail(Object error) {
+        if (closed || request != generation) return;
+        loading = false;
+        failed = true;
+        recordResults();
+        notice('Suggestions unavailable.');
+      }
+
+      void guarded(void Function() step) {
+        try {
+          step();
+        } catch (error, stackTrace) {
+          inputKeys.fail(error, stackTrace);
+        }
       }
 
       try {
@@ -318,18 +462,12 @@ final class Autocomplete {
         } else {
           out.writeln('Loading suggestions.');
           Future<List<String>>.value(result).then(
-            apply,
-            onError: (Object error) {
-              if (!closed && request == generation) {
-                loading = false;
-                notice('Suggestions unavailable.');
-              }
-            },
+            (items) => guarded(() => apply(items)),
+            onError: (Object error) => guarded(() => fail(error)),
           );
         }
-      } catch (_) {
-        loading = false;
-        notice('Suggestions unavailable.');
+      } catch (error) {
+        fail(error);
       }
     }
 
@@ -341,6 +479,7 @@ final class Autocomplete {
           out,
           session: session,
           outputProfile: effectiveProfile,
+          transcript: transcript,
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           resizeObserver: source.resizeObserver,
@@ -351,14 +490,25 @@ final class Autocomplete {
             deferredNotice = null;
           },
           maxLength: maxLength,
-          helpText:
-              'Help: Autocomplete. Tab accepts a candidate into editable text; Up/Down inspect candidates and Enter accepts the active candidate. Enter submits free text when no candidate is active. Escape dismisses suggestions or cancels; Ctrl+C interrupts. ${supplementaryHelp.map((text) => DisplayText.from(text).value).join(' ')}',
+          liveHelpText: () => _joinHelp([
+            'Help: Autocomplete. Tab accepts a candidate into editable text; Up/Down inspect candidates and Enter accepts the active candidate.',
+            'Enter submits free text when no candidate is active. Escape dismisses suggestions or cancels; Ctrl+C interrupts.',
+            stageHelp(),
+            'Candidates are response-local: a replaced response cannot be accepted.',
+            if (maxLength != null)
+              'The answer is limited to $maxLength graphemes.',
+            supplementaryHelp
+                .map((text) => DisplayText.from(text).value)
+                .join(' '),
+          ]),
           intercept: (key, text) {
             if (key == '\x1b' && open && (loading || candidates.isNotEmpty)) {
               open = false;
               loading = false;
               focus = -1;
               generation++;
+              candidates = [];
+              recordResults(notice: QueryResultsNotice.dismissed, idle: true);
               out.writeln('Suggestions dismissed.');
               return 'handled';
             }
@@ -372,6 +522,7 @@ final class Autocomplete {
                     ? candidates.length - 1
                     : (focus - 1).clamp(0, candidates.length - 1);
               }
+              recordResults();
               out.writeln(
                 'Active candidate, not accepted: ${safe(candidates[focus])}.',
               );
@@ -400,6 +551,7 @@ final class Autocomplete {
           final candidate = candidates[focus < 0 ? 0 : focus];
           if (maxLength != null && candidate.characters.length > maxLength!) {
             out.writeln('Candidate exceeds maximum length.');
+            transcript?._event(TextInputPresentationEventKind.rejected);
             continue;
           }
           value = candidate;
@@ -407,8 +559,13 @@ final class Autocomplete {
           focus = -1;
           open = false;
           generation++;
+          candidates = [];
           out.writeln(
             'Accepted into editable text: ${safe(value)}. Enter submits.',
+          );
+          transcript?._event(
+            TextInputPresentationEventKind.candidateAccepted,
+            text: candidate,
           );
         }
       }
@@ -430,3 +587,43 @@ final class Autocomplete {
     return validate?.call(value);
   }
 }
+
+/// The typed projection of one Autocomplete response.
+///
+/// Candidates are response-local: [QueryResultRow.reference] stays null so an
+/// accepted position can never be mistaken for a source-stable identity from a
+/// later response.
+QueryResultsPresentation _candidateProjection({
+  required String label,
+  required String query,
+  required List<String> candidates,
+  required bool loading,
+  required bool failed,
+  int? focus,
+  bool idle = false,
+  Iterable<QueryResultsNotice> notices = const [],
+}) => QueryResultsPresentation(
+  component: 'Autocomplete',
+  label: DisplayText.from(label),
+  query: DisplayText.from(query),
+  phase: idle
+      ? QueryResultsPhase.idle
+      : loading
+      ? QueryResultsPhase.loading
+      : failed
+      ? QueryResultsPhase.failure
+      : candidates.isEmpty
+      ? QueryResultsPhase.empty
+      : QueryResultsPhase.ready,
+  identityModel: QueryResultsIdentityModel.responseLocalCandidate,
+  totalResults: candidates.length,
+  rows: [
+    for (var i = 0; i < candidates.length; i++)
+      QueryResultRow(
+        label: DisplayText.from(candidates[i]),
+        position: i + 1,
+        focused: i == focus,
+      ),
+  ],
+  notices: [if (failed) QueryResultsNotice.retryByEditing, ...notices],
+);

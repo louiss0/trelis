@@ -134,6 +134,25 @@ in `test/`, including `text_input_windows.ps1`.
 several components; add `--scripted` to replay it from a fixed stream without a
 terminal, or `--linear` to force sequential interaction.
 
+## Recording presentation events
+
+`ScriptedInput(..., transcript: TextInputTranscript())` records one presentation
+run at the public seam. `currentView` is the latest editable view (draft text,
+caret and paste provenance), and `events` is the ordered history of meaningful
+occurrences with stable run-local ids. Repaints, resizes and no-op keys add no
+history, while repeated identical help or validation requests stay separate
+occurrences.
+
+Query and results events carry a typed projection: `QueryResultsPhase` (`idle`,
+`loading`, `ready`, `empty`, `failure`), a `QueryResultsIdentityModel` that
+separates a source-stable `Choice` reference from a response-local
+`Autocomplete` candidate, the display-safe `QueryResultRow` list, and typed
+`QueryResultsNotice` facts such as invalid identities, retry-by-editing and a
+removed focused result. An obsolete or closed-session response is rejected
+before projection, so the recording never describes a stale answer, and a
+candidate acceptance is recorded separately from the prompt's final `Accepted`,
+`Cancelled`, `Interrupted`, `InputEnded` or `Unavailable` outcome.
+
 ## Password
 
 `Password('Password').prompt()` starts a fresh secret session. Enter ends

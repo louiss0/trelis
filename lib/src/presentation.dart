@@ -79,6 +79,111 @@ final class TextInputPresentationContent {
   };
 }
 
+/// The identity model a query/results row uses.
+///
+/// `SearchSelect`, `CommandPalette` and `TimezoneSelect` present choices whose
+/// displayed reference identifies the same source choice for the whole prompt.
+/// `Autocomplete` presents response-local candidates: the same text can appear
+/// at a different position for a different query, so a position is not an
+/// identity and no candidate can be accepted after its response is replaced.
+enum QueryResultsIdentityModel { sourceStableChoice, responseLocalCandidate }
+
+/// The explicit state of a query/results body.
+///
+/// [idle] is a query stage with no presented results yet, [loading] is an
+/// outstanding asynchronous request whose rows cannot be accepted, [ready] and
+/// [empty] are completed responses, and [failure] records that the last request
+/// produced no results and editing the query is the retry.
+enum QueryResultsPhase { idle, loading, ready, empty, failure }
+
+/// A typed, display-safe accompaniment to a query/results state.
+enum QueryResultsNotice {
+  /// The response named unknown or duplicate source identities.
+  invalidIdentities,
+
+  /// The shown state can only be replaced by editing the query.
+  retryByEditing,
+
+  /// A previously focused choice is absent from the current results.
+  focusedResultRemoved,
+
+  /// The presented results layer was dismissed without accepting.
+  dismissed,
+}
+
+/// One immutable, display-safe query/results row.
+final class QueryResultRow {
+  const QueryResultRow({
+    required this.label,
+    required this.position,
+    this.reference,
+    this.focused = false,
+    this.isDefault = false,
+    this.unavailableReason,
+  });
+
+  final DisplayText label;
+
+  /// The displayed ordinal of this row in the current presentation.
+  final int position;
+
+  /// The displayed source-stable reference, or null when the row is a
+  /// response-local candidate.
+  final int? reference;
+
+  final bool focused;
+  final bool isDefault;
+  final DisplayText? unavailableReason;
+
+  bool get isAvailable => unavailableReason == null;
+}
+
+/// The immutable projection a query/results component produces before any
+/// structural layout or output.
+///
+/// Behavior builds this only for a current, open presentation: an obsolete or
+/// closed-session response is rejected before projection, so nothing here can
+/// describe a stale answer.
+final class QueryResultsPresentation {
+  QueryResultsPresentation({
+    required this.component,
+    required this.label,
+    required this.query,
+    required this.phase,
+    required this.identityModel,
+    required this.totalResults,
+    Iterable<QueryResultRow> rows = const [],
+    Iterable<QueryResultsNotice> notices = const [],
+    this.page,
+    this.pageCount,
+  }) : rows = List.unmodifiable(rows),
+       notices = List.unmodifiable(notices);
+
+  /// The component identity that produced this projection.
+  final String component;
+  final DisplayText label;
+  final DisplayText query;
+  final QueryResultsPhase phase;
+  final QueryResultsIdentityModel identityModel;
+
+  /// Results matching the query before any paging.
+  final int totalResults;
+
+  final List<QueryResultRow> rows;
+  final List<QueryResultsNotice> notices;
+
+  /// The displayed 1-based page, when this component pages its results.
+  final int? page;
+  final int? pageCount;
+
+  /// Whether a presented row can be accepted in this state.
+  bool get canAccept =>
+      phase == QueryResultsPhase.ready && rows.any((row) => row.isAvailable);
+
+  /// Whether the only way to obtain results again is a new query.
+  bool get retryAvailable => phase == QueryResultsPhase.failure;
+}
+
 /// An immutable structural declaration. Its omissions are diagnosable even
 /// though the compositor repairs required content for a running prompt.
 final class PresentationDeclaration {
