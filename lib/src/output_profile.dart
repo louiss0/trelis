@@ -154,7 +154,9 @@ final class OutputProfile {
   ///
   /// Resolution, geometry observation and per-invocation restrictions each
   /// change one fact; a single-field copy forced every caller to reconstruct
-  /// the complete profile by hand.
+  /// the complete profile by hand. Every fact has an explicit automatic
+  /// sentinel, so passing that sentinel clears a declaration while omitting
+  /// the named argument preserves it.
   OutputProfile copyWith({
     CapabilitySupport? cursor,
     CapabilitySupport? alternateScreen,
@@ -172,6 +174,16 @@ final class OutputProfile {
     geometry: geometry ?? this.geometry,
     ambiguousWidth: ambiguousWidth ?? this.ambiguousWidth,
   );
+
+  /// Whether no output fact has been explicitly declared.
+  bool get isAutomatic =>
+      cursor == CapabilitySupport.automatic &&
+      alternateScreen == CapabilitySupport.automatic &&
+      styles == CapabilitySupport.automatic &&
+      colorDepth == ColorDepth.automatic &&
+      glyphs == GlyphSet.automatic &&
+      geometry.isAutomatic &&
+      ambiguousWidth == AmbiguousWidth.automatic;
 
   /// Whether the minimum safe facts for rich synthetic output are present.
   bool get supportsRichInteraction =>

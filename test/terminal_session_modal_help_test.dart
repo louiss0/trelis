@@ -71,6 +71,180 @@ void main() {
     },
   );
 
+  test('two regions reporting the same notice during help keep both events', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+    final first = Spinner('Index');
+    final second = Spinner('Index');
+
+    await TerminalSession.run(
+      (session) async {
+        final prompt = TextInput('Project').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        first.start(session: session);
+        second.start(session: session);
+        for (var cycle = 0; cycle < 2; cycle++) {
+          input.add('\x14');
+          await Future<void>.delayed(Duration.zero);
+          if (cycle == 0) {
+            // Two independent regions report the same words. They are separate
+            // session events, not a repaint of one event.
+            first.finish(FeedbackOutcome.failed, detail: 'offline');
+            second.finish(FeedbackOutcome.failed, detail: 'offline');
+          }
+          input.add('\x1b');
+          await Future<void>.delayed(Duration.zero);
+        }
+        input.add('demo\r');
+        await input.close();
+        await prompt;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        supportsRich: true,
+        outputProfile: _alternateProfile,
+      ),
+    );
+
+    expect(
+      RegExp(RegExp.escape('Index: failed: offline'))
+          .allMatches(output.toString())
+          .length,
+      2,
+      reason: 'each region reports its own occurrence, once',
+    );
+  });
+
+  test(
+    'a repeated identical notice from one region stays a separate event',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      final tasks = MultiSpinner(['compile']);
+
+      await TerminalSession.run(
+        (session) async {
+          final prompt = TextInput('Project').prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          tasks.start(session: session);
+          input.add('\x14');
+          await Future<void>.delayed(Duration.zero);
+          // The outcome line and the final summary line are two occurrences the
+          // application emitted; text equality does not merge them.
+          tasks.finishTask('compile', FeedbackOutcome.failed, detail: 'broken');
+          input.add('\x1b');
+          await Future<void>.delayed(Duration.zero);
+          input.add('demo\r');
+          await input.close();
+          await prompt;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          supportsRich: true,
+          outputProfile: _alternateProfile,
+        ),
+      );
+
+      expect(
+        RegExp(RegExp.escape('compile: failed: broken'))
+            .allMatches(output.toString())
+            .length,
+        2,
+        reason: 'the outcome and its summary are distinct events',
+      );
+    },
+  );
+
+  test('an important line that is also the latest is written once', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+    final index = Spinner('Index');
+
+    await TerminalSession.run(
+      (session) async {
+        final prompt = TextInput('Project').prompt(session: session);
+        await Future<void>.delayed(Duration.zero);
+        index.start(session: session);
+        input.add('\x14');
+        await Future<void>.delayed(Duration.zero);
+        index.finish(FeedbackOutcome.failed, detail: 'offline');
+        input.add('\x1b');
+        await Future<void>.delayed(Duration.zero);
+        input.add('demo\r');
+        await input.close();
+        await prompt;
+      },
+      source: ScriptedInput(
+        input.stream,
+        output,
+        supportsRich: true,
+        outputProfile: _alternateProfile,
+      ),
+    );
+
+    expect(
+      RegExp(RegExp.escape('Index: failed: offline'))
+          .allMatches(output.toString())
+          .length,
+      1,
+      reason: 'the same occurrence is not replayed from the snapshot',
+    );
+  });
+
+  test(
+    'help keeps a task failure that a later task update would displace',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      final tasks = MultiSpinner(['compile', 'test']);
+
+      await TerminalSession.run(
+        (session) async {
+          final prompt = TextInput('Project').prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          tasks.start(session: session);
+          // A failure and a later ordinary update arrive through one shared
+          // region while help owns painting. The failure is a notice the
+          // transcript still owes the reader, not a snapshot to overwrite.
+          for (var cycle = 0; cycle < 2; cycle++) {
+            input.add('\x14');
+            await Future<void>.delayed(Duration.zero);
+            if (cycle == 0) {
+              tasks.finishTask(
+                'compile',
+                FeedbackOutcome.failed,
+                detail: 'broken',
+              );
+            }
+            tasks.update('test', TaskActivity.running, phase: 'linking');
+            input.add('\x1b');
+            await Future<void>.delayed(Duration.zero);
+          }
+          input.add('demo\r');
+          await input.close();
+          await prompt;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          supportsRich: true,
+          outputProfile: _alternateProfile,
+        ),
+      );
+
+      expect(
+        RegExp(RegExp.escape('compile: failed: broken'))
+            .allMatches(output.toString())
+            .length,
+        1,
+        reason: 'an important notice survives help and is not replayed',
+      );
+      expect(output.toString(), contains('test: running, linking'));
+    },
+  );
+
   test(
     'dismissing help does not replay feedback the transcript already holds',
     () async {

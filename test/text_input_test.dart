@@ -333,6 +333,75 @@ void main() {
     expect(plain.value, '\u{E000}');
   });
   test(
+    'adversarial protected text keeps one safe spelling at any width',
+    () async {
+      // escaped: code points that must never reach the terminal raw (controls,
+      // formats, separators, private use, dangling joiners). kept: supported
+      // grapheme forms that must stay whole. Values are spelled out so a wrong
+      // expectation cannot be produced by the code under test.
+      final cases = <({String text, List<int> escaped, List<int> kept})>[
+        (text: 'a\u200Db', escaped: [0x200D], kept: []),
+        (
+          text: '\u202E\u2066\u2069',
+          escaped: [0x202E, 0x2066, 0x2069],
+          kept: [],
+        ),
+        (text: 'a\u200Bb\u00AD', escaped: [0x200B, 0x00AD], kept: []),
+        (text: 'a\uE000b', escaped: [0xE000], kept: []),
+        (text: '\u0085', escaped: [0x0085], kept: []),
+        (text: 'e\u0301', escaped: [], kept: [0x0301]),
+        (text: '1\uFE0F\u20E3', escaped: [], kept: [0xFE0F, 0x20E3]),
+        (
+          text: '\u{1F468}\u200D\u{1F469}',
+          escaped: [],
+          kept: [0x1F468, 0x200D, 0x1F469],
+        ),
+      ];
+
+      Future<String> prompt(OutputProfile? profile, String text) async {
+        final output = StringBuffer();
+        final result = await TextInput('Name $text', initialValue: text).prompt(
+          source: ScriptedInput(
+            Stream.value('\r'),
+            output,
+            outputProfile: profile ?? const OutputProfile(),
+          ),
+          mode: profile == null ? null : PromptMode.rich,
+        );
+        expect((result as Accepted<String>).value, text);
+        return output.toString();
+      }
+
+      for (final testCase in cases) {
+        final wrapped = await prompt(richProfile, testCase.text);
+        final plain = await prompt(null, testCase.text);
+        for (final output in [wrapped, plain]) {
+          for (final rune in testCase.escaped) {
+            final spelling =
+                '\\u{${rune.toRadixString(16).toUpperCase().padLeft(4, '0')}}';
+            expect(
+              output.contains(spelling),
+              isTrue,
+              reason:
+                  'U+${rune.toRadixString(16).toUpperCase()} needs its safe '
+                  'spelling',
+            );
+            expect(
+              output.contains(String.fromCharCode(rune)),
+              isFalse,
+              reason:
+                  'U+${rune.toRadixString(16).toUpperCase()} is not a terminal '
+                  'instruction',
+            );
+          }
+          for (final rune in testCase.kept) {
+            expect(output.contains(String.fromCharCode(rune)), isTrue);
+          }
+        }
+      }
+    },
+  );
+  test(
     'rich rendering anchors the physical caret at the editable region',
     () async {
       final output = StringBuffer();

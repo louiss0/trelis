@@ -138,3 +138,59 @@ records.
 
 Ticket 31 additionally needs B-GUI visible-GUI/NVDA evidence and the final
 B-GATE audit; neither is claimed here.
+
+## Follow-up local Windows evidence
+
+Follow-up revision `cf33023` on `ticket/backend-31-platform-evidence` repairs
+review findings on top of integration `07da9ba`; it does not replace the
+accepted CI matrix above. The scripted public seam now retains each important
+feedback occurrence while modal help owns painting, including same-text
+occurrences from separate regions or repeated by one region. `displaySafe`
+uses the same grapheme unit as layout, so a dangling ZWJ has the visible
+`\u{200D}` spelling on both wrapped and unwrapped paths. `OutputProfile`
+identifies its all-automatic state and documents that an automatic sentinel
+clears a copied fact. `terminalStyledText` now documents that callers must
+supply display-safe text.
+
+On Windows 11 (`10.0.26200.0`), Dart `3.13.2`, the following focused command
+passed with **94 tests**:
+
+```text
+dart test test/terminal_session_modal_help_test.dart \
+  test/terminal_session_short_screen_test.dart test/text_input_test.dart \
+  test/text_measurement_test.dart test/output_profile_text_input_test.dart \
+  test/text_input_colour_rendering_test.dart test/number_input_test.dart \
+  test/formatted_values_migration_test.dart --reporter expanded
+```
+
+The guarded local native preference check was also rerun only after confirming
+that no NVDA, Windows Terminal, or Dart GUI-evidence process was active:
+
+```text
+test/number_input_native_checks.ps1
+number input rich PASS result=1234 state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1
+number input linear PASS result=1234 state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1
+number native preferences PASS override=12345:1 stable-draft=1.234,5 next=12345:1
+```
+
+The preference probe had been red because synthetic `.` input used virtual key
+`46` (`VK_DELETE`) instead of `VK_OEM_PERIOD`; the probe now emits the proper
+OEM virtual keys for punctuation. Its registry restoration remained in the
+existing `finally` block. `dart test --reporter expanded` also passed with
+**946 tests**.
+
+The fresh [six-job CI matrix](https://github.com/louiss0/trelis/actions/runs/43644894551)
+then completed `success` for `b8013e6` (the follow-up evidence revision):
+
+| Job | Result |
+| --- | --- |
+| Dart, Windows (`windows_x64`) | 946 tests; format 150 unchanged; analysis clean; 158 links in 56 Markdown files |
+| Dart, Ubuntu (`linux_x64`) | 946 tests; format 150 unchanged; analysis clean; 158 links in 56 Markdown files |
+| Dart, macOS (`macos_arm64`) | 946 tests; format 150 unchanged; analysis clean; 158 links in 56 Markdown files |
+| POSIX native, Ubuntu | all ten PTY scenarios passed, including signal interruption and terminal restoration |
+| POSIX native, macOS | all ten PTY scenarios passed, including signal interruption and terminal restoration |
+| Windows native | all 17 public TextInput lifecycle scenarios and six ConPTY cases passed |
+
+The runner matrix used pinned Dart `3.13.2`. This is fresh platform evidence for
+the follow-up code. It does not provide ticket 32's visible-GUI/NVDA evidence or
+make the separate ticket-33 gate decision.
