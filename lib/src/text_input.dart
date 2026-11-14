@@ -1022,10 +1022,42 @@ void _writeWrappedText(
   int? width, {
   Iterable<String> atomicText = const [],
 }) {
-  if (width == null) {
-    output.writeln(text);
-    return;
+  for (final line in _wrapText(text, width, atomicText: atomicText)) {
+    output.writeln(line);
   }
+}
+
+/// Wraps [text] to [width] display cells and styles each emitted line.
+///
+/// Escaping and measurement happen before any style control is added: a
+/// component style is an instruction to the terminal rather than display
+/// content, so measuring it would charge its spelling to the line and the
+/// safety renderer would correctly show it as literal text instead.
+void _writeWrappedColorText(
+  StringSink output,
+  String text,
+  int? width, {
+  required TerminalColor foreground,
+  required TerminalColor background,
+  required OutputProfile? outputProfile,
+  Iterable<String> atomicText = const [],
+}) {
+  for (final line in _wrapText(text, width, atomicText: atomicText)) {
+    if (line.isEmpty) continue;
+    output.writeln(_colorText(line, foreground, background, outputProfile));
+  }
+}
+
+/// Splits [text] into the display lines that fit [width] cells.
+///
+/// A null [width] keeps the text on one line. Each returned line is already
+/// display-safe; the caller may still add terminal controls around it.
+List<String> _wrapText(
+  String text,
+  int? width, {
+  Iterable<String> atomicText = const [],
+}) {
+  if (width == null) return [text];
   // DisplayText's visible control spelling is one protected display unit: a
   // wrap may precede it but must not split `\\u{202E}` into misleading pieces.
   // Callers may protect further meaningful units, such as a choice row's state
@@ -1048,18 +1080,20 @@ void _writeWrappedText(
     offset = match.end;
   }
   addMeasured(text.substring(offset));
+  final lines = <String>[];
   var line = StringBuffer();
   var cells = 0;
   for (final piece in pieces) {
     if (cells > 0 && cells + piece.cells > width) {
-      output.writeln(line);
+      lines.add(line.toString());
       line = StringBuffer();
       cells = 0;
     }
     line.write(piece.text);
     cells += piece.cells;
   }
-  output.writeln(line);
+  lines.add(line.toString());
+  return lines;
 }
 
 /// Terminates the editable line that a segmented field editor leaves current.
@@ -1102,15 +1136,13 @@ void _renderTextInputOpening(
     ),
   );
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
-  _writeWrappedText(
+  _writeWrappedColorText(
     output,
-    _colorText(
-      '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
-      colors.foreground,
-      colors.background,
-      outputProfile,
-    ),
+    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
     width,
+    foreground: colors.foreground,
+    background: colors.background,
+    outputProfile: outputProfile,
   );
   final resolvedInstructions = instructions == InstructionDisplay.themeDefault
       ? InstructionDisplay.expanded
@@ -1175,15 +1207,13 @@ void _renderTextInputValidation(
       ),
     ),
   );
-  _writeWrappedText(
+  _writeWrappedColorText(
     output,
-    _colorText(
-      _slot(composition, PresentationSlot.validation).text!.value,
-      colors.error,
-      colors.background,
-      outputProfile,
-    ),
+    _slot(composition, PresentationSlot.validation).text!.value,
     outputProfile == null ? null : _textInputWidth(outputProfile),
+    foreground: colors.error,
+    background: colors.background,
+    outputProfile: outputProfile,
   );
 }
 
@@ -1551,6 +1581,7 @@ final class TextInput {
             scripted.output,
             message,
             outputProfile: effectiveProfile,
+            colors: colors,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -1564,6 +1595,7 @@ final class TextInput {
             scripted.output,
             error,
             outputProfile: effectiveProfile,
+            colors: colors,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
