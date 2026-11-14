@@ -376,6 +376,7 @@ final class TreeSelect<T> {
     );
     show();
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {
         while (true) {
@@ -390,6 +391,9 @@ final class TreeSelect<T> {
             outputProfile: effectiveProfile,
             session: session,
           );
+          // A nested editor clears the session repaint registration on exit, so
+          // the tree restores its own repaint before continuing.
+          session?._setPromptRepaint(show);
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
           if (action.action != 'command' && action.action != 'submit') {
@@ -423,6 +427,7 @@ final class TreeSelect<T> {
             outputProfile: effectiveProfile,
             session: session,
           );
+          session?._setPromptRepaint(show);
           if (reference.action == 'cancel') return Cancelled();
           if (reference.action == 'interrupt') return Interrupted();
           if (reference.action == 'command') {
@@ -847,6 +852,7 @@ final class SortableSelect<T> {
       colors.muted,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {
         var stage = 0;
@@ -871,6 +877,9 @@ final class SortableSelect<T> {
             outputProfile: effectiveProfile,
             session: session,
           );
+          // A nested editor clears the session repaint registration on exit, so
+          // the order prompt restores its own repaint before continuing.
+          session?._setPromptRepaint(show);
           if (r.action == 'cancel') return Cancelled();
           if (r.action == 'interrupt') return Interrupted();
           if (r.action == 'command') {

@@ -13,6 +13,33 @@ final _narrowProfile = OutputProfile(
   geometry: OutputGeometry.fixed(columns: 24, rows: 6),
 );
 
+final class _FakeTerminal implements TerminalIo, TerminalIoOutputProfile {
+  _FakeTerminal(this.input, this.output, this.outputProfile);
+
+  @override
+  final Stream<String> input;
+
+  @override
+  final StringSink output;
+
+  @override
+  final OutputProfile outputProfile;
+
+  @override
+  Map<String, String?> get environment => const {};
+
+  final List<String> events = [];
+
+  @override
+  bool get supportsRich => false;
+
+  @override
+  TerminalLease acquire() {
+    events.add('acquire');
+    return TerminalLease(() => events.add('restore'));
+  }
+}
+
 /// Renders the emitted transcript as physical terminal lines: a carriage
 /// return followed by an erase-line sequence leaves only the rewritten tail of
 /// that line, so a repainted editable line is measured once.
@@ -295,4 +322,106 @@ void main() {
     expect(text, contains('Help: Entering a destination position'));
     expect(text, contains('/done submits'));
   });
+  test('tree keeps a background update away from its retained focus', () async {
+    final output = StringBuffer();
+    final input = StreamController<String>();
+    var rowsAfterFeedback = 0;
+
+    final result = await TerminalSession.run(
+      (session) async {
+        final spinner = Spinner('Tree');
+        spinner.start(session: session);
+        final pending = TreeSelect<String>('Pick', [
+          TreeNode('a', 'A', children: [TreeNode('b', 'B')]),
+        ]).prompt(session: session);
+        await pumpEventQueue();
+        spinner.update('loading branches');
+        await pumpEventQueue();
+        rowsAfterFeedback = '[focused]'.allMatches(output.toString()).length;
+        input.add('\x1b[C\x1b[C\r');
+        await input.close();
+        final answer = await pending;
+        spinner.finish(FeedbackOutcome.completed);
+        return answer;
+      },
+      source: ScriptedInput(input.stream, output, outputProfile: _richProfile),
+      mode: PromptMode.rich,
+    );
+
+    expect((result as Accepted<String>).value, 'b');
+    expect(output.toString(), contains('[status] Tree: loading branches'));
+    // The shared feedback write repaints the live prompt instead of leaving the
+    // last frame stale, so the focused row is drawn again after the update.
+    expect(rowsAfterFeedback, greaterThan(1));
+  });
+
+  test(
+    'order keeps a background update away from its picked-up item',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      var rowsAfterFeedback = 0;
+
+      final result = await TerminalSession.run(
+        (session) async {
+          final spinner = Spinner('Order');
+          spinner.start(session: session);
+          final pending = SortableSelect<String>('Order', [
+            Choice('a', 'A'),
+            Choice('b', 'B'),
+          ]).prompt(session: session);
+          await pumpEventQueue();
+          input.add(' ');
+          await pumpEventQueue();
+          spinner.update('saving');
+          await pumpEventQueue();
+          rowsAfterFeedback = '[moving]'.allMatches(output.toString()).length;
+          input.add('\r\r');
+          await input.close();
+          final answer = await pending;
+          spinner.finish(FeedbackOutcome.completed);
+          return answer;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+
+      expect((result as Accepted<List<String>>).value, ['a', 'b']);
+      expect(output.toString(), contains('[status] Order: saving'));
+      expect(rowsAfterFeedback, greaterThan(1));
+    },
+  );
+
+  test(
+    'tree and order acquire and restore an explicit terminal adapter',
+    () async {
+      final treeOutput = StringBuffer();
+      final treeTerminal = _FakeTerminal(
+        Stream.value('/choose\r1\r'),
+        treeOutput,
+        _richProfile,
+      );
+      final accepted = await TreeSelect<String>('Pick', [
+        TreeNode('a', 'A'),
+      ]).prompt(terminal: treeTerminal, mode: PromptMode.linear);
+      expect((accepted as Accepted<String>).value, 'a');
+      expect(treeTerminal.events, ['acquire', 'restore']);
+
+      final orderOutput = StringBuffer();
+      final orderTerminal = _FakeTerminal(
+        Stream.value('/cancel\r'),
+        orderOutput,
+        _richProfile,
+      );
+      final cancelled = await SortableSelect<String>('Order', [
+        Choice('a', 'A'),
+      ]).prompt(terminal: orderTerminal, mode: PromptMode.linear);
+      expect(cancelled, isA<Cancelled<List<String>>>());
+      expect(orderTerminal.events, ['acquire', 'restore']);
+    },
+  );
 }
