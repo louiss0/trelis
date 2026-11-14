@@ -26,7 +26,7 @@ public static class NativeProbe {
  }
  public static void Text(string text) {
   var h=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
-  try { var a=new Input[text.Length*2]; for(int j=0;j<text.Length;j++){ var c=text[j]; a[j*2]=new Input{Type=1,Down=1,Repeat=1,VK=(ushort)(c == '~' ? 192 : Char.ToUpper(c)),Char=c}; a[j*2+1]=a[j*2]; a[j*2+1].Down=0; } uint n; if(!WriteConsoleInput(h,a,(uint)a.Length,out n)||n!=a.Length) throw new Exception("inject failed " + Marshal.GetLastWin32Error()); } finally { CloseHandle(h); }
+  try { var a=new Input[text.Length*2]; for(int j=0;j<text.Length;j++){ var c=text[j]; var vk=Char.ToUpper(c); if(c=='.') vk=(char)190; else if(c==',') vk=(char)188; else if(c==';'||c==':') vk=(char)186; else if(c=='~') vk=(char)192; a[j*2]=new Input{Type=1,Down=1,Repeat=1,VK=(ushort)vk,Char=c}; a[j*2+1]=a[j*2]; a[j*2+1].Down=0; } uint n; if(!WriteConsoleInput(h,a,(uint)a.Length,out n)||n!=a.Length) throw new Exception("inject failed " + Marshal.GetLastWin32Error()); } finally { CloseHandle(h); }
  }
  public static void Key(char c, ushort vk, uint state) {
   var h=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
