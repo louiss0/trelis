@@ -109,13 +109,21 @@ abstract final class ColorThemes {
 
 bool isTerminalDefault(TerminalColor color) => color is _TerminalDefault;
 
+/// Returns the SGR parameters that request [color] at [depth].
+///
+/// The result is only the colour part of a sequence; callers that may not know
+/// the depth should use [terminalStyledText] instead. A depth that cannot
+/// express colour names no colour, rather than the nearest ANSI-16 code that
+/// the selected output would not show correctly.
 String terminalSgr(
   TerminalColor color, {
   required bool background,
   required ColorDepth depth,
 }) {
   final prefix = background ? 48 : 38;
-  if (color is _TerminalDefault) {
+  if (color is _TerminalDefault ||
+      depth == ColorDepth.none ||
+      depth == ColorDepth.automatic) {
     return '${background ? 49 : 39}';
   }
   if (depth == ColorDepth.rgb && color is _RgbTerminalColor) {
@@ -128,6 +136,25 @@ String terminalSgr(
     return '$prefix;5;$index';
   }
   return '${(background ? 40 : 30) + _ansi16Index(index)}';
+}
+
+/// Styles [text] with [foreground] and [background] at [depth].
+///
+/// This is the complete-sequence form of the colour request: a depth that
+/// cannot express colour, an unknown depth, or an all-default palette returns
+/// the text unchanged so a caller never has to remember the guard.
+String terminalStyledText(
+  String text, {
+  required TerminalColor foreground,
+  required TerminalColor background,
+  required ColorDepth depth,
+}) {
+  if (depth == ColorDepth.none ||
+      depth == ColorDepth.automatic ||
+      (isTerminalDefault(foreground) && isTerminalDefault(background))) {
+    return text;
+  }
+  return '\x1b[${terminalSgr(foreground, background: false, depth: depth)};${terminalSgr(background, background: true, depth: depth)}m$text\x1b[0m';
 }
 
 int _rgbIndex(_RgbTerminalColor color) {

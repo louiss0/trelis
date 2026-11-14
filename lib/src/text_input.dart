@@ -1298,13 +1298,13 @@ String _colorText(
   TerminalColor background,
   OutputProfile? profile,
 ) {
-  if (profile == null ||
-      profile.colorDepth == ColorDepth.none ||
-      profile.colorDepth == ColorDepth.automatic ||
-      (isTerminalDefault(foreground) && isTerminalDefault(background))) {
-    return text;
-  }
-  return '\x1b[${terminalSgr(foreground, background: false, depth: profile.colorDepth)};${terminalSgr(background, background: true, depth: profile.colorDepth)}m$text\x1b[0m';
+  if (profile == null) return text;
+  return terminalStyledText(
+    text,
+    foreground: foreground,
+    background: background,
+    depth: profile.colorDepth,
+  );
 }
 
 bool _terminalActive = false;

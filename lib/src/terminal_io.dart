@@ -27,8 +27,10 @@ abstract interface class TerminalIo {
   /// Environment observations declared by this adapter.
   ///
   /// The map is exposed so adapters can be deterministic without consulting
-  /// the host process. Current prompt behavior does not yet resolve profiles
-  /// from these values.
+  /// the host process. A non-empty `NO_COLOR` is applied as a hard colour
+  /// restriction before an invocation resolves its profile, so a declared
+  /// colour depth cannot re-enable colour. The remaining values are
+  /// observations: no profile fact is resolved from them yet.
   Map<String, String?> get environment;
 
   /// Acquires interactive terminal state for one prompt invocation.

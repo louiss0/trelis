@@ -28,6 +28,49 @@ void main() {
     },
   );
 
+  test('a colour request without a colour depth never names a colour', () {
+    final foreground = TerminalColor.rgb(1, 2, 3);
+    final background = TerminalColor.indexed(7);
+
+    expect(
+      terminalSgr(foreground, background: false, depth: ColorDepth.none),
+      '39',
+    );
+    expect(
+      terminalSgr(background, background: true, depth: ColorDepth.none),
+      '49',
+    );
+    expect(
+      terminalSgr(foreground, background: false, depth: ColorDepth.rgb),
+      '38;2;1;2;3',
+    );
+    expect(
+      terminalSgr(background, background: true, depth: ColorDepth.indexed256),
+      '48;5;7',
+    );
+  });
+
+  test('styled text drops styling that the declared depth cannot express', () {
+    expect(
+      terminalStyledText(
+        'x',
+        foreground: TerminalColor.rgb(1, 2, 3),
+        background: TerminalColor.rgb(4, 5, 6),
+        depth: ColorDepth.none,
+      ),
+      'x',
+    );
+    expect(
+      terminalStyledText(
+        'x',
+        foreground: TerminalColor.rgb(1, 2, 3),
+        background: TerminalColor.rgb(4, 5, 6),
+        depth: ColorDepth.rgb,
+      ),
+      '\x1b[38;2;1;2;3;48;2;4;5;6mx\x1b[0m',
+    );
+  });
+
   test('TextInput styles owned rich content and restores it', () async {
     final out = StringBuffer();
     await TextInput('Name', colors: palette).prompt(
