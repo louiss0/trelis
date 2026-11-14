@@ -11,6 +11,28 @@ import sys
 import termios
 import time
 
+# Darwin's tty layer owns PENDIN in c_lflag. Re-enabling ICANON through
+# tcsetattr -- exactly what a prompt does when it restores the state it
+# received -- makes the kernel OR that bit into its own copy of the flags:
+# `tp->t_lflag = t->c_lflag | ISSET(tp->t_lflag, PENDIN)` in bsd/kern/tty.c.
+# A later tcgetattr therefore reports one extra flag even though the
+# application wrote back the exact bytes it captured, and userland cannot
+# clear it while ICANON is being re-enabled; the kernel clears it on the next
+# input read or flush. Linux has no equivalent flag. Only this kernel-owned
+# bit is excluded from the restoration comparison.
+KERNEL_PENDING_LFLAG = 0x20000000
+# iflag, oflag, cflag, lflag, ispeed, ospeed, control characters.
+LFLAG_INDEX = 3
+
+
+def user_state(attributes):
+    """The terminal state the application is responsible for restoring."""
+    if sys.platform != 'darwin':
+        return attributes
+    state = list(attributes)
+    state[LFLAG_INDEX] &= ~KERNEL_PENDING_LFLAG
+    return state
+
 
 def run(scenario, inputs, expected, term=None):
     master, slave = pty.openpty()
@@ -52,7 +74,7 @@ def run(scenario, inputs, expected, term=None):
             raise AssertionError(f'{scenario}: exit={process.returncode}, stdout={stdout!r}, terminal={transcript!r}')
         if term == 'dumb' and b'\x1b' in terminal_output:
             raise AssertionError(f'{scenario}: unexpected escape sequence: {terminal_output!r}')
-        if before != after:
+        if user_state(before) != user_state(after):
             raise AssertionError(f'{scenario}: terminal attributes not restored: {before!r} -> {after!r}')
         print(f'{scenario}: PASS ({expected})')
     finally:
