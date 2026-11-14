@@ -136,7 +136,7 @@ public `TextInputTranscript` with stable run-local ids:
 | --- | --- |
 | `dart format --output=none --set-exit-if-changed lib/src/presentation.dart lib/src/text_input.dart lib/src/autocomplete.dart lib/src/search_select.dart lib/prompty.dart test/async_search_migration_test.dart test/search_select_test.dart test/autocomplete_test.dart test/support/async_search_fixture.dart` | Passed: `Formatted 9 files (0 changed)` |
 | `dart analyze` | Passed: `No issues found!` |
-| `dart run tool/check_doc_links.dart` | Passed: `Checked 153 relative links in 50 Markdown files.` |
+| `dart run tool/check_doc_links.dart` | Passed: `Checked 154 relative links in 51 Markdown files.` |
 | `dart test test/async_search_migration_test.dart test/search_select_test.dart test/autocomplete_test.dart test/command_palette_test.dart test/timezone_select_test.dart test/native_async_fixture_test.dart --reporter expanded` | Passed: 110 tests |
 | `dart test --reporter compact` | Passed: 861 tests |
 
