@@ -396,7 +396,7 @@ NumericConvention? _macOSNumericConvention() {
     objc.setInteger(formatter, 'setNumberStyle:', 1);
     final decimal = objc.string(formatter, 'decimalSeparator');
     final thousands = objc.string(formatter, 'groupingSeparator');
-    final negativeSign = objc.string(formatter, 'negativeSign');
+    final negativeSign = objc.string(formatter, 'minusSign');
     final negativeFormat = objc.string(formatter, 'negativeFormat');
     if (decimal == null ||
         thousands == null ||
