@@ -15,9 +15,9 @@ structural themes, and makes no whole-library accessibility claim.
 - **Implementation revision:** `c3e03ee` (public-surface contraction,
   Autocomplete identity repair, compatibility inventory, help gap closure and
   the three format-only test repairs). `577fcf3` adds only this report and the
-  README/CHANGELOG migration guidance, and changes no production code or test. Every
-  command below was last re-run on `577fcf3`, so the numbers describe the tree
-  this report is committed in.
+  README/CHANGELOG migration guidance, and changes no production code or test.
+  Every command below was last re-run on `577fcf3`; `83bb622` and any later
+  commits on this branch update this report's revision metadata only.
 - **Date:** 2026-11-13.
 - **Environment:** Microsoft Windows NT 10.0.26200.0 (`windows_x64`), Dart SDK
   3.13.2 stable (`dart --version`).
