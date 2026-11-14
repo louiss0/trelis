@@ -1,6 +1,15 @@
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 60, rows: 20),
+);
+
+/// A scripted source that declares rich facts for an in-place interaction.
+ScriptedInput _rich(Stream<String> input, StringSink output) =>
+    ScriptedInput(input, output, outputProfile: _richProfile);
+
 void main() {
   test('rich pick up move and drop produces a permutation', () async {
     final result =
@@ -8,7 +17,7 @@ void main() {
           Choice('a', 'A'),
           Choice('b', 'B'),
         ]).prompt(
-          source: ScriptedInput(Stream.value(' \x1b[B\r\r'), StringBuffer()),
+          source: _rich(Stream.value(' \x1b[B\r\r'), StringBuffer()),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<List<String>>).value, ['b', 'a']);
@@ -22,7 +31,7 @@ void main() {
             Choice('b', 'B'),
             Choice('c', 'C'),
           ]).prompt(
-            source: ScriptedInput(
+            source: _rich(
               Stream.value(' \x1b[B  \x1b[B\x1b \x1b[A\r\r'),
               StringBuffer(),
             ),
@@ -81,7 +90,7 @@ void main() {
             Choice('x', 'X', disabledReason: 'protected'),
             Choice('b', 'B'),
           ]).prompt(
-            source: ScriptedInput(Stream.value(' \x1b[B \x1b[B \r'), out),
+            source: _rich(Stream.value(' \x1b[B \x1b[B \r'), out),
             mode: PromptMode.rich,
           );
       expect((result as Accepted<List<String>>).value, ['a', 'x', 'b']);
@@ -102,7 +111,7 @@ void main() {
       );
       expect(
         await prompt.prompt(
-          source: ScriptedInput(Stream.value('\x03'), StringBuffer()),
+          source: _rich(Stream.value('\x03'), StringBuffer()),
           mode: PromptMode.rich,
         ),
         isA<Interrupted<List<String>>>(),

@@ -37,6 +37,7 @@ final class TreeSelect<T> {
     List<TreeNode<T>> nodes, {
     this.isCurrent,
     this.defaultValue,
+    this.colors = ColorThemes.terminalDefault,
   }) : nodes = List.unmodifiable(nodes) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -59,6 +60,7 @@ final class TreeSelect<T> {
   final String label;
   final List<TreeNode<T>> nodes;
   final T? defaultValue;
+  final ColorTheme colors;
 
   /// Optional currentness check for nodes that can disappear during a prompt.
   final bool Function(T value)? isCurrent;
@@ -70,29 +72,72 @@ final class TreeSelect<T> {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<T>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      final selected =
+      final selectedMode =
           mode ??
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
-      if (source != null) return await _run(source, selected);
-      if (_terminalActive) {
-        throw StateError('A terminal session is already active.');
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
       }
-      _terminalActive = true;
-      try {
-        return await _terminal<T>(
-          selected,
-          output ?? stderr,
-          (source, mode, restore) => _run(source, mode, beforeClose: restore),
-        );
-      } finally {
-        _terminalActive = false;
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
       }
+      if (source == null) {
+        if (_terminalActive) {
+          throw StateError('A terminal session is already active.');
+        }
+        _terminalActive = true;
+        try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selectedMode,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
+          return await _terminal<T>(
+            selectedMode,
+            output ?? stderr,
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
+          );
+        } finally {
+          _terminalActive = false;
+        }
+      }
+      return await _run(source, selectedMode, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -101,7 +146,9 @@ final class TreeSelect<T> {
   Future<PromptResult<T>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     final all = <(TreeNode<T>, List<TreeNode<T>>)>[];
     void collect(List<TreeNode<T>> level, List<TreeNode<T>> path) {
@@ -128,13 +175,26 @@ final class TreeSelect<T> {
       return Accepted(all[n - 1].$1.value);
     }
     final scripted = source as ScriptedInput;
-    if (mode == PromptMode.rich && !scripted.supportsRich) {
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = scripted.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
     final out = scripted.output;
     final expanded = <T>{};
@@ -198,18 +258,20 @@ final class TreeSelect<T> {
           : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
     );
     show();
-    final keys = _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       if (mode == PromptMode.linear) {
         while (true) {
           final action = await _edit(
-            keys,
+            inputKeys,
             '',
             out,
             linear: true,
             sequential: true,
             extraCommands: const {'/open', '/up', '/choose'},
             linearHelpText: linearHelp,
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (action.action == 'cancel') return Cancelled();
           if (action.action == 'interrupt') return Interrupted();
@@ -231,13 +293,15 @@ final class TreeSelect<T> {
           }
           out.writeln('Enter node reference:');
           final reference = await _edit(
-            keys,
+            inputKeys,
             '',
             out,
             linear: true,
             sequential: true,
             extraCommands: const {'/open', '/up', '/choose'},
             linearHelpText: linearHelp,
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (reference.action == 'cancel') return Cancelled();
           if (reference.action == 'interrupt') return Interrupted();
@@ -293,7 +357,7 @@ final class TreeSelect<T> {
       }
       var help = false;
       while (true) {
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') {
@@ -360,19 +424,19 @@ final class TreeSelect<T> {
         show();
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (session != null) session._setPromptRepaint(null);
+      if (keys == null) await inputKeys.close();
     }
   }
 }
 
 /// Reorders all choices; choices with a disabled reason are locked anchors.
 final class SortableSelect<T> {
-  SortableSelect(this.label, List<Choice<T>> choices)
-    : choices = List.unmodifiable(choices) {
+  SortableSelect(
+    this.label,
+    List<Choice<T>> choices, {
+    this.colors = ColorThemes.terminalDefault,
+  }) : choices = List.unmodifiable(choices) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -382,6 +446,9 @@ final class SortableSelect<T> {
   }
   final String label;
   final List<Choice<T>> choices;
+
+  /// The component palette for order rows, guidance and notices.
+  final ColorTheme colors;
   bool _active = false;
 
   Future<PromptResult<List<T>>> prompt({
@@ -390,31 +457,72 @@ final class SortableSelect<T> {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
   }) async {
+    if (session != null) {
+      return session._promptRunner<List<T>>(
+        _run,
+        source: source,
+        mode: mode,
+        userPreference: userPreference,
+        applicationPreference: applicationPreference,
+        output: output,
+        terminal: terminal,
+        outputProfile: outputProfile,
+      );
+    }
     if (_active) throw StateError('A prompt session is already active.');
     _active = true;
     try {
-      final selected =
+      final selectedMode =
           mode ??
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      if (source != null && terminal != null) {
+        throw ArgumentError('Specify either source or terminal, not both.');
+      }
+      if (output != null && terminal != null) {
+        throw ArgumentError('Specify either output or terminal, not both.');
+      }
       if (source == null) {
         if (_terminalActive) {
           throw StateError('A terminal session is already active.');
         }
         _terminalActive = true;
         try {
+          if (terminal != null) {
+            final lease = terminal.acquire();
+            return await _restoreAfter(
+              () => _run(
+                ScriptedInput(
+                  terminal.input,
+                  terminal.output,
+                  supportsRich: terminal.supportsRich,
+                  outputProfile: _terminalOutputProfile(terminal),
+                  hardColorDisabled:
+                      terminal.environment['NO_COLOR']?.isNotEmpty == true,
+                  resizeObserver: _terminalResizeObserver(terminal),
+                ),
+                selectedMode,
+                outputProfile: outputProfile,
+              ),
+              lease.restore,
+            );
+          }
           return await _terminal<List<T>>(
-            selected,
+            selectedMode,
             output ?? stderr,
-            (s, m, restore) => _run(s, m, beforeClose: restore),
+            (source, mode, _) =>
+                _run(source, mode, outputProfile: outputProfile),
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected);
+      return await _run(source, selectedMode, outputProfile: outputProfile);
     } finally {
       _active = false;
     }
@@ -423,7 +531,9 @@ final class SortableSelect<T> {
   Future<PromptResult<List<T>>> _run(
     PromptSource source,
     PromptMode mode, {
-    void Function()? beforeClose,
+    OutputProfile? outputProfile,
+    _Keys? keys,
+    TerminalSession? session,
   }) async {
     final order = List.generate(choices.length, (i) => i);
     bool validOrder(List<int> candidate) {
@@ -459,16 +569,29 @@ final class SortableSelect<T> {
       order.setAll(0, [for (final n in refs) n! - 1]);
       return Accepted(answer());
     }
-    final input = source as ScriptedInput;
-    if (mode == PromptMode.rich && !input.supportsRich) {
+    final scripted = source as ScriptedInput;
+    var effectiveProfile = _constrainToObservedGeometry(
+      OutputProfile.resolve(
+        invocation: outputProfile,
+        source: scripted.outputProfile,
+        supportsRich: scripted.supportsRich,
+      ),
+      scripted._observedGeometry,
+    );
+    if (scripted._hardColorDisabled) {
+      effectiveProfile = effectiveProfile.copyWith(colorDepth: ColorDepth.none);
+    }
+    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
-        'Rich interaction unavailable; use linear or automatic mode.',
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
       );
     }
     if (mode == PromptMode.automatic) {
-      mode = input.supportsRich ? PromptMode.rich : PromptMode.linear;
+      mode = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
     }
-    final out = input.output;
+    final out = scripted.output;
     var focus = 0;
     var moving = false;
     List<int>? moveStart;
@@ -510,7 +633,7 @@ final class SortableSelect<T> {
           ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
           : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
     );
-    final keys = _Keys(input.input.transform(utf8.encoder));
+    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       if (mode == PromptMode.linear) {
         var stage = 0;
@@ -518,12 +641,14 @@ final class SortableSelect<T> {
         int? ref;
         while (true) {
           final r = await _edit(
-            keys,
+            inputKeys,
             entry,
             out,
             linear: true,
             sequential: true,
             extraCommands: const {'/move', '/done'},
+            outputProfile: effectiveProfile,
+            session: session,
           );
           if (r.action == 'cancel') return Cancelled();
           if (r.action == 'interrupt') return Interrupted();
@@ -571,7 +696,7 @@ final class SortableSelect<T> {
       }
       var help = false;
       while (true) {
-        final key = await keys.next();
+        final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
         if (key == '\x1b') {
@@ -629,11 +754,8 @@ final class SortableSelect<T> {
         }
       }
     } finally {
-      try {
-        beforeClose?.call();
-      } finally {
-        await keys.close();
-      }
+      if (session != null) session._setPromptRepaint(null);
+      if (keys == null) await inputKeys.close();
     }
   }
 }
