@@ -14,7 +14,18 @@
   identified events. Query and results events carry a typed projection that
   states idle/loading/ready/empty/failure explicitly, keeps source-stable choice
   references distinct from response-local autocomplete candidates, and records a
-  candidate acceptance separately from the prompt outcome.
+  candidate acceptance separately from the prompt outcome. The projection is an
+  internal contract observed through the transcript, not an exported authoring
+  type.
+- Compatibility with the pre-backend surface is preserved: direct constructors,
+  generic parameters, callbacks, answer types, commands and the five prompt
+  outcomes are unchanged. Invocation adds `terminal`, `outputProfile` and
+  `session`; interactive constructors add `instructions`, `supplementaryHelp`
+  and, where implemented, `colors`. Defaults stay the plain reference
+  presentation with terminal-native colours, synthetic rich output must declare
+  cursor support and positive geometry, and no package or import was renamed.
+  Component help is component- and stage-specific in both interactions, keeping
+  help access and protected content under every instruction policy.
 - Windows and POSIX terminal backends that own the selected input and output
   streams, check and restore native console state, reject concurrent sessions
   and refuse rich output on non-capable terminals such as `TERM=dumb`.
