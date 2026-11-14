@@ -217,15 +217,64 @@ final class TreeSelect<T> {
         nodes.map((n) => n.label).join(' / ');
     const linearHelp =
         r'Help: TreeSelect. /open asks for a stable node reference in the current path and enters its children; /up returns to the parent. /choose asks for a stable node reference and accepts it only if selectable and available. Expandability and selectability are independent. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+    final width = _textInputWidth(effectiveProfile);
+    void write(String text, TerminalColor foreground) {
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          out.writeln(
+            _colorText(line, foreground, colors.background, effectiveProfile),
+          );
+        }
+      }
+    }
+
+    int referenceOf((TreeNode<T>, List<TreeNode<T>>) row) =>
+        all.indexOf(row) + 1;
+
+    /// One typed tree row: the stable reference, the full path, focus, the
+    /// displayed default, the expansion state, selectability and staleness stay
+    /// separate facts. Expansion never implies selectability, and every marker
+    /// is an atomic unit under wrapping.
+    _ChoiceRow rowFor((TreeNode<T>, List<TreeNode<T>>) row) {
+      final node = row.$1;
+      return _ChoiceRow(
+        reference: referenceOf(row),
+        label: path(row.$2),
+        focused: mode == PromptMode.rich && identical(node, focus),
+        isDefault: defaultValue != null && node.value == defaultValue,
+        treeState: node.childrenUnavailableReason != null
+            ? _TreeRowState.childrenUnavailable
+            : node.children.isEmpty
+            ? _TreeRowState.leaf
+            : expanded.contains(node.value)
+            ? _TreeRowState.expanded
+            : _TreeRowState.collapsed,
+        childrenUnavailableReason: node.childrenUnavailableReason,
+        selectable: node.canSelect,
+        disabledReason: node.disabledReason,
+        current: currentPath(row.$2),
+      );
+    }
+
     void show() {
-      out.writeln('$label TreeSelect:');
-      if (all.isEmpty) out.writeln('No nodes available.');
+      session?._setPromptGeometry(effectiveProfile.geometry);
+      write('$label TreeSelect:', colors.foreground);
+      if (all.isEmpty) write('No nodes available.', colors.warning);
       if (mode == PromptMode.linear) {
-        out.writeln('Path: ${current.isEmpty ? 'root' : path(current)}');
+        write(
+          'Path: ${current.isEmpty ? 'root' : path(current)}',
+          colors.muted,
+        );
         if (defaultValue != null) {
           final row = all.firstWhere((r) => r.$1.value == defaultValue);
-          out.writeln(
-            'Default: ${path(row.$2)} (reference ${all.indexOf(row) + 1})${row.$1.canSelect ? '' : ' [not selectable]'}${row.$1.disabledReason == null ? '' : ' [unavailable: ${row.$1.disabledReason}]'}${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
+          write(
+            'Default: ${path(row.$2)} (reference ${referenceOf(row)})'
+            '${row.$1.canSelect ? '' : ' [not selectable]'}'
+            '${row.$1.disabledReason == null ? '' : ' [unavailable: ${row.$1.disabledReason}]'}'
+            '${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
+            colors.muted,
           );
         }
       }
@@ -239,23 +288,24 @@ final class TreeSelect<T> {
             )
           : visible();
       for (final row in rows) {
-        final node = row.$1;
-        out.writeln(
-          '${all.indexOf(row) + 1}. ${path(row.$2)}${mode == PromptMode.rich && identical(node, focus) ? ' [focused]' : ''}${defaultValue != null && node.value == defaultValue ? ' [default]' : ''} ${node.childrenUnavailableReason != null
-              ? '[children unavailable: ${node.childrenUnavailableReason}]'
-              : node.children.isEmpty
-              ? '[leaf]'
-              : expanded.contains(node.value)
-              ? '[expanded]'
-              : '[collapsed]'} ${node.canSelect ? '[selectable]' : '[not selectable]'}${node.disabledReason == null ? '' : ' [unavailable: ${node.disabledReason}]'}${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
+        _writeChoiceRow(
+          out,
+          rowFor(row),
+          width: width,
+          foreground: mode == PromptMode.rich && identical(row.$1, focus)
+              ? colors.accent
+              : colors.foreground,
+          colors: colors,
+          profile: effectiveProfile,
         );
       }
     }
 
-    out.writeln(
+    write(
       mode == PromptMode.linear
           ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
           : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      colors.muted,
     );
     show();
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
@@ -279,19 +329,19 @@ final class TreeSelect<T> {
             return InputEnded();
           }
           if (action.action != 'command') {
-            out.writeln('Use /open, /up or /choose.');
+            write('Use /open, /up or /choose.', colors.warning);
             continue;
           }
           if (action.value == '/up') {
             if (current.isNotEmpty) {
               current = current.sublist(0, current.length - 1);
             } else {
-              out.writeln('Already at root.');
+              write('Already at root.', colors.warning);
             }
             show();
             continue;
           }
-          out.writeln('Enter node reference:');
+          write('Enter node reference:', colors.foreground);
           final reference = await _edit(
             inputKeys,
             '',
@@ -306,36 +356,37 @@ final class TreeSelect<T> {
           if (reference.action == 'cancel') return Cancelled();
           if (reference.action == 'interrupt') return Interrupted();
           if (reference.action == 'command') {
-            out.writeln('Enter a node reference.');
+            write('Enter a node reference.', colors.warning);
             continue;
           }
           if (reference.action != 'submit') return InputEnded();
           final n = int.tryParse(reference.value);
           if (n == null || n < 1 || n > all.length) {
-            out.writeln('Enter a valid node reference.');
+            write('Enter a valid node reference.', colors.warning);
             continue;
           }
           final row = all[n - 1];
           final node = row.$1;
           if (!currentPath(row.$2)) {
-            out.writeln('Node is no longer available.');
+            write('Node is no longer available.', colors.warning);
             continue;
           }
           if (action.value == '/open') {
             if (row.$2.length != current.length + 1 ||
                 (current.isNotEmpty &&
                     !identical(row.$2[current.length - 1], current.last))) {
-              out.writeln('Open a node in the current path.');
+              write('Open a node in the current path.', colors.warning);
               continue;
             }
             if (node.childrenUnavailableReason != null) {
-              out.writeln(
+              write(
                 'Children unavailable: ${node.childrenUnavailableReason}.',
+                colors.warning,
               );
               continue;
             }
             if (node.children.isEmpty) {
-              out.writeln('Node has no children.');
+              write('Node has no children.', colors.warning);
               continue;
             }
             expanded.add(node.value);
@@ -344,14 +395,14 @@ final class TreeSelect<T> {
             continue;
           }
           if (!node.canSelect) {
-            out.writeln('Node is not selectable.');
+            write('Node is not selectable.', colors.warning);
             continue;
           }
           if (node.disabledReason != null) {
-            out.writeln('Unavailable: ${node.disabledReason}.');
+            write('Unavailable: ${node.disabledReason}.', colors.warning);
             continue;
           }
-          out.writeln('Accepted: ${path(row.$2)}.');
+          write('Accepted: ${path(row.$2)}.', colors.success);
           return Accepted(node.value);
         }
       }
@@ -368,8 +419,9 @@ final class TreeSelect<T> {
         }
         if (key == '\x14') {
           help = true;
-          out.writeln(
+          write(
             'Help: Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses; Escape dismisses help.',
+            colors.foreground,
           );
           continue;
         }
@@ -381,12 +433,13 @@ final class TreeSelect<T> {
           focus = rows[index + 1].$1;
         }
         if (key == '\x1b[C' && index >= 0 && !currentPath(rows[index].$2)) {
-          out.writeln('Node is no longer available.');
+          write('Node is no longer available.', colors.warning);
           continue;
         }
         if (key == '\x1b[C' && focus?.childrenUnavailableReason != null) {
-          out.writeln(
+          write(
             'Children unavailable: ${focus!.childrenUnavailableReason}.',
+            colors.warning,
           );
         }
         if (key == '\x1b[C' && focus != null && focus.children.isNotEmpty) {
@@ -401,23 +454,24 @@ final class TreeSelect<T> {
         }
         if (key == '\r' || key == '\n') {
           if (focus == null) {
-            out.writeln('No node available.');
+            write('No node available.', colors.warning);
             continue;
           }
           if (index < 0 || !currentPath(rows[index].$2)) {
-            out.writeln('Node is no longer available.');
+            write('Node is no longer available.', colors.warning);
             continue;
           }
           if (!focus.canSelect) {
-            out.writeln('Node is not selectable.');
+            write('Node is not selectable.', colors.warning);
             continue;
           }
           if (focus.disabledReason != null) {
-            out.writeln('Unavailable: ${focus.disabledReason}.');
+            write('Unavailable: ${focus.disabledReason}.', colors.warning);
             continue;
           }
-          out.writeln(
+          write(
             'Accepted: ${path(all.firstWhere((r) => identical(r.$1, focus)).$2)}.',
+            colors.success,
           );
           return Accepted(focus.value);
         }
@@ -592,23 +646,65 @@ final class SortableSelect<T> {
           : PromptMode.linear;
     }
     final out = scripted.output;
+    final width = _textInputWidth(effectiveProfile);
+    void write(String text, TerminalColor foreground) {
+      final wrapped = StringBuffer();
+      _writeWrappedText(wrapped, DisplayText.from(text).value, width);
+      for (final line in wrapped.toString().split('\n')) {
+        if (line.isNotEmpty) {
+          out.writeln(
+            _colorText(line, foreground, colors.background, effectiveProfile),
+          );
+        }
+      }
+    }
+
     var focus = 0;
     var moving = false;
     List<int>? moveStart;
+
+    /// One typed order row: the stable reference, the current position, focus,
+    /// the locked-anchor reason and a pick-up state stay separate facts, and
+    /// every marker is an atomic unit under wrapping.
+    void writeRow(int index) {
+      final ref = order[index];
+      final choice = choices[ref];
+      final focused = mode == PromptMode.rich && index == focus;
+      _writeChoiceRow(
+        out,
+        _ChoiceRow(
+          reference: ref + 1,
+          label: choice.label,
+          position: index + 1,
+          positionCount: order.length,
+          focused: focused,
+          lockedReason: choice.disabledReason,
+          moving: moving && focused,
+        ),
+        width: width,
+        foreground: focused ? colors.accent : colors.foreground,
+        colors: colors,
+        profile: effectiveProfile,
+      );
+    }
+
     void show() {
-      out.writeln('$label SortableSelect: ${order.length} choices.');
+      session?._setPromptGeometry(effectiveProfile.geometry);
+      write(
+        '$label SortableSelect: ${order.length} choices.',
+        colors.foreground,
+      );
       for (var p = 0; p < order.length; p++) {
-        final ref = order[p];
-        final c = choices[ref];
-        out.writeln(
-          '${ref + 1}. ${c.label} [position ${p + 1} of ${order.length}]${mode == PromptMode.rich && p == focus ? ' [focused]' : ''}${c.disabledReason == null ? '' : ' [locked: ${c.disabledReason}]'}${moving && p == focus ? ' [moving]' : ''}',
-        );
+        writeRow(p);
       }
     }
 
     bool move(int from, int to) {
       if (choices[order[from]].disabledReason != null) {
-        out.writeln('Locked: ${choices[order[from]].disabledReason}.');
+        write(
+          'Locked: ${choices[order[from]].disabledReason}.',
+          colors.warning,
+        );
         return false;
       }
       final low = from < to ? from : to;
@@ -616,22 +712,24 @@ final class SortableSelect<T> {
       if (order
           .sublist(low, high + 1)
           .any((i) => choices[i].disabledReason != null)) {
-        out.writeln('Cannot cross a locked anchor.');
+        write('Cannot cross a locked anchor.', colors.warning);
         return false;
       }
       final item = order.removeAt(from);
       order.insert(to, item);
-      out.writeln(
+      write(
         '${choices[item].label} moved to position ${to + 1} of ${order.length}.',
+        colors.success,
       );
       return true;
     }
 
     show();
-    out.writeln(
+    write(
       mode == PromptMode.rich
           ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
           : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
+      colors.muted,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -655,12 +753,12 @@ final class SortableSelect<T> {
           if (r.action == 'command') {
             entry = '';
             if (r.value == '/done') {
-              out.writeln('Accepted order.');
+              write('Accepted order.', colors.success);
               return Accepted(answer());
             }
             if (r.value == '/move') {
               stage = 1;
-              out.writeln('Enter stable choice reference:');
+              write('Enter stable choice reference:', colors.foreground);
             }
             continue;
           }
@@ -669,20 +767,23 @@ final class SortableSelect<T> {
           final n = int.tryParse(entry);
           if (stage == 1) {
             if (n == null || n < 1 || n > choices.length) {
-              out.writeln('Enter a valid choice reference.');
+              write('Enter a valid choice reference.', colors.warning);
               continue;
             }
             ref = n - 1;
             if (choices[ref].disabledReason != null) {
-              out.writeln('Locked: ${choices[ref].disabledReason}.');
+              write('Locked: ${choices[ref].disabledReason}.', colors.warning);
               continue;
             }
             stage = 2;
             entry = '';
-            out.writeln('Enter destination position (1 to ${order.length}):');
+            write(
+              'Enter destination position (1 to ${order.length}):',
+              colors.foreground,
+            );
           } else if (stage == 2) {
             if (n == null || n < 1 || n > order.length) {
-              out.writeln('Enter a valid destination position.');
+              write('Enter a valid destination position.', colors.warning);
               continue;
             }
             move(order.indexOf(ref!), n - 1);
@@ -690,7 +791,7 @@ final class SortableSelect<T> {
             entry = '';
             show();
           } else {
-            out.writeln('Use /move or /done.');
+            write('Use /move or /done.', colors.warning);
           }
         }
       }
@@ -710,7 +811,7 @@ final class SortableSelect<T> {
             order.setAll(0, moveStart!);
             focus = order.indexOf(item);
             moving = false;
-            out.writeln('Move reverted.');
+            write('Move reverted.', colors.muted);
             show();
             continue;
           }
@@ -718,8 +819,9 @@ final class SortableSelect<T> {
         }
         if (key == '\x14') {
           help = true;
-          out.writeln(
+          write(
             'Help: Up/Down navigate or move; Space picks up or drops; Enter drops or submits; Escape reverts or cancels.',
+            colors.foreground,
           );
           continue;
         }
@@ -733,22 +835,25 @@ final class SortableSelect<T> {
         } else if (key == ' ' && order.isNotEmpty) {
           if (moving) {
             moving = false;
-            out.writeln('Dropped.');
+            write('Dropped.', colors.muted);
           } else if (choices[order[focus]].disabledReason != null) {
-            out.writeln('Locked: ${choices[order[focus]].disabledReason}.');
+            write(
+              'Locked: ${choices[order[focus]].disabledReason}.',
+              colors.warning,
+            );
           } else {
             moving = true;
             moveStart = List.of(order);
-            out.writeln('Picked up ${choices[order[focus]].label}.');
+            write('Picked up ${choices[order[focus]].label}.', colors.muted);
           }
           show();
         } else if (key == '\r' || key == '\n') {
           if (moving) {
             moving = false;
-            out.writeln('Dropped.');
+            write('Dropped.', colors.muted);
             show();
           } else {
-            out.writeln('Accepted order.');
+            write('Accepted order.', colors.success);
             return Accepted(answer());
           }
         }

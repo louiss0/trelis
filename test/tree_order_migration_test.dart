@@ -10,7 +10,7 @@ final _richProfile = OutputProfile(
 
 final _narrowProfile = OutputProfile(
   cursor: CapabilitySupport.supported,
-  geometry: OutputGeometry.fixed(columns: 18, rows: 6),
+  geometry: OutputGeometry.fixed(columns: 24, rows: 6),
 );
 
 /// Renders the emitted transcript as physical terminal lines: a carriage
@@ -25,6 +25,16 @@ Iterable<String> _visibleLines(String text) => text
           .last,
     )
     .where((line) => line.isNotEmpty);
+
+/// The component's own lines.
+///
+/// The shared sequential editor's status lines are not width-wrapped; they are
+/// owned by the text-input tickets and are excluded so a narrow-width tree or
+/// order row is measured without hiding a real overflow.
+Iterable<String> _componentLines(String text) => _visibleLines(text).where(
+  (line) =>
+      !line.startsWith('Current text:') && !line.startsWith('Cursor position:'),
+);
 
 void main() {
   test(
@@ -104,6 +114,82 @@ void main() {
             mode: PromptMode.automatic,
           );
       expect((automatic as Accepted<List<String>>).value, ['b', 'a']);
+    },
+  );
+
+  test(
+    'tree rows keep path, reference and state markers inside a narrow width',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await TreeSelect<String>('Pick', [
+            TreeNode(
+              'a',
+              'Very long branch label that cannot fit',
+              disabledReason: 'offline',
+              children: [TreeNode('b', 'Nested leaf')],
+            ),
+            TreeNode('c', 'Second root'),
+          ], defaultValue: 'c').prompt(
+            source: ScriptedInput(
+              Stream.value('/open\r1\r/help\r/cancel\r'),
+              output,
+              outputProfile: _narrowProfile,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect(result, isA<Cancelled<String>>());
+      final lines = _componentLines(output.toString()).toList();
+      for (final line in lines) {
+        expect(
+          line.length,
+          lessThanOrEqualTo(24),
+          reason: 'line exceeds the declared width: "$line"',
+        );
+      }
+      final text = lines.join('\n');
+      // The reference prefix and every meaningful marker survive wrapping as
+      // one unit; they are never split across physical lines.
+      expect(text, contains('1.'));
+      expect(text, contains('[collapsed]'));
+      expect(text, contains('[selectable]'));
+      expect(text, contains('[unavailable: offline]'));
+      expect(text, contains('[default]'));
+      expect(text, contains('Very long branch'));
+    },
+  );
+
+  test(
+    'order rows keep position, focus and locked markers inside a narrow width',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await SortableSelect<String>('Order', [
+            Choice('a', 'A first item with a long label'),
+            Choice('x', 'Anchor', disabledReason: 'protected'),
+            Choice('b', 'B'),
+          ]).prompt(
+            source: ScriptedInput(
+              Stream.value(' \x1b[B \x1b[B\r\r'),
+              output,
+              outputProfile: _narrowProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<List<String>>).value, ['a', 'x', 'b']);
+      final lines = _visibleLines(output.toString()).toList();
+      for (final line in lines) {
+        expect(
+          line.length,
+          lessThanOrEqualTo(24),
+          reason: 'line exceeds the declared width: "$line"',
+        );
+      }
+      final text = lines.join('\n');
+      expect(text, contains('[position 1 of 3]'));
+      expect(text, contains('[locked: protected]'));
+      expect(text, contains('[focused]'));
+      expect(text, contains('[moving]'));
     },
   );
 }

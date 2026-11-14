@@ -3663,6 +3663,9 @@ final class Choice<T> {
   final String? disabledReason;
 }
 
+/// The expansion state a tree row presents, independent of selectability.
+enum _TreeRowState { leaf, expanded, collapsed, childrenUnavailable }
+
 /// One displayed choice row.
 ///
 /// Every public choice family composes its rows through this typed record so a
@@ -3670,6 +3673,13 @@ final class Choice<T> {
 /// default and an unavailable reason stay separate facts. The markers are also
 /// the row's atomic units: wrapping may move one to the next line but never
 /// splits it.
+///
+/// The tree and order families extend the same record instead of inventing a
+/// second row: a tree row adds its expansion state, its selectability and its
+/// staleness beside focus and default, and an order row adds the identity's
+/// current position, its locked anchor reason and a pick-up state. Marker order
+/// is selection, position, focus, default, tree state, selectability, lock,
+/// movement and unavailability.
 final class _ChoiceRow {
   const _ChoiceRow({
     required this.reference,
@@ -3679,6 +3689,14 @@ final class _ChoiceRow {
     this.focused = false,
     this.isDefault = false,
     this.disabledReason,
+    this.treeState,
+    this.childrenUnavailableReason,
+    this.selectable,
+    this.position,
+    this.positionCount,
+    this.lockedReason,
+    this.moving = false,
+    this.current = true,
   });
 
   /// The stable choice reference displayed for this row, independent of order.
@@ -3694,11 +3712,51 @@ final class _ChoiceRow {
   final bool isDefault;
   final String? disabledReason;
 
+  /// The tree family's expansion state, or null for a non-tree row.
+  final _TreeRowState? treeState;
+
+  /// Explains a branch whose children are not currently available.
+  final String? childrenUnavailableReason;
+
+  /// Whether a tree node may be accepted, or null for a non-tree row.
+  ///
+  /// Expansion and selectability are independent: a selectable branch can be
+  /// opened, and a leaf may still be unselectable.
+  final bool? selectable;
+
+  /// The order family's one-based display position for this identity.
+  final int? position;
+  final int? positionCount;
+
+  /// The order family's permanent position that other identities cannot cross.
+  final String? lockedReason;
+
+  /// The identity is picked up and currently follows the focus.
+  final bool moving;
+
+  /// The source still reports this node in the current path.
+  final bool current;
+
+  String? get _treeStateMarker => switch (treeState) {
+    null => null,
+    _TreeRowState.leaf => '[leaf]',
+    _TreeRowState.expanded => '[expanded]',
+    _TreeRowState.collapsed => '[collapsed]',
+    _TreeRowState.childrenUnavailable =>
+      '[children unavailable: $childrenUnavailableReason]',
+  };
+
   List<String> get markers => [
     if (checked != null) checked! ? '[checked]' : '[unchecked]',
+    if (position != null) '[position $position of $positionCount]',
     if (focused) '[focused]',
     if (isDefault) '[default]',
+    ?_treeStateMarker,
+    if (selectable != null) selectable! ? '[selectable]' : '[not selectable]',
+    if (lockedReason != null) '[locked: $lockedReason]',
+    if (moving) '[moving]',
     if (disabledReason != null) '[unavailable: $disabledReason]',
+    if (!current) '[unavailable: no longer available]',
   ];
 
   String get text =>
