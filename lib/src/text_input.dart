@@ -239,12 +239,7 @@ OutputProfile _constrainToObservedGeometry(
       profile.geometry.isAutomatic) {
     return profile;
   }
-  return OutputProfile(
-    cursor: profile.cursor,
-    alternateScreen: profile.alternateScreen,
-    styles: profile.styles,
-    colorDepth: profile.colorDepth,
-    glyphs: profile.glyphs,
+  return profile.copyWith(
     geometry: OutputGeometry.fixed(
       columns: profile.geometry.columns! < observed.columns!
           ? profile.geometry.columns!
@@ -253,7 +248,6 @@ OutputProfile _constrainToObservedGeometry(
           ? profile.geometry.rows!
           : observed.rows!,
     ),
-    ambiguousWidth: profile.ambiguousWidth,
   );
 }
 

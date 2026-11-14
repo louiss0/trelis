@@ -27,6 +27,34 @@ void main() {
     );
   });
 
+  test('OutputProfile replaces one declared fact without losing the rest', () {
+    final profile = OutputProfile(
+      cursor: CapabilitySupport.supported,
+      alternateScreen: CapabilitySupport.unsupported,
+      styles: CapabilitySupport.supported,
+      colorDepth: ColorDepth.indexed256,
+      glyphs: GlyphSet.unicode,
+      geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+      ambiguousWidth: AmbiguousWidth.wide,
+    );
+
+    final reflowed = profile.copyWith(
+      geometry: OutputGeometry.fixed(columns: 40, rows: 30),
+    );
+
+    expect(reflowed.geometry.columns, 40);
+    expect(reflowed.cursor, CapabilitySupport.supported);
+    expect(reflowed.alternateScreen, CapabilitySupport.unsupported);
+    expect(reflowed.styles, CapabilitySupport.supported);
+    expect(reflowed.colorDepth, ColorDepth.indexed256);
+    expect(reflowed.glyphs, GlyphSet.unicode);
+    expect(reflowed.ambiguousWidth, AmbiguousWidth.wide);
+    expect(
+      profile.copyWith(colorDepth: ColorDepth.none).colorDepth,
+      ColorDepth.none,
+    );
+  });
+
   test(
     'a source profile with cursor and positive geometry enables rich input',
     () async {
