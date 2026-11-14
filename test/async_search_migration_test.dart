@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:prompty/prompty.dart';
+// The typed query/results projection is an internal presentation contract, not
+// part of the public authoring surface: read it through its narrow seam.
+import 'package:prompty/src/presentation.dart';
 import 'package:test/test.dart';
 
 import 'support/async_search_fixture.dart';
@@ -253,6 +256,50 @@ void main() {
           transcript.events.map((event) => event.kind),
           contains(TextInputPresentationEventKind.submitted),
         );
+      },
+    );
+
+    test(
+      'a response-local candidate acceptance has no source-stable reference',
+      () async {
+        final transcript = TextInputTranscript();
+        final result = await Autocomplete('Name', suggestions: (_) => ['Ada'])
+            .prompt(
+              source: _scripted(
+                Stream.value('A\r1\r/submit\r'),
+                StringBuffer(),
+                transcript: transcript,
+              ),
+              mode: PromptMode.linear,
+            );
+
+        expect((result as Accepted<String>).value, 'Ada');
+        final accepted = transcript.events.singleWhere(
+          (event) =>
+              event.kind == TextInputPresentationEventKind.candidateAccepted,
+        );
+        expect(accepted.text, 'Ada');
+        expect(
+          accepted.reference,
+          isNull,
+          reason:
+              'a position belongs to one suggestion response and is not a '
+              'source-stable identity',
+        );
+        final ready = transcript.events
+            .where(
+              (event) =>
+                  event.kind == TextInputPresentationEventKind.results &&
+                  event.results?.phase == QueryResultsPhase.ready,
+            )
+            .last
+            .results!;
+        expect(
+          ready.identityModel,
+          QueryResultsIdentityModel.responseLocalCandidate,
+        );
+        expect(ready.rows.single.position, 1);
+        expect(ready.rows.single.reference, isNull);
       },
     );
 

@@ -218,4 +218,51 @@ void main() {
     expect(transcript.currentView!.caret, 0);
     expect(transcript.events.map((event) => event.text), isNot(contains(url)));
   });
+
+  test(
+    'rich and linear Ctrl+T help describes URL entry without the draft',
+    () async {
+      for (final mode in [PromptMode.rich, PromptMode.linear]) {
+        final out = StringBuffer();
+        final result = await URLInput('URL', allowedSchemes: {'https'}).prompt(
+          source: ScriptedInput(
+            Stream.value('private-draft-path\x14\r\x03'),
+            out,
+            outputProfile: mode == PromptMode.rich
+                ? _richProfile
+                : const OutputProfile(),
+          ),
+          mode: mode,
+        );
+
+        expect(result, isA<Interrupted<String>>());
+        expect(
+          out.toString(),
+          contains('Help: Enter validates an absolute URL'),
+          reason: '${mode.name} help is URL-specific, not generic editor help',
+        );
+        expect(
+          out.toString(),
+          isNot(contains('private-draft-path')),
+          reason: 'help must not disclose a hidden draft',
+        );
+      }
+    },
+  );
+
+  test('/help is literal URL entry data rather than a command', () async {
+    final out = StringBuffer();
+    final result = await URLInput('URL', allowedSchemes: {'https'}).prompt(
+      source: ScriptedInput(Stream.value('/help\r\x03'), out),
+      mode: PromptMode.linear,
+    );
+
+    expect(result, isA<Interrupted<String>>());
+    expect(
+      out.toString(),
+      isNot(contains('Help: Enter validates an absolute URL')),
+      reason: 'a hidden draft treats /help as answer data; Ctrl+T is the route',
+    );
+    expect(out.toString(), contains('Enter a valid absolute URL'));
+  });
 }

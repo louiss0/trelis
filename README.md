@@ -62,8 +62,10 @@ provides the selected input/output, existing rich-capability observation and a
 declared environment; `acquire()` returns a lease that Trelis restores after the
 invocation. Do not combine that adapter with `source:` or `output:`. `Text`,
 `Progress`, `Spinner`, and `MultiSpinner` can select its output with
-`terminal:` without acquiring input. The legacy native invocation and
-`ScriptedInput` forms remain supported until the later migration contract step.
+`terminal:` without acquiring input. The native invocation and
+`ScriptedInput` forms remain supported: they are the documented compatibility
+surface, and `supportsRich` is only a cursor-capability hint rather than
+evidence of dimensions, styles, colours or glyphs.
 Supplied answers are literal and validated. For a stream, only completed lines
 submit; EOF, cancellation and interruption are distinct outcomes. Linear
 `/help` and `/cancel` are exact commands: prefix either with `\` to enter it
@@ -151,7 +153,46 @@ separates a source-stable `Choice` reference from a response-local
 removed focused result. An obsolete or closed-session response is rejected
 before projection, so the recording never describes a stale answer, and a
 candidate acceptance is recorded separately from the prompt's final `Accepted`,
-`Cancelled`, `Interrupted`, `InputEnded` or `Unavailable` outcome.
+`Cancelled`, `Interrupted`, `InputEnded` or `Unavailable` outcome. A
+response-local candidate acceptance has no source-stable reference: its ordinal
+is a position in the presented response, not a choice identity.
+
+The projection is an internal presentation contract observed through the
+transcript. It is not exported for construction: a caller reads the recorded
+values and cannot author one, because structural presentation and layout stay
+inside Trelis for this release.
+
+## Compatibility and migrations
+
+The pre-backend public surface is retained. Direct constructors, generic type
+parameters, callbacks, answer types, linear commands, result outcomes and
+`source: SuppliedAnswer` semantics are unchanged; no package or import was
+renamed. Revalidated against the source inventory in
+[the compatibility evidence](doc/evidence/trelis-backend/30-compatibility-and-contract.md).
+
+Intentional additive changes since that inventory:
+
+- Invocation adds `terminal:`, `outputProfile:` and `session:` where
+  applicable, beside the existing `source`, `mode`, `userPreference`,
+  `applicationPreference` and `output`. Feedback adds `terminal:`, `session:`
+  and keeps its `mode`/`supportsRich` hints.
+- Interactive constructors add `instructions:`, `supplementaryHelp:` and, where
+  a palette is implemented, `colors:`. Defaults keep the reference presentation:
+  `InstructionDisplay.themeDefault` shows the expanded guidance and
+  `ColorThemes.terminalDefault` requests terminal-native colours.
+- Synthetic rich output must declare cursor support and positive geometry. The
+  old `supportsRich` flag is a compatibility hint only; automatic mode falls
+  back to linear instead of inventing a screen.
+- Named structural themes are not part of this release. Direct construction uses
+  the plain reference presentation, and the backend evidence gate still blocks
+  the theme rollout.
+- Component help is component- and stage-specific in both interactions. Hidden
+  instructions keep the help route, protected content and validation visible.
+  Hidden-draft entry (`Password`, `URLInput`) keeps literal semantics: a typed
+  `/help` line is answer data there, and `Ctrl+T` is the help route.
+
+No accessibility qualification is claimed for any of these changes; the
+whole-library Windows Terminal + NVDA baseline is still outstanding.
 
 ## Password
 

@@ -136,13 +136,10 @@ void main() {
       );
       expect(transcript.currentView!.text, 'demo');
       expect(transcript.currentView!.caret, 4);
-      expect(
-        transcript.events.map((event) => event.kind),
-        [
-          TextInputPresentationEventKind.opened,
-          TextInputPresentationEventKind.submitted,
-        ],
-      );
+      expect(transcript.events.map((event) => event.kind), [
+        TextInputPresentationEventKind.opened,
+        TextInputPresentationEventKind.submitted,
+      ]);
     },
   );
 }
