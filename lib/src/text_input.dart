@@ -304,10 +304,23 @@ String _presentationSignature(QueryResultsPresentation presentation) => [
 final _noScreenOwner = Object();
 final _screenOwners = Expando<Object>('prompty terminal screen owner');
 
+/// One shared screen claim held by running standalone feedback.
+///
+/// Several independent feedback regions may present on one sink, so the claim
+/// is reference-counted rather than exclusive. It still excludes a session: a
+/// scoped owner requires the whole screen, while standalone feedback would
+/// keep writing unscoped status lines into it.
+final class _StandaloneFeedbackClaim {
+  int _owners = 1;
+}
+
 Object? _screenOwner(StringSink output) {
   final owner = _screenOwners[output as Object];
   return identical(owner, _noScreenOwner) ? null : owner;
 }
+
+bool _hasSessionOwner(StringSink output) =>
+    _screenOwner(output) is TerminalSession;
 
 void _claimScreen(StringSink output, Object owner) {
   if (_screenOwner(output) != null) {
@@ -752,26 +765,46 @@ final class TerminalSession {
   /// This is used by the feedback components to reject an independent writer
   /// while a session owns the selected screen. It never creates a shared
   /// global session: callers must explicitly attach to [run].
+  ///
+  /// The returned token registers the claim, so a session cannot take the same
+  /// screen while standalone feedback is writing it. Release it with
+  /// [releaseStandaloneFeedbackOutput] when the feedback finishes.
   static void ensureStandaloneOutputAvailable(StringSink output) {
-    if (_screenOwner(output) != null) {
+    if (_hasSessionOwner(output)) {
       throw StateError(
         'This output already has a terminal screen owner; attach to its TerminalSession instead.',
       );
     }
   }
 
+  /// Registers standalone feedback as a writer of [output] and returns its
+  /// release token.
+  ///
+  /// Standalone feedback remains source-compatible with other standalone
+  /// feedback: a second region joins the existing claim and the sink is only
+  /// released when the last region finishes. It must not, however, paint
+  /// through an explicit session, or start one.
   static Object claimStandaloneFeedbackOutput(StringSink output) {
-    // Standalone feedback remains source-compatible with other standalone
-    // feedback. It must not, however, paint through an explicit session.
+    final owner = _screenOwner(output);
+    if (owner is _StandaloneFeedbackClaim) {
+      owner._owners++;
+      return owner;
+    }
     ensureStandaloneOutputAvailable(output);
-    return Object();
+    final claim = _StandaloneFeedbackClaim();
+    _screenOwners[output as Object] = claim;
+    return claim;
   }
 
   /// Releases a claim returned by [claimStandaloneFeedbackOutput].
-  static void releaseStandaloneFeedbackOutput(
-    StringSink output,
-    Object owner,
-  ) {}
+  static void releaseStandaloneFeedbackOutput(StringSink output, Object owner) {
+    if (owner is! _StandaloneFeedbackClaim) return;
+    if (!identical(_screenOwner(output), owner)) return;
+    owner._owners--;
+    if (owner._owners <= 0) {
+      _screenOwners[output as Object] = _noScreenOwner;
+    }
+  }
 
   /// Runs [callback] with a scoped terminal owner and returns its result after
   /// releasing any session-owned scripted reader.

@@ -4,6 +4,55 @@ import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'standalone feedback that is still running refuses a second screen owner',
+    () async {
+      final output = StringBuffer();
+      final spinner = Spinner('Index')
+        ..start(output: output, supportsRich: false);
+
+      await expectLater(
+        TerminalSession.run(
+          (session) async {},
+          output: output,
+          mode: PromptMode.linear,
+        ),
+        throwsStateError,
+      );
+
+      // A one-shot informational line is not a screen owner: it stays
+      // source-compatible while standalone feedback writes the same sink.
+      Text('Cache warm').present(output: output);
+      spinner.dispose();
+
+      // Retirement releases the claim, so the sink is reusable afterwards.
+      await TerminalSession.run(
+        (session) async {},
+        output: output,
+        mode: PromptMode.linear,
+      );
+    },
+  );
+
+  test(
+    'standalone feedback regions remain source-compatible on one sink',
+    () async {
+      final output = StringBuffer();
+      final first = Spinner('Index')
+        ..start(output: output, supportsRich: false);
+      final second = Progress('Upload', total: 2)
+        ..start(output: output, supportsRich: false);
+
+      first.update('reading');
+      second.update(1);
+      first.dispose();
+      second.dispose();
+
+      expect(output.toString(), contains('Index: reading'));
+      expect(output.toString(), contains('Upload: running'));
+    },
+  );
+
   test('a rich scoped session keeps live spinner and text status above an editable prompt', () async {
     final output = StringBuffer();
     final input = StreamController<String>();
