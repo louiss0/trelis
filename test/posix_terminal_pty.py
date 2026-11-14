@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Exercise public TextInput native sessions through a real POSIX PTY."""
+import fcntl
 import os
 import pty
 import select
 import signal
+import struct
 import subprocess
 import sys
 import termios
@@ -12,6 +14,9 @@ import time
 
 def run(scenario, inputs, expected, term=None):
     master, slave = pty.openpty()
+    # A fresh PTY commonly has zero geometry. Configure the real terminal;
+    # rich prompts correctly refuse an output with no measurable viewport.
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
     before = termios.tcgetattr(slave)
     process = subprocess.Popen(
         ['dart', 'run', 'test/text_input_native_app.dart', scenario],
@@ -25,7 +30,8 @@ def run(scenario, inputs, expected, term=None):
             deadline = time.monotonic() + 30
             while prompt not in transcript:
                 if process.poll() is not None:
-                    raise AssertionError(f'process exited before {prompt!r}: {transcript!r}')
+                    stdout, _ = process.communicate()
+                    raise AssertionError(f'{scenario}: process exited before {prompt!r}: stdout={stdout!r}, terminal={transcript!r}')
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise AssertionError(f'timed out waiting for {prompt!r}: {transcript!r}')

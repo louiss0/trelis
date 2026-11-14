@@ -72,7 +72,14 @@ final class _PickerEntry {
   bool get isCurrent {
     try {
       final current = Link(path).statSync();
-      return current.type == stat.type &&
+      final attributes = _windowsAttributes(path);
+      final linked =
+          FileSystemEntity.typeSync(path, followLinks: false) ==
+              FileSystemEntityType.link ||
+          (attributes != null && attributes & 0x400 != 0);
+      final currentType = linked ? FileSystemEntityType.link : current.type;
+      return currentType == type &&
+          current.type == stat.type &&
           current.mode == stat.mode &&
           current.size == stat.size &&
           current.changed == stat.changed &&
@@ -270,7 +277,8 @@ final class _FilesystemPicker {
             if (!showHidden && hidden) continue;
             final stat = await Link(entry.path).stat();
             final linked =
-                stat.type == FileSystemEntityType.link ||
+                await FileSystemEntity.type(entry.path, followLinks: false) ==
+                    FileSystemEntityType.link ||
                 (attributes != null && attributes & 0x400 != 0);
             entries.add(
               _PickerEntry(
