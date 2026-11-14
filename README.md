@@ -606,6 +606,22 @@ path is accepted only when the platform can establish absence; unsupported
 inspection platforms fail closed. These checks are snapshots and do not grant
 permission or guarantee a subsequent filesystem operation.
 
+`PathInput.prompt` accepts `terminal`, `outputProfile` and `session` like the
+other migrated prompts: an attached prompt inherits the `TerminalSession`
+configuration, an explicit adapter is leased and restored, and a rich synthetic
+source must declare cursor support and positive geometry. Guidance is measured
+against the declared width and uses the component `ColorTheme` when the profile
+permits colour. Ctrl+T in rich mode or `/help` in linear mode opens
+path-specific component help rather than generic editor instructions: it names
+the base, the existence and target-type policy, literal-path and escaping
+rules, the absent shell expansion, link canonicalization and working-directory
+change, the file-browser route for link approval, and the snapshot/later-
+operation caveat. The `/help` command is cleared instead of being typed into
+the path, and `\/help` enters that literal path. Entry and review have
+their own help, and dismissal returns to the same stage with the draft or
+candidate retained. A lone trailing Escape at end of input reports
+`InputEnded`, not cancellation.
+
 ## FilePicker and DirectoryPicker
 
 `FilePicker('File', base: path)` returns the absolute path of an existing file
@@ -625,6 +641,17 @@ instead of targeting the replacement. Linked directories need an explicit
 current directory, and path validation errors are reported without losing
 context. For `DirectoryPicker`, `choose` without a number chooses the current
 directory.
+
+Both browsers run on the shared backend: `prompt` accepts `terminal`,
+`outputProfile` and `session`, the opening guidance, listing, warnings and
+review are measured and styled through the shared writer, and a rich synthetic
+source must declare cursor support and positive geometry. The compact warning
+that hidden entries exist, that links need explicit per-open approval and that
+the base is not a sandbox stays visible outside help. Ctrl+T in rich mode or
+`/help` in linear mode opens stage-specific help for browsing, literal-path
+entry and review, naming every action, the reference-versus-identity rule, the
+link-approval and cycle rules, the no-sandbox caveat and the later-operation
+limit. The `/help` command is cleared instead of being run as an action.
 
 ### Feedback
 

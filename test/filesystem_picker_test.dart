@@ -4,6 +4,23 @@ import 'package:path/path.dart' as path;
 import 'package:prompty/prompty.dart';
 import 'package:test/test.dart';
 
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+);
+
+/// Rich browser scenarios declare the cursor support and geometry the shared
+/// profile layer requires; linear scenarios declare no geometry.
+ScriptedInput _browseSource(
+  PromptMode mode,
+  Stream<String> input,
+  StringSink output,
+) => ScriptedInput(
+  input,
+  output,
+  outputProfile: mode == PromptMode.rich ? _richProfile : const OutputProfile(),
+);
+
 void main() {
   for (final mode in [PromptMode.rich, PromptMode.linear]) {
     for (final directory in [false, true]) {
@@ -25,7 +42,8 @@ void main() {
               ? DirectoryPicker('Directory', base: base.path).prompt
               : FilePicker('File', base: base.path).prompt;
           final first = await prompt(
-            source: ScriptedInput(
+            source: _browseSource(
+              mode,
               Stream.value(
                 'open 2\rhidden\r${directory ? 'choose' : 'choose 2'}\r\r',
               ),
@@ -39,7 +57,8 @@ void main() {
           );
           final output = StringBuffer();
           final second = await prompt(
-            source: ScriptedInput(
+            source: _browseSource(
+              mode,
               Stream.value('${directory ? 'choose' : 'choose 1'}\r\r'),
               output,
             ),
@@ -115,7 +134,11 @@ void main() {
           .writeAsString('hidden');
       final out = StringBuffer();
       final result = await FilePicker('File', base: dir.path).prompt(
-        source: ScriptedInput(Stream.value('hidden\rchoose 1\r\r'), out),
+        source: _browseSource(
+          PromptMode.rich,
+          Stream.value('hidden\rchoose 1\r\r'),
+          out,
+        ),
         mode: PromptMode.rich,
       );
       expect((result as Accepted<String>).value, hidden.path);
@@ -252,7 +275,11 @@ void main() {
     await _directoryLink(linked, dir.path);
     final out = StringBuffer();
     final result = await DirectoryPicker('Directory', base: dir.path).prompt(
-      source: ScriptedInput(Stream.value('open 1 links\rchoose\r\r'), out),
+      source: _browseSource(
+        PromptMode.rich,
+        Stream.value('open 1 links\rchoose\r\r'),
+        out,
+      ),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, dir.path);
