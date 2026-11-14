@@ -397,11 +397,13 @@ NumericConvention? _macOSNumericConvention() {
     final decimal = objc.string(formatter, 'decimalSeparator');
     final thousands = objc.string(formatter, 'groupingSeparator');
     final negativeSign = objc.string(formatter, 'minusSign');
-    final negativeFormat = objc.string(formatter, 'negativeFormat');
+    final negativePrefix = objc.string(formatter, 'negativePrefix');
+    final negativeSuffix = objc.string(formatter, 'negativeSuffix');
     if (decimal == null ||
         thousands == null ||
         negativeSign == null ||
-        negativeFormat == null) {
+        negativePrefix == null ||
+        negativeSuffix == null) {
       return null;
     }
     final primary = objc.integer(formatter, 'groupingSize');
@@ -412,18 +414,19 @@ NumericConvention? _macOSNumericConvention() {
         : secondary > 0 && secondary != primary
         ? [secondary, primary]
         : [primary];
-    final prefix = negativeFormat.split('#').first;
-    final suffix = negativeFormat.split('#').last;
-    final negativePattern =
-        negativeFormat.startsWith('(') && negativeFormat.endsWith(')')
+    // The sign placement is read from the negative affixes. The decimal style
+    // reports `negativeFormat` as the positive shape (`#,##0.###` on the macOS
+    // runners) and keeps the sign in `negativePrefix`, so that format string
+    // cannot describe where a negative sign goes.
+    final negativePattern = negativePrefix == '(' && negativeSuffix == ')'
         ? NumericNegativePattern.parentheses
-        : prefix == negativeSign
+        : negativePrefix == negativeSign
         ? NumericNegativePattern.leading
-        : prefix == '$negativeSign '
+        : negativePrefix == '$negativeSign '
         ? NumericNegativePattern.leadingSpace
-        : suffix == negativeSign
+        : negativeSuffix == negativeSign
         ? NumericNegativePattern.trailing
-        : suffix == ' $negativeSign'
+        : negativeSuffix == ' $negativeSign'
         ? NumericNegativePattern.trailingSpace
         : null;
     if (negativePattern == null) return null;
