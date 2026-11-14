@@ -380,6 +380,19 @@ final class TerminalSessionFeedbackRegion {
   }
 }
 
+/// One feedback line that arrived while modal help owned painting.
+///
+/// Its identity is the occurrence, not the displayed text: a session delivers
+/// every occurrence a producer reported, and comparing text to decide whether
+/// two of them are the same event would silently merge independent regions and
+/// repeated notifications. The sequence keeps their arrival order stable.
+final class _DeferredFeedbackLine {
+  const _DeferredFeedbackLine(this.sequence, this.line);
+
+  final int sequence;
+  final String line;
+}
+
 /// Coordinates sequential prompt and feedback invocations over one selected
 /// terminal.
 ///
@@ -423,12 +436,26 @@ final class TerminalSession {
   /// modal help returns.
   final Map<int, String> _feedbackSnapshots = {};
 
-  /// Lines that arrived while modal help owned painting, keyed by region.
+  /// The latest deferred line of each region that reported while help owned
+  /// painting, in first-deferral order.
   ///
-  /// They are written once when help returns, in first-deferral order. A later
-  /// update of the same region replaces its deferred line instead of growing
-  /// the session's memory.
-  final Map<int, String> _deferredFeedback = {};
+  /// Only the latest line is kept per region: the composite restores the
+  /// current state, not a backlog. Important occurrences are retained
+  /// separately, so a later ordinary update cannot displace a notice the
+  /// transcript still owes the reader.
+  final Map<int, _DeferredFeedbackLine> _deferredFeedback = {};
+
+  /// Meaningful notices that arrived while help owned painting, in arrival
+  /// order.
+  ///
+  /// A component may report several facts through one region (a task group
+  /// reports every task through the session's single region), so a later
+  /// ordinary update must not displace a failure the transcript still owes the
+  /// reader. Each emission is retained as its own occurrence: two regions may
+  /// report the same words, and one region may report the same words twice, and
+  /// neither is a repaint of the other. Text is never compared to decide that.
+  final List<_DeferredFeedbackLine> _deferredNotices = [];
+  int _nextDeferredSequence = 1;
 
   /// Whether the newest emitted feedback line reported a warning, error or
   /// explicit outcome. A retired failure stays reviewable in the transcript
@@ -486,6 +513,7 @@ final class TerminalSession {
     _liveGenerations.clear();
     _feedbackSnapshots.clear();
     _deferredFeedback.clear();
+    _deferredNotices.clear();
     // The active prompt cannot be answered through a retired session, so it
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
@@ -644,7 +672,9 @@ final class TerminalSession {
     _feedbackSnapshots[region._id] = line;
     _lastFeedbackLineImportant = _isImportantFeedback(line);
     if (_modalHelp) {
-      _deferredFeedback[region._id] = line;
+      final deferred = _DeferredFeedbackLine(_nextDeferredSequence++, line);
+      _deferredFeedback[region._id] = deferred;
+      if (_isImportantFeedback(line)) _deferredNotices.add(deferred);
       return;
     }
     // One session-owned writer delivers a complete region update before the
@@ -690,33 +720,41 @@ final class TerminalSession {
   }
 
   void _restoreLatestComposite() {
-    final deferred = [..._deferredFeedback.values];
+    final notices = _deferredNotices.toList();
+    final noticeSequences = {for (final notice in notices) notice.sequence};
+    // The latest line of a region is replayed only when it is a different
+    // occurrence from the notices above. Identity, not text, decides that: a
+    // region that reported the same words twice keeps both events.
+    final restore = [
+      ...notices,
+      for (final latest in _deferredFeedback.values)
+        if (!noticeSequences.contains(latest.sequence)) latest,
+    ]..sort((a, b) => a.sequence.compareTo(b.sequence));
+    _deferredNotices.clear();
     _deferredFeedback.clear();
     if (_feedbackNeedsCompaction) {
       // Full reviewable notices survive the modal interval even when the live
       // portion has no rows; ordinary updates are summarized by the compact
       // line instead of growing the transcript.
-      final important = [
-        for (final line in deferred)
-          if (_isImportantFeedback(line)) line,
-      ];
-      if (important.isNotEmpty) {
+      if (notices.isNotEmpty) {
         _writeShared(() {
           if (_promptRepaint != null && _feedbackRich) {
             _output.write('\r\x1b[2K');
           }
-          for (final line in important) {
-            _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+          for (final notice in notices) {
+            _output.writeln(
+              '${_feedbackRich ? '[status] ' : ''}${notice.line}',
+            );
           }
         });
       }
       _paintCompactFeedback();
       return;
     }
-    if (deferred.isEmpty) return;
+    if (restore.isEmpty) return;
     _writeShared(() {
-      for (final line in deferred) {
-        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+      for (final deferred in restore) {
+        _output.writeln('${_feedbackRich ? '[status] ' : ''}${deferred.line}');
       }
     });
   }
@@ -907,6 +945,7 @@ final class TerminalSession {
     _liveGenerations.clear();
     _feedbackSnapshots.clear();
     _deferredFeedback.clear();
+    _deferredNotices.clear();
     try {
       await _keys?.close();
     } catch (error, stackTrace) {
@@ -1077,14 +1116,7 @@ final class _SessionOutputSink implements StringSink {
       _session._writeShared(() => _session._output.writeln(object));
 }
 
-bool _isAutomaticProfile(OutputProfile profile) =>
-    profile.cursor == CapabilitySupport.automatic &&
-    profile.alternateScreen == CapabilitySupport.automatic &&
-    profile.styles == CapabilitySupport.automatic &&
-    profile.colorDepth == ColorDepth.automatic &&
-    profile.glyphs == GlyphSet.automatic &&
-    profile.geometry.isAutomatic &&
-    profile.ambiguousWidth == AmbiguousWidth.automatic;
+bool _isAutomaticProfile(OutputProfile profile) => profile.isAutomatic;
 
 final _textInputDeclaration = PresentationDeclaration({
   PresentationSlot.label,

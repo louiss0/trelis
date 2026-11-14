@@ -76,13 +76,23 @@ final class TextDisplayEntry {
 /// The single display-escaping policy for text that may contain terminal
 /// instructions or directionality controls.
 ///
-/// Control, format, separator, surrogate, unassigned and private-use code
-/// points become their visible `\\u{XXXX}` spelling, and a joiner stays part of
-/// a visible cluster. Measured display entries and protected presentation
-/// content both use this policy, so the same text is never spelled one way by
-/// the layout path and another by an unwrapped one.
+/// The policy is applied per grapheme cluster, which is the unit the layout
+/// measures. Control, format, separator, surrogate, unassigned and private-use
+/// code points become their visible `\\u{XXXX}` spelling, a joiner stays part of
+/// a supported cluster (such as an emoji sequence), and a dangling joiner at a
+/// cluster boundary is spelled out. Measured display entries and protected
+/// presentation content both use this policy, so the same text is never spelled
+/// one way by the layout path and another by an unwrapped one.
 String displaySafe(String value) {
-  final runes = value.runes.toList();
+  final result = StringBuffer();
+  for (final cluster in value.characters) {
+    result.write(_displayCluster(cluster));
+  }
+  return result.toString();
+}
+
+String _displayCluster(String cluster) {
+  final runes = cluster.runes.toList();
   final hasVisibleBase = runes.any(
     (rune) =>
         !termunicode.isNonPrintableCp(rune) && termunicode.widthCp(rune) > 0,

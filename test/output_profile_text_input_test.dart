@@ -55,6 +55,38 @@ void main() {
     );
   });
 
+  test('OutputProfile replaces and clears each declared fact', () {
+    final profile = OutputProfile(
+      cursor: CapabilitySupport.supported,
+      alternateScreen: CapabilitySupport.unsupported,
+      styles: CapabilitySupport.supported,
+      colorDepth: ColorDepth.indexed256,
+      glyphs: GlyphSet.unicode,
+      geometry: OutputGeometry.fixed(columns: 100, rows: 30),
+      ambiguousWidth: AmbiguousWidth.wide,
+    );
+
+    final changed = profile.copyWith(
+      cursor: CapabilitySupport.unsupported,
+      alternateScreen: CapabilitySupport.supported,
+      styles: CapabilitySupport.unsupported,
+      colorDepth: ColorDepth.none,
+      glyphs: GlyphSet.ascii,
+      geometry: const OutputGeometry.automatic(),
+      ambiguousWidth: AmbiguousWidth.narrow,
+    );
+
+    expect(changed.cursor, CapabilitySupport.unsupported);
+    expect(changed.alternateScreen, CapabilitySupport.supported);
+    expect(changed.styles, CapabilitySupport.unsupported);
+    expect(changed.colorDepth, ColorDepth.none);
+    expect(changed.glyphs, GlyphSet.ascii);
+    expect(changed.geometry.isAutomatic, isTrue);
+    expect(changed.ambiguousWidth, AmbiguousWidth.narrow);
+    expect(changed.isAutomatic, isFalse);
+    expect(const OutputProfile().isAutomatic, isTrue);
+  });
+
   test(
     'a source profile with cursor and positive geometry enables rich input',
     () async {

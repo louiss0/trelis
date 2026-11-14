@@ -120,6 +120,49 @@ void main() {
   });
 
   test(
+    'a zero-row screen writes every deferred notice as its own record',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      final first = Spinner('Index');
+      final second = Spinner('Index');
+
+      await TerminalSession.run(
+        (session) async {
+          first.start(session: session);
+          second.start(session: session);
+          final prompt = TextInput('Project').prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          input.add('\x14');
+          await Future<void>.delayed(Duration.zero);
+          first.finish(FeedbackOutcome.failed, detail: 'offline');
+          second.finish(FeedbackOutcome.failed, detail: 'offline');
+          input.add('\x1b');
+          await Future<void>.delayed(Duration.zero);
+          input.add('demo\r');
+          await input.close();
+          await prompt;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          supportsRich: true,
+          outputProfile: _profile(1),
+        ),
+      );
+
+      expect(
+        RegExp(RegExp.escape('Index: failed: offline'))
+            .allMatches(output.toString())
+            .length,
+        2,
+        reason: 'no rows means full history for each occurrence',
+      );
+      expect(output.toString(), contains('[status] [!] Feedback (0)'));
+    },
+  );
+
+  test(
     'short-session composition recovers after resize without duplicate events',
     () async {
       final output = StringBuffer();
