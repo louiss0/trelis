@@ -124,15 +124,16 @@ void main() {
       // The Signal atlas page is #11121b, but the runtime background must be
       // the terminal surface (#191b28) so the palette never recolours the
       // global terminal surface.
-      expect(ColorThemes.signal.background, isNot(TerminalColor.rgb(17, 18, 27)));
+      expect(
+        ColorThemes.signal.background,
+        isNot(TerminalColor.rgb(17, 18, 27)),
+      );
       expect(ColorThemes.signal.background, TerminalColor.rgb(25, 27, 40));
     });
 
     test('copyWith is immutable and retains unspecified roles', () {
       final signal = ColorThemes.signal;
-      final patched = signal.copyWith(
-        warning: TerminalColor.rgb(255, 190, 80),
-      );
+      final patched = signal.copyWith(warning: TerminalColor.rgb(255, 190, 80));
       expect(patched.warning, TerminalColor.rgb(255, 190, 80));
       expect(patched.foreground, signal.foreground);
       expect(patched.accent, signal.accent);
@@ -140,21 +141,24 @@ void main() {
       expect(signal.warning, signal.accent);
     });
 
-    test('palette objects are independent; mutating a copied list does not leak', () {
-      final custom = ColorTheme(
-        foreground: TerminalColor.rgb(1, 2, 3),
-        background: TerminalColor.rgb(4, 5, 6),
-        muted: TerminalColor.rgb(7, 8, 9),
-        accent: TerminalColor.rgb(10, 11, 12),
-        selectionForeground: TerminalColor.rgb(13, 14, 15),
-        selectionBackground: TerminalColor.rgb(16, 17, 18),
-        success: TerminalColor.rgb(19, 20, 21),
-        warning: TerminalColor.rgb(22, 23, 24),
-        error: TerminalColor.rgb(25, 26, 27),
-        border: TerminalColor.rgb(28, 29, 30),
-      );
-      expect(custom.foreground, TerminalColor.rgb(1, 2, 3));
-    });
+    test(
+      'palette objects are independent; mutating a copied list does not leak',
+      () {
+        final custom = ColorTheme(
+          foreground: TerminalColor.rgb(1, 2, 3),
+          background: TerminalColor.rgb(4, 5, 6),
+          muted: TerminalColor.rgb(7, 8, 9),
+          accent: TerminalColor.rgb(10, 11, 12),
+          selectionForeground: TerminalColor.rgb(13, 14, 15),
+          selectionBackground: TerminalColor.rgb(16, 17, 18),
+          success: TerminalColor.rgb(19, 20, 21),
+          warning: TerminalColor.rgb(22, 23, 24),
+          error: TerminalColor.rgb(25, 26, 27),
+          border: TerminalColor.rgb(28, 29, 30),
+        );
+        expect(custom.foreground, TerminalColor.rgb(1, 2, 3));
+      },
+    );
 
     test('TerminalColor rejects out-of-range channel values', () {
       expect(() => TerminalColor.rgb(-1, 0, 0), throwsArgumentError);

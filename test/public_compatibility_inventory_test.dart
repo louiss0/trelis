@@ -307,11 +307,13 @@ void main() {
           "export 'src/output_profile.dart';",
           "export 'src/color_theme.dart';",
           "export 'src/terminal_io.dart';",
+          "export 'src/themes/plain_theme.dart';",
         ],
         reason:
             'The presentation projection, layout and compositor stay internal: '
             'they are observed through the public transcript, not authored by '
-            'library consumers. Adding an export here is a public API decision.',
+            'library consumers. Theme factory namespaces are public authoring '
+            'surface and are exported alongside the component libraries.',
       );
     });
   });
