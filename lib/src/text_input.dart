@@ -13,6 +13,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import 'output_profile.dart';
 import 'color_theme.dart';
+import 'native_resize.dart';
 import 'presentation.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -2679,6 +2680,7 @@ Future<PromptResult<T>> _posixTerminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          resizeObserver: nativeConsoleResizeObserver(outputStream),
           hardColorDisabled:
               !outputStream.hasTerminal ||
               Platform.environment['NO_COLOR']?.isNotEmpty == true,
@@ -2792,6 +2794,7 @@ Future<PromptResult<T>> _terminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          resizeObserver: nativeConsoleResizeObserver(outputStream),
           hardColorDisabled:
               !outputStream.hasTerminal ||
               Platform.environment['NO_COLOR']?.isNotEmpty == true,
