@@ -306,14 +306,18 @@ void main() {
           "export 'src/feedback.dart';",
           "export 'src/output_profile.dart';",
           "export 'src/color_theme.dart';",
+          "export 'src/prompt_structure.dart';",
           "export 'src/terminal_io.dart';",
           "export 'src/themes/plain_theme.dart';",
+          "export 'src/themes/rail_theme.dart';",
+          "export 'src/themes/branch_theme.dart';",
         ],
         reason:
             'The presentation projection, layout and compositor stay internal: '
             'they are observed through the public transcript, not authored by '
-            'library consumers. Theme factory namespaces are public authoring '
-            'surface and are exported alongside the component libraries.',
+            'library consumers. The structural vocabulary enum and theme '
+            'factory namespaces are public authoring surface and are exported '
+            'alongside the component libraries.',
       );
     });
   });

@@ -9,6 +9,7 @@ final class PortInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -26,6 +27,7 @@ final class PortInput {
         ...supplementaryHelp,
       ],
       colors: colors,
+      structure: structure,
     );
     if (initialValue.isNotEmpty && _parse(initialValue) == null) {
       throw ArgumentError.value(initialValue, 'initialValue');
@@ -35,6 +37,7 @@ final class PortInput {
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   late final TextInput _input;
   int? _parse(String value) {
     if (!RegExp(r'^[0-9]+$').hasMatch(value)) return null;
@@ -91,6 +94,7 @@ final class IPAddressInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -108,6 +112,7 @@ final class IPAddressInput {
         ...supplementaryHelp,
       ],
       colors: colors,
+      structure: structure,
     );
     if (initialValue.isNotEmpty && _parse(initialValue) == null) {
       throw ArgumentError.value(initialValue, 'initialValue');
@@ -118,6 +123,7 @@ final class IPAddressInput {
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   late final TextInput _input;
 
   IPAddressValue? _parse(String value) {

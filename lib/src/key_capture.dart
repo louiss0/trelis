@@ -34,6 +34,7 @@ final class Keypress {
     this.label, {
     this.requireObservation = false,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -42,6 +43,7 @@ final class Keypress {
   final String label;
   final bool requireObservation;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -63,6 +65,7 @@ final class Keypress {
         label,
         requireObservation,
         colors,
+        structure,
         source,
         mode: mode,
         userPreference: userPreference,
@@ -84,6 +87,7 @@ final class KeyChordInput {
     this.label, {
     this.requireObservation = false,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -92,6 +96,7 @@ final class KeyChordInput {
   final String label;
   final bool requireObservation;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -113,6 +118,7 @@ final class KeyChordInput {
         label,
         requireObservation,
         colors,
+        structure,
         source,
         mode: mode,
         userPreference: userPreference,
@@ -165,6 +171,7 @@ Future<PromptResult<KeyGesture>> _singleInteractive(
   String label,
   bool requireObservation,
   ColorTheme colors,
+  PromptStructure structure,
   PromptSource? source, {
   PromptMode? mode,
   PromptMode? userPreference,
@@ -178,6 +185,7 @@ Future<PromptResult<KeyGesture>> _singleInteractive(
     label,
     requireObservation,
     colors,
+    structure,
     source,
     mode: mode,
     userPreference: userPreference,
@@ -201,6 +209,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
   String label,
   bool requireObservation,
   ColorTheme colors,
+  PromptStructure structure,
   PromptSource? source, {
   PromptMode? mode,
   PromptMode? userPreference,
@@ -240,28 +249,31 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
     var help = false;
     final out = input.output;
     final width = _textInputWidth(effectiveProfile);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+    );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(out, text, foreground: foreground, closes: closes);
     final richFocusedAction =
         '$label: c capture; d declare; r remove last; x clear; Enter submit; Ctrl+T help; Escape cancel.';
     final linearFocusedAction =
         '$label: /capture, /declare, /remove, /clear, /done, /help, /cancel.';
     void review() {
-      _writeWrappedColorText(
-        out,
+      spine.reset();
+      write(
         'Review: ${gestures.isEmpty ? "empty" : gestures.map((g) => "${g.modifiers.map((m) => m.name).join('+')} ${g.key} (${g.provenance.name})").join(', ')}',
-        width,
-        foreground: colors.foreground,
-        background: colors.background,
-        outputProfile: effectiveProfile,
+        colors.foreground,
+        closes: true,
       );
     }
 
-    _writeWrappedColorText(
-      out,
+    write(
       selected == PromptMode.rich ? richFocusedAction : linearFocusedAction,
-      width,
-      foreground: colors.foreground,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      colors.foreground,
+      closes: true,
     );
     try {
       while (true) {
@@ -278,37 +290,19 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           final observed = _nativeGesture(key);
           final legacy = _legacyGesture(key);
           if (key == '\x1b') {
-            _writeWrappedColorText(
-              out,
-              'Capture cancelled.',
-              width,
-              foreground: colors.muted,
-              background: colors.background,
-              outputProfile: effectiveProfile,
-            );
+            write('Capture cancelled.', colors.muted);
           } else if (observed != null) {
             if (single) gestures.clear();
             gestures.add(observed);
           } else if (legacy != null) {
             if (single) gestures.clear();
             gestures.add(legacy);
-            _writeWrappedColorText(
-              out,
+            write(
               'Modifiers are ambiguous in this input stream.',
-              width,
-              foreground: colors.warning,
-              background: colors.background,
-              outputProfile: effectiveProfile,
+              colors.warning,
             );
           } else {
-            _writeWrappedColorText(
-              out,
-              'Gesture unavailable.',
-              width,
-              foreground: colors.error,
-              background: colors.background,
-              outputProfile: effectiveProfile,
-            );
+            write('Gesture unavailable.', colors.error);
           }
           review();
           continue;
@@ -334,20 +328,14 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
               requireObservation: requireObservation,
             ),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: promptSession,
           );
           if (r.action == 'interrupt') return Interrupted();
           if (r.action == 'cancel') return Cancelled();
           if (r.action != 'command') {
             if (r.action != 'submit') return InputEnded();
-            _writeWrappedColorText(
-              out,
-              'Use an action command.',
-              width,
-              foreground: colors.error,
-              background: colors.background,
-              outputProfile: effectiveProfile,
-            );
+            write('Use an action command.', colors.error);
             continue;
           }
           action = r.value;
@@ -359,31 +347,21 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
             if (help) continue;
             help = true;
             promptSession?._openModalHelp(useAlternateScreen: false);
-            _writeWrappedColorText(
-              out,
+            write(
               _keyCaptureHelp(
                 linear: false,
                 single: single,
                 requireObservation: requireObservation,
               ),
-              width,
-              foreground: colors.muted,
-              background: colors.background,
-              outputProfile: effectiveProfile,
+              colors.muted,
             );
             continue;
           }
           if (key == '\x1b') {
             if (!help) return Cancelled();
             help = false;
-            void repaintFocusedAction() => _writeWrappedColorText(
-              out,
-              richFocusedAction,
-              width,
-              foreground: colors.foreground,
-              background: colors.background,
-              outputProfile: effectiveProfile,
-            );
+            void repaintFocusedAction() =>
+                write(richFocusedAction, colors.foreground);
             final activePrompt = promptSession;
             if (activePrompt != null) {
               activePrompt._dismissModalHelp(
@@ -391,14 +369,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
                 repaintPrompt: repaintFocusedAction,
               );
             } else {
-              _writeWrappedColorText(
-                out,
-                'Help dismissed.',
-                width,
-                foreground: colors.muted,
-                background: colors.background,
-                outputProfile: effectiveProfile,
-              );
+              write('Help dismissed.', colors.muted);
               repaintFocusedAction();
             }
             continue;
@@ -416,15 +387,11 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
         switch (action) {
           case '/capture':
             armed = true;
-            _writeWrappedColorText(
-              out,
+            write(
               selected == PromptMode.rich
                   ? 'Capture next gesture; Escape cancels capture and returns to review. Ctrl+T is a candidate while capture is armed.'
                   : 'Capture next gesture; Escape cancels capture and returns to review. /help is captured as a gesture rather than opening help.',
-              width,
-              foreground: colors.muted,
-              background: colors.background,
-              outputProfile: effectiveProfile,
+              colors.muted,
             );
           case '/remove':
             if (gestures.isNotEmpty) gestures.removeLast();
@@ -433,13 +400,9 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
             gestures.clear();
             review();
           case '/declare':
-            _writeWrappedColorText(
-              out,
+            write(
               'Enter a declaration (for example Ctrl+A). Declarations are unverified; Ctrl+C and Escape are reserved.',
-              width,
-              foreground: colors.muted,
-              background: colors.background,
-              outputProfile: effectiveProfile,
+              colors.muted,
             );
             final r = await _edit(
               keys,
@@ -451,6 +414,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
                 requireObservation: requireObservation,
               ),
               outputProfile: effectiveProfile,
+              structure: structure,
               session: promptSession,
             );
             if (r.action == 'interrupt') return Interrupted();
@@ -467,18 +431,28 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
               if (single) gestures.clear();
               gestures.add(result.value);
             } else {
-              out.writeln((result as Unavailable<KeyGesture>).reason);
+              write(
+                (result as Unavailable<KeyGesture>).reason,
+                colors.error,
+                closes: true,
+              );
             }
             review();
           case '/done':
             if (gestures.isEmpty) {
-              out.writeln('Capture or declare a gesture first.');
+              write(
+                'Capture or declare a gesture first.',
+                colors.error,
+                closes: true,
+              );
             } else if (requireObservation &&
                 gestures.any(
                   (g) => g.provenance != KeyGestureProvenance.observed,
                 )) {
-              out.writeln(
+              write(
                 'Observation required; ambiguous or declared input cannot be accepted.',
+                colors.error,
+                closes: true,
               );
             } else {
               return Accepted(List.unmodifiable(gestures));

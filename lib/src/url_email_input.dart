@@ -6,6 +6,7 @@ final class URLInput {
     this.label, {
     required Set<String> allowedSchemes,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : allowedSchemes = Set.unmodifiable(allowedSchemes),
@@ -21,6 +22,7 @@ final class URLInput {
   final String label;
   final Set<String> allowedSchemes;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -189,13 +191,18 @@ final class URLInput {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedColorText(
-      out,
-      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
-      width,
-      foreground: colors.foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
       background: colors.background,
-      outputProfile: effectiveProfile,
+    );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(out, text, foreground: foreground, closes: closes);
+    write(
+      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+      colors.foreground,
+      closes: true,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = '';
@@ -213,6 +220,7 @@ final class URLInput {
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -232,25 +240,15 @@ final class URLInput {
           if (!authority.startsWith('[')) {
             final host = authority.split(':').first;
             const idna = Uts46();
-            _writeWrappedColorText(
-              out,
+            write(
               'Host interpretation -- Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
-              width,
-              foreground: colors.success,
-              background: colors.background,
-              outputProfile: effectiveProfile,
+              colors.success,
+              closes: true,
             );
           }
           return Accepted(value);
         }
-        _writeWrappedColorText(
-          out,
-          error,
-          width,
-          foreground: colors.error,
-          background: colors.background,
-          outputProfile: effectiveProfile,
-        );
+        write(error, colors.error, closes: true);
       }
     } finally {
       if (keys == null) await inputKeys.close();
@@ -276,6 +274,7 @@ final class EmailInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (initialValue.isNotEmpty && _validate(initialValue) != null) {
       throw ArgumentError('Invalid initial email address.');
@@ -291,12 +290,14 @@ final class EmailInput {
         ...supplementaryHelp,
       ],
       colors: colors,
+      structure: structure,
     );
   }
   final bool smtpUtf8;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   late final TextInput _input;
 
   String? _validate(String value) {

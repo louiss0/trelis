@@ -492,6 +492,7 @@ final class CronInput {
     this.initialValue = '',
     this.preview,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -504,6 +505,7 @@ final class CronInput {
           ? null
           : 'Invalid or unsupported cron expression for the selected profile.',
       colors: colors,
+      structure: structure,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
     );
@@ -513,6 +515,7 @@ final class CronInput {
   final CronPreviewConfig? preview;
   final CronProfile profile;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   late final TextInput _input;
@@ -799,7 +802,12 @@ final class CronInput {
     // of being appended to the field the user just left.
     void writeNotice(String text) {
       if (!linear) out.write('\r\x1b[2K');
-      _writeWrappedText(out, text, width);
+      _structureSpine(
+        effectiveProfile,
+        structure: structure,
+        width: width,
+        background: colors.background,
+      ).write(out, text, foreground: colors.foreground, closes: true);
     }
 
     var draft = initialValue;
@@ -822,6 +830,7 @@ final class CronInput {
           helpText: _entryHelp(linear: linear),
           linearHelpText: _entryHelp(linear: true),
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
           resizeObserver: linear ? null : source.resizeObserver,
         );
@@ -854,6 +863,7 @@ final class CronInput {
             helpText: _reviewHelp(linear: linear),
             linearHelpText: _reviewHelp(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
             resizeObserver: linear ? null : source.resizeObserver,
             intercept: linear
@@ -938,7 +948,17 @@ final class CronInput {
               'Matching preview: ${result.status.name}; zone ${config.zone}; qualified provider snapshot timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
-              out.writeln(instant);
+              _structureSpine(
+                effectiveProfile,
+                structure: structure,
+                width: width,
+                background: colors.background,
+              ).write(
+                out,
+                instant.toString(),
+                foreground: colors.foreground,
+                closes: true,
+              );
             }
             if (!linear) {
               // Review state must never be implicit after a preview round: keep

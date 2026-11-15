@@ -9,6 +9,7 @@ final class CommandPalette<T> {
     T? defaultValue,
     FutureOr<List<Choice<T>>> Function(String query)? search,
     ColorTheme colors = ColorThemes.terminalDefault,
+    PromptStructure structure = PromptStructure.plain,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : _select = SearchSelect<T>._palette(
@@ -17,11 +18,14 @@ final class CommandPalette<T> {
          defaultValue: defaultValue,
          search: search,
          colors: colors,
+         structure: structure,
          instructions: instructions,
          supplementaryHelp: supplementaryHelp,
        );
 
   ColorTheme get colors => _select.colors;
+
+  PromptStructure get structure => _select.structure;
 
   InstructionDisplay get instructions => _select.instructions;
 
