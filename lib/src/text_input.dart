@@ -2822,7 +2822,10 @@ final class Password {
     this.mask = false,
     this.required = false,
     this.validate,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -2835,6 +2838,9 @@ final class Password {
   final bool mask;
   final bool required;
   final String? Function(String)? validate;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<String>> prompt({
@@ -2958,23 +2964,32 @@ final class Password {
           : PromptMode.linear;
     }
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedText(
+    _writeWrappedColorText(
       scripted.output,
       '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       width,
+      foreground: colors.foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
     );
     if (mask) {
-      _writeWrappedText(
+      _writeWrappedColorText(
         scripted.output,
         'Masking is enabled and discloses length.',
         width,
+        foreground: colors.muted,
+        background: colors.background,
+        outputProfile: effectiveProfile,
       );
     }
     if (initialValue.isNotEmpty) {
-      _writeWrappedText(
+      _writeWrappedColorText(
         scripted.output,
         'Secret prefill is enabled; the secret is retained in memory.',
         width,
+        foreground: colors.muted,
+        background: colors.background,
+        outputProfile: effectiveProfile,
       );
     }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
@@ -3005,10 +3020,13 @@ final class Password {
         if (edit.action != 'submit') return InputEnded();
         value = edit.value;
         while (true) {
-          _writeWrappedText(
+          _writeWrappedColorText(
             scripted.output,
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
             width,
+            foreground: colors.foreground,
+            background: colors.background,
+            outputProfile: effectiveProfile,
           );
           final action = await _edit(
             inputKeys,
@@ -3034,8 +3052,13 @@ final class Password {
           switch (action.value) {
             case 'submit':
               if ((required && value.isEmpty) || _validationFailed(value)) {
-                scripted.output.writeln(
+                _writeWrappedColorText(
+                  scripted.output,
                   'Secret does not satisfy the requirements. Choose edit or clear and try again.',
+                  width,
+                  foreground: colors.error,
+                  background: colors.background,
+                  outputProfile: effectiveProfile,
                 );
                 continue;
               }
@@ -3050,8 +3073,13 @@ final class Password {
               return Cancelled();
             case 'help':
             case '/help':
-              scripted.output.writeln(
+              _writeWrappedColorText(
+                scripted.output,
                 'Submit validates; edit reopens the secret; clear starts empty; cancel ends the prompt.',
+                width,
+                foreground: colors.muted,
+                background: colors.background,
+                outputProfile: effectiveProfile,
               );
               continue;
             default:
@@ -3077,6 +3105,8 @@ final class Confirm extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.confirm);
 }
 
@@ -3085,6 +3115,8 @@ final class Checkbox extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.checkbox);
 }
 
@@ -3093,6 +3125,8 @@ final class Toggle extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.toggle);
 }
 
@@ -3104,7 +3138,9 @@ abstract class _BooleanPrompt {
     required this.initialValue,
     required this.kind,
     required this.colors,
-  }) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -3113,6 +3149,8 @@ abstract class _BooleanPrompt {
   final bool initialValue;
   final _BooleanKind kind;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<bool>> prompt({
@@ -3356,7 +3394,10 @@ final class Multiline {
     this.required = false,
     this.validate,
     this.maxLength,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -3373,6 +3414,9 @@ final class Multiline {
   final bool required;
   final String? Function(String)? validate;
   final int? maxLength;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
   static String _normalize(String value) =>
       value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -3505,10 +3549,13 @@ final class Multiline {
           : PromptMode.linear;
     }
     final out = scripted.output;
-    _writeWrappedText(
+    _writeWrappedColorText(
       out,
       _opening(linear: mode == PromptMode.linear),
       _textInputWidth(effectiveProfile),
+      foreground: colors.foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
@@ -3562,7 +3609,14 @@ final class Multiline {
             final value = lines.join('\n');
             final error = _error(value);
             if (error == null) return Accepted(value);
-            out.writeln(error);
+            _writeWrappedColorText(
+              out,
+              error,
+              _textInputWidth(effectiveProfile),
+              foreground: colors.error,
+              background: colors.background,
+              outputProfile: effectiveProfile,
+            );
             continue;
           }
           if (result.value == '/list') {
@@ -3590,7 +3644,14 @@ final class Multiline {
             final index = (int.tryParse(number.value) ?? 0) - 1;
             if (index < 0 ||
                 index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
-              out.writeln('Invalid line number.');
+              _writeWrappedColorText(
+                out,
+                'Invalid line number.',
+                _textInputWidth(effectiveProfile),
+                foreground: colors.error,
+                background: colors.background,
+                outputProfile: effectiveProfile,
+              );
               continue;
             }
             if (result.value == '/remove') {
@@ -3675,8 +3736,13 @@ final class Multiline {
       final before = chars.take(pos).join() + text;
       final candidate = before + chars.skip(pos).join();
       if (maxLength != null && candidate.characters.length > maxLength!) {
-        out.writeln(
+        _writeWrappedColorText(
+          out,
           'Insertion rejected: character limit is $maxLength graphemes.',
+          _textInputWidth(activeProfile),
+          foreground: colors.error,
+          background: colors.background,
+          outputProfile: activeProfile,
         );
         return;
       }
@@ -4106,6 +4172,8 @@ final class Select<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(radio: false);
 }
 
@@ -4115,6 +4183,8 @@ final class Radio<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(radio: true);
 }
 
@@ -4125,7 +4195,10 @@ abstract class _SingleChoice<T> {
     this.defaultValue,
     required this.radio,
     required this.colors,
-  }) : choices = List.unmodifiable(choices) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : choices = List.unmodifiable(choices),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4141,6 +4214,8 @@ abstract class _SingleChoice<T> {
   final T? defaultValue;
   final bool radio;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   /// Component help led by this family's controls.
@@ -4444,8 +4519,11 @@ final class MultiSelect<T> {
     this.min = 0,
     this.max,
     this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
-       defaultValues = List.unmodifiable(defaultValues) {
+       defaultValues = List.unmodifiable(defaultValues),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4469,6 +4547,8 @@ final class MultiSelect<T> {
   final int min;
   final int? max;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   /// Component help led by this family's toggle, review and filter actions.
@@ -4900,7 +4980,10 @@ final class TimeInput {
     this.twelveHour = false,
     this.seconds = false,
     this.initialValue,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4912,6 +4995,9 @@ final class TimeInput {
   final bool twelveHour;
   final bool seconds;
   final String? initialValue;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String get _format =>
@@ -5354,7 +5440,10 @@ final class TagInput {
     this.style = TagStyle.kebabCase,
     this.maxLength,
     this.validate,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (maxLength != null && maxLength! < 0) {
       throw ArgumentError.value(maxLength, 'maxLength');
     }
@@ -5363,6 +5452,9 @@ final class TagInput {
   final TagStyle style;
   final int? maxLength;
   final String? Function(String)? validate;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String _canonical(String text) {

@@ -17,3 +17,4 @@ export 'src/feedback.dart';
 export 'src/output_profile.dart';
 export 'src/color_theme.dart';
 export 'src/terminal_io.dart';
+export 'src/themes/plain_theme.dart';

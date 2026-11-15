@@ -29,7 +29,8 @@ final class ColorInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
-  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
+  }) : initialValue = initialValue,
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -39,7 +40,7 @@ final class ColorInput {
     _input = TextInput._(
       '$label (CSS sRGB color: hex, RGB, HSL, or static name).',
       required: required,
-      initialValue: initialValue,
+      initialValue: this.initialValue,
       onChanged: _showPreview,
       validate: (value) =>
           value.isEmpty && !required || _parseColor(value) != null ? null : 'Enter a valid sRGB color: hex, static name, or literal RGB/HSL. RGB channels must be 0-255 or 0-100%; HSL saturation and lightness 0-100%; alpha 0-1 or 0-100%. Use at most 12 digits per number; expressions and other color spaces are not supported.',
@@ -52,6 +53,7 @@ final class ColorInput {
     );
   }
   final bool required;
+  final String initialValue;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;

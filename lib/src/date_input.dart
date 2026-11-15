@@ -305,8 +305,12 @@ final class DateInput {
     DateCalendar? calendar,
     DateDigits? digits,
     this.initialValue,
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : calendar = calendar ?? DateCalendar.gregorian,
-       digits = digits ?? DateDigits.ascii {
+       digits = digits ?? DateDigits.ascii,
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (order == null && (calendar != null || digits != null)) {
       throw ArgumentError(
         'A calendar or digit override requires an explicit field order.',
@@ -328,6 +332,9 @@ final class DateInput {
   final DateCalendar calendar;
   final DateDigits digits;
   final String? initialValue;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   CivilDate? _parse(String text, DateFieldOrder order) {

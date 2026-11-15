@@ -1,5 +1,7 @@
 import 'output_profile.dart';
 
+part 'color_theme_palettes.g.dart';
+
 /// An opaque terminal colour request.
 sealed class TerminalColor {
   const TerminalColor._();
@@ -27,11 +29,24 @@ sealed class TerminalColor {
 
 final class _TerminalDefault extends TerminalColor {
   const _TerminalDefault() : super._();
+
+  @override
+  bool operator ==(Object other) => other is _TerminalDefault;
+
+  @override
+  int get hashCode => runtimeType.hashCode;
 }
 
 final class _IndexedTerminalColor extends TerminalColor {
   const _IndexedTerminalColor(this.index) : super._();
   final int index;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _IndexedTerminalColor && other.index == index;
+
+  @override
+  int get hashCode => Object.hash(runtimeType, index);
 }
 
 final class _RgbTerminalColor extends TerminalColor {
@@ -39,6 +54,16 @@ final class _RgbTerminalColor extends TerminalColor {
   final int red;
   final int green;
   final int blue;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _RgbTerminalColor &&
+      other.red == red &&
+      other.green == green &&
+      other.blue == blue;
+
+  @override
+  int get hashCode => Object.hash(runtimeType, red, green, blue);
 }
 
 /// A complete immutable palette for semantic prompt roles.
@@ -88,22 +113,6 @@ final class ColorTheme {
     warning: warning ?? this.warning,
     error: error ?? this.error,
     border: border ?? this.border,
-  );
-}
-
-/// Built-in immutable colour palettes.
-abstract final class ColorThemes {
-  static const terminalDefault = ColorTheme(
-    foreground: TerminalColor.terminalDefault(),
-    background: TerminalColor.terminalDefault(),
-    muted: TerminalColor.terminalDefault(),
-    accent: TerminalColor.terminalDefault(),
-    selectionForeground: TerminalColor.terminalDefault(),
-    selectionBackground: TerminalColor.terminalDefault(),
-    success: TerminalColor.terminalDefault(),
-    warning: TerminalColor.terminalDefault(),
-    error: TerminalColor.terminalDefault(),
-    border: TerminalColor.terminalDefault(),
   );
 }
 

@@ -2,11 +2,25 @@ part of 'text_input.dart';
 
 /// Selects an existing file without opening or changing it.
 final class FilePicker {
-  FilePicker(this.label, {this.base, this.colors = ColorThemes.terminalDefault})
-    : _picker = _FilesystemPicker(label, base, PathTarget.file, colors);
+  FilePicker(
+    this.label, {
+    this.base,
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+  }) : _picker = _FilesystemPicker(
+         label,
+         base,
+         PathTarget.file,
+         colors,
+         instructions,
+         supplementaryHelp,
+       );
   final String label;
   final String? base;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
@@ -36,10 +50,21 @@ final class DirectoryPicker {
     this.label, {
     this.base,
     this.colors = ColorThemes.terminalDefault,
-  }) : _picker = _FilesystemPicker(label, base, PathTarget.directory, colors);
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+  }) : _picker = _FilesystemPicker(
+         label,
+         base,
+         PathTarget.directory,
+         colors,
+         instructions,
+         supplementaryHelp,
+       );
   final String label;
   final String? base;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
@@ -91,11 +116,20 @@ final class _PickerEntry {
 }
 
 final class _FilesystemPicker {
-  _FilesystemPicker(this.label, this.base, this.target, this.colors);
+  _FilesystemPicker(
+    this.label,
+    this.base,
+    this.target,
+    this.colors,
+    this.instructions,
+    this.supplementaryHelp,
+  );
   final String label;
   final String? base;
   final PathTarget target;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String get _component =>
@@ -119,6 +153,8 @@ final class _FilesystemPicker {
         base: base,
         target: target,
         colors: colors,
+        instructions: instructions,
+        supplementaryHelp: supplementaryHelp,
       );
       Future<PromptResult<String>> run(
         PromptSource source,
