@@ -19,18 +19,16 @@
 
 - [x] Record actual public-behavior verification, source revision, environment, results and evidence limitations in [the acceptance audit](../../../doc/evidence/trelis-backend/backend-acceptance.md); this publication is not implementation or a test pass.
 
-## Claim
+## Comments
 
-Claimed on `ticket/backend-33-evidence-gate` from integration revision
+**Claim.** Claimed on `ticket/backend-33-evidence-gate` from integration revision
 `135043d615392d3190eaf5f272dd6317485dd0a7`, re-audited after integrating local
 integration `75719dd`, and re-audited again after integrating local integration
 `d9d8790`. The audit records only executed checks and inspected artifacts; it
 does not implement backend behavior or start theme work.
 
-## Result
-
-**Accepted.** This third audit supersedes the two blocked verdicts without
-erasing them.
+**Result: accepted.** This third audit supersedes the two blocked verdicts
+without erasing them.
 
 At the accepted revision every normative B requirement has an executed check and
 an artifact pointer, and every tracker ticket 01–32 is resolved with evidence
@@ -46,25 +44,40 @@ runs and the matrix describe the same backend):
 - ASCII/no-colour fallback is captured uncoloured, ASCII-only and wrapped at 40
   columns (`18`, `19`, `21`);
 - narrow/idle resize is captured from `1000x620` to `620x420` with draft/caret
-  preserved, and the report states plainly that the fixed-geometry visible
-  adapter receives no native resize notification and therefore does not reflow
-  (`22`–`26`);
+  preserved (`22`–`26`); those frames predate the native observation path added
+  by the post-review fixes, which now reflows an idle prompt without a keystroke
+  (Windows console and POSIX PTY checks) and is not re-captured as a screenshot;
 - repeated prompts (`27`), a genuine required-value rejection and recovery
   (`28`, `29`), cancellation (`30`) and interruption (`31`) are captured at this
   revision, and the superseded `7676a5f` cleanups are deleted.
 
 Verification at the accepted revision: `dart format` (152 files, 0 changed),
-`dart analyze` (`No issues found!`), the doc-link check (224 links, 58 files),
+`dart analyze` (`No issues found!`), the doc-link check (244 links, 58 files),
 the full suite (`+952`), 73 focused GUI/session/help/resize tests, the 144-test
 component matrix, four local Windows console scenarios plus six local ConPTY
 cases, and the fresh six-job matrix
 [43741678302](https://github.com/louiss0/trelis/actions/runs/43741678302)
 (success at the publishing revision, code byte-identical to the accepted one).
 
+A post-review round then made the idle resize seam reachable and re-ran every
+affected check at the new revision (154 files, 961 tests, a fresh six-job
+matrix, a Windows console resize scenario and a POSIX PTY resize scenario); the
+verdict, its artifact pointers and its limitations are unchanged. The
+dispositions — including the two evidence corrections carried here — are in
+[the post-review record](../../../doc/evidence/trelis-backend/post-review-fixes.md).
+
 Limitations are carried forward rather than waived: Linux/macOS evidence is
 CI-only, Windows native checks inject console records or use a pseudoconsole,
-the visible GUI run is one host with agent-injected synthetic input, live resize
-reflow is unclaimed, NVDA was absent so there is no speech or accessibility
-qualification, and Unicode/cluster width policy is not a universal terminal/font
-claim. Theme integration is unblocked as its own separate handoff; this ticket
-does not start it and grants no release-wide accessibility claim.
+the visible GUI run is one host with agent-injected synthetic input, the visible
+GUI frames predate the native resize observation so live-reflow evidence is
+native/CI rather than a screenshot, NVDA was absent so there is no speech or
+accessibility qualification, and Unicode/cluster width policy is not a universal
+terminal/font claim. Theme integration is unblocked as its own separate handoff;
+this ticket does not start it and grants no release-wide accessibility claim.
+
+The accepted verdict and artifact pointers are mirrored into the retained
+compatibility gate
+[`issues/16-backend-evidence-gate.md`](../../trelis-backend-implementation/issues/16-backend-evidence-gate.md),
+which this branch tracks together with
+[ticket 31](31-platform-ci-native-evidence.md) and the normative
+[B requirements](../../trelis-backend-implementation/spec.md).
