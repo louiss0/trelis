@@ -1,7 +1,7 @@
 # Ticket 01 evidence: PlainTheme factories and independent colour themes
 
 **Status:** claimed (implementation in progress)
-**Source revision:** `4aff95e` on `ticket/theme-01-plain-palettes`
+**Source revision:** `9cb0cfe` on `ticket/theme-01-plain-palettes`
 **Integration base:** `af79b49dbefd803578c48484b7df8b65168073d4`
 **Environment:** Windows 11, Dart SDK (stable), local worktree `C:\Users\bvlou\projects\prompty-theme-01`
 
