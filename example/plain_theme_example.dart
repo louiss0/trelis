@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:prompty/prompty.dart';
 
 /// Demonstrates PlainTheme factories and named/custom colour themes.
