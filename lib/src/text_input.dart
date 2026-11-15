@@ -13,6 +13,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import 'output_profile.dart';
 import 'color_theme.dart';
+import 'native_resize.dart';
 import 'presentation.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -978,7 +979,7 @@ final class TerminalSession {
         (userPreference != null && userPreference != PromptMode.automatic) ||
         (applicationPreference != null &&
             applicationPreference != PromptMode.automatic) ||
-        (outputProfile != null && !_isAutomaticProfile(outputProfile))) {
+        (outputProfile != null && !outputProfile.isAutomatic)) {
       throw ArgumentError(
         'An attached prompt inherits session input, output, mode and profile; do not supply competing invocation configuration.',
       );
@@ -1115,8 +1116,6 @@ final class _SessionOutputSink implements StringSink {
   void writeln([Object? object = '']) =>
       _session._writeShared(() => _session._output.writeln(object));
 }
-
-bool _isAutomaticProfile(OutputProfile profile) => profile.isAutomatic;
 
 final _textInputDeclaration = PresentationDeclaration({
   PresentationSlot.label,
@@ -2679,6 +2678,7 @@ Future<PromptResult<T>> _posixTerminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          resizeObserver: nativeConsoleResizeObserver(outputStream),
           hardColorDisabled:
               !outputStream.hasTerminal ||
               Platform.environment['NO_COLOR']?.isNotEmpty == true,
@@ -2792,6 +2792,7 @@ Future<PromptResult<T>> _terminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          resizeObserver: nativeConsoleResizeObserver(outputStream),
           hardColorDisabled:
               !outputStream.hasTerminal ||
               Platform.environment['NO_COLOR']?.isNotEmpty == true,

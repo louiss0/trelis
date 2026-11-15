@@ -10,13 +10,20 @@ revision; the retained limitations are stated rather than waived. Named-theme
 integration is therefore unblocked as a *separate* handoff, which this audit
 does not start.
 
+A post-review round then changed the native terminal I/O path to make the idle
+resize seam reachable, so this audit was re-run at that revision and the verdict
+re-affirmed. Every finding of that review, including the two evidence corrections
+below, has a disposition in
+[post-review-fixes.md](post-review-fixes.md).
+
 ## Audit history (preserved)
 
 | Revision | Verdict | What it rested on |
 | --- | --- | --- |
 | `135043d615392d3190eaf5f272dd6317485dd0a7` | blocked | The ticket-32 report was unreadable (double-mojibaked), its own embedded verdict said blocked, and no artifact showed caret-preserving editing under concurrent feedback. |
 | `6bb265d9cc947bb854921508c4e8ddc33462af65` | blocked | The concurrent-editor and modal-help defects were repaired and verified from readable screenshots 11–17, but no artifact at that revision covered narrow/idle resize or the ASCII/no-colour fallback, and the cleanup captures were historical. |
-| `81738e8a9e7278f872ab4b6c7c404c111607a4e2` (this audit) | **accepted** | Ticket 32 replaced every checkpoint at `b94efda3…`: ASCII/no-colour (18, 19, 21), narrow/idle resize with help and dismissal (22–26), repeated prompts (27), a genuine required-value rejection and recovery (28, 29), cancel/interrupt cleanup (30, 31), plus re-captured concurrent editing, help and private entry (11–17). The fresh six-job matrix passed on a tree whose code is byte-identical. |
+| `81738e8a9e7278f872ab4b6c7c404c111607a4e2` | **accepted** | Ticket 32 replaced every checkpoint at `b94efda3…`: ASCII/no-colour (18, 19, 21), narrow/idle resize with help and dismissal (22–26), repeated prompts (27), a genuine required-value rejection and recovery (28, 29), cancel/interrupt cleanup (30, 31), plus re-captured concurrent editing, help and private entry (11–17). The fresh six-job matrix passed on a tree whose code is byte-identical. |
+| `324e3d729cab0e19bff9e83ab34abee23ddc2394` (post-review) | **accepted, re-affirmed** | The native transports now ship a resize observer, so idle reflow is reachable instead of pending. The full suite (961), formatting (154 files), analysis, documentation links, the Windows console resize scenario, the POSIX PTY resize scenario and a fresh six-job matrix were re-run at this revision; the verdict, its artifact pointers and its limitations are unchanged. |
 
 No earlier verdict is erased. Each one records what was actually observed at its
 own revision, and no audit treats a resolved tracker state, a planned check or a
@@ -121,6 +128,27 @@ and resize seams. The full suite, the component matrix and the platform matrix
 are stronger automated checks; none of them substitutes for the visible GUI
 observation recorded below.
 
+## Post-review re-verification at the resize revision
+
+The native terminal I/O path changed, so every affected check was re-run at the
+post-review revision `324e3d7`; the tables above stay as the record of the
+previous accepted revision.
+
+| Command | Actual result |
+| --- | --- |
+| `dart test test/gui_evidence_probe_test.dart test/native_resize_test.dart test/idle_text_input_resize_test.dart --reporter expanded` | `+16: All tests passed!` |
+| `dart test --reporter compact` | `+961: All tests passed!` |
+| `dart format --output=none --set-exit-if-changed .` | `Formatted 154 files (0 changed)` |
+| `dart analyze` | `No issues found!` |
+| `dart run tool/check_doc_links.dart` | `Checked 232 relative links in 59 Markdown files.` after the evidence edits; the matrix job at the code revision printed `Checked 244 relative links in 58 Markdown files.` before them |
+| `powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario resize -Report …` | `text input resize PASS result=0123456789…456789 state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1` |
+| `.github/workflows/platform-regression.yml` | six-job run `43747443317` at `324e3d7`: three Dart jobs (961 tests, 154 files formatted, analysis clean, links), two POSIX PTY jobs with eleven scenarios each, one Windows job with eighteen console scenarios and six pseudoconsole cases |
+
+The added scenarios are the ones the resize fix makes possible: `resize` on the
+Windows console shrinks the real buffer with no key injected and requires the
+draft row to be rewrapped; the POSIX `resize` scenario does the same through a
+real pseudo-terminal. Neither is a screenshot, and neither is counted as the
+visible GUI observation.
 ## Ticket audit
 
 | Ticket group | Tracker state | Audit result |
@@ -147,7 +175,7 @@ observation recorded below.
 | B-PARITY | pass | `30-compatibility-and-contract.md`, the public compatibility inventory, `component_acceptance_matrix_test.dart` (`+144` at this revision) and the 952-test suite cover all 34 interactive and 4 feedback components, generics, decimal-string sliders, nullable number/colour answers, records, distinct cancelled/interrupted/input-ended/unavailable paths, async generation gates, source-stable SearchSelect references, response-local Autocomplete candidates, segmented drafts and reserved key capture. |
 | B-HELP | pass | `11-text-input-help.md`, `30-compatibility-and-contract.md`, the help/modal suites and visible frames 14, 15, 19, 25, 26: component-help across families and stages, missing rich help paths without stealing capture gestures, primary actions and help access, format cues/warnings/validation under every instruction policy, current-stage-first full help, supplementary help as display lines, and draft/focus/caret maintained through help and fallback. |
 | B-SECRET | pass | `18-private-entry-migration.md`, `password_test.dart`, and visible frames [16](gui/16-secret-actions.png)/[17](gui/17-final-accepted.png): synthetic canaries only; unmasked `Password` and hidden drafts leak no raw text, length or caret into projections, frames, history or diagnostics; optional masking and prefill warnings stay explicit; generic secret-validator failure behaviour preserved; per-component output policies asserted rather than a blanket redaction claim. The run ends `GUI-PROBE:accepted:alpXha;secret:accepted` and the canary never appears in any frame. |
-| B-RESIZE | pass | `08-idle-text-input-resize.md` (`test/idle_text_input_resize_test.dart`: idle shrink repaint with caret clipping while retaining `abcdefgh` and caret 8, one opening event only, no fabricated geometry for identical/null/zero/throwing observations, watcher cancellation at prompt exit), `16-short-screen-overflow.md` (active prompt row reserved before ornament, `Feedback (n)` compaction in registration order, full notices retained with severity), `17-session-failure-recovery.md` (a failed resize repaint ends the prompt with the original failure), the native `rich`/`linear-cursor`/`session-retire` state strings, and visible frames [23](gui/23-resize-narrow-idle.png)/[24](gui/24-resize-narrow-repaint.png) for actual repaint/caret placement. The missing native resize *notification source* is a stated limitation, not a waiver; see the next section. |
+| B-RESIZE | pass | `08-idle-text-input-resize.md` (`test/idle_text_input_resize_test.dart`: idle shrink repaint with caret clipping while retaining `abcdefgh` and caret 8, one opening event only, no fabricated geometry for identical/null/zero/throwing observations, watcher cancellation at prompt exit), `16-short-screen-overflow.md` (active prompt row reserved before ornament, `Feedback (n)` compaction in registration order, full notices retained with severity), `17-session-failure-recovery.md` (a failed resize repaint ends the prompt with the original failure), the native console observation (`lib/src/native_resize.dart`, `test/native_resize_test.dart`: POSIX `SIGWINCH`, a bounded Windows poll, unusable readings rejected, and a poll-only idle reflow at the public seam), the Windows `resize` console scenario (a real buffer shrink with no key sent rewraps the draft inside the new width) and the POSIX PTY `resize` scenario, plus visible frames [23](gui/23-resize-narrow-idle.png)/[24](gui/24-resize-narrow-repaint.png) for repaint/caret placement. Those frames predate the observer wiring and are not the reflow evidence; see the next section. |
 | B-MODAL | pass | `15-modal-help-live-jobs.md`, the modal-help suite and visible frames 14, 15, 19, 25, 26: session-wide help owns painting in the transcript fallback while background jobs keep updating, dismissal restores the latest composite and a valid prompt state rather than a stale frame, notices survive the modal interval, `Ctrl+T` is not stolen from capture/literal-secret entry, and interruption/EOF/error exits behave. |
 | B-FAIL | pass | `17-session-failure-recovery.md`, the failure suite and the native `session-retire` check: registration, local rendering, shared write, acquisition/restoration and callback failures are injected; local faults are isolated; a failed shared writer closes safely; registrations are drained, watchers stopped, leases released and received terminal state restored (`503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1`, `496` for the 496 state); original failure context survives cleanup failure; late updates cannot write after closure. Forcible process termination and unmanaged external mutation are outside the contract. |
 | B-COMPAT | pass | `30-compatibility-and-contract.md`, the public inventory and the full suite: public additions checked against the source inventory including part files, direct constructors still supported, invocation modes and results unchanged apart from the documented migrations (session/profile options, explicit synthetic geometry, plain/terminal-native default presentation, deliberate instruction-copy/layout changes), truthful README/CHANGELOG/examples, no package rename, and transcript changes reviewed semantically. |
@@ -155,113 +183,49 @@ observation recorded below.
 | B-GUI | pass | Every named checkpoint captured at one code revision and inspected below: keyboard editing, caret movement, concurrent feedback, help/dismissal, narrow/idle resize, ASCII/no-colour, secret-entry non-disclosure, cleanup and repeated sessions. NVDA absence recorded; agent input is automation, not human usability evidence. |
 | B-GATE | **accepted** | This audit: every requirement above, every task 01–32 resolved, evidence re-run or re-captured after the changes, limitations and historical failures carried forward, no partial/planned/configured result counted as a pass, and only this explicit pass unblocks the separate theme handoff. It grants no release-wide accessibility claim. |
 
-## Why the resize checkpoint passes without a live-reflow claim
+## Why the resize checkpoint now includes live reflow
 
 B-RESIZE asks to "exercise idle resize, coalescing, safe unknown/zero geometry and
 teardown of notifications/polling", to shrink padding/chrome and compact
 background feedback before the active prompt, to preserve state during deferred
 painting without duplicate events or lost input, and to "test actual
-repaint/caret placement rather than only size arithmetic". Each clause is
-exercised above: the public `TerminalResizeObserver` seam with bounded fallback
-and coalescing, the unknown/zero/throwing observations, the watcher teardown,
-the short-screen reservation/compaction, and the real repaint/caret frames.
-B-RESIZE does not require the built-in visible adapter to ship a native resize
-notification source, and B-GUI's wording asks that the agent *cover* narrow/idle
-resize in a visible terminal with screenshots and expected-versus-observed notes
-— which the checkpoint now does.
+repaint/caret placement rather than only size arithmetic". The first audit
+exercised every clause except one: the public `TerminalResizeObserver` seam had a
+complete consumer but no shipped transport, so an idle native resize could only
+be noticed by a keystroke. The seam is now reachable:
+`lib/src/native_resize.dart` observes the console a prompt paints to, POSIX
+forwards `SIGWINCH`, Windows keeps a bounded poll, and both native transports
+supply it. Idle resize therefore repaints and reflows without a key in the
+Windows console scenario and the POSIX PTY scenario recorded in
+[post-review-fixes.md](post-review-fixes.md); the unknown/zero/throwing, cadence
+and teardown clauses keep the coverage `08-idle-text-input-resize.md` records.
 
-What the frames honestly show is therefore the contract, not a substitute for
-it: the visible adapter declares a fixed geometry at launch
-(`OutputGeometry.fixed`) and has no native resize notification, so an idle
-resize preserves the draft and caret but does not reflow the prompt; the
-terminal soft-wraps already-painted rows, and the next repaint still uses the
-declared launch width ([08-idle-text-input-resize.md](08-idle-text-input-resize.md)
-records the observer wiring as pending). No adaptive-relayout capability is
-claimed here, and no limitation is written out of the audit to make the gate
-pass. If a future requirement demands live resize reflow, that is new work, not
-a defect retroactively waived by this verdict.
+What is *not* claimed is a new visible-GUI capture of that reflow. Frames
+[22](gui/22-resize-before.png)–[26](gui/26-narrow-help-dismissed.png) were taken
+at `b94efda3…`, before the wiring existed, and they honestly show preservation
+plus terminal soft wrap at the declared launch width. They stay as evidence of
+that revision; they are not re-described as adaptive relayout, and no frame was
+retouched. B-GUI's wording asks the agent to *cover* narrow/idle resize in a
+visible terminal with expected-versus-observed notes, which those frames do,
+while the live-reflow claim rests on the native and CI checks at this revision.
 
 ## B-GUI artifact audit
 
-The report [32-agent-windows-gui.md](32-agent-windows-gui.md) is readable UTF-8
-and records code revision `b94efda3…`, one dedicated Windows Terminal window per
-scenario, orca `1.4.259` for observation, synthetic `press-key`/`hotkey`/
-`type-text` injection for input, `MoveWindow` for resize, and the NVDA absence in
-[gui/environment.txt](gui/environment.txt) (`nvda-command=; nvda-process-count=0`).
+The canonical description of every frame — what each one shows, the synthetic
+action that produced it, and the expected-versus-observed note — is the
+[Screenshot inventory in the ticket-32 report](32-agent-windows-gui.md#screenshot-inventory).
+This audit does not restate it. What was independently checked here is the
+mapping from each named B-GUI checkpoint to the frames that satisfy it:
 
-**Inspected rather than taken from the prose.** Every frame below was opened and
-read at this audit:
-
-- [11-live-feedback-draft.png](gui/11-live-feedback-draft.png): live `> alpha`
-  draft with a caret under streaming `[status]` informational and spinner
-  writes (`#4`–`#17`) after `100% (3/3)`.
-- [12-caret-moved.png](gui/12-caret-moved.png): the same draft after `Left`,
-  `Left`, unchanged, with the caret block inside the draft row and writes
-  continuing. A still frame cannot prove the exact column, and the report says
-  so; the frame is evidence of "draft unchanged", not of the column.
-- [13-caret-edit.png](gui/13-caret-edit.png): `> alpXha` with the caret after
-  `X` while writes continue (`#25`–`#38`) — this is what makes the moved
-  position checkable, and the same value is accepted later.
-- [14-modal-help.png](gui/14-modal-help.png): help on its own rows, one
-  paragraph ending `Validation: An empty value is allowed.`, both
-  `supplementaryHelp` entries as separate display lines, no literal `\u{000A}`,
-  and the draft row absent while help is open.
-- [15-help-dismissed.png](gui/15-help-dismissed.png): `Help dismissed.` then a
-  single repaint of `> alpXha` with the caret after `X`; no stale help text, no
-  duplicated draft row, writes continuing.
-- [16-secret-actions.png](gui/16-secret-actions.png): `Synthetic canary
-  (Optional). Hidden entry; Enter opens actions. …` with the previous accepted
-  draft above it and nothing echoed. This is the hidden-entry prompt, not the
-  action chooser; the report corrected that description.
-- [17-final-accepted.png](gui/17-final-accepted.png): action cue
-  `Actions: submit, edit, clear, help, cancel. /help and /cancel are also
-  available. Enter an action:`, then `completed` for both regions after 80
-  concurrent writes and `GUI-PROBE:accepted:alpXha;secret:accepted`.
-- [18-ascii-prompt.png](gui/18-ascii-prompt.png): `--ascii` prompt with plain
-  default-on-default cells (no SGR colour, no styles, ASCII glyphs only) and the
-  help line wrapped at exactly 40 columns (`Left/Right move; Home/End go to
-  boundari` / `es; Backspace/Delete erase; Enter submit` / `s. Ctrl+T opens
-  help. Escape cancels; Ct` / `rl+C interrupts.`), draft `> alpha` with a
-  visible caret.
-- [19-ascii-help.png](gui/19-ascii-help.png): uncoloured ASCII help on its own
-  rows, still wrapped at 40 columns, `Validation: An empty value is allowed.`
-  present, both supplementary lines as separate display lines, no `\u{000A}`,
-  and the draft row cleared.
-- [21-ascii-outcome.png](gui/21-ascii-outcome.png): `Help dismissed.`, one
-  repaint of `> alpha`, `running, 100% (3/3)`, `completed` for both regions,
-  `GUI-PROBE:accepted:alpha`, and the shell prompt returned.
-- [22-resize-before.png](gui/22-resize-before.png): idle prompt in a `1000x620`
-  window, draft `> alpha`, wrapped at the declared width.
-- [23-resize-narrow-idle.png](gui/23-resize-narrow-idle.png): the same window
-  after `MoveWindow` to `620x420` with no key sent — image metadata confirms
-  `620x420` — draft preserved, already-painted rows soft-wrapped by the terminal
-  (`while th`/`e editor is active.`), no repaint triggered by the resize.
-- [24-resize-narrow-repaint.png](gui/24-resize-narrow-repaint.png): after one
-  `Left`, `> alph` with the caret block before the final `a` — draft and logical
-  caret retained, still laid out at the declared launch width, no duplicate
-  transcript rows.
-- [25-narrow-help.png](gui/25-narrow-help.png): modal help at narrow width on
-  its own rows with paragraph breaks intact and the draft row cleared.
-- [26-narrow-help-dismissed.png](gui/26-narrow-help-dismissed.png):
-  `Help dismissed.` and one repaint of `> alpha`, no stale help and no stale
-  draft row.
-- [27-repeat-sessions.png](gui/27-repeat-sessions.png): two sequential
-  `Project (Optional).` prompts in one session, each painting its own `> alpha`
-  row, both regions `completed`, `GUI-PROBE:accepted:alpha,alpha`, shell prompt
-  returned.
-- [28-validation-rejected.png](gui/28-validation-rejected.png): `Project
-  (Required).`, empty draft `>`, then `Required: enter a non-empty value and
-  submit again.` and a fresh live `>` — exactly one genuine rejection.
-- [29-validation-recovered.png](gui/29-validation-recovered.png): the rejected
-  rows stay in history, `> beta` is accepted, both regions `completed`,
-  `GUI-PROBE:accepted:beta` — the accepted value is the real one, not the
-  rejected empty string.
-- [30-cancel-cleanup.png](gui/30-cancel-cleanup.png) and
-  [31-interrupt-cleanup.png](gui/31-interrupt-cleanup.png): `Escape` and
-  `Ctrl+C` at the live prompt both retire both named regions as `completed`,
-  print `GUI-PROBE:cancel` / `GUI-PROBE:interrupt`, and return the shell prompt.
-  The last painted `> alpha` row remains, which is what a terminal does with
-  already-written cells; no post-cancel repaint follows the outcome line.
+| B-GUI checkpoint | Frames checked at `b94efda3…` | Audit note |
+| --- | --- | --- |
+| Keyboard editing and caret movement | 11–13, 17 | The still frames prove the draft is unchanged after `Left`,`Left`; the later `X` insertion (`> alpXha`) is what makes the caret position checkable, and the same value is accepted. |
+| Concurrent feedback while editing | 11–17 | `[status]` writes continue between every repaint and reach `#80` before the accepted outcome; no total-write count is claimed beyond the frames. |
+| Help and dismissal | 14, 15, 19, 21, 25, 26 | Help owns its rows with real paragraph breaks, no literal `\u{000A}`, and the draft row cleared; dismissal repaints once. |
+| ASCII/no-colour fallback | 18, 19, 21 | Plain default-on-default cells, ASCII glyphs, wrapped at exactly 40 columns, ending `GUI-PROBE:accepted:alpha`. |
+| Narrow/idle resize | 22–26 | The window really is 620x420 in the image metadata; the draft and caret survive and the terminal soft-wraps, but this revision has no native observer, so no idle reflow is claimed from these frames. |
+| Secret-entry non-disclosure | 16, 17 | 16 is the hidden-entry prompt, not the action chooser; the synthetic canary appears in no frame and only `GUI-PROBE:accepted:alpXha;secret:accepted` is printed. |
+| Cleanup and repeated sessions | 27–31 | Two sequential prompts keep their own draft rows; a required empty submit is rejected once and recovers with `beta`; `Escape`/`Ctrl+C` retire both regions. |
 
 All twenty frames are from `b94efda3…`; none is carried forward from an older
 harness, and the five superseded `7676a5f` captures (`06`–`10`, including the
@@ -276,7 +240,6 @@ asserts the caret-relative transcript order, pulse counts, help line breaks,
 absence of `\u{000A}`, one rejection then acceptance, and the absence of the
 synthetic canary. That is automation and is **not** counted as the GUI
 observation.
-
 ## Follow-ups required by the previous audit, and how each was closed
 
 1. *Visible `--ascii` run with its own expected-versus-observed note.* Closed by
@@ -306,10 +269,11 @@ observation.
   keyboard. The screenshots, not an accessibility tree, are the evidence.
   Nothing here qualifies physical-keyboard, IME, clipboard, compositor, font or
   pointer behaviour.
-- **Resize** evidence covers the scripted observer seam plus preservation,
-  soft-wrap and repaint placement in the visible window. The built-in visible
-  adapter has no native resize notification source, so live reflow is
-  unclaimed; ticket 08 records the observer wiring as pending.
+- **Resize** evidence now covers the scripted observer seam *and* a reachable
+  native observation path: a real Windows console buffer shrink and a real POSIX
+  PTY resize each reflow an idle prompt with no key sent. The visible GUI frames
+  in `gui/` were captured before that wiring and are not re-taken here, so the
+  adaptive-relayout claim rests on the native and CI checks, not on those stills.
 - **NVDA** was absent (`nvda-command=; nvda-process-count=0`). There is no
   speech evidence, no screen-reader claim and no accessibility qualification of
   any kind; the historical broad-NVDA baseline remains outstanding.
@@ -332,8 +296,14 @@ observation.
 
 ## Mirrored legacy gate
 
-The accepted verdict and artifact pointers were mirrored into the retained
-compatibility gate `issues/16-backend-evidence-gate.md` (retained local tracker
-path, not a tracked document) with the statement that the finer 33-ticket plan
-was the executed plan and that the superseded layered decomposition's tasks are
-not claimed as implemented.
+The accepted verdict and artifact pointers are mirrored into the retained
+compatibility gate
+[`issues/16-backend-evidence-gate.md`](../../../.scratch/trelis-backend-implementation/issues/16-backend-evidence-gate.md),
+with the statement that the finer 33-ticket plan was the executed plan and that
+the superseded layered decomposition's tasks are not claimed as implemented.
+That file, [ticket 31](../../../.scratch/trelis-backend-tracer-bullets/issues/31-platform-ci-native-evidence.md),
+[ticket 33](../../../.scratch/trelis-backend-tracer-bullets/issues/33-backend-evidence-gate.md)
+and the normative
+[B requirements](../../../.scratch/trelis-backend-implementation/spec.md) are
+tracked by this branch, so the verdict no longer depends on untracked files on a
+primary worktree.

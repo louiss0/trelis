@@ -44,9 +44,6 @@ final class GuiEvidenceProbe {
   final Spinner _spinner;
   int _pulses = 0;
 
-  /// How many pulses have been emitted.
-  int get pulses => _pulses;
-
   /// Reports one round of concurrent feedback.
   ///
   /// An informational [Text] block, a [Spinner] update, and a [Progress]
@@ -79,7 +76,9 @@ final class GuiEvidenceProbe {
 /// captured before the transcript scrolls.
 ///
 /// [repeats] opens that many sequential prompts inside one session, which is
-/// the repeated-prompt checkpoint. [requireValue] opens the draft empty and
+/// the repeated-prompt checkpoint; it must be positive, and that rule stays
+/// here rather than being repeated by every caller. [requireValue] opens the
+/// draft empty and
 /// declares the value required, so an immediate submit is rejected once and the
 /// prompt returns for a successful second submission; that is a genuine
 /// validation error rather than an optional empty answer.
@@ -190,9 +189,13 @@ int? _intArgument(List<String> args, String name, {bool allowZero = false}) {
 /// write cadence with `0` meaning none.
 Future<void> main(List<String> args) async {
   final interval = _intArgument(args, '--pulse-interval', allowZero: true);
+  // Parsing only rejects a malformed or negative flag: `--repeats=0` reaches
+  // the probe's own positivity rule, so the contract has one owner and one
+  // error message.
+  final repeats = _intArgument(args, '--repeats', allowZero: true) ?? 1;
   final result = await runGuiEvidenceProbe(
     includeSecret: !args.contains('--no-secret'),
-    repeats: _intArgument(args, '--repeats') ?? 1,
+    repeats: repeats,
     requireValue: args.contains('--require-value'),
     pulseInterval: interval == null
         ? const Duration(milliseconds: 350)

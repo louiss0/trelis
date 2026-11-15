@@ -1,6 +1,6 @@
 # Ticket 08 — idle TextInput resize evidence
 
-- **Status:** pass for the scripted/public resize seam; native idle-resize notification remains pending platform-specific observer wiring.
+- **Status:** pass for the public resize seam **and** for a reachable native observation path (see *Native idle-resize observation* below, added by the post-review fixes).
 - **Implemented revision:** work based on `93aa6ec0af36d7f5ba812eb5a2d601b89458042a`.
 - **Environment:** Windows 10.0.26200.0, PowerShell 5.1.26100.9818, Dart SDK 3.13.2 stable (`windows_x64`).
 
@@ -34,18 +34,41 @@ dart test --reporter expanded
 
 Result: **679 tests passed**.
 
-## Native repaint/caret evidence
+## Native idle-resize observation
 
-Executed the existing public native Windows terminal probe:
+`lib/src/native_resize.dart` supplies the observer both native transports were
+missing. It reads the console the prompt paints to (`terminalColumns`/
+`terminalLines` of the selected output), forwards POSIX `SIGWINCH` as a hint,
+and keeps a bounded 250 ms poll where the console cannot notify — the Windows
+console has no resize event a prompt can watch without consuming the input
+records it also reads. Unknown, zero, negative and throwing readings are
+unusable rather than fabricated geometry; the prompt still owns coalescing and
+teardown.
+
+Executed on Windows with the real console:
 
 ```text
-powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario linear-cursor -Report $env:TEMP/prompty-ticket-08-native.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario resize -Report $env:TEMP/prompty-ticket-08-resize.txt
 ```
 
 Result:
 
 ```text
-text input linear-cursor PASS result=alphXa state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1
+text input resize PASS result=012345678901234567890123456789012345678901234567890123456789 state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1
 ```
 
-This verifies native public editing, physical caret placement, and restoration after prompt exit. It is not an idle native-resize observation: the current built-in native adapter does not expose a platform resize notification source. The new optional adapter seam makes native/platform adapters able to supply one without inventing dimensions; a real terminal resize probe is therefore still required for the broader B-RESIZE/B-PLATFORM evidence gate.
+The scenario shrinks the console buffer from 120x30 to 40x20 through Win32
+`SetConsoleWindowInfo`/`SetConsoleScreenBufferSize` and injects **no key**: the
+draft row must become `> <…` (windowed inside 40 cells) before the harness sends
+Enter. The POSIX PTY scenario `resize` proves the same path in CI by resizing the
+pseudo-terminal to 30 columns and waiting for the overflow marker.
+
+`test/native_resize_test.dart` covers the deterministic parts: the observer's
+unusable readings, the console read for attached/redirected/failing output, the
+bounded cadence, the platform notification source, and a poll-only idle reflow
+at the public prompt seam.
+
+Terminal attribute restoration (`503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1`) is
+**B-FAIL** evidence, not resize evidence: it shows the acquired console state
+returned, and it appears in this report only because the same probe run prints
+it.

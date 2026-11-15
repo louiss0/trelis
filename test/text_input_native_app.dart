@@ -14,6 +14,9 @@ Future<void> main(List<String> args) async {
       initialValue: switch (scenario) {
         'paste' || 'unicode' => '',
         'linear-long' => '0123456789' * 30,
+        // Long enough to be windowed at a narrow width and fully visible at a
+        // wide one, so an idle resize is visible as a changed draft row.
+        'resize' => '0123456789' * 6,
         _ => 'alpha',
       },
     );
@@ -133,7 +136,7 @@ Future<void> main(List<String> args) async {
     for (var i = 0; i < (scenario == 'repeat' ? 2 : 1); i++) {
       final result = await prompt.prompt(
         mode: switch (scenario) {
-          'rich' || 'dumb-rich' => PromptMode.rich,
+          'rich' || 'dumb-rich' || 'resize' => PromptMode.rich,
           'dumb-auto' => PromptMode.automatic,
           _ => PromptMode.linear,
         },

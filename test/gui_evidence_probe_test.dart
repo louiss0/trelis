@@ -7,50 +7,29 @@ import '../tool/gui_evidence_probe.dart' as probe;
 
 void main() {
   test('GUI evidence probe interleaves concurrent feedback with caret edits and help', () async {
-    final input = StreamController<String>();
-    final pulses = StreamController<void>();
-    final output = StringBuffer();
-    final profile = probe.asciiOutputProfile;
-    expect(profile.colorDepth, ColorDepth.none);
-    expect(profile.glyphs, GlyphSet.ascii);
+    final harness = _ProbeHarness();
+    expect(harness.profile.colorDepth, ColorDepth.none);
+    expect(harness.profile.glyphs, GlyphSet.ascii);
 
-    final run = probe.runGuiEvidenceProbe(
-      source: ScriptedInput(input.stream, output, outputProfile: profile),
-      outputProfile: profile,
-      pulses: pulses.stream,
-    );
-    Future<void> settle() => Future<void>.delayed(Duration.zero);
-
-    await settle();
+    final run = harness.run();
+    await harness.settle();
     // Move the caret left twice, then let one pulse land before the edit that
     // inserts at that caret, so feedback is genuinely concurrent with editing.
-    input.add('\x1b[D');
-    await settle();
-    input.add('\x1b[D');
-    await settle();
-    pulses.add(null);
-    await settle();
-    input.add('X');
-    await settle();
-    pulses.add(null);
-    await settle();
-    input.add('\x14');
-    await settle();
-    pulses.add(null);
-    await settle();
-    input.add('\x1b');
-    await settle();
-    input.add('\r');
-    await settle();
-    input.add('SYNTHETIC\r');
-    await settle();
-    input.add('submit\r');
-    await settle();
-    await input.close();
-    await pulses.close();
+    await harness.type('\x1b[D');
+    await harness.type('\x1b[D');
+    await harness.pulse();
+    await harness.type('X');
+    await harness.pulse();
+    await harness.type('\x14');
+    await harness.pulse();
+    await harness.type('\x1b');
+    await harness.type('\r');
+    await harness.type('SYNTHETIC\r');
+    await harness.type('submit\r');
+    await harness.finish();
 
     expect(await run, 'accepted:alpXha;secret:accepted');
-    final transcript = output.toString();
+    final transcript = harness.output.toString();
     final movedCaret = transcript.indexOf('\r\x1b[2K> alp\x1b[sha');
     final firstWrite = transcript.indexOf(
       '[status] Concurrent informational write #1',
@@ -96,30 +75,16 @@ void main() {
   test(
     'GUI evidence probe repeats sequential prompts inside one session',
     () async {
-      final input = StreamController<String>();
-      final pulses = StreamController<void>();
-      final output = StringBuffer();
-      final profile = probe.asciiOutputProfile;
+      final harness = _ProbeHarness();
 
-      final run = probe.runGuiEvidenceProbe(
-        source: ScriptedInput(input.stream, output, outputProfile: profile),
-        outputProfile: profile,
-        includeSecret: false,
-        repeats: 2,
-        pulses: pulses.stream,
-      );
-      Future<void> settle() => Future<void>.delayed(Duration.zero);
-
-      await settle();
-      input.add('\r');
-      await settle();
-      input.add('\r');
-      await settle();
-      await input.close();
-      await pulses.close();
+      final run = harness.run(includeSecret: false, repeats: 2);
+      await harness.settle();
+      await harness.type('\r');
+      await harness.type('\r');
+      await harness.finish();
 
       expect(await run, 'accepted:alpha,alpha');
-      final transcript = output.toString();
+      final transcript = harness.output.toString();
       expect(
         RegExp(RegExp.escape('> alpha')).allMatches(transcript).length,
         greaterThanOrEqualTo(2),
@@ -131,36 +96,24 @@ void main() {
   test(
     'GUI evidence probe validation scenario rejects once and then recovers',
     () async {
-      final input = StreamController<String>();
-      final pulses = StreamController<void>();
-      final output = StringBuffer();
-      final profile = probe.asciiOutputProfile;
+      final harness = _ProbeHarness();
 
-      final run = probe.runGuiEvidenceProbe(
-        source: ScriptedInput(input.stream, output, outputProfile: profile),
-        outputProfile: profile,
-        includeSecret: false,
-        requireValue: true,
-        pulses: pulses.stream,
-      );
-      Future<void> settle() => Future<void>.delayed(Duration.zero);
-
+      final run = harness.run(includeSecret: false, requireValue: true);
+      await harness.settle();
       const rejection = 'Required: enter a non-empty value and submit again.';
-      await settle();
       // The draft opens empty, so an immediate submit is a genuine rejection.
-      input.add('\r');
-      await settle();
+      await harness.type('\r');
       // The declared profile wraps at 40 columns, so compare unwrapped text.
-      expect(output.toString().replaceAll('\n', ''), contains(rejection));
-      input.add('beta');
-      await settle();
-      input.add('\r');
-      await settle();
-      await input.close();
-      await pulses.close();
+      expect(
+        harness.output.toString().replaceAll('\n', ''),
+        contains(rejection),
+      );
+      await harness.type('beta');
+      await harness.type('\r');
+      await harness.finish();
 
       expect(await run, 'accepted:beta');
-      final transcript = output.toString();
+      final transcript = harness.output.toString();
       final unwrapped = transcript.replaceAll('\n', '');
       expect(
         RegExp(RegExp.escape(rejection)).allMatches(unwrapped).length,
@@ -178,25 +131,14 @@ void main() {
   test(
     'GUI evidence probe stays quiet when the pulse interval is zero',
     () async {
-      final input = StreamController<String>();
-      final output = StringBuffer();
-      final profile = probe.asciiOutputProfile;
-
-      final run = probe.runGuiEvidenceProbe(
-        source: ScriptedInput(input.stream, output, outputProfile: profile),
-        outputProfile: profile,
-        includeSecret: false,
-        pulseInterval: Duration.zero,
-      );
-      Future<void> settle() => Future<void>.delayed(Duration.zero);
-
-      await settle();
-      input.add('\r');
-      await settle();
-      await input.close();
+      final harness = _ProbeHarness(drivePulses: false);
+      final run = harness.run(includeSecret: false);
+      await harness.settle();
+      await harness.type('\r');
+      await harness.finish();
 
       expect(await run, 'accepted:alpha');
-      final transcript = output.toString();
+      final transcript = harness.output.toString();
       expect(transcript, isNot(contains('Concurrent informational write')));
       expect(transcript, isNot(contains('background update')));
       expect(
@@ -206,4 +148,67 @@ void main() {
       );
     },
   );
+
+  test('GUI evidence probe refuses a non-positive repeat count', () async {
+    final harness = _ProbeHarness();
+
+    await expectLater(
+      harness.run(repeats: 0),
+      throwsA(
+        isA<ArgumentError>()
+            .having((error) => error.name, 'name', 'repeats')
+            .having((error) => error.message, 'message', 'must be positive'),
+      ),
+    );
+    await expectLater(harness.run(repeats: -2), throwsA(isA<ArgumentError>()));
+  });
+}
+
+/// One scripted GUI-probe run: the controllers, profile and settling that every
+/// probe scenario shares.
+final class _ProbeHarness {
+  _ProbeHarness({this.drivePulses = true});
+
+  final bool drivePulses;
+  final input = StreamController<String>();
+  final output = StringBuffer();
+  final profile = probe.asciiOutputProfile;
+  StreamController<void>? _pulses;
+
+  StreamController<void> get _pulseController =>
+      _pulses ??= StreamController<void>();
+
+  Future<String> run({
+    bool includeSecret = true,
+    int repeats = 1,
+    bool requireValue = false,
+  }) => probe.runGuiEvidenceProbe(
+    source: ScriptedInput(input.stream, output, outputProfile: profile),
+    outputProfile: profile,
+    includeSecret: includeSecret,
+    repeats: repeats,
+    requireValue: requireValue,
+    pulses: drivePulses ? _pulseController.stream : null,
+    pulseInterval: drivePulses
+        ? const Duration(milliseconds: 350)
+        : Duration.zero,
+  );
+
+  Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+  Future<void> type(String text) async {
+    input.add(text);
+    await settle();
+  }
+
+  Future<void> pulse() async {
+    _pulseController.add(null);
+    await settle();
+  }
+
+  Future<void> finish() async {
+    await input.close();
+    final pulses = _pulses;
+    if (pulses != null) await pulses.close();
+  }
 }
