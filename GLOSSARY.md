@@ -4,6 +4,39 @@ Trelis is a prompt library. This vocabulary distinguishes the user's task from t
 
 ## Language
 
+**Structural theme**:
+The arrangement and visual grammar used to present a component, including its framing, symbols, spacing and guidance placement. It is distinct from both colour choices and the task's interaction rules.
+
+**Colour theme**:
+A set of colours assigned to presentation roles, independent of the structural theme.
+
+**Output profile**:
+Declared capabilities, geometry and display-width assumptions for a selected output. It is distinct from the chosen theme and from input or task behavior.
+
+**Shared session**:
+A coordinated presentation lifetime for one interactive prompt and independently updating feedback on the same output. It provides common help, history and cleanup without deciding the application's job outcomes.
+
+**Live region**:
+An independently updating part of a shared output presentation. Multiple live regions share the same output rather than acting as independent terminal writers.
+
+**Interaction stage**:
+A distinct part of a prompt's workflow, such as entry, browsing results, choosing actions or reviewing an answer. The available actions and relevant guidance depend on the current stage.
+
+**Protected content**:
+Information or actions that must remain available in a prompt's presentation, independently of optional instruction visibility. This includes relevant warnings, validation, essential context, required review actions and access to help.
+
+**Compact hint**:
+Brief guidance identifying the primary actions for the current interaction stage and the available route to full help.
+
+**Component help**:
+The component's controls, accepted formats and workflow guidance, led by the current interaction stage while keeping the wider task discoverable.
+
+**Active-format cue**:
+The minimal visible context needed to interpret the current entry, such as its numeric convention, calendar or date order. It is distinct from detailed format instructions.
+
+**Supplementary help**:
+Application-specific guidance added alongside built-in component help rather than replacing it.
+
 **Civil date**:
 A calendar-qualified day without a time of day or timezone. Its calendar meaning is distinct from an instant.
 
