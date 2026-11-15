@@ -184,17 +184,16 @@ test is automation and is not counted as the GUI observation.
    backend, and the deleted captures are exactly the ones that carried the
    narrow and ASCII checkpoints.
 4. *Cleanup/repeated sessions* are present but historical: the report states
-   `06`–`10` were captured at `7676a5f` and not re-run at `a598c8e`. Their
-   contents, inspected here, are:
-   [06](gui/06-rich-feedback-profile.png) the superseded `7676a5f` state — help
-   concatenated onto `> alpha` with a literal `\u{000A}`, i.e. the defect that
-   `14`/`15` now fix, so it must not be read as current rendering;
-   [07](gui/07-repeat-cleanup.png) two sequential prompts producing
-   `alpha,alpha`; [08](gui/08-error-recovery.png) an optional `Failure` prompt
-   submitted empty followed by a second prompt, which does **not** visibly show
-   a validation error despite the file name;
-   [09](gui/09-cancel-cleanup.png) `cancel`; and
-   [10](gui/10-interrupt-cleanup.png) `interrupt`.
+   `06`–`10` were captured at `7676a5f` and not re-run at `a598c8e`. Those five
+   files are now deleted, so they are recorded here without links. Their
+   contents, inspected at the previous audit, were: `06-rich-feedback-profile`
+   the superseded `7676a5f` state — help concatenated onto `> alpha` with a
+   literal `\u{000A}`, i.e. the defect that `14`/`15` now fix, so it must not be
+   read as current rendering; `07-repeat-cleanup` two sequential prompts
+   producing `alpha,alpha`; `08-error-recovery` an optional `Failure` prompt
+   submitted empty followed by a second prompt, which did **not** visibly show a
+   validation error despite the file name; `09-cancel-cleanup` `cancel`; and
+   `10-interrupt-cleanup` `interrupt`.
 5. *Inventory wording.* The report's screenshot inventory calls `16` the
    "password action chooser"; the frame shows the hidden-entry prompt and its
    action cue, not the chooser list. It is a small overstatement in an otherwise
