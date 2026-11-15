@@ -61,7 +61,7 @@ deferred, and the user removed `RegexInput` from the planned component set.
 Regex-based input validation is also deferred to later; it is not a replacement
 component being designed in this effort.
 
-See the [planning map](../.scratch/trelis-accessible-prompts/map.md) for current
+See the [planning map](../docs/issues/trelis-accessible-prompts/map.md) for current
 scope boundaries and decision context. Existing research that counted 39
 non-form specimens predates the removal of `RegexInput`.
 
@@ -71,7 +71,7 @@ The planned `DateInput` includes **slash-separated date entry**, such as
 `YYYY/MM/DD`. This clarifies the existing component rather than adding a new
 specimen to the forty-component atlas. The static reference shows
 `2026 / [11] / 18`; its year-first order is an example, not the runtime default.
-The resolved [locale-calendar DateInput contract](../.scratch/trelis-accessible-prompts/issues/17-locale-calendar-date-contract.md)
+The resolved [locale-calendar DateInput contract](../docs/issues/trelis-accessible-prompts/issues/17-locale-calendar-date-contract.md)
 holds the system-convention, calendar-context, editing and verification decisions.
 This inventory does not specify a month-grid calendar or a `/` key that opens one.
 

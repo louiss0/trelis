@@ -140,4 +140,4 @@ revision and sanitized task outcomes. Do not record secrets. Real
 clipboard/IME/layout and Linux/macOS native evidence are not implied by Windows
 or scripted passes. See
 [ticket 31 evidence](ticket-31-regression-evidence.md) and the
-[verification matrix](../.scratch/trelis-accessible-prompts/issues/11-verification-matrix.md).
+[verification matrix](../docs/issues/trelis-accessible-prompts/issues/11-verification-matrix.md).

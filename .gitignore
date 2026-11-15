@@ -6,6 +6,10 @@
 # https://dart.dev/tools/pub/private-files#pubspec-lock.
 pubspec.lock
 
+# The issue tracker is Git-backed under docs/issues; never recreate the former
+# local-only tracker directory.
+.scratch/
+
 # Python qualification-tool caches
 __pycache__/
 *.py[cod]

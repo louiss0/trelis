@@ -143,6 +143,11 @@ String terminalSgr(
 /// This is the complete-sequence form of the colour request: a depth that
 /// cannot express colour, an unknown depth, or an all-default palette returns
 /// the text unchanged so a caller never has to remember the guard.
+///
+/// [text] must already be display-safe. This helper styles a complete terminal
+/// sequence and does not escape terminal controls; callers with application
+/// text must use the presentation path that applies [displaySafe] before
+/// styling or emitting it.
 String terminalStyledText(
   String text, {
   required TerminalColor foreground,

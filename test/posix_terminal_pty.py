@@ -34,6 +34,21 @@ def user_state(attributes):
     return state
 
 
+class Resize:
+    """A window change delivered between two input steps."""
+
+    def __init__(self, columns, rows):
+        self.columns = columns
+        self.rows = rows
+
+
+def set_geometry(descriptor, columns, rows):
+    fcntl.ioctl(
+        descriptor, termios.TIOCSWINSZ,
+        struct.pack('HHHH', rows, columns, 0, 0),
+    )
+
+
 def stop(process):
     """Stop the launched command and any process it started."""
     if process.poll() is not None:
@@ -56,7 +71,7 @@ def run(scenario, inputs, expected, term=None):
     master, slave = pty.openpty()
     # A fresh PTY commonly has zero geometry. Configure the real terminal;
     # rich prompts correctly refuse an output with no measurable viewport.
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    set_geometry(slave, 80, 24)
     before = termios.tcgetattr(slave)
     process = subprocess.Popen(
         ['dart', 'run', 'test/text_input_native_app.dart', scenario],
@@ -88,6 +103,15 @@ def run(scenario, inputs, expected, term=None):
                     transcript.extend(chunk)
                     terminal_output.extend(chunk)
             transcript.clear()
+            if isinstance(data, Resize):
+                # A terminal emulator resizing its window sets the PTY geometry
+                # and the kernel then signals the foreground process group. This
+                # harness owns the PTY and the child is not a session leader with
+                # a controlling terminal, so the same notification is delivered
+                # explicitly; the prompt still reads the geometry itself.
+                set_geometry(slave, data.columns, data.rows)
+                os.killpg(process.pid, signal.SIGWINCH)
+                continue
             if data is None:
                 signalled = True
                 os.killpg(process.pid, signal.SIGINT)
@@ -130,6 +154,14 @@ def main():
         ('eof', [(b'Name', b'\x04')], 'eof'),
         ('error', [(b'Failure', b'\r'), (b'Name', b'\r')], 'alpha'),
         ('repeat', [(b'Name', b'\r'), (b'Name', b'\r')], 'alpha,alpha'),
+        # An idle prompt must reflow on a window change alone: no key is sent
+        # between the resize and the repaint. The draft is wide enough to fit at
+        # 80 columns and to need an overflow marker once the PTY is 30 wide.
+        (
+            'resize',
+            [(b'Name', Resize(30, 12)), (b'> <', b'\r')],
+            '0123456789' * 6,
+        ),
         # A session-owned reader over the real console must end an idle prompt
         # when its shared writer fails, without waiting for a keystroke.
         ('session-retire', [], 'retired'),

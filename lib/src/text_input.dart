@@ -13,6 +13,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import 'output_profile.dart';
 import 'color_theme.dart';
+import 'native_resize.dart';
 import 'presentation.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -380,6 +381,19 @@ final class TerminalSessionFeedbackRegion {
   }
 }
 
+/// One feedback line that arrived while modal help owned painting.
+///
+/// Its identity is the occurrence, not the displayed text: a session delivers
+/// every occurrence a producer reported, and comparing text to decide whether
+/// two of them are the same event would silently merge independent regions and
+/// repeated notifications. The sequence keeps their arrival order stable.
+final class _DeferredFeedbackLine {
+  const _DeferredFeedbackLine(this.sequence, this.line);
+
+  final int sequence;
+  final String line;
+}
+
 /// Coordinates sequential prompt and feedback invocations over one selected
 /// terminal.
 ///
@@ -423,12 +437,26 @@ final class TerminalSession {
   /// modal help returns.
   final Map<int, String> _feedbackSnapshots = {};
 
-  /// Lines that arrived while modal help owned painting, keyed by region.
+  /// The latest deferred line of each region that reported while help owned
+  /// painting, in first-deferral order.
   ///
-  /// They are written once when help returns, in first-deferral order. A later
-  /// update of the same region replaces its deferred line instead of growing
-  /// the session's memory.
-  final Map<int, String> _deferredFeedback = {};
+  /// Only the latest line is kept per region: the composite restores the
+  /// current state, not a backlog. Important occurrences are retained
+  /// separately, so a later ordinary update cannot displace a notice the
+  /// transcript still owes the reader.
+  final Map<int, _DeferredFeedbackLine> _deferredFeedback = {};
+
+  /// Meaningful notices that arrived while help owned painting, in arrival
+  /// order.
+  ///
+  /// A component may report several facts through one region (a task group
+  /// reports every task through the session's single region), so a later
+  /// ordinary update must not displace a failure the transcript still owes the
+  /// reader. Each emission is retained as its own occurrence: two regions may
+  /// report the same words, and one region may report the same words twice, and
+  /// neither is a repaint of the other. Text is never compared to decide that.
+  final List<_DeferredFeedbackLine> _deferredNotices = [];
+  int _nextDeferredSequence = 1;
 
   /// Whether the newest emitted feedback line reported a warning, error or
   /// explicit outcome. A retired failure stays reviewable in the transcript
@@ -486,6 +514,7 @@ final class TerminalSession {
     _liveGenerations.clear();
     _feedbackSnapshots.clear();
     _deferredFeedback.clear();
+    _deferredNotices.clear();
     // The active prompt cannot be answered through a retired session, so it
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
@@ -644,7 +673,9 @@ final class TerminalSession {
     _feedbackSnapshots[region._id] = line;
     _lastFeedbackLineImportant = _isImportantFeedback(line);
     if (_modalHelp) {
-      _deferredFeedback[region._id] = line;
+      final deferred = _DeferredFeedbackLine(_nextDeferredSequence++, line);
+      _deferredFeedback[region._id] = deferred;
+      if (_isImportantFeedback(line)) _deferredNotices.add(deferred);
       return;
     }
     // One session-owned writer delivers a complete region update before the
@@ -690,33 +721,41 @@ final class TerminalSession {
   }
 
   void _restoreLatestComposite() {
-    final deferred = [..._deferredFeedback.values];
+    final notices = _deferredNotices.toList();
+    final noticeSequences = {for (final notice in notices) notice.sequence};
+    // The latest line of a region is replayed only when it is a different
+    // occurrence from the notices above. Identity, not text, decides that: a
+    // region that reported the same words twice keeps both events.
+    final restore = [
+      ...notices,
+      for (final latest in _deferredFeedback.values)
+        if (!noticeSequences.contains(latest.sequence)) latest,
+    ]..sort((a, b) => a.sequence.compareTo(b.sequence));
+    _deferredNotices.clear();
     _deferredFeedback.clear();
     if (_feedbackNeedsCompaction) {
       // Full reviewable notices survive the modal interval even when the live
       // portion has no rows; ordinary updates are summarized by the compact
       // line instead of growing the transcript.
-      final important = [
-        for (final line in deferred)
-          if (_isImportantFeedback(line)) line,
-      ];
-      if (important.isNotEmpty) {
+      if (notices.isNotEmpty) {
         _writeShared(() {
           if (_promptRepaint != null && _feedbackRich) {
             _output.write('\r\x1b[2K');
           }
-          for (final line in important) {
-            _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+          for (final notice in notices) {
+            _output.writeln(
+              '${_feedbackRich ? '[status] ' : ''}${notice.line}',
+            );
           }
         });
       }
       _paintCompactFeedback();
       return;
     }
-    if (deferred.isEmpty) return;
+    if (restore.isEmpty) return;
     _writeShared(() {
-      for (final line in deferred) {
-        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+      for (final deferred in restore) {
+        _output.writeln('${_feedbackRich ? '[status] ' : ''}${deferred.line}');
       }
     });
   }
@@ -907,6 +946,7 @@ final class TerminalSession {
     _liveGenerations.clear();
     _feedbackSnapshots.clear();
     _deferredFeedback.clear();
+    _deferredNotices.clear();
     try {
       await _keys?.close();
     } catch (error, stackTrace) {
@@ -939,7 +979,7 @@ final class TerminalSession {
         (userPreference != null && userPreference != PromptMode.automatic) ||
         (applicationPreference != null &&
             applicationPreference != PromptMode.automatic) ||
-        (outputProfile != null && !_isAutomaticProfile(outputProfile))) {
+        (outputProfile != null && !outputProfile.isAutomatic)) {
       throw ArgumentError(
         'An attached prompt inherits session input, output, mode and profile; do not supply competing invocation configuration.',
       );
@@ -1077,15 +1117,6 @@ final class _SessionOutputSink implements StringSink {
       _session._writeShared(() => _session._output.writeln(object));
 }
 
-bool _isAutomaticProfile(OutputProfile profile) =>
-    profile.cursor == CapabilitySupport.automatic &&
-    profile.alternateScreen == CapabilitySupport.automatic &&
-    profile.styles == CapabilitySupport.automatic &&
-    profile.colorDepth == ColorDepth.automatic &&
-    profile.glyphs == GlyphSet.automatic &&
-    profile.geometry.isAutomatic &&
-    profile.ambiguousWidth == AmbiguousWidth.automatic;
-
 final _textInputDeclaration = PresentationDeclaration({
   PresentationSlot.label,
   PresentationSlot.context,
@@ -1148,14 +1179,36 @@ void _writeWrappedColorText(
 
 /// Splits [text] into the display lines that fit [width] cells.
 ///
-/// A null [width] keeps the text on one line. Each returned line is already
-/// display-safe; the caller may still add terminal controls around it.
+/// A source line break is document structure rather than display content, so
+/// each paragraph it separates is wrapped on its own and reaches the terminal as
+/// a real line. Controls inside a paragraph keep their visible spelling, which
+/// is why a paragraph's own `\t` or `\x1b` still renders as `\\u{0009}` or
+/// `\\u{001B}`. Both CRLF and LF separate paragraphs; a lone CR is content.
+///
+/// A null [width] keeps each paragraph on one line. Each returned line is
+/// already display-safe; the caller may still add terminal controls around it.
 List<String> _wrapText(
   String text,
   int? width, {
   Iterable<String> atomicText = const [],
 }) {
-  if (width == null) return [text];
+  final paragraphs = text.split(_paragraphBreak);
+  if (width == null) {
+    return [for (final paragraph in paragraphs) displaySafe(paragraph)];
+  }
+  return [
+    for (final paragraph in paragraphs)
+      ..._wrapParagraph(paragraph, width, atomicText: atomicText),
+  ];
+}
+
+final _paragraphBreak = RegExp('\r\n|\n');
+
+List<String> _wrapParagraph(
+  String text,
+  int width, {
+  Iterable<String> atomicText = const [],
+}) {
   // DisplayText's visible control spelling is one protected display unit: a
   // wrap may precede it but must not split `\\u{202E}` into misleading pieces.
   // Callers may protect further meaningful units, such as a choice row's state
@@ -1278,7 +1331,7 @@ String _textInputHelp({
       : 'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Escape dismisses help or cancels; Ctrl+C interrupts.';
   return [
     'Help: $controls Validation: $constraints',
-    ...supplementaryHelp.map((text) => DisplayText.from(text).value),
+    ...supplementaryHelp,
   ].join('\n');
 }
 
@@ -1750,6 +1803,27 @@ Future<({String action, String value})> _edit(
     output.writeln(text);
   }
 
+  /// Ends the editable row that the rich renderer leaves current.
+  ///
+  /// A rich editor paints `> draft` and parks the physical caret on that row,
+  /// so anything written next would start at the caret and overwrite the draft.
+  /// A block that owns painting (help) therefore clears the row first; when it
+  /// releases painting, dismissal repaints the current draft and caret once
+  /// instead of leaving a stale copy of the draft above the repaint.
+  ///
+  /// Sequential rendering has already ended its report lines, and a private
+  /// entry never exposes a draft row to terminate.
+  void finishEditableRow() {
+    if (sequential || secret) return;
+    void clear() => output.write('\r\x1b[2K\n');
+    final activeSession = session;
+    if (activeSession == null) {
+      clear();
+    } else {
+      activeSession._writeShared(clear);
+    }
+  }
+
   void insert(String data, bool isPaste) {
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
@@ -1989,11 +2063,14 @@ Future<({String action, String value})> _edit(
         help = true;
         onHelpVisibilityChanged?.call(true);
         if (session != null) {
+          // The session decides whether help owns an alternate screen or the
+          // transcript; only the transcript path leaves the draft row visible.
           session._openModalHelp(useAlternateScreen: transientHelp);
+          if (!transientHelp) finishEditableRow();
         } else if (transientHelp) {
           output.write('\x1b[?1049h\x1b[H');
-        } else if (!sequential && !secret) {
-          output.writeln();
+        } else {
+          finishEditableRow();
         }
         _writeWrappedText(
           output,
@@ -2601,6 +2678,7 @@ Future<PromptResult<T>> _posixTerminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          resizeObserver: nativeConsoleResizeObserver(outputStream),
           hardColorDisabled:
               !outputStream.hasTerminal ||
               Platform.environment['NO_COLOR']?.isNotEmpty == true,
@@ -2714,6 +2792,7 @@ Future<PromptResult<T>> _terminal<T>(
           supportsRich: capable,
           outputProfile: profile,
           observedGeometry: profile.geometry,
+          resizeObserver: nativeConsoleResizeObserver(outputStream),
           hardColorDisabled:
               !outputStream.hasTerminal ||
               Platform.environment['NO_COLOR']?.isNotEmpty == true,

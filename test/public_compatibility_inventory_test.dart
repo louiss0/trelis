@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 
 /// Compile- and source-level checks of the public compatibility inventory.
 ///
-/// The approved baseline is `.scratch/trelis-theming/api-baseline.md`. Every
+/// The approved baseline is `docs/issues/trelis-theming/api-baseline.md`. Every
 /// constructor below supplies the baseline parameters with non-default values
 /// plus the intentional migrations this backend added (instruction display,
 /// supplementary help and a component palette where the component supports

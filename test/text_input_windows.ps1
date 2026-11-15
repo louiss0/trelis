@@ -21,8 +21,19 @@ public static class NativeProbe {
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleMode(IntPtr h,out uint mode);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleCursorInfo(IntPtr h,out Cursor info);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleScreenBufferInfo(IntPtr h,out BufferInfo info);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetConsoleScreenBufferSize(IntPtr h,Coord size);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetConsoleWindowInfo(IntPtr h,bool absolute,ref Rect window);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool ReadConsoleOutputCharacter(IntPtr h,[Out] ushort[] text,uint length,Coord position,out uint read);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool WriteConsoleInput(IntPtr h,Input[] records,uint length,out uint written);
+ public static void Resize(short columns, short rows) {
+  var h=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
+  try {
+   var window=new Rect{Left=0,Top=0,Right=(short)(columns-1),Bottom=(short)(rows-1)};
+   if(!SetConsoleWindowInfo(h,true,ref window)) throw new Exception("window resize error " + Marshal.GetLastWin32Error());
+   var size=new Coord{X=columns,Y=rows};
+   if(!SetConsoleScreenBufferSize(h,size)) throw new Exception("buffer resize error " + Marshal.GetLastWin32Error());
+  } finally { CloseHandle(h); }
+ }
  public static string State() {
   var i=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   var o=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
@@ -160,6 +171,23 @@ try {
   'eof' { [NativeProbe]::Key([char]26,90,8) }
   'escape' { [NativeProbe]::Key([char]27,27,0) }
   'concurrent' { [NativeProbe]::Text("`r") }
+  # The window shrinks with no key sent, so only the prompt's own idle geometry
+  # observation can rewrite the draft row inside the new width.
+  'resize' {
+   # Wait for the opening paint instead of trusting a fixed startup delay, so a
+   # cold compilation cannot be mistaken for a prompt that never appeared.
+   $initial=''
+   for($n=0;$n -lt 150;$n++){ $initial=[NativeProbe]::EditorState(); if($initial -match '^[0-9]+:[0-9]+:> [0-9]+$'){break}; Start-Sleep -Milliseconds 100 }
+   if($initial -notmatch '^[0-9]+:[0-9]+:> [0-9]+$'){throw "the long default is not one unwindowed draft row: $initial"}
+   if([int]([NativeProbe]::State().Split(':')[3]) -eq 0){throw "active editor cursor is hidden"}
+   [NativeProbe]::Resize(40,20)
+   $reflowed=''
+   for($n=0;$n -lt 25;$n++){ $reflowed=[NativeProbe]::EditorState(); if($reflowed -match '^[0-9]+:[0-9]+:> <[0-9]+$'){break}; Start-Sleep -Milliseconds 100 }
+   if($reflowed -notmatch '^[0-9]+:[0-9]+:> <[0-9]+$'){throw "an idle resize did not reflow the draft row: $reflowed"}
+   $row=$reflowed.Substring($reflowed.IndexOf(':> ')+2)
+   if($row.Length -gt 40){throw "the repaint ignored the new width ($($row.Length) cells): $reflowed"}
+   [NativeProbe]::Text("`r")
+  }
   'rich' { [NativeProbe]::Text("`r") }
   'dumb-auto' { [NativeProbe]::Text("`r") }
   'dumb-rich' { }
@@ -185,7 +213,7 @@ try {
   if ($actual.Contains([char]27) -or !$actual.Contains('Name')) { throw 'unstable stdout transcript' }
   $actual = ($actual -split "`r?`n")[-1]
  }
- $expected = switch ($Scenario) { 'linear-cursor' { 'alphXa' } 'linear-long' { ('0123456789' * 29) + '012345678X9' } 'repeat' { 'alpha,alpha' } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } 'session-retire' { 'retired' } }
+ $expected = switch ($Scenario) { 'linear-cursor' { 'alphXa' } 'linear-long' { ('0123456789' * 29) + '012345678X9' } 'repeat' { 'alpha,alpha' } 'resize' { ('0123456789' * 6) } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } 'session-retire' { 'retired' } }
  if($Scenario -like 'help-*') {
   $expected=if($Scenario.Contains('interrupt')){'interrupt'}elseif($Scenario.Contains('eof')){'eof'}elseif($isPassword){'accepted'}else{'alphXa'}
   if([NativeProbe]::ScreenText().Contains('Help:')){throw 'help screen survived prompt exit'}

@@ -21,6 +21,7 @@ jobs:
       - run: dart pub get
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze
+      - run: dart run tool/check_issue_tracker.dart
       - run: dart run tool/check_doc_links.dart
       - run: dart test --reporter expanded
 
@@ -49,7 +50,7 @@ jobs:
       - name: Public TextInput native lifecycle
         shell: pwsh
         run: |
-          foreach ($scenario in @('rich', 'linear-cursor', 'linear-long', 'help-text-linear', 'help-text-rich', 'help-password-linear', 'help-password-rich', 'help-password-interrupt-linear', 'help-text-eof-rich', 'redirected', 'dumb-auto', 'escape', 'interrupt', 'eof', 'error', 'repeat', 'session-retire')) {
+          foreach ($scenario in @('rich', 'linear-cursor', 'linear-long', 'help-text-linear', 'help-text-rich', 'help-password-linear', 'help-password-rich', 'help-password-interrupt-linear', 'help-text-eof-rich', 'redirected', 'dumb-auto', 'escape', 'interrupt', 'eof', 'error', 'repeat', 'session-retire', 'resize')) {
             $report = Join-Path $env:RUNNER_TEMP "text-input-$scenario.txt"
             & powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario $scenario -Report $report
             if (Test-Path $report) { Get-Content $report }

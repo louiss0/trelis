@@ -5,9 +5,9 @@ research-backed interaction contracts. **No component implementation or
 accessibility qualification has been performed by this planning effort.**
 
 The implementation specification is
-[Trelis accessible terminal prompt components](../.scratch/trelis-accessible-prompts/spec.md).
+[Trelis accessible terminal prompt components](../docs/issues/trelis-accessible-prompts/spec.md).
 The canonical decision authority is the
-[Wayfinder map](../.scratch/trelis-accessible-prompts/map.md) and its named
+[Wayfinder map](../docs/issues/trelis-accessible-prompts/map.md) and its named
 resolved tickets. This summary does not duplicate or replace their details.
 The [research index](research/index.md) links all eight cited reports and their
 exact source revisions.
@@ -17,23 +17,23 @@ exact source revisions.
 The atlas retains **40 historical specimens**. Current scope is **38
 components**:
 
-- [Text and structured-input interactions](../.scratch/trelis-accessible-prompts/issues/05-editing-prompt-contracts.md):
+- [Text and structured-input interactions](../docs/issues/trelis-accessible-prompts/issues/05-editing-prompt-contracts.md):
   `TextInput`, `Password`, `Multiline`, `Autocomplete`, `TagInput`, plus shared
   editing rules.
-- [Choice and hierarchical-navigation interactions](../.scratch/trelis-accessible-prompts/issues/06-choice-and-navigation-contracts.md):
+- [Choice and hierarchical-navigation interactions](../docs/issues/trelis-accessible-prompts/issues/06-choice-and-navigation-contracts.md):
   `Confirm`, `Select`, `MultiSelect`, `SearchSelect`, `Checkbox`, `Radio`,
   `TreeSelect`, `Toggle`, `TimezoneSelect`, `SortableSelect`, `CommandPalette`.
-- [Specialized value and key-capture interactions](../.scratch/trelis-accessible-prompts/issues/07-specialized-prompt-contracts.md):
+- [Specialized value and key-capture interactions](../docs/issues/trelis-accessible-prompts/issues/07-specialized-prompt-contracts.md):
   `Slider`, `RangeSlider`, `TimeInput`, `PathInput`, `FilePicker`,
   `DirectoryPicker`, `Keypress`, `KeyChordInput`.
-- [Accessible text and progress feedback](../.scratch/trelis-accessible-prompts/issues/08-feedback-contracts.md):
+- [Accessible text and progress feedback](../docs/issues/trelis-accessible-prompts/issues/08-feedback-contracts.md):
   `Text`, `Progress`, `Spinner`, `MultiSpinner`.
-- [Numeric, network and color input contracts](../.scratch/trelis-accessible-prompts/issues/13-numeric-network-color-contracts.md):
+- [Numeric, network and color input contracts](../docs/issues/trelis-accessible-prompts/issues/13-numeric-network-color-contracts.md):
   `NumberInput`, `PortInput`, `IPAddressInput`, `URLInput`, `EmailInput`,
   `ColorInput`.
-- [Mask, duration and cron input contracts](../.scratch/trelis-accessible-prompts/issues/14-mask-pattern-duration-cron-contracts.md):
+- [Mask, duration and cron input contracts](../docs/issues/trelis-accessible-prompts/issues/14-mask-pattern-duration-cron-contracts.md):
   `MaskedInput`, `DurationInput`, `CronInput`.
-- [Locale-calendar DateInput interactions](../.scratch/trelis-accessible-prompts/issues/17-locale-calendar-date-contract.md):
+- [Locale-calendar DateInput interactions](../docs/issues/trelis-accessible-prompts/issues/17-locale-calendar-date-contract.md):
   `DateInput`, including actual non-Gregorian-calendar support under qualified
   configurations.
 
@@ -44,7 +44,7 @@ elapsed spans or unapplied calendar periods.
 
 ## Shared contract
 
-[Choose Trelis's shared accessible interaction contract](../.scratch/trelis-accessible-prompts/issues/04-shared-accessibility-contract.md)
+[Choose Trelis's shared accessible interaction contract](../docs/issues/trelis-accessible-prompts/issues/04-shared-accessibility-contract.md)
 holds the complete rules. At a glance:
 
 - Every interactive component has rich and linear interactions with equivalent
@@ -70,7 +70,7 @@ holds the complete rules. At a glance:
 - Terminal state is restored on controllable exit paths, including repeated
   prompts. Forced process termination is not claimed as a cleanup guarantee.
 
-[The shared linear command and literal-input grammar](../.scratch/trelis-accessible-prompts/issues/10-linear-command-grammar.md)
+[The shared linear command and literal-input grammar](../docs/issues/trelis-accessible-prompts/issues/10-linear-command-grammar.md)
 defines exact `/help` and `/cancel`, narrow backslash quoting, and explicitly
 advertised component commands. Literal answer data is separate from display
 encoding and identified-paste provenance; display escapes must never leak into
@@ -114,7 +114,7 @@ inside this planning ticket.
 
 ## Required implementation gates
 
-[The accessibility verification matrix and evidence gates](../.scratch/trelis-accessible-prompts/issues/11-verification-matrix.md)
+[The accessibility verification matrix and evidence gates](../docs/issues/trelis-accessible-prompts/issues/11-verification-matrix.md)
 holds the full future acceptance policy.
 
 ### Ownership and claim boundaries
