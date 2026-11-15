@@ -1,1 +1,5 @@
 nvda-command=; nvda-process-count=0
+host=Windows 11 Home 10.0.26200
+dart=Dart SDK 3.13.2 (stable) windows_x64
+orca=1.4.259 provider=orca-computer-use-windows 1.0.0 protocol=1
+terminal=Windows Terminal "prompty-ticket32-probe" window-id=2164156 size=1129x635

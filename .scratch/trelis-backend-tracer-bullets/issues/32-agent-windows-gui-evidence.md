@@ -21,4 +21,6 @@
 
 ## Comments
 
-Agent-operated Windows terminal evidence at 040b6e2 is recorded in [the GUI report](../../../doc/evidence/trelis-backend/32-agent-windows-gui.md). It covers synthetic editing/caret, feedback/Text, help and narrow resize, ASCII/no-colour, private entry, repeated sessions, validation-error recovery, cancellation and interruption. NVDA was absent; no physical-keyboard, human-usability, or accessibility qualification is claimed.
+Agent-operated Windows terminal evidence at `a598c8e` is recorded in [the GUI report](../../../doc/evidence/trelis-backend/32-agent-windows-gui.md). It covers synthetic caret movement and editing under concurrent `Text`/`Spinner`/`Progress` writes, transcript-fallback modal help with correct line breaks and draft-row clearing, dismissal, and private entry. The accepted draft was `alpXha` and the harness printed `GUI-PROBE:accepted:alpXha;secret:accepted`. NVDA was absent; no physical-keyboard, human-usability, or accessibility qualification is claimed.
+
+The earlier blocked verdict at `7676a5f` is superseded: help no longer renders paragraph breaks as `\u{000A}`, and a session-owned help block no longer writes onto the live draft row. Narrow/idle resize, ASCII/no-colour, and the repeated/error/cancel/interruption cleanups were not re-run in this visible window; they stay anchored to the earlier observation and to scripted tests at this revision.
