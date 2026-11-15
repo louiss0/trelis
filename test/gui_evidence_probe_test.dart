@@ -92,4 +92,118 @@ void main() {
     expect(transcript, contains('Help dismissed.'));
     expect(transcript, isNot(contains('SYNTHETIC')));
   });
+
+  test(
+    'GUI evidence probe repeats sequential prompts inside one session',
+    () async {
+      final input = StreamController<String>();
+      final pulses = StreamController<void>();
+      final output = StringBuffer();
+      final profile = probe.asciiOutputProfile;
+
+      final run = probe.runGuiEvidenceProbe(
+        source: ScriptedInput(input.stream, output, outputProfile: profile),
+        outputProfile: profile,
+        includeSecret: false,
+        repeats: 2,
+        pulses: pulses.stream,
+      );
+      Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+      await settle();
+      input.add('\r');
+      await settle();
+      input.add('\r');
+      await settle();
+      await input.close();
+      await pulses.close();
+
+      expect(await run, 'accepted:alpha,alpha');
+      final transcript = output.toString();
+      expect(
+        RegExp(RegExp.escape('> alpha')).allMatches(transcript).length,
+        greaterThanOrEqualTo(2),
+        reason: 'both prompts paint the same initial draft on their own row',
+      );
+    },
+  );
+
+  test(
+    'GUI evidence probe validation scenario rejects once and then recovers',
+    () async {
+      final input = StreamController<String>();
+      final pulses = StreamController<void>();
+      final output = StringBuffer();
+      final profile = probe.asciiOutputProfile;
+
+      final run = probe.runGuiEvidenceProbe(
+        source: ScriptedInput(input.stream, output, outputProfile: profile),
+        outputProfile: profile,
+        includeSecret: false,
+        requireValue: true,
+        pulses: pulses.stream,
+      );
+      Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+      const rejection = 'Required: enter a non-empty value and submit again.';
+      await settle();
+      // The draft opens empty, so an immediate submit is a genuine rejection.
+      input.add('\r');
+      await settle();
+      // The declared profile wraps at 40 columns, so compare unwrapped text.
+      expect(output.toString().replaceAll('\n', ''), contains(rejection));
+      input.add('beta');
+      await settle();
+      input.add('\r');
+      await settle();
+      await input.close();
+      await pulses.close();
+
+      expect(await run, 'accepted:beta');
+      final transcript = output.toString();
+      final unwrapped = transcript.replaceAll('\n', '');
+      expect(
+        RegExp(RegExp.escape(rejection)).allMatches(unwrapped).length,
+        1,
+        reason: 'exactly one rejection, then a successful submission',
+      );
+      expect(
+        transcript.lastIndexOf('> beta'),
+        greaterThan(transcript.indexOf('Required:')),
+        reason: 'the recovering draft is painted after the rejection',
+      );
+    },
+  );
+
+  test(
+    'GUI evidence probe stays quiet when the pulse interval is zero',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final profile = probe.asciiOutputProfile;
+
+      final run = probe.runGuiEvidenceProbe(
+        source: ScriptedInput(input.stream, output, outputProfile: profile),
+        outputProfile: profile,
+        includeSecret: false,
+        pulseInterval: Duration.zero,
+      );
+      Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+      await settle();
+      input.add('\r');
+      await settle();
+      await input.close();
+
+      expect(await run, 'accepted:alpha');
+      final transcript = output.toString();
+      expect(transcript, isNot(contains('Concurrent informational write')));
+      expect(transcript, isNot(contains('background update')));
+      expect(
+        transcript,
+        contains('[status] Background activity: waiting while help is open'),
+        reason: 'the named regions still report their last known state',
+      );
+    },
+  );
 }

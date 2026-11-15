@@ -73,7 +73,16 @@ final class GuiEvidenceProbe {
 ///
 /// Concurrent feedback arrives from [pulses] when a harness supplies one, and
 /// from a [pulseInterval] timer otherwise, so the visible probe keeps reporting
-/// while an agent drives synthetic keys.
+/// while an agent drives synthetic keys. A zero [pulseInterval] with no
+/// [pulses] stream keeps the regions reporting without the periodic writes, so
+/// a static checkpoint such as narrow geometry or the ASCII fallback can be
+/// captured before the transcript scrolls.
+///
+/// [repeats] opens that many sequential prompts inside one session, which is
+/// the repeated-prompt checkpoint. [requireValue] opens the draft empty and
+/// declares the value required, so an immediate submit is rejected once and the
+/// prompt returns for a successful second submission; that is a genuine
+/// validation error rather than an optional empty answer.
 ///
 /// The probe deliberately returns only outcome metadata: its synthetic password
 /// canary is never included in output, transcript text, or diagnostics.
@@ -81,9 +90,14 @@ Future<String> runGuiEvidenceProbe({
   ScriptedInput? source,
   OutputProfile? outputProfile,
   bool includeSecret = true,
+  int repeats = 1,
+  bool requireValue = false,
   Stream<void>? pulses,
   Duration pulseInterval = const Duration(milliseconds: 350),
 }) async {
+  if (repeats < 1) {
+    throw ArgumentError.value(repeats, 'repeats', 'must be positive');
+  }
   return TerminalSession.run(
     (session) async {
       Text(
@@ -100,28 +114,34 @@ Future<String> runGuiEvidenceProbe({
       final probe = GuiEvidenceProbe._(session, progress, spinner);
       StreamSubscription<void>? subscription;
       Timer? timer;
-      if (pulses == null) {
-        timer = Timer.periodic(pulseInterval, (_) => probe.pulse());
-      } else {
+      if (pulses != null) {
         subscription = pulses.listen((_) => probe.pulse());
+      } else if (pulseInterval > Duration.zero) {
+        timer = Timer.periodic(pulseInterval, (_) => probe.pulse());
       }
       try {
-        final text = await TextInput(
-          'Project',
-          initialValue: 'alpha',
-          supplementaryHelp: const [
-            'This is an agent-operated synthetic-input probe,',
-            'not a human usability or accessibility claim.',
-          ],
-        ).prompt(session: session);
-        if (text is! Accepted<String>) return _outcome(text);
+        final accepted = <String>[];
+        for (var attempt = 0; attempt != repeats; attempt++) {
+          final text = await TextInput(
+            'Project',
+            initialValue: requireValue ? '' : 'alpha',
+            required: requireValue,
+            supplementaryHelp: const [
+              'This is an agent-operated synthetic-input probe,',
+              'not a human usability or accessibility claim.',
+            ],
+          ).prompt(session: session);
+          if (text is! Accepted<String>) return _outcome(text);
+          accepted.add(text.value);
+        }
         progress.update(guiProbeProgressTotal);
-        if (!includeSecret) return 'accepted:${text.value}';
+        if (!includeSecret) return 'accepted:${accepted.join(',')}';
 
         final secret = await Password('Synthetic canary')
             .prompt(session: session);
         return switch (secret) {
-          Accepted<String>() => 'accepted:${text.value};secret:accepted',
+          Accepted<String>() =>
+            'accepted:${accepted.join(',')};secret:accepted',
           _ => _outcome(secret),
         };
       } finally {
@@ -143,9 +163,40 @@ String _outcome(PromptResult<String> result) => switch (result) {
   Accepted<String>(:final value) => 'accepted:$value',
 };
 
+/// Reads `--name=value` as a non-negative integer, or null when absent.
+int? _intArgument(List<String> args, String name, {bool allowZero = false}) {
+  final prefix = '$name=';
+  for (final arg in args) {
+    if (!arg.startsWith(prefix)) continue;
+    final value = int.tryParse(arg.substring(prefix.length));
+    if (value == null || value < 0 || (value == 0 && !allowZero)) {
+      throw ArgumentError.value(
+        arg,
+        name,
+        allowZero ? 'must be a non-negative integer' : 'must be positive',
+      );
+    }
+    return value;
+  }
+  return null;
+}
+
+/// Runs the probe in the current terminal.
+///
+/// `--ascii` selects the fixed 40x8 no-colour ASCII profile, `--no-secret`
+/// stops after the text prompts, `--repeats=N` opens N sequential prompts,
+/// `--require-value` opens an empty draft whose required value is rejected
+/// until a real one is submitted, and `--pulse-interval=MS` sets the concurrent
+/// write cadence with `0` meaning none.
 Future<void> main(List<String> args) async {
+  final interval = _intArgument(args, '--pulse-interval', allowZero: true);
   final result = await runGuiEvidenceProbe(
     includeSecret: !args.contains('--no-secret'),
+    repeats: _intArgument(args, '--repeats') ?? 1,
+    requireValue: args.contains('--require-value'),
+    pulseInterval: interval == null
+        ? const Duration(milliseconds: 350)
+        : Duration(milliseconds: interval),
     outputProfile: args.contains('--ascii')
         ? asciiOutputProfile
         : visibleTerminalProfile(),

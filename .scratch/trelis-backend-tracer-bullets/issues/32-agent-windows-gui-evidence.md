@@ -21,6 +21,17 @@
 
 ## Comments
 
-Agent-operated Windows terminal evidence at `a598c8e` is recorded in [the GUI report](../../../doc/evidence/trelis-backend/32-agent-windows-gui.md). It covers synthetic caret movement and editing under concurrent `Text`/`Spinner`/`Progress` writes, transcript-fallback modal help with correct line breaks and draft-row clearing, dismissal, and private entry. The accepted draft was `alpXha` and the harness printed `GUI-PROBE:accepted:alpXha;secret:accepted`. NVDA was absent; no physical-keyboard, human-usability, or accessibility qualification is claimed.
+Agent-operated Windows terminal evidence at `b94efda3779fe24ae41164ddd53015be7621d814` is recorded in [the GUI report](../../../doc/evidence/trelis-backend/32-agent-windows-gui.md). Every named B-GUI checkpoint is captured and inspected at that one code revision, so nothing is carried forward from an older harness:
 
-The earlier blocked verdict at `7676a5f` is superseded: help no longer renders paragraph breaks as `\u{000A}`, and a session-owned help block no longer writes onto the live draft row. Narrow/idle resize, ASCII/no-colour, and the repeated/error/cancel/interruption cleanups were not re-run in this visible window; they stay anchored to the earlier observation and to scripted tests at this revision.
+- concurrent `Text`/`Spinner`/`Progress` writes with caret movement and insertion (`alpha` → `alpXha`), modal help with real paragraph breaks and a cleared draft row, dismissal, and private entry with no echo (screenshots 11–17, outcome `GUI-PROBE:accepted:alpXha;secret:accepted`);
+- ASCII/no-colour fallback under `--ascii`: uncoloured, ASCII-only, wrapped at 40 columns, with its own help, dismissal and outcome `GUI-PROBE:accepted:alpha` (18, 19, 21);
+- narrow/idle resize at 1000x620 → 620x420 through an explicit Win32 `MoveWindow`, with modal help and dismissal at narrow width (22–26);
+- repeated prompts in one session (`27`, `GUI-PROBE:accepted:alpha,alpha`);
+- a genuine required-value rejection followed by recovery (`28`, `29`: `Required: enter a non-empty value and submit again.` then `GUI-PROBE:accepted:beta`);
+- cancellation and interruption cleanup (`30`, `31`: both named regions completed, `GUI-PROBE:cancel` / `GUI-PROBE:interrupt`).
+
+Environment and method are recorded with the artifacts: Orca `1.4.259` / `orca-computer-use-windows` `1.0.0` supplied observation and screenshots only. The provider reports `Input: background=false` and refused key input with `window_not_focused`; `--restore-window` takes over the human's keyboard and was not used, so synthetic keys were injected with the repository's existing Win32 `AttachConsole`/`WriteConsoleInput` pattern. Resize used Win32 `MoveWindow` because the provider exposes no resize action. NVDA was absent (`nvda-command=; nvda-process-count=0`), so no physical-keyboard, human-usability or accessibility qualification is claimed.
+
+One captured limitation is stated rather than glossed: the visible adapter declares a fixed geometry at launch and has no native resize notification, so an idle resize does not reflow the prompt — the narrow frames show draft/caret preservation plus terminal soft wrap, not adaptive relayout. Live resize reflow remains unclaimed.
+
+The superseded `7676a5f` captures (`06`–`10`) are deleted, including the misleading "error-recovery" frame that only showed an optional empty submission; their checkpoints are replaced by the fresh captures above.
