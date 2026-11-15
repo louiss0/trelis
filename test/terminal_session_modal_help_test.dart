@@ -287,6 +287,48 @@ void main() {
   );
 
   test(
+    'transcript help clears the draft row before writing and repaints once',
+    () async {
+      final output = StringBuffer();
+      final input = StreamController<String>();
+
+      final result = await TerminalSession.run(
+        (session) async {
+          final prompt = TextInput('Project').prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          input.add('de\x14');
+          await Future<void>.delayed(Duration.zero);
+          input.add('\x1b');
+          await Future<void>.delayed(Duration.zero);
+          input.add('mo\r');
+          await input.close();
+          return await prompt;
+        },
+        source: ScriptedInput(
+          input.stream,
+          output,
+          supportsRich: true,
+          outputProfile: _transcriptProfile,
+        ),
+      );
+
+      expect((result as Accepted<String>).value, 'demo');
+      final text = output.toString();
+      expect(text, isNot(contains('\x1b[?1049h')));
+      // A transcript fallback has no alternate screen to hide the draft, so the
+      // editor must clear the row the modal replaces instead of writing the
+      // help block from the live caret.
+      expect(text, isNot(contains('\x1b[uHelp:')));
+      expect(text, contains('\r\x1b[2K\nHelp:'));
+      // Dismissal repaints the current draft on a fresh row, once.
+      expect(
+        RegExp(RegExp.escape('\r\x1b[2K> demo')).allMatches(text).length,
+        1,
+      );
+    },
+  );
+
+  test(
     'transcript help pauses feedback painting and cleans up on interruption',
     () async {
       final output = StringBuffer();

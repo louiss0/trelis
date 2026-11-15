@@ -123,6 +123,35 @@ void main() {
     );
   });
 
+  test('help keeps source line breaks and still escapes other controls', () async {
+    final output = StringBuffer();
+    await TextInput(
+      'Name',
+      supplementaryHelp: const [
+        'Names are shown to collaborators.',
+        'Tab\there and \x1b escape.',
+        'First\r\nsecond.',
+      ],
+    ).prompt(
+      source: ScriptedInput(
+        Stream.value('\x14\x03'),
+        output,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+
+    final text = output.toString();
+    // A source line break is document structure, so each paragraph reaches the
+    // terminal as a real line instead of the `\u{000A}` spelling.
+    expect(text, contains('Names are shown to collaborators.\nTab'));
+    expect(text, contains('First\nsecond.'));
+    expect(text, isNot(contains(r'\u{000A}')));
+    // Controls that are content rather than structure keep their visible
+    // spelling, so help never emits a live tab or escape.
+    expect(text, contains(r'Tab\u{0009}here and \u{001B} escape.'));
+  });
+
   test('help preserves interruption and EOF outcomes', () async {
     for (final entry in <({String keys, Matcher matcher})>[
       (keys: '\x14\x03', matcher: isA<Interrupted<String>>()),
