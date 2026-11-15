@@ -76,7 +76,7 @@ No golden or snapshot output was regenerated anywhere in this ticket.
 
 ## Compatibility inventory (B-COMPAT)
 
-Baseline: `.scratch/trelis-theming/api-baseline.md` (source revision
+Baseline: `docs/issues/trelis-theming/api-baseline.md` (source revision
 `80f4752`), revalidated against the revision above by reading the current
 constructors and by compiling the inventory test. "Added" columns are the
 intentional migrations the backend specification allows; every baseline

@@ -10,7 +10,7 @@ tests.
 The current scope is **38 components**: the 40 atlas specimens minus
 `StepperForm` and `RegexInput`. Earlier reports may cover 39 non-form
 specimens or include regex material before `RegexInput` was removed. The
-[map](../../.scratch/trelis-accessible-prompts/map.md) is the current scope and
+[map](../../docs/issues/trelis-accessible-prompts/map.md) is the current scope and
 decision index; resolved tickets hold interaction detail.
 
 ## Initial terminal and backend investigations

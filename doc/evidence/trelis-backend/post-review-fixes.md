@@ -81,19 +81,19 @@ report itself, because that report is the one description of record.
 **Fixed.** This branch now tracks the files the gate points at, in the tracker's
 own layout:
 
-- `.scratch/trelis-backend-tracer-bullets/issues/31-platform-ci-native-evidence.md`
+- `docs/issues/trelis-backend-tracer-bullets/issues/31-platform-ci-native-evidence.md`
   — the platform/native ticket that ticket 33 is blocked by, previously only a
   file on the primary worktree's disk and therefore a dangling link;
-- `.scratch/trelis-backend-implementation/issues/16-backend-evidence-gate.md` —
+- `docs/issues/trelis-backend-implementation/issues/16-backend-evidence-gate.md` —
   the retained compatibility gate, with its mirrored accepted verdict;
-- `.scratch/trelis-backend-implementation/spec.md` — the normative B-requirement
+- `docs/issues/trelis-backend-implementation/spec.md` — the normative B-requirement
   text both of the above cite as their acceptance reference.
 
-No other tracker file was added. The remaining `.scratch` links that point at
-other efforts' planning documents (`../trelis-theming/…`,
-`../trelis-theme-integration/…`, `dependencies.md`) are unchanged references to
-material outside this branch's scope, and `tool/check_doc_links.dart` excludes
-dot-directories, so they are not part of the documentation-link gate.
+No other tracker file was added in that change. References to other efforts'
+planning documents (`../trelis-theming/…`, `../trelis-theme-integration/…`,
+`dependencies.md`) remained outside that branch's scope at the time. The later
+Git-backed tracker migration moved the complete tracker to `docs/issues/`, where
+those references are now versioned and included in the documentation-link gate.
 
 ### 12. Functional fixes made under evidence tickets
 
@@ -179,7 +179,7 @@ that same revision. `244` is what the tool printed; ticket 33 now says `244`.
 | `dart test --reporter compact` | `+961: All tests passed!` (one earlier run of the same tree reported one failure in `cron_interaction_conformance_test.dart`, a file this branch does not touch; see limitations) |
 | `dart format --output=none --set-exit-if-changed .` | `Formatted 154 files (0 changed)` |
 | `dart analyze` | `No issues found!` |
-| `dart run tool/check_doc_links.dart` | `Checked 232 relative links in 59 Markdown files.` at this branch tip, with no `BROKEN` line and exit 0. The scope is every Markdown file in the repository outside dot-directories — this record and the audit's post-review tables included, `.scratch/` tracker files excluded, so the files added in finding 8 are not counted — and only relative link targets count; absolute URLs, bare fragments and `mailto:` targets are skipped. The matrix job printed `Checked 244 relative links in 58 Markdown files.` at code revision `324e3d7`, before these documentation edits. |
+| `dart run tool/check_doc_links.dart` | `Checked 232 relative links in 59 Markdown files.` at this branch tip, with no `BROKEN` line and exit 0. The scope is every Markdown file in the repository outside dot-directories — this record and the audit's post-review tables included, `docs/issues/` tracker files excluded, so the files added in finding 8 are not counted — and only relative link targets count; absolute URLs, bare fragments and `mailto:` targets are skipped. The matrix job printed `Checked 244 relative links in 58 Markdown files.` at code revision `324e3d7`, before these documentation edits. |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario resize -Report …` | `text input resize PASS result=0123456789…456789 state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1` (repeated: one run measured the state before the prompt acquired, `503 -> 503 -> 503`, with the same PASS) |
 | `.github/workflows/platform-regression.yml` | fresh six-job run [43747443317](https://github.com/louiss0/trelis/actions/runs/43747443317) at `324e3d7`, the final code revision: all six jobs `success`; each Dart job `Formatted 154 files (0 changed)`, `No issues found!`, `Checked 244 relative links in 58 Markdown files.`, `+961: All tests passed!`; both POSIX jobs printed all eleven PTY scenarios including `resize: PASS (0123456789…)`; the Windows job passed its eighteen console scenarios including `resize` plus six pseudoconsole cases |
 

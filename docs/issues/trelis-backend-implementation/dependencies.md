@@ -1,0 +1,32 @@
+# Superseded backend decomposition
+
+The user approved finer tracer bullets after reviewing the original layered plan. Use the [active 33-ticket backend execution index](../trelis-backend-tracer-bullets/dependencies.md) and [seven gated theme tickets](../trelis-theme-integration/dependencies.md). The old build tasks are superseded, not implemented; the retained acceptance gate stays unresolved until actual replacement evidence passes. Parent specifications are unchanged.
+
+## Historical navigation (not an executable frontier)
+
+The [specification](spec.md) defines scope and evidence requirements. Individual tasks hold authoritative Status/Blocked by metadata. This is navigation, not a second acceptance store.
+
+| Task | Depends on |
+|---|---|
+| [Capture the backend regression baseline and deterministic harness](issues/01-regression-baseline-and-harness.md) | Unblocked |
+| [Unify output profiles, capability detection and native lifecycle adapters](issues/02-output-profile-and-native-adapters.md) | [Capture the backend regression baseline and deterministic harness](issues/01-regression-baseline-and-harness.md) |
+| [Implement pinned Unicode display measurement and caret mapping](issues/03-unicode-display-and-caret-mapping.md) | [Capture the backend regression baseline and deterministic harness](issues/01-regression-baseline-and-harness.md) |
+| [Build typed presentation, protected composition and colour rendering](issues/04-typed-presentation-and-rendering.md) | [Unify output profiles, capability detection and native lifecycle adapters](issues/02-output-profile-and-native-adapters.md); [Implement pinned Unicode display measurement and caret mapping](issues/03-unicode-display-and-caret-mapping.md) |
+| [Implement ordered presentation events and shared input routing](issues/05-events-and-input-routing.md) | [Unify output profiles, capability detection and native lifecycle adapters](issues/02-output-profile-and-native-adapters.md) |
+| [Implement the explicit shared session and multi-region compositor](issues/06-shared-session-compositor.md) | [Build typed presentation, protected composition and colour rendering](issues/04-typed-presentation-and-rendering.md); [Implement ordered presentation events and shared input routing](issues/05-events-and-input-routing.md) |
+| [Integrate Text, Progress, Spinner and MultiSpinner as coordinated feedback](issues/07-feedback-region-integration.md) | [Implement the explicit shared session and multi-region compositor](issues/06-shared-session-compositor.md) |
+| [Integrate core editors, secrets, booleans and tags with the shared backend](issues/08-core-editor-integration.md) | [Implement the explicit shared session and multi-region compositor](issues/06-shared-session-compositor.md); [Integrate Text, Progress, Spinner and MultiSpinner as coordinated feedback](issues/07-feedback-region-integration.md) |
+| [Integrate choices, search, hierarchy and ordering with typed regions](issues/09-choice-and-search-integration.md) | [Integrate core editors, secrets, booleans and tags with the shared backend](issues/08-core-editor-integration.md) |
+| [Integrate formatted text and value wrappers with safe display context](issues/10-formatted-value-integration.md) | [Integrate core editors, secrets, booleans and tags with the shared backend](issues/08-core-editor-integration.md) |
+| [Integrate segmented, range and masked editing with real caret anchors](issues/11-segmented-and-range-integration.md) | [Integrate core editors, secrets, booleans and tags with the shared backend](issues/08-core-editor-integration.md) |
+| [Integrate review workflows, filesystem browsing, cron and key capture](issues/12-review-browser-and-capture-integration.md) | [Integrate core editors, secrets, booleans and tags with the shared backend](issues/08-core-editor-integration.md); [Integrate choices, search, hierarchy and ordering with typed regions](issues/09-choice-and-search-integration.md) |
+| [Complete component help, protected roles and public compatibility](issues/13-help-and-public-compatibility.md) | [Integrate Text, Progress, Spinner and MultiSpinner as coordinated feedback](issues/07-feedback-region-integration.md); [Integrate core editors, secrets, booleans and tags with the shared backend](issues/08-core-editor-integration.md); [Integrate choices, search, hierarchy and ordering with typed regions](issues/09-choice-and-search-integration.md); [Integrate formatted text and value wrappers with safe display context](issues/10-formatted-value-integration.md); [Integrate segmented, range and masked editing with real caret anchors](issues/11-segmented-and-range-integration.md); [Integrate review workflows, filesystem browsing, cron and key capture](issues/12-review-browser-and-capture-integration.md) |
+| [Run Windows, Linux and macOS backend regression and native evidence](issues/14-cross-platform-native-evidence.md) | [Complete component help, protected roles and public compatibility](issues/13-help-and-public-compatibility.md) |
+| [Verify the backend through agent-operated Windows computer use](issues/15-agent-visible-terminal-probe.md) | [Complete component help, protected roles and public compatibility](issues/13-help-and-public-compatibility.md) |
+| [Accept the backend evidence gate](issues/16-backend-evidence-gate.md) | [Run Windows, Linux and macOS backend regression and native evidence](issues/14-cross-platform-native-evidence.md); [Verify the backend through agent-operated Windows computer use](issues/15-agent-visible-terminal-probe.md) |
+
+## Start here
+
+The former [Capture the backend regression baseline and deterministic harness](issues/01-regression-baseline-and-harness.md) is superseded. The only initial replacement task is [Capture the regression baseline and deterministic harness](../trelis-backend-tracer-bullets/issues/01-baseline-and-harness.md). Follow the active index rather than the historical table above. Capability and measurement work can fan out after the baseline; serialize shared-file edits as needed. CI/native and local agent-GUI evidence converge on [Accept the backend evidence gate](issues/16-backend-evidence-gate.md). Only that accepted gate unblocks the [theme handoff](../trelis-theme-integration/spec.md).
+
+Linux/macOS native PTY verification runs in CI; no physical access is required. The local visible-terminal probe is agent-operated on Windows. No human checkpoint is part of this sequence.

@@ -38,7 +38,7 @@ configured workflow as a pass.
 - **One code revision, three hashes.** The accepted revision's code tree is
   byte-identical to `b94efda3779fe24ae41164ddd53015be7621d814`, the revision
   every GUI capture and every probe run in ticket 32 was made at: `git diff
-  --stat b94efda 81738e8` lists only `doc/` and `.scratch/` files, with no
+  --stat b94efda 81738e8` lists only `doc/` and `docs/issues/` files, with no
   `lib/`, `test/` or `tool/` path differing. The matrix run cited below was
   triggered by a documentation-only commit on top of `81738e8`; its diff is the
   same audit file. Behaviour, captures and CI therefore describe one backend.
@@ -298,12 +298,12 @@ observation.
 
 The accepted verdict and artifact pointers are mirrored into the retained
 compatibility gate
-[`issues/16-backend-evidence-gate.md`](../../../.scratch/trelis-backend-implementation/issues/16-backend-evidence-gate.md),
+[`issues/16-backend-evidence-gate.md`](../../../docs/issues/trelis-backend-implementation/issues/16-backend-evidence-gate.md),
 with the statement that the finer 33-ticket plan was the executed plan and that
 the superseded layered decomposition's tasks are not claimed as implemented.
-That file, [ticket 31](../../../.scratch/trelis-backend-tracer-bullets/issues/31-platform-ci-native-evidence.md),
-[ticket 33](../../../.scratch/trelis-backend-tracer-bullets/issues/33-backend-evidence-gate.md)
+That file, [ticket 31](../../../docs/issues/trelis-backend-tracer-bullets/issues/31-platform-ci-native-evidence.md),
+[ticket 33](../../../docs/issues/trelis-backend-tracer-bullets/issues/33-backend-evidence-gate.md)
 and the normative
-[B requirements](../../../.scratch/trelis-backend-implementation/spec.md) are
+[B requirements](../../../docs/issues/trelis-backend-implementation/spec.md) are
 tracked by this branch, so the verdict no longer depends on untracked files on a
 primary worktree.
