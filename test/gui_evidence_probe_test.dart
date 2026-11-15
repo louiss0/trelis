@@ -174,4 +174,36 @@ void main() {
       );
     },
   );
+
+  test(
+    'GUI evidence probe stays quiet when the pulse interval is zero',
+    () async {
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      final profile = probe.asciiOutputProfile;
+
+      final run = probe.runGuiEvidenceProbe(
+        source: ScriptedInput(input.stream, output, outputProfile: profile),
+        outputProfile: profile,
+        includeSecret: false,
+        pulseInterval: Duration.zero,
+      );
+      Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+      await settle();
+      input.add('\r');
+      await settle();
+      await input.close();
+
+      expect(await run, 'accepted:alpha');
+      final transcript = output.toString();
+      expect(transcript, isNot(contains('Concurrent informational write')));
+      expect(transcript, isNot(contains('background update')));
+      expect(
+        transcript,
+        contains('[status] Background activity: waiting while help is open'),
+        reason: 'the named regions still report their last known state',
+      );
+    },
+  );
 }
