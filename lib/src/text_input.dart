@@ -2964,23 +2964,32 @@ final class Password {
           : PromptMode.linear;
     }
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedText(
+    _writeWrappedColorText(
       scripted.output,
       '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       width,
+      foreground: colors.foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
     );
     if (mask) {
-      _writeWrappedText(
+      _writeWrappedColorText(
         scripted.output,
         'Masking is enabled and discloses length.',
         width,
+        foreground: colors.muted,
+        background: colors.background,
+        outputProfile: effectiveProfile,
       );
     }
     if (initialValue.isNotEmpty) {
-      _writeWrappedText(
+      _writeWrappedColorText(
         scripted.output,
         'Secret prefill is enabled; the secret is retained in memory.',
         width,
+        foreground: colors.muted,
+        background: colors.background,
+        outputProfile: effectiveProfile,
       );
     }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
@@ -3011,10 +3020,13 @@ final class Password {
         if (edit.action != 'submit') return InputEnded();
         value = edit.value;
         while (true) {
-          _writeWrappedText(
+          _writeWrappedColorText(
             scripted.output,
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
             width,
+            foreground: colors.foreground,
+            background: colors.background,
+            outputProfile: effectiveProfile,
           );
           final action = await _edit(
             inputKeys,
@@ -3040,8 +3052,13 @@ final class Password {
           switch (action.value) {
             case 'submit':
               if ((required && value.isEmpty) || _validationFailed(value)) {
-                scripted.output.writeln(
+                _writeWrappedColorText(
+                  scripted.output,
                   'Secret does not satisfy the requirements. Choose edit or clear and try again.',
+                  width,
+                  foreground: colors.error,
+                  background: colors.background,
+                  outputProfile: effectiveProfile,
                 );
                 continue;
               }
@@ -3056,8 +3073,13 @@ final class Password {
               return Cancelled();
             case 'help':
             case '/help':
-              scripted.output.writeln(
+              _writeWrappedColorText(
+                scripted.output,
                 'Submit validates; edit reopens the secret; clear starts empty; cancel ends the prompt.',
+                width,
+                foreground: colors.muted,
+                background: colors.background,
+                outputProfile: effectiveProfile,
               );
               continue;
             default:
@@ -3527,10 +3549,13 @@ final class Multiline {
           : PromptMode.linear;
     }
     final out = scripted.output;
-    _writeWrappedText(
+    _writeWrappedColorText(
       out,
       _opening(linear: mode == PromptMode.linear),
       _textInputWidth(effectiveProfile),
+      foreground: colors.foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
@@ -3584,7 +3609,14 @@ final class Multiline {
             final value = lines.join('\n');
             final error = _error(value);
             if (error == null) return Accepted(value);
-            out.writeln(error);
+            _writeWrappedColorText(
+              out,
+              error,
+              _textInputWidth(effectiveProfile),
+              foreground: colors.error,
+              background: colors.background,
+              outputProfile: effectiveProfile,
+            );
             continue;
           }
           if (result.value == '/list') {
@@ -3612,7 +3644,14 @@ final class Multiline {
             final index = (int.tryParse(number.value) ?? 0) - 1;
             if (index < 0 ||
                 index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
-              out.writeln('Invalid line number.');
+              _writeWrappedColorText(
+                out,
+                'Invalid line number.',
+                _textInputWidth(effectiveProfile),
+                foreground: colors.error,
+                background: colors.background,
+                outputProfile: effectiveProfile,
+              );
               continue;
             }
             if (result.value == '/remove') {
@@ -3697,8 +3736,13 @@ final class Multiline {
       final before = chars.take(pos).join() + text;
       final candidate = before + chars.skip(pos).join();
       if (maxLength != null && candidate.characters.length > maxLength!) {
-        out.writeln(
+        _writeWrappedColorText(
+          out,
           'Insertion rejected: character limit is $maxLength graphemes.',
+          _textInputWidth(activeProfile),
+          foreground: colors.error,
+          background: colors.background,
+          outputProfile: activeProfile,
         );
         return;
       }

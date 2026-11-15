@@ -189,10 +189,13 @@ final class URLInput {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedText(
+    _writeWrappedColorText(
       out,
       '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
       width,
+      foreground: colors.foreground,
+      background: colors.background,
+      outputProfile: effectiveProfile,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = '';
@@ -229,13 +232,25 @@ final class URLInput {
           if (!authority.startsWith('[')) {
             final host = authority.split(':').first;
             const idna = Uts46();
-            out.writeln(
+            _writeWrappedColorText(
+              out,
               'Host interpretation -- Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
+              width,
+              foreground: colors.success,
+              background: colors.background,
+              outputProfile: effectiveProfile,
             );
           }
           return Accepted(value);
         }
-        out.writeln(error);
+        _writeWrappedColorText(
+          out,
+          error,
+          width,
+          foreground: colors.error,
+          background: colors.background,
+          outputProfile: effectiveProfile,
+        );
       }
     } finally {
       if (keys == null) await inputKeys.close();

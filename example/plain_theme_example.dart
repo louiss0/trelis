@@ -11,9 +11,7 @@ void main() async {
   final signal = ColorThemes.signal;
 
   // Override one role while keeping every other role from the named palette.
-  final patched = signal.copyWith(
-    warning: TerminalColor.rgb(255, 190, 80),
-  );
+  final patched = signal.copyWith(warning: TerminalColor.rgb(255, 190, 80));
 
   // Configure a TextInput through PlainTheme with a non-default palette,
   // compact instructions and application-specific help.
@@ -50,7 +48,11 @@ void main() async {
   // ScriptedInput. Here we only demonstrate that construction is output-free
   // and that every factory returns the correct concrete type.
   print('Configured:');
-  print('  project: ${project.label} (${project.colors.foreground == signal.foreground ? 'signal foreground' : 'other'})');
-  print('  template: ${template.label} with ${template.choices.length} choices');
+  print(
+    '  project: ${project.label} (${project.colors.foreground == signal.foreground ? 'signal foreground' : 'other'})',
+  );
+  print(
+    '  template: ${template.label} with ${template.choices.length} choices',
+  );
   print('  progress: ${progress.label} (${progress.total} items)');
 }
