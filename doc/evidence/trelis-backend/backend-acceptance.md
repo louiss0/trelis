@@ -58,19 +58,23 @@ configured workflow as a pass.
 ## Fresh platform and native evidence (B-PLATFORM)
 
 Pushing the branch ran the whole workflow matrix:
-[run 43740821935](https://github.com/louiss0/trelis/actions/runs/43740821935)
-for source `4eca00f8d4585b8aae7990c5c60fc056e7dfbaab`, the
-documentation-only link repair on top of `81738e8`, six jobs. The workflow pins
-Dart 3.13.2.
+[run 43741678302](https://github.com/louiss0/trelis/actions/runs/43741678302)
+for source `a2900fbdb0d3e53abf7d8f0a93d23525e1df5341`, the commit that publishes
+this verdict (documentation-only on top of `81738e8`), six jobs, every job
+`success`. The workflow pins Dart 3.13.2. The same matrix had already passed one
+commit earlier at `4eca00f`
+([run 43740821935](https://github.com/louiss0/trelis/actions/runs/43740821935)),
+the link repair; both runs cover the identical code tree, and the later run also
+covers this audit's own links.
 
 | Job | Runner/SDK | Executed result | Artifact |
 | --- | --- | --- | --- |
-| Dart | `windows-latest` (`windows-2025-vs2026`), `windows_x64`, Dart 3.13.2 | `Formatted 152 files (0 changed) in 1.45 seconds.`; `No issues found!`; `Checked 224 relative links in 58 Markdown files.`; `+952: All tests passed!` | [job 132893372081](https://github.com/louiss0/trelis/actions/runs/43740821935/job/132893372081) |
-| Dart | `ubuntu-latest` (`ubuntu-26.04`), `linux_x64`, Dart 3.13.2 | the same format, analysis and 224-link results; `+952: All tests passed!` | [job 132893372024](https://github.com/louiss0/trelis/actions/runs/43740821935/job/132893372024) |
-| Dart | `macos-latest` (`macos-26-arm64`), `macos_arm64`, Dart 3.13.2 | the same format, analysis and 224-link results; `+952: All tests passed!` | [job 132893372049](https://github.com/louiss0/trelis/actions/runs/43740821935/job/132893372049) |
-| POSIX native | Ubuntu, Dart 3.13.2 | ten public PTY scenarios `PASS`: `rich (alpha)`, `escape (cancel)`, `interrupt (interrupt)`, `signal (interrupt)`, `eof (eof)`, `error (alpha)`, `repeat (alpha,alpha)`, `session-retire (retired)`, `dumb-auto (alpha)`, `dumb-rich (unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.)` | [job 132893371806](https://github.com/louiss0/trelis/actions/runs/43740821935/job/132893371806) |
-| POSIX native | macOS arm64, Dart 3.13.2 | the same ten PTY scenarios `PASS` | [job 132893372109](https://github.com/louiss0/trelis/actions/runs/43740821935/job/132893372109) |
-| Windows native | `windows-latest`, Dart 3.13.2 | 17 `text input <scenario> PASS` lifecycle reports and six multiline pseudoconsole cases `PASS` | [job 132893371938](https://github.com/louiss0/trelis/actions/runs/43740821935/job/132893371938) |
+| Dart | `windows-latest` (`windows-2025-vs2026`), `windows_x64`, Dart 3.13.2 | `Formatted 152 files (0 changed)`; `No issues found!`; `Checked 244 relative links in 58 Markdown files.`; `+952: All tests passed!` | [job 132895994628](https://github.com/louiss0/trelis/actions/runs/43741678302/job/132895994628) |
+| Dart | `ubuntu-latest` (`ubuntu-26.04`), `linux_x64`, Dart 3.13.2 | the same format, analysis and 244-link results; `+952: All tests passed!` | [job 132895994687](https://github.com/louiss0/trelis/actions/runs/43741678302/job/132895994687) |
+| Dart | `macos-latest` (`macos-26-arm64`), `macos_arm64`, Dart 3.13.2 | the same format, analysis and 244-link results; `+952: All tests passed!` | [job 132895994668](https://github.com/louiss0/trelis/actions/runs/43741678302/job/132895994668) |
+| POSIX native | Ubuntu, Dart 3.13.2 | ten public PTY scenarios `PASS`: `rich (alpha)`, `escape (cancel)`, `interrupt (interrupt)`, `signal (interrupt)`, `eof (eof)`, `error (alpha)`, `repeat (alpha,alpha)`, `session-retire (retired)`, `dumb-auto (alpha)`, `dumb-rich (unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.)` | [job 132895994435](https://github.com/louiss0/trelis/actions/runs/43741678302/job/132895994435) |
+| POSIX native | macOS arm64, Dart 3.13.2 | the same ten PTY scenarios `PASS` | [job 132895994673](https://github.com/louiss0/trelis/actions/runs/43741678302/job/132895994673) |
+| Windows native | `windows-latest`, Dart 3.13.2 | 17 `text input <scenario> PASS` lifecycle reports and six multiline pseudoconsole cases `PASS` | [job 132895994647](https://github.com/louiss0/trelis/actions/runs/43741678302/job/132895994647) |
 
 The Windows native job reported the 17 scenarios this audit relies on: `rich`
 (`alpha`), `linear-cursor` (`alphXa`), `linear-long`, `help-text-linear`,
@@ -83,11 +87,6 @@ after the run; plus the pseudoconsole cases `framed-command`, `typed-command`,
 satisfies the CI-only Linux/macOS requirement without adding a physical
 Linux/macOS, human or local GUI checkpoint, and it exercises the new
 capability/session/resize/measurement paths rather than a legacy script alone.
-
-That run checked 224 links because this audit had not yet grown; the same check
-re-run on this publication reports 244 links in 58 files with the same `+952`
-tests, the extra links being the artifact and section links added here. No code
-file differs between the run's tree and this one.
 
 The same native wrappers were also re-run locally at the candidate, unchanged
 and unwaived:
@@ -152,7 +151,7 @@ observation recorded below.
 | B-MODAL | pass | `15-modal-help-live-jobs.md`, the modal-help suite and visible frames 14, 15, 19, 25, 26: session-wide help owns painting in the transcript fallback while background jobs keep updating, dismissal restores the latest composite and a valid prompt state rather than a stale frame, notices survive the modal interval, `Ctrl+T` is not stolen from capture/literal-secret entry, and interruption/EOF/error exits behave. |
 | B-FAIL | pass | `17-session-failure-recovery.md`, the failure suite and the native `session-retire` check: registration, local rendering, shared write, acquisition/restoration and callback failures are injected; local faults are isolated; a failed shared writer closes safely; registrations are drained, watchers stopped, leases released and received terminal state restored (`503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1`, `496` for the 496 state); original failure context survives cleanup failure; late updates cannot write after closure. Forcible process termination and unmanaged external mutation are outside the contract. |
 | B-COMPAT | pass | `30-compatibility-and-contract.md`, the public inventory and the full suite: public additions checked against the source inventory including part files, direct constructors still supported, invocation modes and results unchanged apart from the documented migrations (session/profile options, explicit synthetic geometry, plain/terminal-native default presentation, deliberate instruction-copy/layout changes), truthful README/CHANGELOG/examples, no package rename, and transcript changes reviewed semantically. |
-| B-PLATFORM | pass | Fresh six-job matrix [43740821935](https://github.com/louiss0/trelis/actions/runs/43740821935) on a tree whose code is byte-identical to `81738e8`/`b94efda3`, detailed above, with runners, SDK, executed scenarios and job URLs. Linux/macOS remain CI-only and need no physical or human check. |
+| B-PLATFORM | pass | Fresh six-job matrix [43741678302](https://github.com/louiss0/trelis/actions/runs/43741678302) at the publishing revision `a2900fb` (code byte-identical to `81738e8`/`b94efda3`), detailed above, with runners, SDK, executed scenarios and job URLs. Linux/macOS remain CI-only and need no physical or human check. |
 | B-GUI | pass | Every named checkpoint captured at one code revision and inspected below: keyboard editing, caret movement, concurrent feedback, help/dismissal, narrow/idle resize, ASCII/no-colour, secret-entry non-disclosure, cleanup and repeated sessions. NVDA absence recorded; agent input is automation, not human usability evidence. |
 | B-GATE | **accepted** | This audit: every requirement above, every task 01–32 resolved, evidence re-run or re-captured after the changes, limitations and historical failures carried forward, no partial/planned/configured result counted as a pass, and only this explicit pass unblocks the separate theme handoff. It grants no release-wide accessibility claim. |
 

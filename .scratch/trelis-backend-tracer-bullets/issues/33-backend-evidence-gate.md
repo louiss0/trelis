@@ -58,8 +58,8 @@ Verification at the accepted revision: `dart format` (152 files, 0 changed),
 the full suite (`+952`), 73 focused GUI/session/help/resize tests, the 144-test
 component matrix, four local Windows console scenarios plus six local ConPTY
 cases, and the fresh six-job matrix
-[43740821935](https://github.com/louiss0/trelis/actions/runs/43740821935)
-(success) on a tree whose code is byte-identical.
+[43741678302](https://github.com/louiss0/trelis/actions/runs/43741678302)
+(success at the publishing revision, code byte-identical to the accepted one).
 
 Limitations are carried forward rather than waived: Linux/macOS evidence is
 CI-only, Windows native checks inject console records or use a pseudoconsole,
