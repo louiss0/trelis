@@ -108,7 +108,11 @@ final class MaskedInput {
     required List<MaskTemplate> templates,
     this.initialValue,
     this.interpretation = MaskInterpretation.automatic,
-  }) : templates = List.unmodifiable(templates) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : templates = List.unmodifiable(templates),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty ||
         label.runes.any((c) => c < 32 || c == 127) ||
         templates.isEmpty ||
@@ -146,6 +150,9 @@ final class MaskedInput {
   final List<MaskTemplate> templates;
   final MaskedValue? initialValue;
   final MaskInterpretation interpretation;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
 
   bool _active = false;
 

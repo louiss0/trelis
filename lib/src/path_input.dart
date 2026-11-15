@@ -12,7 +12,9 @@ final class PathInput {
     this.allowNonexistent = false,
     this.target = PathTarget.any,
     this.colors = ColorThemes.terminalDefault,
-  }) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -30,6 +32,8 @@ final class PathInput {
   final bool allowNonexistent;
   final PathTarget target;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<String>> prompt({

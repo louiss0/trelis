@@ -10,7 +10,10 @@ final class Slider {
     this.initialValue,
     this.precision,
     this.units,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty ||
         label.runes.any((c) => c < 32 || c == 127) ||
         (units != null && units!.runes.any((c) => c < 32 || c == 127))) {
@@ -43,6 +46,9 @@ final class Slider {
   final String? initialValue;
   final int? precision;
   final String? units;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
 
   String get _unitsCue => units == null ? '' : ', units $units';
 
@@ -402,6 +408,9 @@ final class RangeSlider {
     this.initialUpper,
     int? precision,
     String? units,
+    ColorTheme colors = ColorThemes.terminalDefault,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : _slider = Slider(
          label,
          minimum: minimum,
@@ -409,6 +418,9 @@ final class RangeSlider {
          step: step,
          precision: precision,
          units: units,
+         colors: colors,
+         instructions: instructions,
+         supplementaryHelp: supplementaryHelp,
        ) {
     final gap = _decimal(minimumGap);
     if (gap == null ||
@@ -426,6 +438,12 @@ final class RangeSlider {
   final String minimumGap;
   final String? initialLower;
   final String? initialUpper;
+
+  ColorTheme get colors => _slider.colors;
+
+  InstructionDisplay get instructions => _slider.instructions;
+
+  List<String> get supplementaryHelp => _slider.supplementaryHelp;
 
   String? _pairError(String lower, String upper) {
     final l = _slider._validate(lower);

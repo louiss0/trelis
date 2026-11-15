@@ -47,7 +47,10 @@ final class TreeSelect<T> {
     this.isCurrent,
     this.defaultValue,
     this.colors = ColorThemes.terminalDefault,
-  }) : nodes = List.unmodifiable(nodes) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : nodes = List.unmodifiable(nodes),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -70,6 +73,8 @@ final class TreeSelect<T> {
   final List<TreeNode<T>> nodes;
   final T? defaultValue;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
 
   /// Optional currentness check for nodes that can disappear during a prompt.
   final bool Function(T value)? isCurrent;
@@ -568,7 +573,10 @@ final class SortableSelect<T> {
     this.label,
     List<Choice<T>> choices, {
     this.colors = ColorThemes.terminalDefault,
-  }) : choices = List.unmodifiable(choices) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : choices = List.unmodifiable(choices),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -581,6 +589,8 @@ final class SortableSelect<T> {
 
   /// The component palette for order rows, guidance and notices.
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<List<T>>> prompt({

@@ -2822,7 +2822,10 @@ final class Password {
     this.mask = false,
     this.required = false,
     this.validate,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -2835,6 +2838,9 @@ final class Password {
   final bool mask;
   final bool required;
   final String? Function(String)? validate;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<String>> prompt({
@@ -3077,6 +3083,8 @@ final class Confirm extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.confirm);
 }
 
@@ -3085,6 +3093,8 @@ final class Checkbox extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.checkbox);
 }
 
@@ -3093,6 +3103,8 @@ final class Toggle extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.toggle);
 }
 
@@ -3104,7 +3116,9 @@ abstract class _BooleanPrompt {
     required this.initialValue,
     required this.kind,
     required this.colors,
-  }) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -3113,6 +3127,8 @@ abstract class _BooleanPrompt {
   final bool initialValue;
   final _BooleanKind kind;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<bool>> prompt({
@@ -3356,7 +3372,10 @@ final class Multiline {
     this.required = false,
     this.validate,
     this.maxLength,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -3373,6 +3392,9 @@ final class Multiline {
   final bool required;
   final String? Function(String)? validate;
   final int? maxLength;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
   static String _normalize(String value) =>
       value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -4106,6 +4128,8 @@ final class Select<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(radio: false);
 }
 
@@ -4115,6 +4139,8 @@ final class Radio<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(radio: true);
 }
 
@@ -4125,7 +4151,10 @@ abstract class _SingleChoice<T> {
     this.defaultValue,
     required this.radio,
     required this.colors,
-  }) : choices = List.unmodifiable(choices) {
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : choices = List.unmodifiable(choices),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4141,6 +4170,8 @@ abstract class _SingleChoice<T> {
   final T? defaultValue;
   final bool radio;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   /// Component help led by this family's controls.
@@ -4444,8 +4475,11 @@ final class MultiSelect<T> {
     this.min = 0,
     this.max,
     this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
-       defaultValues = List.unmodifiable(defaultValues) {
+       defaultValues = List.unmodifiable(defaultValues),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4469,6 +4503,8 @@ final class MultiSelect<T> {
   final int min;
   final int? max;
   final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   /// Component help led by this family's toggle, review and filter actions.
@@ -4900,7 +4936,10 @@ final class TimeInput {
     this.twelveHour = false,
     this.seconds = false,
     this.initialValue,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4912,6 +4951,9 @@ final class TimeInput {
   final bool twelveHour;
   final bool seconds;
   final String? initialValue;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String get _format =>
@@ -5354,7 +5396,10 @@ final class TagInput {
     this.style = TagStyle.kebabCase,
     this.maxLength,
     this.validate,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (maxLength != null && maxLength! < 0) {
       throw ArgumentError.value(maxLength, 'maxLength');
     }
@@ -5363,6 +5408,9 @@ final class TagInput {
   final TagStyle style;
   final int? maxLength;
   final String? Function(String)? validate;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String _canonical(String text) {

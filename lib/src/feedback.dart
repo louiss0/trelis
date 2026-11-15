@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'color_theme.dart';
 import 'terminal_io.dart';
 import 'text_input.dart'
     show PromptMode, TerminalSession, TerminalSessionFeedbackRegion;
@@ -61,9 +62,14 @@ TerminalSessionFeedbackRegion _startInSession(
 
 /// Literal, feedback-only text.
 final class Text {
-  Text(this.content, {this.kind = TextKind.ordinary});
+  Text(
+    this.content, {
+    this.kind = TextKind.ordinary,
+    this.colors = ColorThemes.terminalDefault,
+  });
   final String content;
   final TextKind kind;
+  final ColorTheme colors;
 
   void present({
     StringSink? output,
@@ -143,6 +149,7 @@ final class Progress {
     this.interval = const Duration(seconds: 5),
     this.milestone = 10,
     FeedbackClock? clock,
+    this.colors = ColorThemes.terminalDefault,
   }) : _total = total,
        _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative || milestone <= 0 || milestone > 100) {
@@ -154,12 +161,14 @@ final class Progress {
   final Duration interval;
   final int milestone;
   final FeedbackClock _clock;
+  final ColorTheme colors;
   Duration? _lastUpdate;
   FeedbackTimer? _timer;
   int _shownPercent = 0;
   int? _pending;
   String? _phase;
   int? _total;
+  int? get total => _total;
   int _value = 0;
   StringSink? _output;
   Object? _standaloneOwner;
@@ -345,8 +354,9 @@ final class Progress {
 
 /// Feedback for activity whose total work is unknown.
 final class Spinner {
-  Spinner(this.label);
+  Spinner(this.label, {this.colors = ColorThemes.terminalDefault});
   final String label;
+  final ColorTheme colors;
   StringSink? _output;
   Object? _standaloneOwner;
   TerminalSessionFeedbackRegion? _sessionRegion;
@@ -470,6 +480,7 @@ final class MultiSpinner {
     Iterable<String> tasks, {
     this.interval = const Duration(seconds: 5),
     FeedbackClock? clock,
+    this.colors = ColorThemes.terminalDefault,
   }) : _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
     final displayNames = <String>{};
@@ -490,6 +501,7 @@ final class MultiSpinner {
   final Map<String, _GroupTask> _tasks = {};
   final Set<String> _pending = {};
   final FeedbackClock _clock;
+  final ColorTheme colors;
   Duration? _lastBatch;
   FeedbackTimer? _timer;
   StringSink? _output;

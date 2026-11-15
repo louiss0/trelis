@@ -9,6 +9,7 @@ final class Autocomplete {
     this.required = false,
     this.validate,
     this.maxLength,
+    this.colors = ColorThemes.terminalDefault,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
@@ -18,12 +19,16 @@ final class Autocomplete {
          required: required,
          validate: validate,
          maxLength: maxLength,
+         colors: colors,
+         instructions: instructions,
+         supplementaryHelp: supplementaryHelp,
        );
 
   final String label;
   final String initialValue;
   final bool required;
   final int? maxLength;
+  final ColorTheme colors;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final String? Function(String)? validate;

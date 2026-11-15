@@ -2,8 +2,14 @@ part of 'text_input.dart';
 
 /// Absolute URLs using explicitly permitted web schemes.
 final class URLInput {
-  URLInput(this.label, {required Set<String> allowedSchemes})
-    : allowedSchemes = Set.unmodifiable(allowedSchemes) {
+  URLInput(
+    this.label, {
+    required Set<String> allowedSchemes,
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : allowedSchemes = Set.unmodifiable(allowedSchemes),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -14,6 +20,9 @@ final class URLInput {
   }
   final String label;
   final Set<String> allowedSchemes;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String? _validate(String value) {

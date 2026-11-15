@@ -7,6 +7,7 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     this.search,
+    this.colors = ColorThemes.terminalDefault,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
@@ -28,6 +29,7 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     this.search,
+    this.colors = ColorThemes.terminalDefault,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
@@ -49,6 +51,7 @@ final class SearchSelect<T> {
     List<Choice<T>> choices, {
     this.defaultValue,
     required this._matches,
+    this.colors = ColorThemes.terminalDefault,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
@@ -67,6 +70,7 @@ final class SearchSelect<T> {
   final String _kind;
   final List<Choice<T>> choices;
   final T? defaultValue;
+  final ColorTheme colors;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
 

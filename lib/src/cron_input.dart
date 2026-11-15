@@ -491,7 +491,10 @@ final class CronInput {
     required this.profile,
     this.initialValue = '',
     this.preview,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     _input = TextInput(
       '$label (${profile.name} profile; expression limit $maxExpressionLength UTF-16 code units; matching preview is not configured)',
       initialValue: initialValue,
@@ -500,12 +503,18 @@ final class CronInput {
       validate: (value) => _valid(value)
           ? null
           : 'Invalid or unsupported cron expression for the selected profile.',
+      colors: colors,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
     );
   }
   final String label;
   final String initialValue;
   final CronPreviewConfig? preview;
   final CronProfile profile;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   late final TextInput _input;
   bool _active = false;
 

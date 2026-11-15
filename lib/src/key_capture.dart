@@ -30,11 +30,20 @@ final class KeyGesture {
 }
 
 final class Keypress {
-  Keypress(this.label, {this.requireObservation = false}) {
+  Keypress(
+    this.label, {
+    this.requireObservation = false,
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     _validateKeyLabel(label);
   }
   final String label;
   final bool requireObservation;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<KeyGesture>> prompt({
@@ -53,6 +62,7 @@ final class Keypress {
       return await _singleInteractive(
         label,
         requireObservation,
+        colors,
         source,
         mode: mode,
         userPreference: userPreference,
@@ -70,11 +80,20 @@ final class Keypress {
 
 /// An ordered, non-empty sequence of logical key gestures.
 final class KeyChordInput {
-  KeyChordInput(this.label, {this.requireObservation = false}) {
+  KeyChordInput(
+    this.label, {
+    this.requireObservation = false,
+    this.colors = ColorThemes.terminalDefault,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     _validateKeyLabel(label);
   }
   final String label;
   final bool requireObservation;
+  final ColorTheme colors;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<List<KeyGesture>>> prompt({
@@ -93,6 +112,7 @@ final class KeyChordInput {
       return await _sequenceInteractive(
         label,
         requireObservation,
+        colors,
         source,
         mode: mode,
         userPreference: userPreference,
@@ -144,6 +164,7 @@ Future<PromptResult<KeyGesture>> _declaredGesture(
 Future<PromptResult<KeyGesture>> _singleInteractive(
   String label,
   bool requireObservation,
+  ColorTheme colors,
   PromptSource? source, {
   PromptMode? mode,
   PromptMode? userPreference,
@@ -156,6 +177,7 @@ Future<PromptResult<KeyGesture>> _singleInteractive(
   final result = await _sequenceInteractive(
     label,
     requireObservation,
+    colors,
     source,
     mode: mode,
     userPreference: userPreference,
@@ -178,6 +200,7 @@ Future<PromptResult<KeyGesture>> _singleInteractive(
 Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
   String label,
   bool requireObservation,
+  ColorTheme colors,
   PromptSource? source, {
   PromptMode? mode,
   PromptMode? userPreference,
