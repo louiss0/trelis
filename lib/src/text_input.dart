@@ -1180,14 +1180,36 @@ void _writeWrappedColorText(
 
 /// Splits [text] into the display lines that fit [width] cells.
 ///
-/// A null [width] keeps the text on one line. Each returned line is already
-/// display-safe; the caller may still add terminal controls around it.
+/// A source line break is document structure rather than display content, so
+/// each paragraph it separates is wrapped on its own and reaches the terminal as
+/// a real line. Controls inside a paragraph keep their visible spelling, which
+/// is why a paragraph's own `\t` or `\x1b` still renders as `\\u{0009}` or
+/// `\\u{001B}`. Both CRLF and LF separate paragraphs; a lone CR is content.
+///
+/// A null [width] keeps each paragraph on one line. Each returned line is
+/// already display-safe; the caller may still add terminal controls around it.
 List<String> _wrapText(
   String text,
   int? width, {
   Iterable<String> atomicText = const [],
 }) {
-  if (width == null) return [text];
+  final paragraphs = text.split(_paragraphBreak);
+  if (width == null) {
+    return [for (final paragraph in paragraphs) displaySafe(paragraph)];
+  }
+  return [
+    for (final paragraph in paragraphs)
+      ..._wrapParagraph(paragraph, width, atomicText: atomicText),
+  ];
+}
+
+final _paragraphBreak = RegExp('\r\n|\n');
+
+List<String> _wrapParagraph(
+  String text,
+  int width, {
+  Iterable<String> atomicText = const [],
+}) {
   // DisplayText's visible control spelling is one protected display unit: a
   // wrap may precede it but must not split `\\u{202E}` into misleading pieces.
   // Callers may protect further meaningful units, such as a choice row's state
@@ -1310,7 +1332,7 @@ String _textInputHelp({
       : 'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. Escape dismisses help or cancels; Ctrl+C interrupts.';
   return [
     'Help: $controls Validation: $constraints',
-    ...supplementaryHelp.map((text) => DisplayText.from(text).value),
+    ...supplementaryHelp,
   ].join('\n');
 }
 
@@ -1782,6 +1804,27 @@ Future<({String action, String value})> _edit(
     output.writeln(text);
   }
 
+  /// Ends the editable row that the rich renderer leaves current.
+  ///
+  /// A rich editor paints `> draft` and parks the physical caret on that row,
+  /// so anything written next would start at the caret and overwrite the draft.
+  /// A block that owns painting (help) therefore clears the row first; when it
+  /// releases painting, dismissal repaints the current draft and caret once
+  /// instead of leaving a stale copy of the draft above the repaint.
+  ///
+  /// Sequential rendering has already ended its report lines, and a private
+  /// entry never exposes a draft row to terminate.
+  void finishEditableRow() {
+    if (sequential || secret) return;
+    void clear() => output.write('\r\x1b[2K\n');
+    final activeSession = session;
+    if (activeSession == null) {
+      clear();
+    } else {
+      activeSession._writeShared(clear);
+    }
+  }
+
   void insert(String data, bool isPaste) {
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
@@ -2021,11 +2064,14 @@ Future<({String action, String value})> _edit(
         help = true;
         onHelpVisibilityChanged?.call(true);
         if (session != null) {
+          // The session decides whether help owns an alternate screen or the
+          // transcript; only the transcript path leaves the draft row visible.
           session._openModalHelp(useAlternateScreen: transientHelp);
+          if (!transientHelp) finishEditableRow();
         } else if (transientHelp) {
           output.write('\x1b[?1049h\x1b[H');
-        } else if (!sequential && !secret) {
-          output.writeln();
+        } else {
+          finishEditableRow();
         }
         _writeWrappedText(
           output,
