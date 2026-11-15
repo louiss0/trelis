@@ -7,7 +7,7 @@
 **Blocked by:**
 - [01: Deliver PlainTheme factories and independent colour themes](01-plain-factories-and-palettes.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Expose all 38 typed factories for both classes and verify forwarding/construction purity.
 - [ ] Implement their distinct rich declarations and intentional linear event counterparts, including rail continuity, breathing space and hint closure.
