@@ -2,4 +2,10 @@ nvda-command=; nvda-process-count=0
 host=Windows 11 Home 10.0.26200
 dart=Dart SDK 3.13.2 (stable) windows_x64
 orca=1.4.259 provider=orca-computer-use-windows 1.0.0 protocol=1
-terminal=Windows Terminal "prompty-ticket32-probe" window-id=2164156 size=1129x635
+orca-input=background=false; press-key refused with window_not_focused; --restore-window not used
+orca-observation=get-app-state --json screenshot path, copied into this directory
+synthetic-input=Win32 FreeConsole + AttachConsole(dart pid) + CONIN$ + WriteConsoleInput key records
+resize-method=Win32 MoveWindow on the provider-reported window handle; provider has no moveResize action
+terminal=Windows Terminal, one dedicated window per scenario, default size 1129x635
+windows=prompty-rich:2033328 prompty-ascii:1246864 prompty-resize:2229810 prompty-repeat:2557954 prompty-validation:1771318 prompty-cancel:2689026 prompty-interrupt:5899718
+revision=b94efda3779fe24ae41164ddd53015be7621d814
