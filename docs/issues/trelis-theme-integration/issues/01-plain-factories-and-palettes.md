@@ -7,11 +7,11 @@
 **Blocked by:**
 - [33: Accept or block the backend evidence gate](../../trelis-backend-tracer-bullets/issues/33-backend-evidence-gate.md)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] Expose all 38 typed static factories with preserved arguments/defaults/generics/concrete returns and applicable presentation configuration.
 - [x] Provide the 45 existing named palettes, complete immutable custom palettes/copyWith, whole-palette per-component replacement and terminal-native defaults.
-- [ ] Exercise every applicable Plain component task/lifecycle in rich and linear output, not only supplied-answer validation.
+- [x] Exercise every applicable Plain component task/lifecycle in rich and linear output, not only supplied-answer validation.
 - [x] Verify palette mapping, warning fallback, page-colour exclusion, no global mutation and no forced surface/unsupported ANSI.
 - [x] Keep construction output-free and session/profile configuration on invocation; document usable public examples.
 - [x] Begin only after both the new backend verdict and retained compatibility gate actually report accepted evidence.
@@ -48,13 +48,16 @@ options, public tests and evidence.
 - New theme tests: 30 passed.
 - Public compatibility inventory: 8 passed.
 
-**Remaining before resolution:**
+**Final verification at `HEAD` before merge:**
 
-1. Lifecycle coverage is representative only (TextInput, Confirm, Select,
-   Progress, Text). Every applicable Plain component still needs a rich and
-   linear smoke path, not only supplied-answer validation.
-2. Rendering colour wiring is partial: Password, URLInput, Multiline, key
-   capture and feedback store the palette but do not yet apply it to all
-   visible output.
+- `dart format .` → formatted 3 files, then `dart format --output=none --set-exit-if-changed .` → 0 changed.
+- `dart analyze` → No issues found.
+- Focused verification → `dart test test/plain_theme_acceptance_matrix_test.dart test/plain_theme_color_application_test.dart test/plain_theme_factories_test.dart test/plain_theme_lifecycle_test.dart test/color_themes_test.dart test/public_compatibility_inventory_test.dart test/feedback_test.dart` → +140, all passed.
+- `dart run tool/check_issue_tracker.dart` → No legacy tracker.
+- Integration tip merged: already up to date with `integration/trelis-theme-integration` at `af79b49dbefd803578c48484b7df8b65168073d4`.
 
-Because these acceptance bullets are incomplete, the ticket stays claimed.
+**Answer.** All acceptance bullets are satisfied. The PlainTheme factory
+namespace, 45 named palettes, per-component colour wiring, rich/linear
+lifecycle matrix, colour-application tests, public example, and compatibility
+inventory are implemented, verified, and committed on
+`ticket/theme-01-plain-palettes`. The worktree is clean and ready for merger.
