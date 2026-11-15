@@ -979,7 +979,7 @@ final class TerminalSession {
         (userPreference != null && userPreference != PromptMode.automatic) ||
         (applicationPreference != null &&
             applicationPreference != PromptMode.automatic) ||
-        (outputProfile != null && !_isAutomaticProfile(outputProfile))) {
+        (outputProfile != null && !outputProfile.isAutomatic)) {
       throw ArgumentError(
         'An attached prompt inherits session input, output, mode and profile; do not supply competing invocation configuration.',
       );
@@ -1116,8 +1116,6 @@ final class _SessionOutputSink implements StringSink {
   void writeln([Object? object = '']) =>
       _session._writeShared(() => _session._output.writeln(object));
 }
-
-bool _isAutomaticProfile(OutputProfile profile) => profile.isAutomatic;
 
 final _textInputDeclaration = PresentationDeclaration({
   PresentationSlot.label,
