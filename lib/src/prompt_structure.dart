@@ -112,10 +112,12 @@ bool usesStructurePrefix(PromptStructure structure) =>
 bool usesStructureEnclosure(PromptStructure structure) =>
     enclosureGlyphsFor(structure, ascii: false) != null;
 
-/// Returns whether [structure] draws any frame, as a line prefix or as an
-/// enclosure around the stage content.
+/// Returns whether [structure] draws any frame, as a line prefix, as an
+/// enclosure around the stage content, or as a decorated heading.
 bool usesStructureFraming(PromptStructure structure) =>
-    usesStructurePrefix(structure) || usesStructureEnclosure(structure);
+    usesStructurePrefix(structure) ||
+    usesStructureEnclosure(structure) ||
+    usesStructureHeading(structure);
 
 /// The number of display cells a structural prefix occupies.
 ///
@@ -126,6 +128,8 @@ bool usesStructureFraming(PromptStructure structure) =>
 /// measurement as a prefixed one and lines up with the frame interior.
 int structurePrefixCells(PromptStructure structure, {bool ascii = false}) {
   if (usesStructurePrefix(structure)) return 2;
+  final heading = headingGlyphsFor(structure, ascii: ascii);
+  if (heading != null) return heading.bodyIndentCells;
   final glyphs = enclosureGlyphsFor(structure, ascii: ascii);
   return glyphs?.livePrefixCells ?? 0;
 }
@@ -140,6 +144,8 @@ String structureLivePrefix(PromptStructure structure, {required bool ascii}) {
   if (usesStructurePrefix(structure)) {
     return glyphsFor(structure, ascii: ascii).continueLine;
   }
+  final heading = headingGlyphsFor(structure, ascii: ascii);
+  if (heading != null) return heading.bodyMarker;
   final glyphs = enclosureGlyphsFor(structure, ascii: ascii);
   if (glyphs != null) return glyphs.livePrefix;
   return '> ';
@@ -426,5 +432,209 @@ List<String> frameEnclosureLines(
     for (final line in body)
       enclosureBodyRow(structure, ascii: ascii, line: line, width: total),
     enclosureBottomRule(structure, ascii: ascii, width: total),
+  ];
+}
+
+/// Drawing characters for a [PromptStructure] heading grammar.
+///
+/// A heading structure decorates the stage heading, indents the body rows that
+/// follow it and marks the compact hint, instead of drawing a line prefix or an
+/// enclosure. The four lightweight grammars are deliberately different
+/// arrangements, not colour variants of one layout: a conversational label, a
+/// question-mark console heading, a forward chevron and a bracketed band.
+class HeadingGlyphs {
+  const HeadingGlyphs({
+    required this.headingPrefix,
+    required this.headingSuffix,
+    required this.bodyIndent,
+    required this.hintPrefix,
+    required this.bodyMarker,
+    this.uppercaseHeading = false,
+  });
+
+  /// The decoration before the heading text.
+  final String headingPrefix;
+
+  /// The decoration after the heading text.
+  final String headingSuffix;
+
+  /// The indent before every body row of the stage.
+  final String bodyIndent;
+
+  /// The marker before the compact hint, which sits under the body rows.
+  final String hintPrefix;
+
+  /// The marker a live, editable row repeats so it reads as part of the stage.
+  ///
+  /// This is the structure's atlas body marker rather than a frame rule, so an
+  /// editable row is recognisably the same grammar as the stage above it even
+  /// though nothing encloses it.
+  final String bodyMarker;
+
+  /// Whether the heading text alone is spelled in capitals.
+  ///
+  /// Only the console grammar declares this, and it applies to the heading the
+  /// component owns. Body rows, answer data, literal commands and stable choice
+  /// references are never case-transformed.
+  final bool uppercaseHeading;
+
+  /// The display cells [headingPrefix] occupies.
+  int get headingPrefixCells => TextDisplayMap(headingPrefix).cellWidth;
+
+  /// The display cells [headingSuffix] occupies.
+  int get headingSuffixCells => TextDisplayMap(headingSuffix).cellWidth;
+
+  /// The display cells [bodyIndent] occupies.
+  int get bodyIndentCells => TextDisplayMap(bodyIndent).cellWidth;
+
+  /// The display cells [hintPrefix] occupies.
+  int get hintPrefixCells => TextDisplayMap(hintPrefix).cellWidth;
+
+  /// The display cells the whole heading decoration spends on its first line.
+  int get headingCells => headingPrefixCells + headingSuffixCells;
+
+  /// The heading spelled for this grammar: decoration is applied by
+  /// [frameHeadingLines], so this is the text the decoration wraps.
+  String spelling(String text) => uppercaseHeading ? text.toUpperCase() : text;
+
+  /// The opening marker of the narrow spelling.
+  String get compactPrefix => headingPrefix.trimRight();
+
+  /// The display cells [compactPrefix] occupies.
+  int get compactPrefixCells => TextDisplayMap(compactPrefix).cellWidth;
+
+  /// One body row of this grammar, indented under the heading.
+  String body(String line) => '$bodyIndent$line';
+}
+
+const _minimalHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '',
+  hintPrefix: '',
+  bodyMarker: '› ',
+);
+
+const _asciiMinimalHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '',
+  hintPrefix: '',
+  bodyMarker: '> ',
+);
+
+/// The console grammar is ASCII in every capability profile: it declares no
+/// Unicode counterpart at all, so no output profile can change its spelling.
+const _asciiConsoleHeading = HeadingGlyphs(
+  headingPrefix: '? ',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '-- ',
+  bodyMarker: '> ',
+  uppercaseHeading: true,
+);
+
+const _chevronHeading = HeadingGlyphs(
+  headingPrefix: '❯ ',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '↳ ',
+  bodyMarker: '❯ ',
+);
+
+const _asciiChevronHeading = HeadingGlyphs(
+  headingPrefix: '> ',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '-> ',
+  bodyMarker: '> ',
+);
+
+const _bracketHeading = HeadingGlyphs(
+  headingPrefix: '[ ',
+  headingSuffix: ' ]',
+  bodyIndent: '  ',
+  hintPrefix: '',
+  bodyMarker: '» ',
+);
+
+const _asciiBracketHeading = HeadingGlyphs(
+  headingPrefix: '[ ',
+  headingSuffix: ' ]',
+  bodyIndent: '  ',
+  hintPrefix: '',
+  bodyMarker: '> ',
+);
+
+/// Returns whether [structure] decorates its heading instead of drawing a line
+/// prefix or an enclosure.
+bool usesStructureHeading(PromptStructure structure) => switch (structure) {
+  PromptStructure.minimal ||
+  PromptStructure.ascii ||
+  PromptStructure.chevron ||
+  PromptStructure.bracket => true,
+  _ => false,
+};
+
+/// Returns the heading vocabulary for [structure], or null when [structure]
+/// draws a line prefix or an enclosure instead.
+///
+/// The console grammar ([PromptStructure.ascii]) has one spelling only: it is
+/// always the portable ASCII vocabulary, whatever the output profile supports.
+/// The other three use their declared vocabulary when glyph support is known
+/// and fall back to their ASCII counterpart when it is not, exactly as the rail,
+/// branch and enclosure grammars do.
+HeadingGlyphs? headingGlyphsFor(
+  PromptStructure structure, {
+  required bool ascii,
+}) {
+  return switch (structure) {
+    PromptStructure.minimal => ascii ? _asciiMinimalHeading : _minimalHeading,
+    PromptStructure.ascii => _asciiConsoleHeading,
+    PromptStructure.chevron => ascii ? _asciiChevronHeading : _chevronHeading,
+    PromptStructure.bracket => ascii ? _asciiBracketHeading : _bracketHeading,
+    _ => null,
+  };
+}
+
+/// The heading spelling of [text] for [structure].
+///
+/// Only the structure's declared casing rule applies, and it applies to the
+/// heading the component owns: no component passes answer data, a literal
+/// command, an example, an identifier or a stable choice reference here.
+String structureHeadingText(
+  PromptStructure structure,
+  String text, {
+  bool ascii = false,
+}) => headingGlyphsFor(structure, ascii: ascii)?.spelling(text) ?? text;
+
+/// Applies [structure]'s heading decoration to already-wrapped [lines].
+///
+/// The first line carries the heading prefix, the last carries the heading
+/// suffix, and wrapped continuation lines take the body indent so a wrapped
+/// heading still reads as one block. [compact] selects the narrow spelling: the
+/// decoration is simplified to its marker instead of the structure being
+/// replaced by an unframed one. A structure with no heading grammar returns
+/// [lines] unchanged.
+List<String> frameHeadingLines(
+  PromptStructure structure, {
+  required bool ascii,
+  required List<String> lines,
+  bool compact = false,
+}) {
+  final glyphs = headingGlyphsFor(structure, ascii: ascii);
+  if (glyphs == null || lines.isEmpty) return lines;
+  final first = lines.indexWhere((line) => line.isNotEmpty);
+  if (first < 0) return lines;
+  final last = lines.lastIndexWhere((line) => line.isNotEmpty);
+  final prefix = compact ? glyphs.compactPrefix : glyphs.headingPrefix;
+  final suffix = compact ? '' : glyphs.headingSuffix;
+  return [
+    for (var i = 0; i < lines.length; i++)
+      if (lines[i].isEmpty)
+        ''
+      else
+        '${i == first ? prefix : glyphs.bodyIndent}${lines[i]}'
+            '${i == last ? suffix : ''}',
   ];
 }

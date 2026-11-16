@@ -1103,7 +1103,9 @@ void main() {
         expect(enclosureGlyphsFor(structure, ascii: true) != null, encloses);
         expect(
           usesStructureFraming(structure),
-          encloses || usesStructurePrefix(structure),
+          encloses ||
+              usesStructurePrefix(structure) ||
+              usesStructureHeading(structure),
           reason: '$structure',
         );
       }
