@@ -86,5 +86,31 @@ component identities; the supported local numbering scope is documented in the
 evidence document; answer data, literal commands, examples, identifiers and
 choice references are never case-transformed or reworded; narrow, caret and
 resize behaviour keeps each structure's own marker instead of silently becoming
-PlainTheme; all previously merged structures keep their bytes; automated
-verification is green and the worktree is clean and ready for merger.
+PlainTheme; all previously merged structures keep their bytes except the
+deliberate one-to-two-cell drop of a marker that cannot fit a one- or two-column
+stage; automated verification is green and the worktree is clean and ready for
+merger.
+
+**Review fixes.** The ticket-05 review found no blockers, two should-fix items
+and one evidence nit; all three are fixed on the branch:
+
+- The slider and range-slider `notice` helpers, the masked-input notice sink and
+  the shared editor's `writeEvent`/`notice` now carry the event kind, so a
+  refusal or a validation notice is a `warning:` row under `ColonTheme` on those
+  paths instead of an untyped body row. The masked-input sink gained
+  `warning(Object?)` for that, and the framing test pins a `Slider` refusal and a
+  `MaskedInput` refusal as `warning:` rows.
+- A ruled stage is now measured once: the form and ledger grammars draw their
+  rule at `structureRuleWidth(structure, width)` and wrap the heading, the body
+  rows and the hint against that same width, so above 80 columns the rule spans
+  the content instead of falling short of it. The framing test asserts that a
+  120-column stage renders the same lines as an 80-column one and that no row is
+  wider than the rule.
+- The evidence document's typed-event and byte-identity claims are now scoped to
+  the seams that actually carry the event kind and record the marker drop, with
+  the remaining untyped component-local refusals listed as a limitation.
+
+Verification was re-run after these fixes: `dart format .` → 0 changed,
+`dart analyze` → No issues found, `dart test` → +3069 all passed, the theme
+suite → +1383 all passed, `dart run tool/check_issue_tracker.dart` → No tracked
+legacy local tracker remains.

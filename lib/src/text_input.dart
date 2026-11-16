@@ -1279,6 +1279,20 @@ final class _StructureSpine {
         structureEnclosureCompactWidth;
   }
 
+  /// The width a heading stage claims.
+  ///
+  /// A grammar that draws a rule draws it at [structureRuleWidth], which is
+  /// capped so a rule stays chrome instead of becoming a specimen constant.
+  /// The heading, the body rows and the hint are measured against that same
+  /// width, so above the cap the rule spans the stage instead of falling short
+  /// of the content it rules. A grammar without a rule keeps the full width it
+  /// always had, and so does every structure that is not a heading grammar.
+  int? get _headingWidth {
+    final glyphs = _heading;
+    if (glyphs == null || !glyphs.drawsRule) return width;
+    return structureRuleWidth(structure, width);
+  }
+
   /// The total width the enclosure may claim, including its own chrome.
   int get _frameWidth => enclosureTotalWidth(structure, width);
 
@@ -1541,7 +1555,10 @@ final class _StructureSpine {
       return;
     }
     _open = true;
-    final compact = width != null && width! <= glyphs.headingCells + 2;
+    // The rule is drawn at the measured stage width, so the heading is measured
+    // against that same width rather than the columns the output offers.
+    final stageWidth = _headingWidth;
+    final compact = stageWidth != null && stageWidth <= glyphs.headingCells + 2;
     final number = glyphs.numbered ? _stageNumberFor(text) : 0;
     final numberCells = glyphs.numbered
         ? TextDisplayMap(glyphs.stageNumberLabel(number)).cellWidth
@@ -1550,14 +1567,14 @@ final class _StructureSpine {
     // the heading and drops the number: the structure is simplified, never
     // replaced, and the number it allocated is retained for a later width.
     final numbered =
-        glyphs.numbered && (width == null || width! > numberCells + 1);
+        glyphs.numbered && (stageWidth == null || stageWidth > numberCells + 1);
     final decoration = compact
         ? glyphs.compactPrefixCells
         : glyphs.headingCells;
     // A decoration wider than the columns the stage has cannot be printed at
     // all: the label is dropped rather than overflowing the width, and the
     // body, the rule and the hint keep the structure recognisable.
-    final dropsDecoration = width != null && decoration + 1 > width!;
+    final dropsDecoration = stageWidth != null && decoration + 1 > stageWidth;
     final decorate =
         (dropsDecoration ? 0 : decoration) + (numbered ? numberCells : 0);
     // Wrapped heading lines take the grammar's continuation indent, so the
@@ -1568,9 +1585,9 @@ final class _StructureSpine {
     final continuationCells = TextDisplayMap(glyphs.headingContinuation)
         .cellWidth;
     if (continuationCells > reserve) reserve = continuationCells;
-    final available = width == null
+    final available = stageWidth == null
         ? null
-        : (width! - reserve).clamp(1, width!);
+        : (stageWidth - reserve).clamp(1, stageWidth);
     final wrapped = _wrapText(
       glyphs.spelling(text),
       available,
@@ -1596,8 +1613,12 @@ final class _StructureSpine {
     }
     if (glyphs.drawsRule) {
       // The rule is chrome of the stage, so it is drawn in the border role and
-      // measured against the columns this stage actually has.
-      _emit(output, glyphs.rule(structureRuleWidth(structure, width)), border);
+      // measured against the same width as the heading and body above it.
+      _emit(
+        output,
+        glyphs.rule(structureRuleWidth(structure, stageWidth)),
+        border,
+      );
     }
   }
 
@@ -1616,16 +1637,19 @@ final class _StructureSpine {
     StageEvent event = StageEvent.body,
   }) {
     final glyphs = _heading!;
+    // Body rows are measured against the same stage width the heading and the
+    // rule claim, so a ruled stage keeps its rule as wide as its content.
+    final stageWidth = _headingWidth;
     final typed = event == StageEvent.body ? null : glyphs.eventPrefix(event);
     if (typed != null && typed.isNotEmpty) {
       final leadCells = TextDisplayMap(typed).cellWidth;
       // A typed label wider than the columns leaves no room for content: the
       // event keeps its words and drops the label rather than overflowing.
-      final dropsLabel = width != null && leadCells + 1 > width!;
+      final dropsLabel = stageWidth != null && leadCells + 1 > stageWidth;
       final lead = dropsLabel ? '' : typed;
-      final available = width == null
+      final available = stageWidth == null
           ? null
-          : (width! - (dropsLabel ? 0 : leadCells)).clamp(1, width!);
+          : (stageWidth - (dropsLabel ? 0 : leadCells)).clamp(1, stageWidth);
       final continuation = ' ' * (dropsLabel ? 0 : leadCells);
       var firstLine = true;
       for (final line in _wrapText(text, available, atomicText: atomicText)) {
@@ -1635,9 +1659,9 @@ final class _StructureSpine {
       }
       return;
     }
-    final available = width == null
+    final available = stageWidth == null
         ? null
-        : (width! - glyphs.bodyIndentCells).clamp(1, width!);
+        : (stageWidth - glyphs.bodyIndentCells).clamp(1, stageWidth);
     for (final line in _wrapText(text, available, atomicText: atomicText)) {
       if (line.isEmpty) continue;
       _emit(output, glyphs.body(line), foreground);
@@ -1661,16 +1685,17 @@ final class _StructureSpine {
       // A heading structure keeps its hint under the body rows, marked with the
       // structure's own hint vocabulary and wrapped inside the width the same
       // marker leaves. No block above it is repainted.
+      final stageWidth = _headingWidth;
       final lead = glyphs.hintLead;
       final leadCells = glyphs.hintLeadCells;
       // Narrow output simplifies the marker instead of overflowing the width:
       // the structure keeps its hint vocabulary at the column it can afford.
-      final narrow = width != null && leadCells + 1 > width!;
+      final narrow = stageWidth != null && leadCells + 1 > stageWidth;
       final trimmed = glyphs.hintPrefix.trimRight();
       final trimmedCells = TextDisplayMap(trimmed).cellWidth;
       // A hint marker wider than the columns keeps the hint's words and drops
       // the marker, so the stage never overflows its own width.
-      final dropsMarker = width != null && trimmedCells + 1 > width!;
+      final dropsMarker = stageWidth != null && trimmedCells + 1 > stageWidth;
       final first = dropsMarker ? '' : (narrow ? trimmed : lead);
       final continuation = dropsMarker
           ? ''
@@ -1678,9 +1703,9 @@ final class _StructureSpine {
           ? ' ' * trimmedCells
           : '${glyphs.hintIndent ?? glyphs.bodyIndent}'
                 '${' ' * glyphs.hintPrefixCells}';
-      final available = width == null
+      final available = stageWidth == null
           ? null
-          : (width! - TextDisplayMap(first).cellWidth).clamp(1, width!);
+          : (stageWidth - TextDisplayMap(first).cellWidth).clamp(1, stageWidth);
       var firstLine = true;
       for (final line in _wrapText(text, available, atomicText: atomicText)) {
         if (line.isEmpty) continue;
@@ -2457,7 +2482,16 @@ Future<({String action, String value})> _edit(
   /// marks a repeated event such as a notice or a caret report: a prefixed
   /// structure renders it exactly as before, while an enclosure keeps it outside
   /// a frame so a keystroke does not draw a new enclosure.
-  void writeEvent(String text, {bool closes = false, bool compact = false}) {
+  ///
+  /// [event] is the kind of line this is. A refusal or a validation notice is a
+  /// [StageEvent.warning], so a grammar that spells typed labels shows it as one;
+  /// every other structure writes the bytes it always wrote.
+  void writeEvent(
+    String text, {
+    bool closes = false,
+    bool compact = false,
+    StageEvent event = StageEvent.body,
+  }) {
     final profile = activeProfile;
     _StructureSpine(
       structure: structure,
@@ -2472,12 +2506,17 @@ Future<({String action, String value})> _edit(
       foreground: colors.muted,
       closes: closes,
       compact: compact,
+      event: event,
     );
   }
 
-  void notice(String text) {
+  /// Writes one notice as a compact event of the current stage.
+  ///
+  /// A refusal or a validation notice is a [StageEvent.warning] so a grammar
+  /// that spells typed labels presents it as one; guidance keeps its body row.
+  void notice(String text, {StageEvent event = StageEvent.body}) {
     if (!sequential && !secret) output.writeln();
-    writeEvent(text, closes: true, compact: true);
+    writeEvent(text, closes: true, compact: true, event: event);
   }
 
   /// Ends the editable row that the rich renderer leaves current.
@@ -2514,7 +2553,10 @@ Future<({String action, String value})> _edit(
               ('\\$command').startsWith(candidate),
         );
     if (limit != null && count > limit && !commandPrefix) {
-      notice('Insertion rejected: character limit is $limit graphemes.');
+      notice(
+        'Insertion rejected: character limit is $limit graphemes.',
+        event: StageEvent.warning,
+      );
       return;
     }
     final added = data.characters.toList();
@@ -2915,7 +2957,10 @@ Future<({String action, String value})> _edit(
           }
         }
       } else if (key == '\x1b[999~') {
-        notice('Paste rejected: exceeds 4096 UTF-16 code units.');
+        notice(
+          'Paste rejected: exceeds 4096 UTF-16 code units.',
+          event: StageEvent.warning,
+        );
       } else if (key.startsWith('\x1b[200~')) {
         var data = key.substring(6, key.length - 6);
         if (multilinePaste) {
@@ -2925,7 +2970,10 @@ Future<({String action, String value})> _edit(
           (r) =>
               (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
         )) {
-          notice('Paste rejected: single-line printable text only.');
+          notice(
+            'Paste rejected: single-line printable text only.',
+            event: StageEvent.warning,
+          );
           display();
           continue;
         }

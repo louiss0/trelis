@@ -54,21 +54,34 @@
     reuses it, and `reset()` (repaint, resize, next page, next field) never
     touches it. Nothing is static, so two prompt objects, two constructors and
     two concurrent sessions each start at 01.
-- Typed events wired across the component surface through the component write
-  wrappers (`write`, `writeStyled`, `writeEvent`, `emit`, `notice`,
-  `_WrappedNotices._emit`): validation, refusal and availability notices are
+- Typed events wired through the component write seams the components already
+  share (`write`, `writeStyled`, `writeEvent`, `emit`, `notice`,
+  `_WrappedNotices.warning`): validation, refusal and availability notices are
   `warning`, reported outcomes and state-change reports are `result`, and the
   state rows a stage owns (page cue, current-value, draft, default, format cue,
-  caret and current-text rows, path and host interpretation) are `state`. For
-  `FormTheme` and `LedgerTheme` these stay body rows in the declared indent and
-  edge, only `ColonTheme` declares typed prefixes.
+  caret and current-text rows, path and host interpretation) are `state`. The
+  seams cover the shared editor (`writeEvent`/`notice`, which also types the
+  insertion and paste refusals), the slider and range-slider stage helpers, the
+  masked-input notice sink and each component's own write wrapper, so a refusal
+  raised by a component is a typed row on the same path as the rest of its
+  stage. For `FormTheme` and `LedgerTheme` these stay body rows in the declared
+  indent and edge; only `ColonTheme` declares typed prefixes. The component
+  refusals that are raised outside those seams are listed under Limitations
+  rather than claimed here.
 - The component-owned text that is answer data, a literal path, a base path, a
   typed query, a draft value or a mask slot stays in body rows: the capitalized
   form heading never reaches retained input, exactly as the console grammar's
   capitals never did.
+- The stage width is reconciled with the rule: a ruled grammar draws its rule at
+  `structureRuleWidth(structure, width)` and measures the heading, the body rows
+  and the hint against that same width, so above the 80-cell cap the rule spans
+  the stage instead of falling short of the content it rules. A grammar that
+  draws no rule keeps the full width it always had.
 - `_WrappedNotices` (`lib/src/masked_input.dart`), the range/slider, date and
   duration stage helpers keep their local seams and pass the event kind
   through, so `MaskedInput` and the field-stage components keep the grammar.
+  `_WrappedNotices.warning` is the sink's typed refusing write; its `writeln`
+  stays the untyped body-row write the rest of the component uses.
 - Tests:
   - `test/form_theme_factories_test.dart` (17 tests)
   - `test/ledger_theme_factories_test.dart` (17 tests)
@@ -76,7 +89,7 @@
   - `test/form_theme_acceptance_matrix_test.dart` (76 tests)
   - `test/ledger_theme_acceptance_matrix_test.dart` (76 tests)
   - `test/colon_theme_acceptance_matrix_test.dart` (76 tests)
-  - `test/theme_form_ledger_colon_framing_test.dart` (298 tests)
+  - `test/theme_form_ledger_colon_framing_test.dart` (302 tests)
   - `test/public_compatibility_inventory_test.dart` updated for the new exports.
   - `test/theme_heading_framing_test.dart`'s vocabulary invariant now covers the
     seven decorated structures, which is the only change to an existing test.
@@ -87,8 +100,8 @@
 |---|---|---|
 | Formatting | `dart format .` then `dart format --output=none --set-exit-if-changed .` | 0 changed |
 | Static analysis | `dart analyze` | No issues found |
-| Full suite | `dart test` | +3065, all passed |
-| Theme verification | `dart test test/theme_form_ledger_colon_framing_test.dart test/form_theme_factories_test.dart test/ledger_theme_factories_test.dart test/colon_theme_factories_test.dart test/form_theme_acceptance_matrix_test.dart test/ledger_theme_acceptance_matrix_test.dart test/colon_theme_acceptance_matrix_test.dart test/theme_heading_framing_test.dart test/theme_enclosure_framing_test.dart test/theme_structure_framing_test.dart test/theme_structure_rendering_test.dart` | +1379, all passed |
+| Full suite | `dart test` | +3069, all passed |
+| Theme verification | `dart test test/theme_form_ledger_colon_framing_test.dart test/form_theme_factories_test.dart test/ledger_theme_factories_test.dart test/colon_theme_factories_test.dart test/form_theme_acceptance_matrix_test.dart test/ledger_theme_acceptance_matrix_test.dart test/colon_theme_acceptance_matrix_test.dart test/theme_heading_framing_test.dart test/theme_enclosure_framing_test.dart test/theme_structure_framing_test.dart test/theme_structure_rendering_test.dart` | +1383, all passed |
 | Issue-tracker boundary | `dart run tool/check_issue_tracker.dart` | No tracked legacy local tracker remains |
 
 ## Structure grammar check
@@ -109,11 +122,19 @@ modes for the three live ones), and asserts:
 - **Colon** — the first line is an `ask:` heading, the body is indented two
   cells, the compact hint is a `hint:` line and no rule is drawn; the typed
   labels `state:`, `warning:` and `result:` appear at the reference column with
-  the component's own words after them.
+  the component's own words after them. A `Slider` refusal (`Required: enter a
+  non-empty value and submit again.`) and a `MaskedInput` refusal (`Required
+  slots are incomplete.`) are asserted as `warning:` rows, so the typed-event
+  wiring is checked on two components that do not write through the shared
+  editor path.
 - No line of any run contains enclosure chrome (`┌ ┐ └ ┘ ╭ ╮ ╰ ╯ ╔ ╗ ╚ ╝ ║ ├`),
   so none of the three falls back to a framed or undecorated presentation.
 - No line exceeds the declared columns, a 200-column profile still stays inside
   the 120-cell prompt width cap, and 24 columns keep every line inside 24.
+- Above the 80-cell rule cap the stage does not widen: at 80 and at 120 columns
+  a form and a ledger stage render the same lines, the rule is drawn at
+  `structureRuleWidth(structure, columns)` (80) and no heading or body row is
+  wider than the rule that spans it.
 - At 4 columns the decoration is simplified — the diagnostic marker and the
   ledger note marker give way rather than overflowing — while the structure's
   own body marker stays in the output, so the structure is never silently
@@ -360,6 +381,14 @@ Standalone feedback keeps the structure marker without drawing a frame — here
   `ColorInput`'s preview notice and `DurationInput`'s interpretation notice)
   keep the `hint:` label, because those components close the stage with that
   row rather than writing an event row.
+- A few component-local refusals are still body rows, because they are raised
+  outside the shared write seams typed here: `Autocomplete`'s
+  "Text exceeds maximum length", "Suggestions unavailable" and "Candidate
+  exceeds maximum length" notices, `SearchSelect`'s searching, unavailable and
+  paste refusals, and the dedicated editor loop's raw paste refusals. They keep
+  the component's own words under `ColonTheme` and read as indented body rows
+  rather than `warning:` rows; typing them is a change in those components, not
+  in this ticket's surfaces.
 - A rich repaint redraws the heading, the rule and the body rows for each
   presentation, the same way a rail repeats its spine and a frame redraws its
   rules. The compact hint is written once per stage for the choice families and
@@ -373,9 +402,15 @@ Standalone feedback keeps the structure marker without drawing a frame — here
 The `FormTheme`, `LedgerTheme` and `ColonTheme` factory namespaces, the
 structured-label vocabulary and its composition helpers, and the three grammars
 across every applicable interactive and feedback render path are implemented,
-verified by 3065 passing tests, and committed. The plain, rail, branch, box,
-round, double, minimal, ascii, chevron and bracket presentations keep their
-bytes, the ledger of protected content and outcomes is unchanged, accepted
-values, choice references, input bindings and completion outcomes are identical
-to the reference presentation, and the ticket is **resolved** with the worktree
-ready for merger.
+verified by 3069 passing tests, and committed. The plain, rail, branch, box,
+round, double, minimal, ascii, chevron and bracket presentations keep the bytes
+they wrote before this ticket, with one deliberate exception at the very narrow
+end: at one or two columns a marker that cannot fit is dropped instead of
+overflowing the declared width, so the ascii console's `--` and the ascii
+chevron's `->` hint marker give way at two columns and the heading marker at
+one. Those runs are one or two cells shorter than they used to be instead of
+one or two cells too wide; nothing changes above three columns. The ledger of
+protected content and outcomes is unchanged, accepted values, choice
+references, input bindings and completion outcomes are identical to the
+reference presentation, and the ticket is **resolved** with the worktree ready
+for merger.

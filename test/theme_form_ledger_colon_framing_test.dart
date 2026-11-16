@@ -1008,6 +1008,92 @@ void main() {
     );
   });
 
+  group('ruled stage width', () {
+    test('a rule spans the stage above the width cap', () async {
+      // The rule is chrome capped at 80 cells, so the heading, the body rows
+      // and the hint are measured against the same width: above 80 columns the
+      // rule must not fall short of the content it rules.
+      for (final structure in [PromptStructure.form, PromptStructure.ledger]) {
+        for (final mode in [PromptMode.linear, PromptMode.rich]) {
+          final ascii = mode != PromptMode.rich;
+          for (final columns in [80, 120]) {
+            final out = StringBuffer();
+            await Select<String>('Region', [
+              Choice(
+                'a',
+                'A deliberately long choice label that has to wrap inside '
+                    'the stage it belongs to',
+              ),
+            ], structure: structure).prompt(
+              source: _scripted(mode, '1\r', out, columns: columns),
+              mode: mode,
+            );
+            final lines = _visibleLines(out.toString());
+            final ruleIndex = lines.indexWhere(
+              (line) => _isRule(structure, line, ascii: ascii),
+            );
+            expect(
+              ruleIndex,
+              greaterThanOrEqualTo(1),
+              reason: '${structure.name}/${mode.name}/$columns',
+            );
+            final ruleCells = _cells(lines[ruleIndex]);
+            expect(
+              ruleCells,
+              structureRuleWidth(structure, 80),
+              reason:
+                  'the rule is drawn at the measured stage width, not at the '
+                  'columns the output offers: ${structure.name}/$columns',
+            );
+            expect(
+              ruleCells,
+              lessThanOrEqualTo(columns),
+              reason: 'the rule never exceeds the columns: $columns',
+            );
+            for (final line in lines) {
+              expect(
+                _cells(line),
+                lessThanOrEqualTo(ruleCells),
+                reason:
+                    'no heading or body row is wider than the rule that '
+                    'spans it: "$line"',
+              );
+            }
+          }
+        }
+      }
+    });
+
+    test('above the cap 80 and 120 columns render the same stage', () async {
+      for (final structure in [PromptStructure.form, PromptStructure.ledger]) {
+        for (final mode in [PromptMode.linear, PromptMode.rich]) {
+          Future<List<String>> stage(int columns) async {
+            final out = StringBuffer();
+            await Select<String>('Region', [
+              Choice(
+                'a',
+                'A deliberately long choice label that has to wrap and then '
+                    'wrap again inside the stage it belongs to',
+              ),
+            ], structure: structure).prompt(
+              source: _scripted(mode, '1\r', out, columns: columns),
+              mode: mode,
+            );
+            return _visibleLines(out.toString());
+          }
+
+          expect(
+            await stage(120),
+            await stage(80),
+            reason:
+                'above the rule cap the stage width is the cap, so more '
+                'columns do not widen it: ${structure.name}/${mode.name}',
+          );
+        }
+      }
+    });
+  });
+
   group('ledger numbering', () {
     /// Every stage number label the run displayed, in order.
     List<String> numbers(String text) {
@@ -1247,6 +1333,52 @@ void main() {
         lines.where((line) => line == 'warning:Name must be Ada.'),
         isNotEmpty,
         reason: 'the notice keeps its own words after the typed label',
+      );
+    });
+
+    test('a slider refusal is a typed warning', () async {
+      final out = StringBuffer();
+      final result =
+          await Slider(
+            'Opacity',
+            minimum: '0',
+            maximum: '10',
+            step: '1',
+            structure: PromptStructure.colon,
+          ).prompt(
+            source: _scripted(PromptMode.linear, '\r0\r', out),
+            mode: PromptMode.linear,
+          );
+      expect((result as Accepted<String>).value, '0');
+      expect(
+        _visibleLines(out.toString()),
+        contains('warning:Required: enter a non-empty value and submit again.'),
+        reason: 'the slider refusal is a typed warning, not a body row',
+      );
+    });
+
+    test('a masked-input refusal is a typed warning', () async {
+      final out = StringBuffer();
+      final digit = MaskSlot(
+        'digit',
+        (value) => RegExp(r'^[0-9]$').hasMatch(value),
+      );
+      final result =
+          await MaskedInput(
+            'Code',
+            templates: [
+              MaskTemplate('pair', [digit, MaskLiteral('-'), digit]),
+            ],
+            structure: PromptStructure.colon,
+          ).prompt(
+            source: _scripted(PromptMode.rich, '\r12\r', out),
+            mode: PromptMode.rich,
+          );
+      expect(result, isA<Accepted<MaskedValue>>());
+      expect(
+        _visibleLines(out.toString()),
+        contains('warning:Required slots are incomplete.'),
+        reason: 'the masked-input refusal is a typed warning',
       );
     });
 
