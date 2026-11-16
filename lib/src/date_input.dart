@@ -306,6 +306,7 @@ final class DateInput {
     DateDigits? digits,
     this.initialValue,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : calendar = calendar ?? DateCalendar.gregorian,
@@ -333,6 +334,7 @@ final class DateInput {
   final DateDigits digits;
   final String? initialValue;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -552,8 +554,9 @@ final class DateInput {
     DateFieldOrder order,
     OutputProfile profile,
     TerminalSession? session,
-    TerminalResizeObserver? resizeObserver,
-  ) async {
+    TerminalResizeObserver? resizeObserver, {
+    PromptStructure structure = PromptStructure.plain,
+  }) async {
     final names = switch (order) {
       DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
       DateFieldOrder.monthDayYear => ['month', 'day', 'year'],
@@ -562,13 +565,20 @@ final class DateInput {
     final width = _textInputWidth(profile);
     final split = draft.split('/');
     final segments = List.generate(3, (i) => i < split.length ? split[i] : '');
+    final spine = _structureSpine(
+      profile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+    );
+    void write(String text, {bool closes = false}) =>
+        spine.write(out, text, foreground: colors.foreground, closes: closes);
     var focus = 0;
     while (true) {
       if (focus == 3) {
-        _writeWrappedText(
-          out,
+        write(
           'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab or Ctrl+B moves back.',
-          width,
+          closes: true,
         );
         final action = await _edit(
           keys,
@@ -577,6 +587,7 @@ final class DateInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(order, linear: false, review: true),
           outputProfile: profile,
+          structure: structure,
           resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
@@ -600,10 +611,9 @@ final class DateInput {
         continue;
       }
       final name = names[focus];
-      _writeWrappedText(
-        out,
+      write(
         'Focus: $name. Tab or slash moves forward; Shift-Tab or Ctrl+B moves back; Up/Down adjusts without carry. Enter advances or reviews.',
-        width,
+        closes: true,
       );
       final edit = await _edit(
         keys,
@@ -613,15 +623,12 @@ final class DateInput {
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
         helpText: _help(order, linear: false, field: name),
         outputProfile: profile,
+        structure: structure,
         resizeObserver: resizeObserver,
         session: session,
         intercept: (key, text) {
           if (key.startsWith('\x1b[200~') && key.contains('/')) {
-            _writeWrappedText(
-              out,
-              'Paste only one numeric segment at a time.',
-              width,
-            );
+            write('Paste only one numeric segment at a time.', closes: true);
             return 'handled';
           }
           if (key == '\t') return 'next';
@@ -632,10 +639,9 @@ final class DateInput {
                 text.runes.length <= (name == 'year' ? 4 : 2) &&
                 (name != 'year' || text.runes.length == 4);
             if (valid && focus < 2) return 'next';
-            _writeWrappedText(
-              out,
+            write(
               'Slash cannot skip an incomplete field or submit.',
-              width,
+              closes: true,
             );
             return 'handled';
           }
@@ -654,11 +660,7 @@ final class DateInput {
       if (edit.action == 'increase' || edit.action == 'decrease') {
         final number = _segmentNumber(edit.value);
         if (number == null) {
-          _writeWrappedText(
-            out,
-            'Enter a numeric segment before adjustment.',
-            width,
-          );
+          write('Enter a numeric segment before adjustment.', closes: true);
         } else {
           final next = number + (edit.action == 'increase' ? 1 : -1);
           final max = name == 'year'
@@ -749,15 +751,17 @@ final class DateInput {
         : null;
     final format = _format(resolvedOrder);
     var draft = initialValue ?? '';
-    _writeWrappedText(
-      out,
-      '$label. Active format: $format; ${calendar.name} calendar.',
-      width,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
     );
-    _writeWrappedText(
-      out,
+    void write(String text, {bool closes = false}) =>
+        spine.write(out, text, foreground: colors.foreground, closes: closes);
+    write('$label. Active format: $format; ${calendar.name} calendar.');
+    write(
       'ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
-      width,
     );
     final sampleYear = calendar == DateCalendar.buddhist ? '2567' : '2024';
     final example = switch (resolvedOrder) {
@@ -765,17 +769,13 @@ final class DateInput {
       DateFieldOrder.monthDayYear => '2/29/$sampleYear',
       DateFieldOrder.yearMonthDay => '$sampleYear/2/29',
     };
-    _writeWrappedText(
-      out,
+    write(
       'Year is ${calendar == DateCalendar.buddhist ? 'Buddhist era 2484-9999' : 'CE 0001-9999'}; Gregorian-derived months, no leap-month context. Example: $example. Arithmetic profile; date only, no timezone.',
-      width,
     );
-    _writeWrappedText(
-      out,
+    write(
       mode == PromptMode.linear
           ? 'Enter a date, then review. /help describes the format; /cancel cancels.'
           : 'Enter one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      width,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -790,6 +790,7 @@ final class DateInput {
                 maxLength: 10,
                 linearHelpText: _help(resolvedOrder, linear: true),
                 outputProfile: effectiveProfile,
+                structure: structure,
                 resizeObserver: resizeObserver,
                 session: session,
               )
@@ -801,6 +802,7 @@ final class DateInput {
                 effectiveProfile,
                 session,
                 scripted.resizeObserver,
+                structure: structure,
               );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
@@ -808,31 +810,26 @@ final class DateInput {
         draft = edit.value;
         final value = _parse(draft, resolvedOrder);
         if (value == null) {
-          _writeWrappedText(
-            out,
+          write(
             '${_dateError(draft, resolvedOrder)} Correct the retained draft.',
-            width,
+            closes: true,
           );
           continue;
         }
         final iso =
             '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-        _writeWrappedText(
-          out,
+        write(
           'Review: ${calendar.name} year ${value.inputYear}, month ${value.month}, day ${value.day}; ISO date: $iso.',
-          width,
         );
-        _writeWrappedText(
-          out,
+        write(
           'Type /submit to accept or /edit to return to the draft; /cancel cancels.',
-          width,
+          closes: true,
         );
         var reviewFocus = 0;
         if (mode != PromptMode.linear) {
-          _writeWrappedText(
-            out,
+          write(
             'Review action: Edit. Tab or Ctrl+B changes action; Enter activates.',
-            width,
+            closes: true,
           );
         }
         while (true) {
@@ -850,6 +847,7 @@ final class DateInput {
             helpText: _help(resolvedOrder, linear: false, review: true),
             linearHelpText: _help(resolvedOrder, linear: true, review: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             resizeObserver: resizeObserver,
             session: session,
             intercept: mode == PromptMode.linear
@@ -857,10 +855,9 @@ final class DateInput {
                 : (key, text) {
                     if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
                       reviewFocus = 1 - reviewFocus;
-                      _writeWrappedText(
-                        out,
+                      write(
                         'Review action: ${reviewFocus == 0 ? 'Edit' : 'Submit'}.',
-                        width,
+                        closes: true,
                       );
                       return 'handled';
                     }
@@ -882,7 +879,7 @@ final class DateInput {
               (action.action == 'command' && action.value == '/edit')) {
             break;
           }
-          _writeWrappedText(out, 'Use /submit or /edit.', width);
+          write('Use /submit or /edit.', closes: true);
         }
       }
     } finally {

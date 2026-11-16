@@ -47,6 +47,7 @@ final class TreeSelect<T> {
     this.isCurrent,
     this.defaultValue,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : nodes = List.unmodifiable(nodes),
@@ -73,6 +74,7 @@ final class TreeSelect<T> {
   final List<TreeNode<T>> nodes;
   final T? defaultValue;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
 
@@ -281,14 +283,21 @@ final class TreeSelect<T> {
 
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      _textInputWidth(effectiveProfile),
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
       background: colors.background,
-      outputProfile: effectiveProfile,
     );
+    void write(String text, TerminalColor foreground, {bool closes = false}) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.write(
+        out,
+        DisplayText.from(text).value,
+        foreground: foreground,
+        closes: closes,
+      );
+    }
 
     int referenceOf((TreeNode<T>, List<TreeNode<T>>) row) =>
         all.indexOf(row) + 1;
@@ -319,6 +328,7 @@ final class TreeSelect<T> {
     }
 
     void show() {
+      spine.reset();
       session?._setPromptGeometry(effectiveProfile.geometry);
       write('$label TreeSelect:', colors.foreground);
       if (all.isEmpty) write('No nodes available.', colors.warning);
@@ -383,6 +393,7 @@ final class TreeSelect<T> {
             extraCommands: const {'/open', '/up', '/choose'},
             linearHelpText: helpText(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           // A nested editor clears the session repaint registration on exit, so
@@ -419,6 +430,7 @@ final class TreeSelect<T> {
               stage: _TreeHelpStage.reference,
             ),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           session?._setPromptRepaint(show);
@@ -573,6 +585,7 @@ final class SortableSelect<T> {
     this.label,
     List<Choice<T>> choices, {
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
@@ -589,6 +602,7 @@ final class SortableSelect<T> {
 
   /// The component palette for order rows, guidance and notices.
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -726,14 +740,21 @@ final class SortableSelect<T> {
     final out = scripted.output;
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      _textInputWidth(effectiveProfile),
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
       background: colors.background,
-      outputProfile: effectiveProfile,
     );
+    void write(String text, TerminalColor foreground, {bool closes = false}) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.write(
+        out,
+        DisplayText.from(text).value,
+        foreground: foreground,
+        closes: closes,
+      );
+    }
 
     var focus = 0;
     var moving = false;
@@ -765,6 +786,7 @@ final class SortableSelect<T> {
     }
 
     void show() {
+      spine.reset();
       session?._setPromptGeometry(effectiveProfile.geometry);
       write(
         '$label SortableSelect: ${order.length} choices.',
@@ -872,6 +894,7 @@ final class SortableSelect<T> {
               },
             ),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           // A nested editor clears the session repaint registration on exit, so

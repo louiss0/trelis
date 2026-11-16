@@ -15,6 +15,7 @@ import 'output_profile.dart';
 import 'color_theme.dart';
 import 'native_resize.dart';
 import 'presentation.dart';
+import 'prompt_structure.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
 import 'uts46.dart';
@@ -1156,26 +1157,85 @@ void _writeWrappedText(
   }
 }
 
-/// Wraps [text] to [width] display cells and styles each emitted line.
+/// Whether [profile] cannot be trusted to render a structure's Unicode
+/// vocabulary, so its ASCII counterpart is used instead.
+bool _structureAscii(OutputProfile? profile) =>
+    profile == null ||
+    profile.glyphs == GlyphSet.ascii ||
+    profile.glyphs == GlyphSet.automatic;
+
+/// Writes the read-only lines of one structural stage.
 ///
-/// Escaping and measurement happen before any style control is added: a
-/// component style is an instruction to the terminal rather than display
-/// content, so measuring it would charge its spelling to the line and the
-/// safety renderer would correctly show it as literal text instead.
-void _writeWrappedColorText(
-  StringSink output,
-  String text,
-  int? width, {
-  required TerminalColor foreground,
-  required TerminalColor background,
-  required OutputProfile? outputProfile,
-  Iterable<String> atomicText = const [],
-}) {
-  for (final line in _wrapText(text, width, atomicText: atomicText)) {
-    if (line.isEmpty) continue;
-    output.writeln(_colorText(line, foreground, background, outputProfile));
+/// Every call emits one wrapped block. The first block of a stage opens the
+/// structure's spine, later blocks continue it, and a block that [closes] ends
+/// it so the compact hint finishes the rail or branch. Wrapping measures the
+/// structural prefix as part of the line, so a framed line still fits the
+/// declared width instead of overflowing it by the prefix.
+final class _StructureSpine {
+  _StructureSpine({
+    required this.structure,
+    required this.ascii,
+    required this.width,
+    required this.background,
+    required this.outputProfile,
+  });
+
+  final PromptStructure structure;
+  final bool ascii;
+  int? width;
+  final TerminalColor background;
+  final OutputProfile? outputProfile;
+  bool _open = false;
+
+  /// Wraps [text] to the width left by the prefix and writes it styled.
+  void write(
+    StringSink output,
+    String text, {
+    required TerminalColor foreground,
+    bool closes = false,
+    Iterable<String> atomicText = const [],
+  }) {
+    final available = width == null
+        ? null
+        : (width! - structurePrefixCells(structure)).clamp(1, width!);
+    final framed = frameStructureLines(
+      structure,
+      ascii: ascii,
+      lines: _wrapText(text, available, atomicText: atomicText),
+      opens: !_open,
+      closes: closes,
+    );
+    _open = !closes;
+    for (final line in framed) {
+      if (line.isEmpty) continue;
+      output.writeln(_colorText(line, foreground, background, outputProfile));
+    }
   }
+
+  /// Emits one unframed blank line, keeping the structure's breathing space
+  /// without breaking the spine.
+  void blank(StringSink output) {
+    _open = false;
+    output.writeln();
+  }
+
+  /// Starts a new spine, so a repainted frame opens the structure again.
+  void reset() => _open = false;
 }
+
+/// Builds the structure writer for one prompt invocation.
+_StructureSpine _structureSpine(
+  OutputProfile? outputProfile, {
+  required PromptStructure structure,
+  required int? width,
+  required TerminalColor background,
+}) => _StructureSpine(
+  structure: structure,
+  ascii: _structureAscii(outputProfile),
+  width: width,
+  background: background,
+  outputProfile: outputProfile,
+);
 
 /// Splits [text] into the display lines that fit [width] cells.
 ///
@@ -1273,6 +1333,7 @@ void _renderTextInputOpening(
   required InstructionDisplay instructions,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
+  PromptStructure structure = PromptStructure.plain,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -1287,14 +1348,8 @@ void _renderTextInputOpening(
     ),
   );
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
-  _writeWrappedColorText(
-    output,
-    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
-    width,
-    foreground: colors.foreground,
-    background: colors.background,
-    outputProfile: outputProfile,
-  );
+  final header =
+      '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}';
   final resolvedInstructions = instructions == InstructionDisplay.themeDefault
       ? InstructionDisplay.expanded
       : instructions;
@@ -1308,13 +1363,25 @@ void _renderTextInputOpening(
       'Instructions resolved above.',
     ),
   };
-  _writeWrappedText(output, guidance, width);
-  if (linear && resolvedInstructions != InstructionDisplay.hidden) {
-    _writeWrappedText(
-      output,
-      r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
-      width,
-    );
+  final commandHint =
+      linear && resolvedInstructions != InstructionDisplay.hidden
+      ? r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.'
+      : null;
+  final spine = _structureSpine(
+    outputProfile,
+    structure: structure,
+    width: width,
+    background: colors.background,
+  );
+  spine.write(output, header, foreground: colors.foreground);
+  spine.write(
+    output,
+    guidance,
+    foreground: colors.muted,
+    closes: commandHint == null,
+  );
+  if (commandHint != null) {
+    spine.write(output, commandHint, foreground: colors.muted, closes: true);
   }
 }
 
@@ -1346,6 +1413,7 @@ void _renderTextInputValidation(
   String message, {
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
+  PromptStructure structure = PromptStructure.plain,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -1358,13 +1426,17 @@ void _renderTextInputValidation(
       ),
     ),
   );
-  _writeWrappedColorText(
+  final width = outputProfile == null ? null : _textInputWidth(outputProfile);
+  _structureSpine(
+    outputProfile,
+    structure: structure,
+    width: width,
+    background: colors.background,
+  ).write(
     output,
     _slot(composition, PresentationSlot.validation).text!.value,
-    outputProfile == null ? null : _textInputWidth(outputProfile),
     foreground: colors.error,
-    background: colors.background,
-    outputProfile: outputProfile,
+    closes: true,
   );
 }
 
@@ -1504,6 +1576,7 @@ final class TextInput {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     ColorTheme colors = ColorThemes.terminalDefault,
+    PromptStructure structure = PromptStructure.plain,
   }) : this._(
          label,
          initialValue: initialValue,
@@ -1513,6 +1586,7 @@ final class TextInput {
          instructions: instructions,
          supplementaryHelp: supplementaryHelp,
          colors: colors,
+         structure: structure,
        );
 
   TextInput._(
@@ -1524,6 +1598,7 @@ final class TextInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this._onChanged,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -1547,6 +1622,9 @@ final class TextInput {
 
   /// Complete palette for this prompt; it never alters global terminal state.
   final ColorTheme colors;
+
+  /// Structural grammar used to frame the prompt.
+  final PromptStructure structure;
   final void Function(String)? _onChanged;
   bool _active = false;
   Future<PromptResult<String>> prompt({
@@ -1668,6 +1746,7 @@ final class TextInput {
       instructions: instructions,
       outputProfile: effectiveProfile,
       colors: colors,
+      structure: structure,
     );
     scripted.transcript?._event(
       TextInputPresentationEventKind.opened,
@@ -1694,6 +1773,7 @@ final class TextInput {
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
           colors: colors,
+          structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -1723,6 +1803,7 @@ final class TextInput {
             message,
             outputProfile: effectiveProfile,
             colors: colors,
+            structure: structure,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -1737,6 +1818,7 @@ final class TextInput {
             error,
             outputProfile: effectiveProfile,
             colors: colors,
+            structure: structure,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -1777,6 +1859,7 @@ Future<({String action, String value})> _edit(
   TextInputTranscript? transcript,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
+  PromptStructure structure = PromptStructure.plain,
   TerminalResizeObserver? resizeObserver,
   TerminalSession? session,
   void Function(bool literal)? onSubmit,
@@ -1798,9 +1881,27 @@ Future<({String action, String value})> _edit(
     pos++;
     synthetic = 0;
   }
+  var activeProfile = outputProfile;
+
+  /// Writes one editor event through the component's structural grammar.
+  ///
+  /// Editor notices, help and sequential reports are deliberate events inside
+  /// the current stage, so they keep the structure's continuation vocabulary
+  /// rather than opening a new frame or dumping the whole view again.
+  void writeEvent(String text, {bool closes = false}) {
+    final profile = activeProfile;
+    _StructureSpine(
+      structure: structure,
+      ascii: _structureAscii(profile),
+      width: profile == null ? null : _textInputWidth(profile),
+      background: colors.background,
+      outputProfile: profile,
+    ).write(output, text, foreground: colors.muted, closes: closes);
+  }
+
   void notice(String text) {
     if (!sequential && !secret) output.writeln();
-    output.writeln(text);
+    writeEvent(text, closes: true);
   }
 
   /// Ends the editable row that the rich renderer leaves current.
@@ -1867,8 +1968,6 @@ Future<({String action, String value})> _edit(
     }
   }
 
-  var activeProfile = outputProfile;
-
   void display() {
     void writePrompt(void Function() action) {
       final activeSession = session;
@@ -1904,8 +2003,24 @@ Future<({String action, String value})> _edit(
     );
     if (sequential) {
       writePrompt(() {
-        output.writeln('Current text: ${DisplayText.from(chars.join()).value}');
-        output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
+        final spine = _StructureSpine(
+          structure: structure,
+          ascii: _structureAscii(profile),
+          width: profile == null ? null : _textInputWidth(profile),
+          background: colors.background,
+          outputProfile: profile,
+        );
+        spine.write(
+          output,
+          'Current text: ${DisplayText.from(chars.join()).value}',
+          foreground: colors.muted,
+        );
+        spine.write(
+          output,
+          'Cursor position: $pos of ${chars.length} graphemes.',
+          foreground: colors.muted,
+          closes: true,
+        );
       });
       return;
     }
@@ -1939,9 +2054,13 @@ Future<({String action, String value})> _edit(
       ),
     );
     final editable = _slot(composition, PresentationSlot.body);
+    final ascii = _structureAscii(outputProfile);
+    final promptPrefix = usesStructurePrefix(structure)
+        ? glyphsFor(structure, ascii: ascii).continueLine
+        : '> ';
     writePrompt(() {
       output.write(
-        '\r\x1b[2K> ${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
+        '\r\x1b[2K$promptPrefix${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
       );
     });
   }
@@ -2072,8 +2191,7 @@ Future<({String action, String value})> _edit(
         } else {
           finishEditableRow();
         }
-        _writeWrappedText(
-          output,
+        writeEvent(
           liveHelpText?.call() ??
               helpText ??
               _textInputHelp(
@@ -2082,7 +2200,7 @@ Future<({String action, String value})> _edit(
                 maxLength: maxLength,
                 supplementaryHelp: supplementaryHelp,
               ),
-          outputProfile == null ? null : _textInputWidth(outputProfile),
+          closes: true,
         );
         transcript?._event(TextInputPresentationEventKind.help);
         continue;
@@ -2090,7 +2208,15 @@ Future<({String action, String value})> _edit(
       if (help) continue;
       if (key == '\r' || key == '\n') {
         if (linear && !sequential && !secret) {
-          output.write('\r\x1b[2K> ${DisplayText.from(chars.join()).value}');
+          final promptPrefix = usesStructurePrefix(structure)
+              ? glyphsFor(
+                  structure,
+                  ascii: _structureAscii(outputProfile),
+                ).continueLine
+              : '> ';
+          output.write(
+            '\r\x1b[2K$promptPrefix${DisplayText.from(chars.join()).value}',
+          );
         }
         output.writeln();
         var text = chars.join();
@@ -2119,28 +2245,27 @@ Future<({String action, String value})> _edit(
               // A component that supplies its own command-aware help keeps that
               // content; the exact command spellings are appended rather than
               // replacing it with the generic command list.
-              _writeWrappedText(
-                output,
+              writeEvent(
                 extraCommands.isEmpty
                     ? componentHelp
                     : '$componentHelp Exact commands: ${extraCommands.join(', ')}, /help and /cancel. Quote a command with a backslash; double a leading backslash.',
-                outputProfile == null ? null : _textInputWidth(outputProfile),
+                closes: true,
               );
               transcript?._event(TextInputPresentationEventKind.help);
             } else if (extraCommands.isNotEmpty) {
-              output.writeln(
+              writeEvent(
                 'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+                closes: true,
               );
             } else {
-              _writeWrappedText(
-                output,
+              writeEvent(
                 _textInputHelp(
                   linear: true,
                   required: required,
                   maxLength: maxLength,
                   supplementaryHelp: supplementaryHelp,
                 ),
-                outputProfile == null ? null : _textInputWidth(outputProfile),
+                closes: true,
               );
               transcript?._event(TextInputPresentationEventKind.help);
             }
@@ -2823,6 +2948,7 @@ final class Password {
     this.required = false,
     this.validate,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -2839,6 +2965,7 @@ final class Password {
   final bool required;
   final String? Function(String)? validate;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -2964,32 +3091,36 @@ final class Password {
           : PromptMode.linear;
     }
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedColorText(
-      scripted.output,
-      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      width,
-      foreground: colors.foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
       background: colors.background,
-      outputProfile: effectiveProfile,
+    );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(
+          scripted.output,
+          text,
+          foreground: foreground,
+          closes: closes,
+        );
+    write(
+      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      colors.foreground,
+      closes: !mask && initialValue.isEmpty,
     );
     if (mask) {
-      _writeWrappedColorText(
-        scripted.output,
+      write(
         'Masking is enabled and discloses length.',
-        width,
-        foreground: colors.muted,
-        background: colors.background,
-        outputProfile: effectiveProfile,
+        colors.muted,
+        closes: initialValue.isEmpty,
       );
     }
     if (initialValue.isNotEmpty) {
-      _writeWrappedColorText(
-        scripted.output,
+      write(
         'Secret prefill is enabled; the secret is retained in memory.',
-        width,
-        foreground: colors.muted,
-        background: colors.background,
-        outputProfile: effectiveProfile,
+        colors.muted,
+        closes: true,
       );
     }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
@@ -3009,6 +3140,7 @@ final class Password {
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -3020,13 +3152,10 @@ final class Password {
         if (edit.action != 'submit') return InputEnded();
         value = edit.value;
         while (true) {
-          _writeWrappedColorText(
-            scripted.output,
+          write(
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
-            width,
-            foreground: colors.foreground,
-            background: colors.background,
-            outputProfile: effectiveProfile,
+            colors.foreground,
+            closes: true,
           );
           final action = await _edit(
             inputKeys,
@@ -3040,6 +3169,7 @@ final class Password {
                 effectiveProfile.alternateScreen == CapabilitySupport.supported,
             transcript: scripted.transcript,
             outputProfile: effectiveProfile,
+            structure: structure,
             resizeObserver: mode == PromptMode.rich
                 ? scripted.resizeObserver
                 : null,
@@ -3052,13 +3182,10 @@ final class Password {
           switch (action.value) {
             case 'submit':
               if ((required && value.isEmpty) || _validationFailed(value)) {
-                _writeWrappedColorText(
-                  scripted.output,
+                write(
                   'Secret does not satisfy the requirements. Choose edit or clear and try again.',
-                  width,
-                  foreground: colors.error,
-                  background: colors.background,
-                  outputProfile: effectiveProfile,
+                  colors.error,
+                  closes: true,
                 );
                 continue;
               }
@@ -3073,17 +3200,18 @@ final class Password {
               return Cancelled();
             case 'help':
             case '/help':
-              _writeWrappedColorText(
-                scripted.output,
+              write(
                 'Submit validates; edit reopens the secret; clear starts empty; cancel ends the prompt.',
-                width,
-                foreground: colors.muted,
-                background: colors.background,
-                outputProfile: effectiveProfile,
+                colors.muted,
+                closes: true,
               );
               continue;
             default:
-              scripted.output.writeln('Choose one of the listed actions.');
+              write(
+                'Choose one of the listed actions.',
+                colors.warning,
+                closes: true,
+              );
               continue;
           }
           break;
@@ -3105,6 +3233,7 @@ final class Confirm extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.confirm);
@@ -3115,6 +3244,7 @@ final class Checkbox extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.checkbox);
@@ -3125,6 +3255,7 @@ final class Toggle extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.toggle);
@@ -3138,6 +3269,7 @@ abstract class _BooleanPrompt {
     required this.initialValue,
     required this.kind,
     required this.colors,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -3149,6 +3281,7 @@ abstract class _BooleanPrompt {
   final bool initialValue;
   final _BooleanKind kind;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -3288,18 +3421,21 @@ abstract class _BooleanPrompt {
     final width = _textInputWidth(effectiveProfile);
     var draft = initialValue;
 
-    void writeStyled(String text, TerminalColor foreground) =>
-        // Measure and escape application text before adding terminal controls;
-        // otherwise the safety renderer would correctly spell the controls out
-        // as visible text instead of applying this component-owned style.
-        _writeWrappedColorText(
-          out,
-          text,
-          width,
-          foreground: foreground,
-          background: colors.background,
-          outputProfile: effectiveProfile,
-        );
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+    );
+
+    // Measure and escape application text before adding terminal controls;
+    // otherwise the safety renderer would correctly spell the controls out as
+    // visible text instead of applying this component-owned style.
+    void writeStyled(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+    }) => spine.write(out, text, foreground: foreground, closes: closes);
 
     void renderDraft() =>
         writeStyled('Draft: ${_state(draft)}.', colors.accent);
@@ -3313,6 +3449,7 @@ abstract class _BooleanPrompt {
           ? r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.'
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       colors.muted,
+      closes: true,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(renderDraft);
@@ -3329,6 +3466,7 @@ abstract class _BooleanPrompt {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (result.action == 'cancel') return Cancelled();
@@ -3395,6 +3533,7 @@ final class Multiline {
     this.validate,
     this.maxLength,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -3415,6 +3554,7 @@ final class Multiline {
   final String? Function(String)? validate;
   final int? maxLength;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -3549,13 +3689,19 @@ final class Multiline {
           : PromptMode.linear;
     }
     final out = scripted.output;
-    _writeWrappedColorText(
-      out,
-      _opening(linear: mode == PromptMode.linear),
-      _textInputWidth(effectiveProfile),
-      foreground: colors.foreground,
+    final width = _textInputWidth(effectiveProfile);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
       background: colors.background,
-      outputProfile: effectiveProfile,
+    );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(out, text, foreground: foreground, closes: closes);
+    write(
+      _opening(linear: mode == PromptMode.linear),
+      colors.foreground,
+      closes: true,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
@@ -3579,6 +3725,7 @@ final class Multiline {
             },
             multilinePaste: true,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
             linearHelpText: _help(linear: true),
             maxLength: maxLength == null
@@ -3609,26 +3756,23 @@ final class Multiline {
             final value = lines.join('\n');
             final error = _error(value);
             if (error == null) return Accepted(value);
-            _writeWrappedColorText(
-              out,
-              error,
-              _textInputWidth(effectiveProfile),
-              foreground: colors.error,
-              background: colors.background,
-              outputProfile: effectiveProfile,
-            );
+            write(error, colors.error, closes: true);
             continue;
           }
           if (result.value == '/list') {
             for (var i = 0; i < lines.length; i++) {
-              out.writeln('${i + 1}: ${lines[i]}');
+              write(
+                '${i + 1}: ${lines[i]}',
+                colors.foreground,
+                closes: i == lines.length - 1,
+              );
             }
             continue;
           }
           if (result.value == '/edit' ||
               result.value == '/insert' ||
               result.value == '/remove') {
-            out.writeln('Enter line number:');
+            write('Enter line number:', colors.foreground, closes: true);
             final number = await _edit(
               inputKeys,
               '',
@@ -3636,6 +3780,7 @@ final class Multiline {
               linear: true,
               sequential: true,
               outputProfile: effectiveProfile,
+              structure: structure,
               session: session,
             );
             if (number.action == 'cancel') return Cancelled();
@@ -3644,18 +3789,15 @@ final class Multiline {
             final index = (int.tryParse(number.value) ?? 0) - 1;
             if (index < 0 ||
                 index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
-              _writeWrappedColorText(
-                out,
-                'Invalid line number.',
-                _textInputWidth(effectiveProfile),
-                foreground: colors.error,
-                background: colors.background,
-                outputProfile: effectiveProfile,
-              );
+              write('Invalid line number.', colors.error, closes: true);
               continue;
             }
             if (result.value == '/remove') {
-              out.writeln('Remove line ${index + 1}? Enter y to confirm.');
+              write(
+                'Remove line ${index + 1}? Enter y to confirm.',
+                colors.foreground,
+                closes: true,
+              );
               final confirm = await _edit(
                 inputKeys,
                 '',
@@ -3663,6 +3805,7 @@ final class Multiline {
                 linear: true,
                 sequential: true,
                 outputProfile: effectiveProfile,
+                structure: structure,
                 session: session,
               );
               if (confirm.action == 'cancel') return Cancelled();
@@ -3670,7 +3813,7 @@ final class Multiline {
               if (confirm.action != 'submit') return InputEnded();
               if (confirm.value == 'y') lines.removeAt(index);
             } else {
-              out.writeln('Edit line:');
+              write('Edit line:', colors.foreground, closes: true);
               final edited = await _edit(
                 inputKeys,
                 result.value == '/edit' ? lines[index] : '',
@@ -3686,6 +3829,7 @@ final class Multiline {
                 },
                 multilinePaste: true,
                 outputProfile: effectiveProfile,
+                structure: structure,
                 session: session,
                 linearHelpText: _help(linear: true),
                 maxLength: maxLength == null
@@ -3712,7 +3856,11 @@ final class Multiline {
               if (edited.action == 'cancel') return Cancelled();
               if (edited.action == 'interrupt') return Interrupted();
               if (edited.action == 'command') {
-                out.writeln('Quote commands to enter them as text.');
+                write(
+                  'Quote commands to enter them as text.',
+                  colors.warning,
+                  closes: true,
+                );
                 continue;
               }
               if (edited.action != 'submit') return InputEnded();
@@ -3736,13 +3884,11 @@ final class Multiline {
       final before = chars.take(pos).join() + text;
       final candidate = before + chars.skip(pos).join();
       if (maxLength != null && candidate.characters.length > maxLength!) {
-        _writeWrappedColorText(
+        spine.write(
           out,
           'Insertion rejected: character limit is $maxLength graphemes.',
-          _textInputWidth(activeProfile),
           foreground: colors.error,
-          background: colors.background,
-          outputProfile: activeProfile,
+          closes: true,
         );
         return;
       }
@@ -3882,10 +4028,11 @@ final class Multiline {
           } else if (transient) {
             out.write('\x1b[?1049h\x1b[H');
           }
-          _writeWrappedText(
+          spine.write(
             out,
             _help(linear: false),
-            _textInputWidth(effectiveProfile),
+            foreground: colors.foreground,
+            closes: true,
           );
           continue;
         }
@@ -3927,7 +4074,7 @@ final class Multiline {
             final value = chars.join();
             final error = _error(value);
             if (error == null) return Accepted(value);
-            out.writeln(error);
+            spine.write(out, error, foreground: colors.error, closes: true);
             action = 0;
             continue;
           }
@@ -4149,6 +4296,10 @@ final class _ChoiceRow {
 }
 
 /// Writes one shared choice row within the declared width.
+///
+/// The row keeps its stable reference, focus marker and unavailability reason
+/// while gaining the structure's continuation prefix, so a framed list reads as
+/// one spine rather than a stack of unrelated rows.
 void _writeChoiceRow(
   StringSink output,
   _ChoiceRow row, {
@@ -4156,15 +4307,29 @@ void _writeChoiceRow(
   required TerminalColor foreground,
   required ColorTheme colors,
   required OutputProfile? profile,
-}) => _writeWrappedColorText(
-  output,
-  DisplayText.from(row.text).value,
-  width,
-  foreground: foreground,
-  background: colors.background,
-  outputProfile: profile,
-  atomicText: row.markers,
-);
+  PromptStructure structure = PromptStructure.plain,
+  bool opens = false,
+  bool closes = false,
+}) {
+  final available = width == null
+      ? null
+      : (width - structurePrefixCells(structure)).clamp(1, width);
+  final lines = frameStructureLines(
+    structure,
+    ascii: _structureAscii(profile),
+    opens: opens,
+    closes: closes,
+    lines: _wrapText(
+      DisplayText.from(row.text).value,
+      available,
+      atomicText: row.markers,
+    ),
+  );
+  for (final line in lines) {
+    if (line.isEmpty) continue;
+    output.writeln(_colorText(line, foreground, colors.background, profile));
+  }
+}
 
 final class Select<T> extends _SingleChoice<T> {
   Select(
@@ -4172,6 +4337,7 @@ final class Select<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
   }) : super(radio: false);
@@ -4183,6 +4349,7 @@ final class Radio<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
   }) : super(radio: true);
@@ -4195,6 +4362,7 @@ abstract class _SingleChoice<T> {
     this.defaultValue,
     required this.radio,
     required this.colors,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
@@ -4214,6 +4382,7 @@ abstract class _SingleChoice<T> {
   final T? defaultValue;
   final bool radio;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -4353,14 +4522,19 @@ abstract class _SingleChoice<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      width,
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
       background: colors.background,
-      outputProfile: effectiveProfile,
     );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(
+          out,
+          DisplayText.from(text).value,
+          foreground: foreground,
+          closes: closes,
+        );
 
     var focus = defaultValue == null
         ? -1
@@ -4371,6 +4545,7 @@ abstract class _SingleChoice<T> {
     const pageSize = 10;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
+      spine.reset();
       write(
         '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
         colors.foreground,
@@ -4402,6 +4577,7 @@ abstract class _SingleChoice<T> {
           foreground: i == focus ? colors.accent : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          structure: structure,
         );
       }
     }
@@ -4412,6 +4588,7 @@ abstract class _SingleChoice<T> {
           ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
           : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
       colors.muted,
+      closes: true,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
@@ -4428,6 +4605,7 @@ abstract class _SingleChoice<T> {
             extraCommands: const {'/next', '/previous'},
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (result.action == 'cancel') return Cancelled();
@@ -4446,7 +4624,11 @@ abstract class _SingleChoice<T> {
           entry = result.value;
           final n = int.tryParse(entry);
           if (n == null || n < 1 || n > choices.length) {
-            write('Enter a valid choice reference.', colors.warning);
+            write(
+              'Enter a valid choice reference.',
+              colors.warning,
+              closes: true,
+            );
             continue;
           }
           final c = choices[n - 1];
@@ -4454,10 +4636,11 @@ abstract class _SingleChoice<T> {
             write(
               'Unavailable: ${c.disabledReason}. Choose an enabled reference.',
               colors.warning,
+              closes: true,
             );
             continue;
           }
-          write('Accepted: ${c.label}.', colors.success);
+          write('Accepted: ${c.label}.', colors.success, closes: true);
           return Accepted(c.value);
         }
       }
@@ -4519,6 +4702,7 @@ final class MultiSelect<T> {
     this.min = 0,
     this.max,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
@@ -4547,6 +4731,7 @@ final class MultiSelect<T> {
   final int min;
   final int? max;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -4694,14 +4879,19 @@ final class MultiSelect<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      width,
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
       background: colors.background,
-      outputProfile: effectiveProfile,
     );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(
+          out,
+          DisplayText.from(text).value,
+          foreground: foreground,
+          closes: closes,
+        );
 
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     final selected = <int>{
@@ -4718,6 +4908,7 @@ final class MultiSelect<T> {
     ];
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
+      spine.reset();
       final items = visible();
       final hidden = selected.where((i) => !items.contains(i)).length;
       write(
@@ -4752,6 +4943,7 @@ final class MultiSelect<T> {
           foreground: focused ? colors.accent : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          structure: structure,
         );
       }
     }
@@ -4821,6 +5013,7 @@ final class MultiSelect<T> {
           ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
           : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
       colors.muted,
+      closes: true,
     );
     session?._setPromptRepaint(show);
     try {
@@ -4843,6 +5036,7 @@ final class MultiSelect<T> {
             },
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (r.action == 'cancel') return Cancelled();
@@ -4876,6 +5070,7 @@ final class MultiSelect<T> {
                   linear: true,
                   sequential: true,
                   outputProfile: effectiveProfile,
+                  structure: structure,
                   session: session,
                 );
                 if (f.action == 'cancel') return Cancelled();
@@ -4912,7 +5107,7 @@ final class MultiSelect<T> {
         }
         if (key == '\x14') {
           help = true;
-          write(_help(linear: false), colors.foreground);
+          write(_help(linear: false), colors.foreground, closes: true);
           continue;
         }
         if (help) continue;
@@ -4945,6 +5140,7 @@ final class MultiSelect<T> {
             '',
             out,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (f.action == 'interrupt') return Interrupted();
@@ -4981,6 +5177,7 @@ final class TimeInput {
     this.seconds = false,
     this.initialValue,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -4996,6 +5193,7 @@ final class TimeInput {
   final bool seconds;
   final String? initialValue;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -5155,17 +5353,22 @@ final class TimeInput {
         ? scripted.resizeObserver
         : null;
     var value = initialValue ?? '';
-    _writeWrappedText(
-      out,
-      '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
-      width,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
     );
-    _writeWrappedText(
-      out,
+    void write(String text, {bool closes = false}) =>
+        spine.write(out, text, foreground: colors.foreground, closes: closes);
+    write(
+      '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
+    );
+    write(
       mode == PromptMode.linear
           ? 'Enter a time of day, not a date or timezone. /help describes the format; /cancel cancels.'
           : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      width,
+      closes: true,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -5180,6 +5383,7 @@ final class TimeInput {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             resizeObserver: resizeObserver,
             session: session,
           );
@@ -5189,14 +5393,13 @@ final class TimeInput {
           value = edit.value;
           final parsed = _parse(value);
           if (parsed != null) {
-            _writeWrappedText(
-              out,
+            write(
               'Review: $value is a time of day without date or timezone.',
-              width,
+              closes: true,
             );
             return Accepted(parsed);
           }
-          _writeWrappedText(out, '$_error Correct the retained draft.', width);
+          write('$_error Correct the retained draft.', closes: true);
         }
       }
       return await _runRich(
@@ -5235,6 +5438,14 @@ final class TimeInput {
       'Submit',
     ];
     var focus = 0;
+    final spine = _structureSpine(
+      profile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+    );
+    void write(String text, {bool closes = false}) =>
+        spine.write(out, text, foreground: colors.foreground, closes: closes);
 
     String current() {
       if (fields.every((field) => field.isEmpty) && period.isEmpty) return '';
@@ -5243,15 +5454,13 @@ final class TimeInput {
     }
 
     void show() {
-      _writeWrappedText(
-        out,
+      spine.reset();
+      write(
         '$label. Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
-        width,
       );
-      _writeWrappedText(
-        out,
+      write(
         'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-        width,
+        closes: true,
       );
     }
 
@@ -5270,16 +5479,13 @@ final class TimeInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(linear: false, field: name),
           outputProfile: profile,
+          structure: structure,
           resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
             if (key.startsWith('\x1b[200~') &&
                 (key.contains(':') || key.contains(' '))) {
-              _writeWrappedText(
-                out,
-                'Paste only one time field at a time.',
-                width,
-              );
+              write('Paste only one time field at a time.', closes: true);
               return 'handled';
             }
             if (key == '\t') return 'next';
@@ -5307,10 +5513,9 @@ final class TimeInput {
           } else {
             final currentValue = int.tryParse(edit.value);
             if (currentValue == null) {
-              _writeWrappedText(
-                out,
+              write(
                 'Enter a complete numeric field before adjustment.',
-                width,
+                closes: true,
               );
             } else {
               final min = focus == 0 && twelveHour ? 1 : 0;
@@ -5333,11 +5538,7 @@ final class TimeInput {
         continue;
       }
       if (focus == segmentCount) {
-        _writeWrappedText(
-          out,
-          'Edit formatted time; Enter finishes editing.',
-          width,
-        );
+        write('Edit formatted time; Enter finishes editing.', closes: true);
         final edit = await _edit(
           keys,
           current(),
@@ -5345,6 +5546,7 @@ final class TimeInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(linear: false, stage: _TimeHelpStage.formatted),
           outputProfile: profile,
+          structure: structure,
           resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
@@ -5378,7 +5580,7 @@ final class TimeInput {
         }
         period = twelveHour && parts.length > 1 ? parts.skip(1).join(' ') : '';
         if (_parse(current()) == null) {
-          _writeWrappedText(out, _error, width);
+          write(_error, closes: true);
         }
         show();
         continue;
@@ -5390,6 +5592,7 @@ final class TimeInput {
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
         helpText: _help(linear: false, stage: _TimeHelpStage.submit),
         outputProfile: profile,
+        structure: structure,
         resizeObserver: resizeObserver,
         session: session,
         intercept: (key, text) {
@@ -5418,14 +5621,13 @@ final class TimeInput {
       if (submit.action == 'submit') {
         final parsed = _parse(current());
         if (parsed != null) {
-          _writeWrappedText(
-            out,
+          write(
             'Review: ${current()} is a time of day without date or timezone.',
-            width,
+            closes: true,
           );
           return Accepted(parsed);
         }
-        _writeWrappedText(out, _error, width);
+        write(_error, closes: true);
         show();
       }
     }
@@ -5441,6 +5643,7 @@ final class TagInput {
     this.maxLength,
     this.validate,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -5453,6 +5656,7 @@ final class TagInput {
   final int? maxLength;
   final String? Function(String)? validate;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -5619,11 +5823,20 @@ final class TagInput {
     int? editing;
     int? focused;
     var finishFocused = false;
-    _writeWrappedText(
-      input.output,
-      _opening(linear: mode == PromptMode.linear),
-      _textInputWidth(effectiveProfile),
+    final width = _textInputWidth(effectiveProfile);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
     );
+    void write(String text, {bool closes = false}) => spine.write(
+      input.output,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+    );
+    write(_opening(linear: mode == PromptMode.linear), closes: true);
     try {
       while (true) {
         final result = await _edit(
@@ -5636,6 +5849,7 @@ final class TagInput {
           helpText: _help(linear: false),
           linearHelpText: _help(linear: true),
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
@@ -5647,12 +5861,12 @@ final class TagInput {
             if (mode != PromptMode.rich) return null;
             if (key == '\t') {
               finishFocused = true;
-              input.output.writeln('Finish focused; Enter submits.');
+              write('Finish focused; Enter submits.');
               return 'handled';
             }
             if (finishFocused && (key == '\r' || key == '\n')) {
               if (text.isNotEmpty) {
-                input.output.writeln(
+                write(
                   'Add the draft or press Ctrl+X to discard it before finishing.',
                 );
                 finishFocused = false;
@@ -5663,7 +5877,7 @@ final class TagInput {
             if (key == '\x7f' || key == '\x08') {
               if (text.isEmpty && tags.isNotEmpty) {
                 focused ??= tags.length - 1;
-                input.output.writeln('Focused: ${tags[focused!]}');
+                write('Focused: ${tags[focused!]}');
                 return 'handled';
               }
             }
@@ -5674,7 +5888,7 @@ final class TagInput {
                 0,
                 tags.length - 1,
               );
-              input.output.writeln('Focused: ${tags[focused!]}');
+              write('Focused: ${tags[focused!]}');
               return 'handled';
             }
             if ((key == '\r' || key == '\n') &&
@@ -5683,7 +5897,7 @@ final class TagInput {
               return 'edit-focused';
             }
             if (key == '\x1b[3~' && text.isEmpty && focused != null) {
-              input.output.writeln('Removed: ${tags.removeAt(focused!)}');
+              write('Removed: ${tags.removeAt(focused!)}');
               focused = null;
               return 'handled';
             }
@@ -5691,7 +5905,7 @@ final class TagInput {
             return null;
           },
           onChanged: mode == PromptMode.rich
-              ? (text) => input.output.writeln('Preview: ${_canonical(text)}')
+              ? (text) => write('Preview: ${_canonical(text)}')
               : null,
         );
         if (result.action == 'cancel') return Cancelled();
@@ -5701,13 +5915,13 @@ final class TagInput {
           draft = '';
           editing = null;
           finishFocused = false;
-          input.output.writeln('Draft discarded.');
+          write('Draft discarded.');
           continue;
         }
         if (result.action == 'edit-focused') {
           editing = focused;
           draft = tags[editing!];
-          input.output.writeln('Editing: $draft');
+          write('Editing: $draft');
           focused = null;
           continue;
         }
@@ -5717,11 +5931,11 @@ final class TagInput {
         if (selectingRemoval || selectingEdit) {
           final index = int.tryParse(result.value);
           if (index == null || index < 1 || index > tags.length) {
-            input.output.writeln('Select a listed tag number.');
+            write('Select a listed tag number.');
             continue;
           }
           if (selectingRemoval) {
-            input.output.writeln('Removed: ${tags.removeAt(index - 1)}');
+            write('Removed: ${tags.removeAt(index - 1)}');
             selectingRemoval = false;
           } else {
             editing = index - 1;
@@ -5738,14 +5952,14 @@ final class TagInput {
                 result.value == '/remove' ||
                 result.value == '/edit')) {
           for (var i = 0; i < tags.length; i++) {
-            input.output.writeln('${i + 1}. ${tags[i]}');
+            write('${i + 1}. ${tags[i]}');
           }
           if (result.value == '/remove' && tags.isNotEmpty) {
             selectingRemoval = true;
-            input.output.writeln('Enter the number of the tag to remove.');
+            write('Enter the number of the tag to remove.');
           } else if (result.value == '/edit' && tags.isNotEmpty) {
             selectingEdit = true;
-            input.output.writeln('Enter the number of the tag to edit.');
+            write('Enter the number of the tag to edit.');
           }
           continue;
         }
@@ -5753,7 +5967,7 @@ final class TagInput {
           r'[^\p{L}\p{M}\p{N}\s_-]',
           unicode: true,
         ).hasMatch(result.value)) {
-          input.output.writeln('Unsupported punctuation; edit the draft.');
+          write('Unsupported punctuation; edit the draft.');
           draft = result.value;
           continue;
         }
@@ -5761,7 +5975,7 @@ final class TagInput {
           r'^(?:[\p{L}\p{Nd}]\p{M}*|[\s_-])*$',
           unicode: true,
         ).hasMatch(result.value)) {
-          input.output.writeln(
+          write(
             'Combining marks must follow a letter or digit; edit the draft.',
           );
           draft = result.value;
@@ -5769,7 +5983,7 @@ final class TagInput {
         }
         final value = _canonical(result.value);
         if (value.isEmpty) {
-          input.output.writeln('Enter a tag, or use Finish (/done).');
+          write('Enter a tag, or use Finish (/done).');
           draft = result.value;
           continue;
         }
@@ -5777,20 +5991,20 @@ final class TagInput {
             ? value.replaceAll('-', '_')
             : value;
         if (maxLength != null && canonical.characters.length > maxLength!) {
-          input.output.writeln('Maximum $maxLength graphemes; edit the draft.');
+          write('Maximum $maxLength graphemes; edit the draft.');
           draft = result.value;
           continue;
         }
         final validationError = validate?.call(canonical);
         if (validationError != null) {
-          input.output.writeln(validationError);
+          write(validationError);
           draft = result.value;
           continue;
         }
         if (tags.asMap().entries.any(
           (entry) => entry.key != editing && entry.value == canonical,
         )) {
-          input.output.writeln('Duplicate tag; edit the draft.');
+          write('Duplicate tag; edit the draft.');
           draft = result.value;
           continue;
         }
@@ -5801,7 +6015,7 @@ final class TagInput {
           editing = null;
         }
         draft = '';
-        input.output.writeln('Added: $canonical');
+        write('Added: $canonical');
       }
     } finally {
       if (keys == null) await inputKeys.close();

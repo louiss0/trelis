@@ -16,5 +16,8 @@ export 'src/text_input.dart';
 export 'src/feedback.dart';
 export 'src/output_profile.dart';
 export 'src/color_theme.dart';
+export 'src/prompt_structure.dart';
 export 'src/terminal_io.dart';
 export 'src/themes/plain_theme.dart';
+export 'src/themes/rail_theme.dart';
+export 'src/themes/branch_theme.dart';

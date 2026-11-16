@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'color_theme.dart';
 import 'output_profile.dart';
+import 'prompt_structure.dart';
 import 'terminal_io.dart';
 import 'text_input.dart'
     show PromptMode, TerminalSession, TerminalSessionFeedbackRegion;
@@ -76,10 +77,12 @@ final class Text {
     this.content, {
     this.kind = TextKind.ordinary,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   });
   final String content;
   final TextKind kind;
   final ColorTheme colors;
+  final PromptStructure structure;
 
   void present({
     StringSink? output,
@@ -101,7 +104,11 @@ final class Text {
       TextKind.error => colors.error,
     };
     final background = colors.background;
-    final line = '$prefix${_safe(content)}';
+    final line = _structureFeedbackLine(
+      '$prefix${_safe(content)}',
+      structure: structure,
+      profile: _outputProfile(terminal: terminal),
+    );
     final profile = _outputProfile(terminal: terminal);
     final styled = terminalStyledText(
       line,
@@ -122,6 +129,28 @@ final class Text {
     TerminalSession.ensureStandaloneOutputAvailable(sink);
     sink.writeln(styled);
   }
+}
+
+/// Applies the declared structure's event vocabulary to one feedback line.
+///
+/// Feedback owns its own lifecycle and cadence, so a structural theme only
+/// frames the line it already reports: the rail or branch prefix is added to
+/// the display text before styling, never to the semantic content, and a plain
+/// structure leaves the line byte-for-byte unchanged.
+String _structureFeedbackLine(
+  String line, {
+  required PromptStructure structure,
+  required OutputProfile? profile,
+}) {
+  if (!usesStructurePrefix(structure)) return line;
+  return frameStructureLines(
+    structure,
+    ascii:
+        profile == null ||
+        profile.glyphs == GlyphSet.ascii ||
+        profile.glyphs == GlyphSet.automatic,
+    lines: [line],
+  ).single;
 }
 
 /// The operation's reported outcome; reaching a value never implies one.
@@ -175,6 +204,7 @@ final class Progress {
     this.milestone = 10,
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : _total = total,
        _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative || milestone <= 0 || milestone > 100) {
@@ -187,6 +217,7 @@ final class Progress {
   final int milestone;
   final FeedbackClock _clock;
   final ColorTheme colors;
+  final PromptStructure structure;
   OutputProfile? _profile;
   Duration? _lastUpdate;
   FeedbackTimer? _timer;
@@ -339,11 +370,16 @@ final class Progress {
 
   void _emit(String line, {bool finalLine = false}) {
     final region = _sessionRegion;
-    final foreground = finalLine && line.contains(': failed')
+    final framed = _structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    final foreground = finalLine && framed.contains(': failed')
         ? colors.error
         : colors.foreground;
     final styled = terminalStyledText(
-      line,
+      framed,
       foreground: foreground,
       background: colors.background,
       depth: _profile?.colorDepth ?? ColorDepth.none,
@@ -392,9 +428,14 @@ final class Progress {
 
 /// Feedback for activity whose total work is unknown.
 final class Spinner {
-  Spinner(this.label, {this.colors = ColorThemes.terminalDefault});
+  Spinner(
+    this.label, {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+  });
   final String label;
   final ColorTheme colors;
+  final PromptStructure structure;
   OutputProfile? _profile;
   StringSink? _output;
   Object? _standaloneOwner;
@@ -463,11 +504,16 @@ final class Spinner {
 
   void _emit(String line, {bool finalLine = false}) {
     final region = _sessionRegion;
-    final foreground = finalLine && line.contains(': failed')
+    final framed = _structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    final foreground = finalLine && framed.contains(': failed')
         ? colors.error
         : colors.foreground;
     final styled = terminalStyledText(
-      line,
+      framed,
       foreground: foreground,
       background: colors.background,
       depth: _profile?.colorDepth ?? ColorDepth.none,
@@ -532,6 +578,7 @@ final class MultiSpinner {
     this.interval = const Duration(seconds: 5),
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
     final displayNames = <String>{};
@@ -553,6 +600,7 @@ final class MultiSpinner {
   final Set<String> _pending = {};
   final FeedbackClock _clock;
   final ColorTheme colors;
+  final PromptStructure structure;
   OutputProfile? _profile;
   Duration? _lastBatch;
   FeedbackTimer? _timer;
@@ -687,11 +735,16 @@ final class MultiSpinner {
 
   void _emit(String line) {
     final region = _sessionRegion;
-    final foreground = line.contains(': failed')
-        ? colors.error
-        : (line.contains(': completed') ? colors.success : colors.foreground);
-    final styled = terminalStyledText(
+    final framed = _structureFeedbackLine(
       line,
+      structure: structure,
+      profile: _profile,
+    );
+    final foreground = framed.contains(': failed')
+        ? colors.error
+        : (framed.contains(': completed') ? colors.success : colors.foreground);
+    final styled = terminalStyledText(
+      framed,
       foreground: foreground,
       background: colors.background,
       depth: _profile?.colorDepth ?? ColorDepth.none,

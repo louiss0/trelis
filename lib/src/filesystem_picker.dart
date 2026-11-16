@@ -6,6 +6,7 @@ final class FilePicker {
     this.label, {
     this.base,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     this.supplementaryHelp = const [],
   }) : _picker = _FilesystemPicker(
@@ -13,12 +14,14 @@ final class FilePicker {
          base,
          PathTarget.file,
          colors,
+         structure,
          instructions,
          supplementaryHelp,
        );
   final String label;
   final String? base;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final _FilesystemPicker _picker;
@@ -50,6 +53,7 @@ final class DirectoryPicker {
     this.label, {
     this.base,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     this.supplementaryHelp = const [],
   }) : _picker = _FilesystemPicker(
@@ -57,12 +61,14 @@ final class DirectoryPicker {
          base,
          PathTarget.directory,
          colors,
+         structure,
          instructions,
          supplementaryHelp,
        );
   final String label;
   final String? base;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final _FilesystemPicker _picker;
@@ -121,6 +127,7 @@ final class _FilesystemPicker {
     this.base,
     this.target,
     this.colors,
+    this.structure,
     this.instructions,
     this.supplementaryHelp,
   );
@@ -128,6 +135,7 @@ final class _FilesystemPicker {
   final String? base;
   final PathTarget target;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   bool _active = false;
@@ -153,6 +161,7 @@ final class _FilesystemPicker {
         base: base,
         target: target,
         colors: colors,
+        structure: structure,
         instructions: instructions,
         supplementaryHelp: supplementaryHelp,
       );
@@ -260,20 +269,26 @@ final class _FilesystemPicker {
     final linear = mode == PromptMode.linear;
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      width,
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
       background: colors.background,
-      outputProfile: effectiveProfile,
     );
+    void write(String text, TerminalColor foreground, {bool closes = false}) =>
+        spine.write(
+          out,
+          DisplayText.from(text).value,
+          foreground: foreground,
+          closes: closes,
+        );
 
     var current = base ?? Directory.current.path;
     var showHidden = false;
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       while (true) {
+        spine.reset();
         write(
           '$label. Current directory: $current. Existing ${target.name} required.',
           colors.foreground,
@@ -285,6 +300,7 @@ final class _FilesystemPicker {
         write(
           'Hidden entries: ${showHidden ? 'shown' : 'hidden'}. Links require explicit per-open approval. The base is not a sandbox.',
           colors.warning,
+          closes: true,
         );
         final entries = <_PickerEntry>[];
         try {
@@ -345,6 +361,7 @@ final class _FilesystemPicker {
           helpText: browseHelp,
           linearHelpText: browseHelp,
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
         );
         if (action.action == 'cancel') return Cancelled();
@@ -487,6 +504,7 @@ final class _FilesystemPicker {
             helpText: pathHelp,
             linearHelpText: pathHelp,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (entry.action == 'cancel') return Cancelled();
@@ -495,7 +513,11 @@ final class _FilesystemPicker {
           final candidate = input._candidate(entry.value, current);
           final error = await input._error(candidate);
           if (error != null) {
-            write('Cannot choose $candidate: $error', colors.warning);
+            write(
+              'Cannot choose $candidate: $error',
+              colors.warning,
+              closes: true,
+            );
             continue;
           }
           final result = await _review(
@@ -510,7 +532,11 @@ final class _FilesystemPicker {
           if (result != null) return result;
           continue;
         }
-        write('Unknown action; listing and context retained.', colors.warning);
+        write(
+          'Unknown action; listing and context retained.',
+          colors.warning,
+          closes: true,
+        );
       }
     } finally {
       if (keys == null) await inputKeys.close();
@@ -528,14 +554,18 @@ final class _FilesystemPicker {
   }) async {
     final linear = mode == PromptMode.linear;
     final error = await input._error(candidate);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+    );
     if (error != null) {
-      _writeWrappedColorText(
+      spine.write(
         scripted.output,
         DisplayText.from('Cannot choose $candidate: $error').value,
-        _textInputWidth(effectiveProfile),
         foreground: colors.warning,
-        background: colors.background,
-        outputProfile: effectiveProfile,
+        closes: true,
       );
       return null;
     }
@@ -547,13 +577,11 @@ final class _FilesystemPicker {
     );
     final reviewMessage =
         'Choose $candidate. Enter to accept, or type edit to return.';
-    _writeWrappedColorText(
+    spine.write(
       scripted.output,
       DisplayText.from(reviewMessage).value,
-      _textInputWidth(effectiveProfile),
       foreground: colors.accent,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      closes: true,
     );
     final review = await _edit(
       keys,
@@ -565,6 +593,7 @@ final class _FilesystemPicker {
       helpText: reviewHelp,
       linearHelpText: reviewHelp,
       outputProfile: effectiveProfile,
+      structure: structure,
       session: session,
     );
     if (review.action == 'cancel') return Cancelled();
@@ -573,19 +602,12 @@ final class _FilesystemPicker {
     if (review.value.isNotEmpty) return null;
     final finalError = await input._error(candidate);
     if (finalError == null) return Accepted(candidate);
-    final wrappedError = StringBuffer();
-    _writeWrappedText(
-      wrappedError,
+    spine.write(
+      scripted.output,
       DisplayText.from('Cannot choose $candidate: $finalError').value,
-      _textInputWidth(effectiveProfile),
+      foreground: colors.warning,
+      closes: true,
     );
-    for (final line in wrappedError.toString().split('\n')) {
-      if (line.isNotEmpty) {
-        scripted.output.writeln(
-          _colorText(line, colors.warning, colors.background, effectiveProfile),
-        );
-      }
-    }
     return null;
   }
 }

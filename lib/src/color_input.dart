@@ -29,6 +29,7 @@ final class ColorInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : initialValue = initialValue,
        supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -50,6 +51,7 @@ final class ColorInput {
         ...supplementaryHelp,
       ],
       colors: colors,
+      structure: structure,
     );
   }
   final bool required;
@@ -57,6 +59,7 @@ final class ColorInput {
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   late final TextInput _input;
   StringSink? _sink;
   bool _active = false;
@@ -65,21 +68,35 @@ final class ColorInput {
     final value = _parseColor(text);
     final sink = _sink;
     if (sink == null) return;
+    final preview = _structureSpine(
+      null,
+      structure: structure,
+      width: null,
+      background: colors.background,
+    );
     if (value == null) {
-      sink.writeln(
+      preview.write(
+        sink,
         text.isEmpty
             ? 'Preview unavailable: no color entered.'
             : 'Preview unavailable: draft is not a valid color.',
+        foreground: colors.warning,
+        closes: true,
       );
       return;
     }
     String byte(double v) =>
         (v * 255).round().toRadixString(16).padLeft(2, '0');
-    sink.writeln(
+    preview.write(
+      sink,
       'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
+      foreground: colors.foreground,
     );
-    sink.writeln(
+    preview.write(
+      sink,
       'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
+      foreground: colors.foreground,
+      closes: true,
     );
   }
 

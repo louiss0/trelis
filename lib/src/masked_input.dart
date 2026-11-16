@@ -65,12 +65,32 @@ int _maskCells(String text) =>
 /// Wraps transcript notices so each one stays inside the declared width.
 ///
 /// Inline editor repaints use [write] and are unaffected: only whole notices
-/// start a new line, so wrapping them cannot overwrite an editable line.
+/// start a new line, so wrapping them cannot overwrite an editable line. When
+/// the component declares a rail or branch structure, each notice is also a
+/// block inside that spine: [hint] closes the structural line for the compact
+/// hint, and later notices continue it.
 final class _WrappedNotices implements StringSink {
-  _WrappedNotices(this._output, this._width);
+  _WrappedNotices(
+    this._output,
+    this._width, {
+    PromptStructure structure = PromptStructure.plain,
+    bool ascii = true,
+    ColorTheme colors = ColorThemes.terminalDefault,
+  }) : _spine = usesStructurePrefix(structure)
+           ? _StructureSpine(
+               structure: structure,
+               ascii: ascii,
+               width: _width(),
+               background: colors.background,
+               outputProfile: null,
+             )
+           : null,
+       _colors = colors;
 
   final StringSink _output;
   final int? Function() _width;
+  final _StructureSpine? _spine;
+  final ColorTheme _colors;
 
   @override
   void write(Object? object) => _output.write(object);
@@ -83,13 +103,24 @@ final class _WrappedNotices implements StringSink {
   void writeCharCode(int charCode) => _output.writeCharCode(charCode);
 
   @override
-  void writeln([Object? object = '']) {
-    final width = _width();
-    if (width == null) {
-      _output.writeln(object);
+  void writeln([Object? object = '']) => _emit('$object');
+
+  /// Writes the compact hint that closes the current structural line.
+  void hint(Object? object) => _emit('$object', closes: true);
+
+  void _emit(String text, {bool closes = false}) {
+    final spine = _spine;
+    if (spine == null) {
+      final width = _width();
+      if (width == null) {
+        _output.writeln(text);
+        return;
+      }
+      _writeWrappedText(_output, text, width);
       return;
     }
-    _writeWrappedText(_output, '$object', width);
+    spine.width = _width();
+    spine.write(_output, text, foreground: _colors.foreground, closes: closes);
   }
 }
 
@@ -109,6 +140,7 @@ final class MaskedInput {
     this.initialValue,
     this.interpretation = MaskInterpretation.automatic,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : templates = List.unmodifiable(templates),
@@ -151,6 +183,7 @@ final class MaskedInput {
   final MaskedValue? initialValue;
   final MaskInterpretation interpretation;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
 
@@ -268,6 +301,9 @@ final class MaskedInput {
     final out = _WrappedNotices(
       scripted.output,
       () => _textInputWidth(profileBox.value),
+      structure: structure,
+      ascii: _structureAscii(effectiveProfile),
+      colors: colors,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -363,7 +399,7 @@ final class MaskedInput {
   Future<PromptResult<MaskedValue>> _interactive(
     ScriptedInput source,
     PromptMode mode,
-    StringSink out,
+    _WrappedNotices out,
     _Keys keys,
     _ProfileBox profileBox,
     TerminalSession? session,
@@ -378,7 +414,7 @@ final class MaskedInput {
       return _linearAdaptive(source, out, keys, profileBox, session);
     }
     var draft = initialValue?.formatted ?? '';
-    out.writeln(
+    out.hint(
       '$label. Enter raw or formatted value. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
     );
     while (true) {
@@ -388,6 +424,7 @@ final class MaskedInput {
         out,
         helpText: _help(linear: false, stage: _MaskHelpStage.interpretation),
         outputProfile: profileBox.value,
+        structure: structure,
         session: session,
         resizeObserver: source.resizeObserver,
       );
@@ -438,6 +475,7 @@ final class MaskedInput {
         out,
         helpText: _help(linear: false, stage: _MaskHelpStage.template),
         outputProfile: profileBox.value,
+        structure: structure,
         session: session,
         resizeObserver: source.resizeObserver,
       );
@@ -469,7 +507,7 @@ final class MaskedInput {
 
   Future<PromptResult<MaskedValue>> _linearAdaptive(
     ScriptedInput source,
-    StringSink out,
+    _WrappedNotices out,
     _Keys keys,
     _ProfileBox profileBox,
     TerminalSession? session,
@@ -502,9 +540,10 @@ final class MaskedInput {
         template: _activeTemplate(selected),
       ),
       outputProfile: profileBox.value,
+      structure: structure,
       session: session,
     );
-    out.writeln(
+    out.hint(
       r'/template chooses an ambiguous template; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
     );
     while (true) {
@@ -734,7 +773,7 @@ final class MaskedInput {
   /// focused field stays visible, and a stacked layout lists every slot and
   /// literal when the focused field cannot fit on one line.
   void _showMaskDraft({
-    required StringSink out,
+    required _WrappedNotices out,
     required String label,
     required MaskTemplate template,
     required List<MaskSlot> rules,
@@ -818,7 +857,7 @@ final class MaskedInput {
         );
       }
     }
-    out.writeln(
+    out.hint(
       caretAtEnd
           ? 'Enter submits; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.'
           : 'Left/Right move the caret; Enter submits; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
@@ -827,7 +866,7 @@ final class MaskedInput {
 
   Future<PromptResult<MaskedValue>> _richFixed(
     ScriptedInput source,
-    StringSink out,
+    _WrappedNotices out,
     _Keys keys,
     _ProfileBox profileBox,
     TerminalSession? session, {
@@ -922,6 +961,7 @@ final class MaskedInput {
                   slot: focus < slots.length ? focus + 1 : null,
                 ),
                 outputProfile: profileBox.value,
+                structure: structure,
                 session: session,
                 resizeObserver: source.resizeObserver,
               );
@@ -961,6 +1001,7 @@ final class MaskedInput {
                 template: template,
               ),
               outputProfile: profileBox.value,
+              structure: structure,
               session: session,
               resizeObserver: source.resizeObserver,
             );
@@ -1061,6 +1102,7 @@ final class MaskedInput {
                     template: template,
                   ),
                   outputProfile: profileBox.value,
+                  structure: structure,
                   session: session,
                   resizeObserver: source.resizeObserver,
                 );
@@ -1146,7 +1188,7 @@ final class MaskedInput {
 
   Future<PromptResult<MaskedValue>> _linearFixed(
     ScriptedInput source,
-    StringSink out,
+    _WrappedNotices out,
     _Keys keys,
     _ProfileBox profileBox,
     TerminalSession? session,
@@ -1187,9 +1229,10 @@ final class MaskedInput {
       extraCommands: commands,
       linearHelpText: _help(linear: true, template: template),
       outputProfile: profileBox.value,
+      structure: structure,
       session: session,
     );
-    out.writeln(
+    out.hint(
       r'/edit corrects a slot; /value edits the formatted value; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
     );
     show();

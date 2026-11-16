@@ -535,6 +535,7 @@ final class NumberInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (precision != null && precision! < 0) {
       throw ArgumentError.value(precision, 'precision');
@@ -562,6 +563,7 @@ final class NumberInput {
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   bool _active = false;
 
   String? _validate(String value, NumericConvention convention) {
@@ -652,6 +654,7 @@ final class NumberInput {
               ...supplementaryHelp,
             ],
             colors: colors,
+            structure: structure,
           ).prompt(
             source: source,
             mode: mode,

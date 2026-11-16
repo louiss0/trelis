@@ -11,6 +11,7 @@ final class Slider {
     this.precision,
     this.units,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -47,6 +48,7 @@ final class Slider {
   final int? precision;
   final String? units;
   final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
 
@@ -223,17 +225,28 @@ final class Slider {
     final out = scripted.output;
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue ?? '';
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+    );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
-    void notice(String text) =>
-        _writeWrappedText(out, text, _textInputWidth(effectiveProfile));
+    void emit(String text, {bool closes = false}) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.write(out, text, foreground: colors.foreground, closes: closes);
+    }
+
+    void notice(String text) => emit(text);
     notice(
       '$_description. Current value: ${value.isEmpty ? 'not set' : value}.',
     );
-    notice(
+    emit(
       mode == PromptMode.linear
           ? 'Enter an exact value, then submit. /help explains the bounds; /cancel cancels.'
           : 'Tab moves through Slider, Edit and Submit; arrows adjust; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      closes: true,
     );
     try {
       if (mode == PromptMode.linear) {
@@ -247,6 +260,7 @@ final class Slider {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (edit.action == 'cancel') return Cancelled();
@@ -268,9 +282,11 @@ final class Slider {
       var focus = 0;
       var help = false;
       void show() {
+        spine.reset();
         notice('$_description. Value: ${value.isEmpty ? 'not set' : value}.');
-        notice(
+        emit(
           'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          closes: true,
         );
       }
 
@@ -333,6 +349,7 @@ final class Slider {
               out,
               helpText: _help(linear: false, focus: 1),
               outputProfile: effectiveProfile,
+              structure: structure,
               session: session,
               resizeObserver: scripted.resizeObserver,
             );
@@ -409,6 +426,7 @@ final class RangeSlider {
     int? precision,
     String? units,
     ColorTheme colors = ColorThemes.terminalDefault,
+    PromptStructure structure = PromptStructure.plain,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : _slider = Slider(
@@ -419,6 +437,7 @@ final class RangeSlider {
          precision: precision,
          units: units,
          colors: colors,
+         structure: structure,
          instructions: instructions,
          supplementaryHelp: supplementaryHelp,
        ) {
@@ -440,6 +459,8 @@ final class RangeSlider {
   final String? initialUpper;
 
   ColorTheme get colors => _slider.colors;
+
+  PromptStructure get structure => _slider.structure;
 
   InstructionDisplay get instructions => _slider.instructions;
 
@@ -606,19 +627,30 @@ final class RangeSlider {
     final out = scripted.output;
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     final sequential = !effectiveProfile.supportsRichInteraction;
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+    );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
-    void notice(String text) =>
-        _writeWrappedText(out, text, _textInputWidth(effectiveProfile));
+    void emit(String text, {bool closes = false}) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.write(out, text, foreground: colors.foreground, closes: closes);
+    }
+
+    void notice(String text) => emit(text);
     var lower = initialLower ?? '';
     var upper = initialUpper ?? '';
     notice(
       '${_slider._description}, $_gapCue. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
     );
-    notice(
+    emit(
       mode == PromptMode.linear
           ? 'Lower is asked first, then Upper; the pair is reviewed before submission. /help explains the bounds; /cancel cancels.'
           : 'Focus: Lower. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      closes: true,
     );
     try {
       if (mode == PromptMode.linear) {
@@ -633,6 +665,7 @@ final class RangeSlider {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (l.action == 'cancel') return Cancelled();
@@ -655,6 +688,7 @@ final class RangeSlider {
               clearHelpCommand: true,
               linearHelpText: _help(linear: true),
               outputProfile: effectiveProfile,
+              structure: structure,
               session: session,
             );
             if (u.action == 'cancel') return Cancelled();
@@ -679,6 +713,7 @@ final class RangeSlider {
               linear: true,
               sequential: sequential,
               outputProfile: effectiveProfile,
+              structure: structure,
               session: session,
             );
             if (confirm.action == 'cancel') return Cancelled();
@@ -693,11 +728,13 @@ final class RangeSlider {
       var focus = 0;
       var help = false;
       void show() {
+        spine.reset();
         notice(
           '${_slider._description}, $_gapCue. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
         );
-        notice(
+        emit(
           'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          closes: true,
         );
       }
 
@@ -771,6 +808,7 @@ final class RangeSlider {
               out,
               helpText: _help(linear: false, focus: focus),
               outputProfile: effectiveProfile,
+              structure: structure,
               session: session,
               resizeObserver: scripted.resizeObserver,
             );
