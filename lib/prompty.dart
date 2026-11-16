@@ -21,3 +21,6 @@ export 'src/terminal_io.dart';
 export 'src/themes/plain_theme.dart';
 export 'src/themes/rail_theme.dart';
 export 'src/themes/branch_theme.dart';
+export 'src/themes/box_theme.dart';
+export 'src/themes/round_theme.dart';
+export 'src/themes/double_theme.dart';

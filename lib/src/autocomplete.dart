@@ -147,27 +147,36 @@ final class Autocomplete {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     // An unframed component keeps its unwrapped event lines; a declared
-    // structure frames and wraps them so rail/branch continuity holds.
+    // structure frames and wraps them so rail/branch continuity or the
+    // enclosure holds.
     void write(String text, {bool closes = false}) {
-      if (!usesStructurePrefix(structure)) {
+      if (!usesStructureFraming(structure)) {
         out.writeln(text);
         return;
       }
       spine.write(out, text, foreground: colors.foreground, closes: closes);
     }
 
-    write(
-      _instructionIntro(
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _instructionIntroParts(
         instructions,
-        hidden: '${safe(label)}. /help for help.',
-        compact:
-            '${safe(label)}. Enter a query; then a candidate number or /submit. /help for help.',
-        expanded:
-            '${safe(label)}. Enter a query; select a number, /submit, /edit, /help or /cancel.',
+        hidden: (title: '${safe(label)}.', guidance: '/help for help.'),
+        compact: (
+          title: '${safe(label)}.',
+          guidance: 'Enter a query; then a candidate number or /submit. /help for help.',
+        ),
+        expanded: (
+          title: '${safe(label)}.',
+          guidance: 'Enter a query; select a number, /submit, /edit, /help or /cancel.',
+        ),
       ),
-      closes: true,
+      foreground: colors.foreground,
+      rawWhenUnframed: true,
     );
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var pending = initialValue;
@@ -373,27 +382,36 @@ final class Autocomplete {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     // An unframed component keeps its unwrapped event lines; a declared
-    // structure frames and wraps them so rail/branch continuity holds.
+    // structure frames and wraps them so rail/branch continuity or the
+    // enclosure holds.
     void write(String text, {bool closes = false}) {
-      if (!usesStructurePrefix(structure)) {
+      if (!usesStructureFraming(structure)) {
         out.writeln(text);
         return;
       }
       spine.write(out, text, foreground: colors.foreground, closes: closes);
     }
 
-    write(
-      _instructionIntro(
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _instructionIntroParts(
         instructions,
-        hidden: '${safe(label)}. Ctrl+T for help.',
-        compact:
-            '${safe(label)}. Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',
-        expanded:
-            '${safe(label)}. Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
+        hidden: (title: '${safe(label)}.', guidance: 'Ctrl+T for help.'),
+        compact: (
+          title: '${safe(label)}.',
+          guidance: 'Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',
+        ),
+        expanded: (
+          title: '${safe(label)}.',
+          guidance: 'Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
+        ),
       ),
-      closes: true,
+      foreground: colors.foreground,
+      rawWhenUnframed: true,
     );
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var value = initialValue;

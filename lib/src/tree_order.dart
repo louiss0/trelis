@@ -288,6 +288,7 @@ final class TreeSelect<T> {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) {
       spine.width = _textInputWidth(effectiveProfile);
@@ -301,6 +302,13 @@ final class TreeSelect<T> {
 
     int referenceOf((TreeNode<T>, List<TreeNode<T>>) row) =>
         all.indexOf(row) + 1;
+
+    // The compact hint ends the stage. An enclosure writes it outside the
+    // closed frame; a rail or branch keeps the order it always had and writes
+    // it before the list.
+    final hint = mode == PromptMode.linear
+        ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
+        : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
 
     /// One typed tree row: the stable reference, the full path, focus, the
     /// displayed default, the expansion state, selectability and staleness stay
@@ -357,6 +365,7 @@ final class TreeSelect<T> {
                           identical(r.$2[current.length - 1], current.last))),
             )
           : visible();
+      if (rows.isNotEmpty) spine.breathingRow(out);
       for (final row in rows) {
         _writeChoiceRow(
           out,
@@ -367,16 +376,19 @@ final class TreeSelect<T> {
               : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          spine: spine,
         );
+      }
+      if (spine.encloses) {
+        // An enclosure keeps the compact hint outside the closed frame on every
+        // repaint, so a navigation never leaves the stage framed but unclosed.
+        spine.hint(out, hint, foreground: colors.muted);
       }
     }
 
-    write(
-      mode == PromptMode.linear
-          ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
-          : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
-    );
+    // A rail or branch opens its stage with the compact hint, exactly as it did
+    // before enclosures existed; an enclosure writes it after the bottom rule.
+    if (!spine.encloses) write(hint, colors.muted);
     show();
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
@@ -745,6 +757,7 @@ final class SortableSelect<T> {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) {
       spine.width = _textInputWidth(effectiveProfile);
@@ -759,6 +772,9 @@ final class SortableSelect<T> {
     var focus = 0;
     var moving = false;
     List<int>? moveStart;
+    final hint = mode == PromptMode.rich
+        ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
+        : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
 
     /// One typed order row: the stable reference, the current position, focus,
     /// the locked-anchor reason and a pick-up state stay separate facts, and
@@ -782,6 +798,7 @@ final class SortableSelect<T> {
         foreground: focused ? colors.accent : colors.foreground,
         colors: colors,
         profile: effectiveProfile,
+        spine: spine,
       );
     }
 
@@ -792,8 +809,14 @@ final class SortableSelect<T> {
         '$label SortableSelect: ${order.length} choices.',
         colors.foreground,
       );
+      if (order.isNotEmpty) spine.breathingRow(out);
       for (var p = 0; p < order.length; p++) {
         writeRow(p);
+      }
+      if (spine.encloses) {
+        // An enclosure keeps the compact hint outside the closed frame on every
+        // repaint, so a move never leaves the stage framed but unclosed.
+        spine.hint(out, hint, foreground: colors.muted);
       }
     }
 
@@ -863,12 +886,11 @@ final class SortableSelect<T> {
     }
 
     show();
-    write(
-      mode == PromptMode.rich
-          ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
-          : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      colors.muted,
-    );
+    if (!spine.encloses) {
+      // A rail or branch reports its compact hint below the list, exactly as it
+      // did before enclosures existed; an enclosure writes it after the frame.
+      write(hint, colors.muted);
+    }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
     void Function() stopResize = () {};

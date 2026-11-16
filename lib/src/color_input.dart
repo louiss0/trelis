@@ -62,26 +62,35 @@ final class ColorInput {
   final PromptStructure structure;
   late final TextInput _input;
   StringSink? _sink;
+  OutputProfile? _previewProfile;
   bool _active = false;
 
+  /// Presents one preview of the current draft.
+  ///
+  /// A preview is a state change rather than a stage, so it is written as the
+  /// stage's compact event block instead of a new enclosure: a keystroke must
+  /// not repaint a frame. The frame's own width comes from the output profile
+  /// the prompt actually runs under, so the wrapped preview never claims more
+  /// columns than the terminal offers.
   void _showPreview(String text) {
     final value = _parseColor(text);
     final sink = _sink;
     if (sink == null) return;
+    final previewProfile = _previewProfile;
     final preview = _structureSpine(
-      null,
+      previewProfile,
       structure: structure,
-      width: null,
+      width: previewProfile == null ? null : _textInputWidth(previewProfile),
       background: colors.background,
+      border: colors.border,
     );
     if (value == null) {
-      preview.write(
+      preview.hint(
         sink,
         text.isEmpty
             ? 'Preview unavailable: no color entered.'
             : 'Preview unavailable: draft is not a valid color.',
         foreground: colors.warning,
-        closes: true,
       );
       return;
     }
@@ -91,11 +100,13 @@ final class ColorInput {
       sink,
       'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
       foreground: colors.foreground,
+      compact: true,
     );
     preview.write(
       sink,
       'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
       foreground: colors.foreground,
+      compact: true,
       closes: true,
     );
   }
@@ -119,6 +130,9 @@ final class ColorInput {
               ? _SessionOutputSink(session)
               : output ?? terminal?.output ?? stderr)
         : null;
+    _previewProfile = source is ScriptedInput
+        ? _effectiveOutputProfile(source, outputProfile)
+        : outputProfile;
     try {
       final result = await _input.prompt(
         source: source,

@@ -196,13 +196,18 @@ final class URLInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(out, text, foreground: foreground, closes: closes);
-    write(
-      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
-      colors.foreground,
-      closes: true,
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: (
+        title: '$label.',
+        guidance: 'Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+      ),
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = '';

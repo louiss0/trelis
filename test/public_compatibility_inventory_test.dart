@@ -311,6 +311,9 @@ void main() {
           "export 'src/themes/plain_theme.dart';",
           "export 'src/themes/rail_theme.dart';",
           "export 'src/themes/branch_theme.dart';",
+          "export 'src/themes/box_theme.dart';",
+          "export 'src/themes/round_theme.dart';",
+          "export 'src/themes/double_theme.dart';",
         ],
         reason:
             'The presentation projection, layout and compositor stay internal: '

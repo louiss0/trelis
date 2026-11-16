@@ -210,6 +210,7 @@ final class PathInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(
@@ -227,12 +228,12 @@ final class PathInput {
       'Literal native path; no shell expansion. Returned paths do not guarantee later operations succeed.',
       colors.muted,
     );
-    write(
+    spine.hint(
+      out,
       linear
           ? r'Enter edits the path, then review and confirm. Exact /help and /cancel are commands; quote them with a backslash. Double a leading backslash: enter three for a UNC pair. Identified paste is literal. Escape cancels; Ctrl+C interrupts.'
           : 'Enter edits the path, then review and confirm. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
-      closes: true,
+      foreground: colors.muted,
     );
     final entryHelp = _pathEntryHelp(
       linear: linear,

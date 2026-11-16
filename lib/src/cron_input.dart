@@ -802,12 +802,15 @@ final class CronInput {
     // of being appended to the field the user just left.
     void writeNotice(String text) {
       if (!linear) out.write('\r\x1b[2K');
+      // Every notice is its own event, so an enclosure renders it as a compact
+      // block outside a frame instead of drawing one frame per message.
       _structureSpine(
         effectiveProfile,
         structure: structure,
         width: width,
         background: colors.background,
-      ).write(out, text, foreground: colors.foreground, closes: true);
+        border: colors.border,
+      ).hint(out, text, foreground: colors.foreground);
     }
 
     var draft = initialValue;
@@ -953,6 +956,7 @@ final class CronInput {
                 structure: structure,
                 width: width,
                 background: colors.background,
+                border: colors.border,
               ).write(
                 out,
                 instant.toString(),

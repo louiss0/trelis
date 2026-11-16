@@ -274,6 +274,7 @@ final class _FilesystemPicker {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(
@@ -559,6 +560,7 @@ final class _FilesystemPicker {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     if (error != null) {
       spine.write(
