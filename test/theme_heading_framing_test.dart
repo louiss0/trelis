@@ -1107,7 +1107,7 @@ void main() {
   });
 
   group('heading grammar vocabulary', () {
-    test('only the seven decorated structures head a stage', () {
+    test('only the nine decorated structures head a stage', () {
       for (final structure in PromptStructure.values) {
         final heads =
             structure == PromptStructure.minimal ||
@@ -1116,7 +1116,9 @@ void main() {
             structure == PromptStructure.bracket ||
             structure == PromptStructure.form ||
             structure == PromptStructure.ledger ||
-            structure == PromptStructure.colon;
+            structure == PromptStructure.colon ||
+            structure == PromptStructure.line ||
+            structure == PromptStructure.block;
         expect(usesStructureHeading(structure), heads, reason: '$structure');
         expect(headingGlyphsFor(structure, ascii: false) != null, heads);
         expect(headingGlyphsFor(structure, ascii: true) != null, heads);
