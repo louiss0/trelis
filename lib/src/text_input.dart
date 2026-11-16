@@ -1199,6 +1199,15 @@ bool _structureAscii(OutputProfile? profile) =>
     profile.glyphs == GlyphSet.ascii ||
     profile.glyphs == GlyphSet.automatic;
 
+/// Whether [profile] declares support for monochrome SGR styles, so a label
+/// band may be drawn inverted as well as filled.
+///
+/// Inverse styling is emphasis, never the structure: an unknown, automatic or
+/// unsupported style capability leaves the band as the filled row it always is,
+/// so the hierarchy survives monochrome output and redirected logs.
+bool _structureInverse(OutputProfile? profile) =>
+    profile != null && profile.styles == CapabilitySupport.supported;
+
 /// Writes the read-only lines of one structural stage.
 ///
 /// Every call emits one wrapped block. A rail or branch opens its spine with
@@ -1282,15 +1291,21 @@ final class _StructureSpine {
   /// The width a heading stage claims.
   ///
   /// A grammar that draws a rule draws it at [structureRuleWidth], which is
-  /// capped so a rule stays chrome instead of becoming a specimen constant.
-  /// The heading, the body rows and the hint are measured against that same
-  /// width, so above the cap the rule spans the stage instead of falling short
-  /// of the content it rules. A grammar without a rule keeps the full width it
-  /// always had, and so does every structure that is not a heading grammar.
+  /// capped so a rule stays chrome instead of becoming a specimen constant. A
+  /// grammar that draws a label band fills it to [structureBandWidth], the same
+  /// bounded total width, so the band spans the stage instead of trailing off
+  /// wherever its label happens to end. The heading, the body rows and the hint
+  /// are measured against that same width, so above the cap the decoration spans
+  /// the stage instead of falling short of the content it labels. A grammar with
+  /// neither keeps the full width it always had, and so does every structure
+  /// that is not a heading grammar.
   int? get _headingWidth {
     final glyphs = _heading;
-    if (glyphs == null || !glyphs.drawsRule) return width;
-    return structureRuleWidth(structure, width);
+    if (glyphs == null) return width;
+    if (!glyphs.drawsRule && !glyphs.drawsBand) return width;
+    return glyphs.drawsBand
+        ? structureBandWidth(structure, width)
+        : structureRuleWidth(structure, width);
   }
 
   /// The total width the enclosure may claim, including its own chrome.
@@ -1532,6 +1547,61 @@ final class _StructureSpine {
     );
   }
 
+  /// Wraps already styled [text] in the reverse-video style.
+  ///
+  /// The trailing reset of the colour sequence is reused, so a styled band
+  /// closes both the emphasis and the colour with one sequence instead of
+  /// leaving a second reset behind.
+  String _inverted(String text) {
+    final colourReset = text.endsWith('\x1b[0m')
+        ? text.substring(0, text.length - '\x1b[0m'.length)
+        : text;
+    return '\x1b[7m$colourReset\x1b[0m';
+  }
+
+  /// Writes one stage heading as a filled label band.
+  ///
+  /// The band is textual chrome: the label is embedded in a filled row of the
+  /// measured stage width, so the stage keeps its hierarchy in monochrome output
+  /// and in redirected logs. Where the output declares style support the same
+  /// row is printed inverted as well, which strengthens the band without ever
+  /// being the reason it can be seen.
+  ///
+  /// The label is wrapped inside the band's padding first, so every row stays
+  /// within the declared width; a width too narrow for the fill keeps the label
+  /// alone rather than overflowing, and the body, the indented rows and the
+  /// hint keep the structure recognisable. The band is chrome, so it is drawn in
+  /// the stage's own foreground while the body rows keep theirs.
+  void _writeBand(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    final glyphs = _heading!;
+    _open = true;
+    final stageWidth = _headingWidth;
+    final available = stageWidth == null
+        ? null
+        : (stageWidth - 2).clamp(1, stageWidth);
+    final inverse = _structureInverse(outputProfile);
+    for (final line in _wrapText(
+      glyphs.spelling(text),
+      available,
+      atomicText: atomicText,
+    )) {
+      if (line.isEmpty) continue;
+      final row = structureBandRow(
+        structure,
+        ascii: ascii,
+        label: line,
+        width: stageWidth ?? structureBandWidthCap,
+      );
+      final styled = _colorText(row, foreground, background, outputProfile);
+      output.writeln(inverse ? _inverted(styled) : styled);
+    }
+  }
+
   /// Writes the stage heading of one heading structure.
   ///
   /// A structure without a heading grammar writes the block exactly as [write]
@@ -1552,6 +1622,10 @@ final class _StructureSpine {
     final glyphs = _heading;
     if (glyphs == null) {
       write(output, text, foreground: foreground, atomicText: atomicText);
+      return;
+    }
+    if (glyphs.drawsBand) {
+      _writeBand(output, text, foreground, atomicText);
       return;
     }
     _open = true;
