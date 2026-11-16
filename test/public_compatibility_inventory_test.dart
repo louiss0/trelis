@@ -314,6 +314,10 @@ void main() {
           "export 'src/themes/box_theme.dart';",
           "export 'src/themes/round_theme.dart';",
           "export 'src/themes/double_theme.dart';",
+          "export 'src/themes/minimal_theme.dart';",
+          "export 'src/themes/ascii_theme.dart';",
+          "export 'src/themes/chevron_theme.dart';",
+          "export 'src/themes/bracket_theme.dart';",
         ],
         reason:
             'The presentation projection, layout and compositor stay internal: '

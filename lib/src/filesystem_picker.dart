@@ -290,9 +290,13 @@ final class _FilesystemPicker {
     try {
       while (true) {
         spine.reset();
-        write(
-          '$label. Current directory: $current. Existing ${target.name} required.',
-          colors.foreground,
+        spine.opening(
+          out,
+          title: '$label.',
+          body:
+              'Current directory: $current. Existing ${target.name} required.',
+          foreground: colors.foreground,
+          bodyForeground: colors.foreground,
         );
         write(
           'Open N opens a directory; Choose N chooses an entry${target == PathTarget.directory ? '; Choose selects the current directory' : ''}. Path enters a literal path. Parent, Refresh, Hidden toggle are available.',

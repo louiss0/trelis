@@ -338,7 +338,12 @@ final class TreeSelect<T> {
     void show() {
       spine.reset();
       session?._setPromptGeometry(effectiveProfile.geometry);
-      write('$label TreeSelect:', colors.foreground);
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.heading(
+        out,
+        DisplayText.from('$label TreeSelect:').value,
+        foreground: colors.foreground,
+      );
       if (all.isEmpty) write('No nodes available.', colors.warning);
       if (mode == PromptMode.linear) {
         write(
@@ -379,16 +384,18 @@ final class TreeSelect<T> {
           spine: spine,
         );
       }
-      if (spine.encloses) {
+      if (spine.encloses || spine.heads) {
         // An enclosure keeps the compact hint outside the closed frame on every
-        // repaint, so a navigation never leaves the stage framed but unclosed.
+        // repaint, and a heading structure keeps it under the body rows, so a
+        // navigation never leaves the stage without its declared hint.
         spine.hint(out, hint, foreground: colors.muted);
       }
     }
 
     // A rail or branch opens its stage with the compact hint, exactly as it did
-    // before enclosures existed; an enclosure writes it after the bottom rule.
-    if (!spine.encloses) write(hint, colors.muted);
+    // before enclosures existed; an enclosure or a heading structure writes it
+    // after its own content.
+    if (!spine.encloses && !spine.heads) write(hint, colors.muted);
     show();
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
@@ -805,17 +812,21 @@ final class SortableSelect<T> {
     void show() {
       spine.reset();
       session?._setPromptGeometry(effectiveProfile.geometry);
-      write(
-        '$label SortableSelect: ${order.length} choices.',
-        colors.foreground,
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.heading(
+        out,
+        DisplayText.from('$label SortableSelect: ${order.length} choices.')
+            .value,
+        foreground: colors.foreground,
       );
       if (order.isNotEmpty) spine.breathingRow(out);
       for (var p = 0; p < order.length; p++) {
         writeRow(p);
       }
-      if (spine.encloses) {
+      if (spine.encloses || spine.heads) {
         // An enclosure keeps the compact hint outside the closed frame on every
-        // repaint, so a move never leaves the stage framed but unclosed.
+        // repaint, and a heading structure keeps it under the body rows, so a
+        // move never leaves the stage without its declared hint.
         spine.hint(out, hint, foreground: colors.muted);
       }
     }
@@ -886,9 +897,10 @@ final class SortableSelect<T> {
     }
 
     show();
-    if (!spine.encloses) {
+    if (!spine.encloses && !spine.heads) {
       // A rail or branch reports its compact hint below the list, exactly as it
-      // did before enclosures existed; an enclosure writes it after the frame.
+      // did before enclosures existed; an enclosure or a heading structure
+      // writes it after its own content.
       write(hint, colors.muted);
     }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));

@@ -305,8 +305,9 @@ enum InstructionDisplay { themeDefault, compact, expanded, hidden }
 ///
 /// The reference grammar is a single labelled block. A structure that frames
 /// with a line prefix keeps that block, so a rail or branch reads exactly as it
-/// does without the split, and an enclosure keeps the label inside the frame
-/// while the guidance stays outside as the compact hint.
+/// does without the split. A structure that encloses the stage, or decorates its
+/// heading, separates the two: the label is the stage heading and the guidance
+/// is the compact hint under it, which is where the declared grammars put it.
 void _writeStructureIntro(
   _StructureSpine spine,
   StringSink output, {
@@ -328,8 +329,8 @@ void _writeStructureIntro(
     }
     return;
   }
-  if (spine.encloses) {
-    spine.write(output, parts.title, foreground: foreground);
+  if (spine.encloses || spine.heads) {
+    spine.heading(output, parts.title, foreground: foreground);
     spine.hint(output, parts.guidance, foreground: foreground);
     return;
   }
@@ -1206,9 +1207,12 @@ bool _structureAscii(OutputProfile? profile) =>
 /// structure instead encloses the stage: the first block opens the top rule,
 /// later blocks are body rows inside the frame, [hint] closes the bottom rule
 /// and writes the compact hint outside it, and later events stay outside the
-/// frame as compact indented blocks. Wrapping measures the structural prefix or
-/// the enclosure's side rules as part of the line, so a framed line still fits
-/// the declared width instead of overflowing it by the chrome.
+/// frame as compact indented blocks. A heading structure decorates [heading],
+/// indents every other block as a body row and marks the compact hint, so its
+/// grammar is the declared heading/body/hint arrangement rather than a frame.
+/// Wrapping measures the structural prefix, the enclosure's side rules or the
+/// heading's decoration as part of the line, so a framed line still fits the
+/// declared width instead of overflowing it by the chrome.
 final class _StructureSpine {
   _StructureSpine({
     required this.structure,
@@ -1237,6 +1241,11 @@ final class _StructureSpine {
 
   EnclosureGlyphs? get _enclosure =>
       enclosureGlyphsFor(structure, ascii: ascii);
+
+  HeadingGlyphs? get _heading => headingGlyphsFor(structure, ascii: ascii);
+
+  /// Whether this stage is drawn by a heading grammar rather than a frame.
+  bool get heads => _heading != null;
 
   /// Whether this stage is drawn as an enclosure rather than a line prefix.
   bool get encloses => _encloses;
@@ -1404,6 +1413,10 @@ final class _StructureSpine {
       }
       return;
     }
+    if (_heading != null) {
+      _writeHeadedBody(output, text, foreground, atomicText);
+      return;
+    }
     final available = width == null
         ? null
         : (width! - structurePrefixCells(structure, ascii: ascii)).clamp(
@@ -1443,6 +1456,111 @@ final class _StructureSpine {
     }
   }
 
+  /// Writes one stage opening: a heading and the guidance that belongs to it.
+  ///
+  /// A structure without a heading grammar writes the single merged block it
+  /// always wrote, so the reference, rail, branch and enclosing presentations
+  /// keep their bytes. A heading structure separates the two: the title is the
+  /// decorated heading and the guidance follows as its body rows.
+  void opening(
+    StringSink output, {
+    required String title,
+    required String body,
+    required TerminalColor foreground,
+    required TerminalColor bodyForeground,
+    bool closes = false,
+    Iterable<String> atomicText = const [],
+  }) {
+    if (_heading == null) {
+      final joined = body.isEmpty ? title : '$title $body';
+      write(
+        output,
+        joined,
+        foreground: foreground,
+        closes: closes,
+        atomicText: atomicText,
+      );
+      return;
+    }
+    heading(output, title, foreground: foreground, atomicText: atomicText);
+    if (body.isEmpty) return;
+    write(
+      output,
+      body,
+      foreground: bodyForeground,
+      closes: closes,
+      atomicText: atomicText,
+    );
+  }
+
+  /// Writes the stage heading of one heading structure.
+  ///
+  /// A structure without a heading grammar writes the block exactly as [write]
+  /// would, so a rail, branch, enclosure or the reference presentation keeps
+  /// the bytes it had. A heading structure decorates the heading with its own
+  /// vocabulary, spells it with the declared casing rule, and indents every
+  /// wrapped continuation line as part of the same heading. Narrow output
+  /// simplifies the decoration to its marker rather than replacing the
+  /// structure with an unframed one.
+  void heading(
+    StringSink output,
+    String text, {
+    required TerminalColor foreground,
+    Iterable<String> atomicText = const [],
+  }) {
+    final glyphs = _heading;
+    if (glyphs == null) {
+      write(output, text, foreground: foreground, atomicText: atomicText);
+      return;
+    }
+    _open = true;
+    final compact = width != null && width! <= glyphs.headingCells + 2;
+    final decorate = compact ? glyphs.compactPrefixCells : glyphs.headingCells;
+    // Wrapped heading lines take the body indent, so the heading budget is the
+    // tighter of the decoration and that indent.
+    final reserve = decorate > glyphs.bodyIndentCells
+        ? decorate
+        : glyphs.bodyIndentCells;
+    final available = width == null
+        ? null
+        : (width! - reserve).clamp(1, width!);
+    final lines = frameHeadingLines(
+      structure,
+      ascii: ascii,
+      compact: compact,
+      lines: _wrapText(
+        glyphs.spelling(text),
+        available,
+        atomicText: atomicText,
+      ),
+    );
+    for (final line in lines) {
+      if (line.isEmpty) continue;
+      _emit(output, line, foreground);
+    }
+  }
+
+  /// Writes one body row of a heading structure under its heading.
+  ///
+  /// Body rows are the stage's read-only content, its choice rows and its
+  /// events. They keep their own spelling: only the heading the component owns
+  /// is decorated or case-transformed.
+  void _writeHeadedBody(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    final glyphs = _heading!;
+    final available = width == null
+        ? null
+        : (width! - glyphs.bodyIndentCells).clamp(1, width!);
+    for (final line in _wrapText(text, available, atomicText: atomicText)) {
+      if (line.isEmpty) continue;
+      _emit(output, glyphs.body(line), foreground);
+    }
+  }
+
   /// Writes the compact hint that ends the stage.
   ///
   /// A rail or branch closes its structural line, exactly as a [write] with
@@ -1455,6 +1573,31 @@ final class _StructureSpine {
     required TerminalColor foreground,
     Iterable<String> atomicText = const [],
   }) {
+    final glyphs = _heading;
+    if (glyphs != null) {
+      // A heading structure keeps its hint under the body rows, marked with the
+      // structure's own hint vocabulary and wrapped inside the width the same
+      // marker leaves. No block above it is repainted.
+      final lead = '${glyphs.bodyIndent}${glyphs.hintPrefix}';
+      final leadCells = glyphs.bodyIndentCells + glyphs.hintPrefixCells;
+      // Narrow output simplifies the marker instead of overflowing the width:
+      // the structure keeps its hint vocabulary at the column it can afford.
+      final narrow = width != null && leadCells + 1 > width!;
+      final first = narrow ? glyphs.hintPrefix.trimRight() : lead;
+      final continuation = narrow
+          ? ' ' * TextDisplayMap(first).cellWidth
+          : '${glyphs.bodyIndent}${' ' * glyphs.hintPrefixCells}';
+      final available = width == null
+          ? null
+          : (width! - TextDisplayMap(first).cellWidth).clamp(1, width!);
+      var firstLine = true;
+      for (final line in _wrapText(text, available, atomicText: atomicText)) {
+        if (line.isEmpty) continue;
+        _emit(output, '${firstLine ? first : continuation}$line', foreground);
+        firstLine = false;
+      }
+      return;
+    }
     if (!_encloses) {
       write(
         output,
@@ -1672,14 +1815,14 @@ void _renderTextInputOpening(
     background: colors.background,
     border: colors.border,
   );
-  spine.write(output, header, foreground: colors.foreground);
-  if (spine.encloses) {
-    // A frame ends with its compact hint, so the guidance and the command hint
-    // are both outside blocks below the bottom rule.
+  spine.heading(output, header, foreground: colors.foreground);
+  if (spine.encloses || spine.heads) {
+    // A frame or a decorated heading ends with its compact hint, so the
+    // guidance and the command hint are both marked blocks below it.
     spine.hint(output, guidance, foreground: colors.muted);
   } else {
-    // A rail or branch keeps its merged spine: the guidance ends the structural
-    // line only when no command hint continues it.
+    // A rail or branch keeps its merged spine: the guidance continues the
+    // structural line only when no command hint closes it.
     spine.write(
       output,
       guidance,
@@ -1747,14 +1890,14 @@ void _renderTextInputValidation(
     background: colors.background,
     border: colors.border,
   );
-  if (!spine.encloses) {
+  if (!spine.encloses && !spine.heads) {
     // A rail, branch or plain stage keeps its single closing validation block.
     spine.hint(output, validation, foreground: colors.error);
     return;
   }
   // A validation is stage content, not the compact hint: the message is the
-  // frame's warning row and the stage's own compact hint closes the frame below
-  // it, so a warning is never read as the stage's last instruction.
+  // stage's warning row and the stage's own compact hint closes it below, so a
+  // warning is never read as the stage's last instruction.
   spine.write(output, validation, foreground: colors.error);
   spine.hint(
     output,
@@ -3449,9 +3592,12 @@ final class Password {
           foreground: foreground,
           closes: closes,
         );
-    write(
-      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      colors.foreground,
+    spine.opening(
+      scripted.output,
+      title: '$label (${required ? 'Required' : 'Optional'}).',
+      body: 'Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      foreground: colors.foreground,
+      bodyForeground: colors.muted,
       closes: !mask && initialValue.isEmpty,
     );
     if (mask) {
@@ -3786,9 +3932,12 @@ abstract class _BooleanPrompt {
     void renderDraft() =>
         writeStyled('Draft: ${_state(draft)}.', colors.accent);
 
-    writeStyled(
-      '$label. Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
-      colors.foreground,
+    spine.opening(
+      out,
+      title: '$label.',
+      body: 'Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
     );
     spine.hint(
       out,
@@ -4667,10 +4816,11 @@ void _writeChoiceRow(
   bool opens = false,
   bool closes = false,
 }) {
-  if (spine != null && spine._enclosure != null) {
-    // The stage's spine owns the row: a body row inside the frame, or the
-    // structure's live marker when the width cannot frame the stage. Either way
-    // a choice row never silently loses the structure the heading keeps.
+  if (spine != null && (spine._enclosure != null || spine.heads)) {
+    // The stage's spine owns the row: a body row inside the frame, a body row
+    // under a heading structure's heading, or the structure's live marker when
+    // the width cannot frame the stage. Either way a choice row never silently
+    // loses the structure the heading keeps.
     spine.write(
       output,
       DisplayText.from(row.text).value,
@@ -4920,9 +5070,12 @@ abstract class _SingleChoice<T> {
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
       spine.reset();
-      write(
-        '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
-        colors.foreground,
+      spine.heading(
+        out,
+        DisplayText.from(
+          '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
+        ).value,
+        foreground: colors.foreground,
       );
       if (choices.isEmpty) write('No choices available.', colors.warning);
       final start = mode == PromptMode.linear ? page * pageSize : 0;
@@ -5293,9 +5446,12 @@ final class MultiSelect<T> {
       spine.reset();
       final items = visible();
       final hidden = selected.where((i) => !items.contains(i)).length;
-      write(
-        '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
-        colors.foreground,
+      spine.heading(
+        out,
+        DisplayText.from(
+          '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
+        ).value,
+        foreground: colors.foreground,
       );
       if (items.isEmpty) write('No matching choices.', colors.warning);
       final shown = mode == PromptMode.linear
@@ -5747,8 +5903,13 @@ final class TimeInput {
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
-    write(
-      '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
+    spine.opening(
+      out,
+      title: '$label.',
+      body:
+          'Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
     );
     spine.hint(
       out,
@@ -5843,8 +6004,13 @@ final class TimeInput {
 
     void show() {
       spine.reset();
-      write(
-        '$label. Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
+      spine.opening(
+        out,
+        title: '$label.',
+        body:
+            'Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
+        foreground: colors.foreground,
+        bodyForeground: colors.foreground,
       );
       spine.hint(
         out,

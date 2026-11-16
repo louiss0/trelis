@@ -397,11 +397,29 @@ final class EmailInput {
           : session != null
           ? _SessionOutputSink(session)
           : output ?? terminal?.output ?? stderr;
+      // The domain interpretation is component-owned content, so a heading
+      // structure writes it as one of its body rows. Every other structure
+      // keeps the exact raw row it already wrote.
+      void writeInterpretation(String text) {
+        if (!usesStructureHeading(structure)) {
+          sink.writeln(text);
+          return;
+        }
+        final profile = source is ScriptedInput ? source.outputProfile : null;
+        _structureSpine(
+          profile,
+          structure: structure,
+          width: profile == null ? null : _textInputWidth(profile),
+          background: colors.background,
+          border: colors.border,
+        ).write(sink, text, foreground: colors.muted, compact: true);
+      }
+
       if (domain.startsWith('[')) {
-        sink.writeln('Transport address literal: $domain.');
+        writeInterpretation('Transport address literal: $domain.');
       } else {
         const idna = Uts46();
-        sink.writeln(
+        writeInterpretation(
           'Domain interpretation -- Unicode: ${idna.toUnicode(domain)}; ASCII: ${idna.toAscii(domain)}.',
         );
       }

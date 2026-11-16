@@ -343,8 +343,15 @@ final class SearchSelect<T> {
     void show() {
       spine.reset();
       final projection = project();
-      write(
-        '${projection.label.value} ${projection.component}: ${projection.totalResults} results for "${projection.query.value}".',
+      // The query is answer data, so it stays in the body rows: a diagnostic
+      // heading never spells retained input in capitals.
+      spine.opening(
+        out,
+        title: '${projection.label.value} ${projection.component}:',
+        body:
+            '${projection.totalResults} results for "${projection.query.value}".',
+        foreground: colors.foreground,
+        bodyForeground: colors.foreground,
       );
       switch (projection.phase) {
         case QueryResultsPhase.loading:
@@ -377,10 +384,11 @@ final class SearchSelect<T> {
           '${row.reference}. ${row.label.value}${row.focused ? ' [focused]' : ''}${row.isDefault ? ' [default]' : ''}${row.unavailableReason == null ? '' : ' [unavailable: ${row.unavailableReason!.value}]'}',
         );
       }
-      if (spine.encloses) {
+      if (spine.encloses || spine.heads) {
         // An enclosure ends every results presentation: the bottom rule closes
-        // the frame and the stage's compact hint stays outside it, so a query,
-        // a focus move or an acceptance is never written into an open frame.
+        // the frame and the stage's compact hint stays outside it. A heading
+        // structure keeps the same hint under its body rows, so a query, a
+        // focus move or an acceptance is never written into an open frame.
         spine.hint(out, introParts.guidance, foreground: colors.foreground);
       }
     }
