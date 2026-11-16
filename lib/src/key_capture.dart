@@ -256,8 +256,18 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(out, text, foreground: foreground, closes: closes);
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
     final richFocusedAction = (
       title: '$label:',
       guidance: 'c capture; d declare; r remove last; x clear; Enter submit; Ctrl+T help; Escape cancel.',
@@ -308,9 +318,14 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
             write(
               'Modifiers are ambiguous in this input stream.',
               colors.warning,
+              event: StageEvent.warning,
             );
           } else {
-            write('Gesture unavailable.', colors.error);
+            write(
+              'Gesture unavailable.',
+              colors.error,
+              event: StageEvent.warning,
+            );
           }
           review();
           continue;
@@ -343,7 +358,11 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           if (r.action == 'cancel') return Cancelled();
           if (r.action != 'command') {
             if (r.action != 'submit') return InputEnded();
-            write('Use an action command.', colors.error);
+            write(
+              'Use an action command.',
+              colors.error,
+              event: StageEvent.warning,
+            );
             continue;
           }
           action = r.value;
@@ -445,6 +464,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
                 (result as Unavailable<KeyGesture>).reason,
                 colors.error,
                 closes: true,
+                event: StageEvent.warning,
               );
             }
             review();
@@ -454,6 +474,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
                 'Capture or declare a gesture first.',
                 colors.error,
                 closes: true,
+                event: StageEvent.warning,
               );
             } else if (requireObservation &&
                 gestures.any(
@@ -463,6 +484,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
                 'Observation required; ambiguous or declared input cannot be accepted.',
                 colors.error,
                 closes: true,
+                event: StageEvent.warning,
               );
             } else {
               return Accepted(List.unmodifiable(gestures));

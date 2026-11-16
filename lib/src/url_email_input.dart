@@ -198,8 +198,18 @@ final class URLInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(out, text, foreground: foreground, closes: closes);
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
     _writeStructureIntro(
       spine,
       out,
@@ -249,11 +259,12 @@ final class URLInput {
               'Host interpretation -- Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
               colors.success,
               closes: true,
+              event: StageEvent.state,
             );
           }
           return Accepted(value);
         }
-        write(error, colors.error, closes: true);
+        write(error, colors.error, closes: true, event: StageEvent.warning);
       }
     } finally {
       if (keys == null) await inputKeys.close();
@@ -412,7 +423,13 @@ final class EmailInput {
           width: profile == null ? null : _textInputWidth(profile),
           background: colors.background,
           border: colors.border,
-        ).write(sink, text, foreground: colors.muted, compact: true);
+        ).write(
+          sink,
+          text,
+          foreground: colors.muted,
+          compact: true,
+          event: StageEvent.state,
+        );
       }
 
       if (domain.startsWith('[')) {

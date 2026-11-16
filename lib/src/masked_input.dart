@@ -157,7 +157,11 @@ final class _WrappedNotices implements StringSink {
     );
   }
 
-  void _emit(String text, {bool closes = false}) {
+  void _emit(
+    String text, {
+    bool closes = false,
+    StageEvent event = StageEvent.body,
+  }) {
     final spine = _spine;
     if (spine == null) {
       final width = _width();
@@ -169,7 +173,13 @@ final class _WrappedNotices implements StringSink {
       return;
     }
     spine.width = _width();
-    spine.write(_output, text, foreground: _colors.foreground, closes: closes);
+    spine.write(
+      _output,
+      text,
+      foreground: _colors.foreground,
+      closes: closes,
+      event: event,
+    );
   }
 }
 

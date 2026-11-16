@@ -276,13 +276,18 @@ final class _FilesystemPicker {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(
-          out,
-          DisplayText.from(text).value,
-          foreground: foreground,
-          closes: closes,
-        );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      DisplayText.from(text).value,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
 
     var current = base ?? Directory.current.path;
     var showHidden = false;
@@ -306,6 +311,7 @@ final class _FilesystemPicker {
           'Hidden entries: ${showHidden ? 'shown' : 'hidden'}. Links require explicit per-open approval. The base is not a sandbox.',
           colors.warning,
           closes: true,
+          event: StageEvent.warning,
         );
         final entries = <_PickerEntry>[];
         try {
@@ -346,6 +352,7 @@ final class _FilesystemPicker {
           write(
             'Cannot list $current: ${error.message}. Context retained; use Parent, Path or Refresh.',
             colors.warning,
+            event: StageEvent.warning,
           );
         }
         final browseHelp = _browseHelp(
@@ -400,11 +407,19 @@ final class _FilesystemPicker {
               if (result != null) return result;
               continue;
             }
-            write('An entry reference is required.', colors.warning);
+            write(
+              'An entry reference is required.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (reference < 1 || reference > entries.length) {
-            write('Invalid entry reference; listing retained.', colors.warning);
+            write(
+              'Invalid entry reference; listing retained.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final entry = entries[reference - 1];
@@ -412,6 +427,7 @@ final class _FilesystemPicker {
             write(
               'Entry reference $reference is stale; refreshing instead of targeting a replacement.',
               colors.warning,
+              event: StageEvent.warning,
             );
             continue;
           }
@@ -421,11 +437,16 @@ final class _FilesystemPicker {
               write(
                 'Cannot open linked directory ${entry.path} without explicit opt-in; use open $reference links.',
                 colors.warning,
+                event: StageEvent.warning,
               );
               continue;
             }
             if (!linked && match[3] != null) {
-              write('Link approval only applies to links.', colors.warning);
+              write(
+                'Link approval only applies to links.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             if (await FileSystemEntity.type(entry.path) !=
@@ -433,6 +454,7 @@ final class _FilesystemPicker {
               write(
                 'Cannot open ${entry.path}: not an accessible directory.',
                 colors.warning,
+                event: StageEvent.warning,
               );
               continue;
             }
@@ -445,6 +467,7 @@ final class _FilesystemPicker {
                   write(
                     'Cannot open ${entry.path}: linked-directory cycle to $resolved; current directory retained.',
                     colors.warning,
+                    event: StageEvent.warning,
                   );
                   break;
                 }
@@ -465,6 +488,7 @@ final class _FilesystemPicker {
               write(
                 'Cannot resolve linked directory ${entry.path}: ${error.message}; current directory retained.',
                 colors.warning,
+                event: StageEvent.warning,
               );
             }
             continue;
@@ -476,6 +500,7 @@ final class _FilesystemPicker {
             write(
               'Cannot choose ${entry.path}: target must be a ${target.name}.',
               colors.warning,
+              event: StageEvent.warning,
             );
             continue;
           }
@@ -522,6 +547,7 @@ final class _FilesystemPicker {
               'Cannot choose $candidate: $error',
               colors.warning,
               closes: true,
+              event: StageEvent.warning,
             );
             continue;
           }
@@ -541,6 +567,7 @@ final class _FilesystemPicker {
           'Unknown action; listing and context retained.',
           colors.warning,
           closes: true,
+          event: StageEvent.warning,
         );
       }
     } finally {
@@ -613,6 +640,7 @@ final class _FilesystemPicker {
       DisplayText.from('Cannot choose $candidate: $finalError').value,
       foreground: colors.warning,
       closes: true,
+      event: StageEvent.warning,
     );
     return null;
   }

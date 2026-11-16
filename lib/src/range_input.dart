@@ -234,9 +234,19 @@ final class Slider {
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
-    void emit(String text, {bool closes = false}) {
+    void emit(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     void hint(String text) {
@@ -246,7 +256,11 @@ final class Slider {
 
     // The stage heading is the slider's own description; the current value is
     // body content, so a diagnostic heading never spells a value in capitals.
-    void heading(String title, String body) {
+    void heading(
+      String title,
+      String body, {
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
       spine.opening(
         out,
@@ -254,6 +268,7 @@ final class Slider {
         body: body,
         foreground: colors.foreground,
         bodyForeground: colors.foreground,
+        event: event,
       );
     }
 
@@ -261,6 +276,7 @@ final class Slider {
     heading(
       '$_description.',
       'Current value: ${value.isEmpty ? 'not set' : value}.',
+      event: StageEvent.state,
     );
     hint(
       mode == PromptMode.linear
@@ -657,9 +673,19 @@ final class RangeSlider {
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
-    void emit(String text, {bool closes = false}) {
+    void emit(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     void hint(String text) {

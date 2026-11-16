@@ -572,8 +572,17 @@ final class DateInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, {bool closes = false}) =>
-        spine.write(out, text, foreground: colors.foreground, closes: closes);
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
 
     /// Presents one field stage.
     ///
@@ -598,6 +607,7 @@ final class DateInput {
               'Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
           foreground: colors.foreground,
           bodyForeground: colors.foreground,
+          event: StageEvent.state,
         );
       }
       spine.hint(out, cue, foreground: colors.foreground);
@@ -786,14 +796,24 @@ final class DateInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, {bool closes = false}) =>
-        spine.write(out, text, foreground: colors.foreground, closes: closes);
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
     spine.opening(
       out,
       title: '$label.',
       body: 'Active format: $format; ${calendar.name} calendar.',
       foreground: colors.foreground,
       bodyForeground: colors.foreground,
+      event: StageEvent.state,
     );
     write(
       'ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
