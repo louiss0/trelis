@@ -1,0 +1,1 @@
+text input repeat PASS result=alpha,alpha state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1
