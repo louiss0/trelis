@@ -1495,7 +1495,7 @@ void main() {
   });
 
   group('grammar vocabulary', () {
-    test('only the seven decorated structures head a stage', () {
+    test('only the nine decorated structures head a stage', () {
       for (final structure in PromptStructure.values) {
         final heads =
             structure == PromptStructure.minimal ||
@@ -1504,7 +1504,9 @@ void main() {
             structure == PromptStructure.bracket ||
             structure == PromptStructure.form ||
             structure == PromptStructure.ledger ||
-            structure == PromptStructure.colon;
+            structure == PromptStructure.colon ||
+            structure == PromptStructure.line ||
+            structure == PromptStructure.block;
         expect(usesStructureHeading(structure), heads, reason: '$structure');
         expect(headingGlyphsFor(structure, ascii: false) != null, heads);
         expect(headingGlyphsFor(structure, ascii: true) != null, heads);
@@ -1525,12 +1527,13 @@ void main() {
       }
     });
 
-    test('only the form and ledger draw a rule', () {
+    test('only the form, ledger and line draw a rule', () {
       for (final structure in PromptStructure.values) {
         final glyphs = headingGlyphsFor(structure, ascii: false);
         final ruled =
             structure == PromptStructure.form ||
-            structure == PromptStructure.ledger;
+            structure == PromptStructure.ledger ||
+            structure == PromptStructure.line;
         expect(glyphs?.drawsRule ?? false, ruled, reason: '$structure');
       }
     });

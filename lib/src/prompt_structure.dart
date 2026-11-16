@@ -460,11 +460,12 @@ enum StageEvent {
 ///
 /// A heading structure decorates the stage heading, indents the body rows that
 /// follow it and marks the compact hint, instead of drawing a line prefix or an
-/// enclosure. The seven heading/decorated grammars are deliberately different
+/// enclosure. The nine heading/decorated grammars are deliberately different
 /// arrangements, not colour variants of one layout: a conversational label, a
 /// question-mark console heading, a forward chevron, a bracketed band, a
 /// fixed-label form with a rule and a left edge, a numbered ledger with a dotted
-/// rule, and a key:value diagnostic with typed prefixes.
+/// rule, a key:value diagnostic with typed prefixes, an underlined question and
+/// a filled label band.
 class HeadingGlyphs {
   const HeadingGlyphs({
     required this.headingPrefix,
@@ -474,6 +475,7 @@ class HeadingGlyphs {
     required this.bodyMarker,
     this.uppercaseHeading = false,
     this.ruleGlyph = '',
+    this.bandGlyph = '',
     this.hintIndent,
     this.headingIndent,
     this.numbered = false,
@@ -513,6 +515,17 @@ class HeadingGlyphs {
   /// [structureRuleWidthCap], so a specimen's rule length never becomes an
   /// alignment requirement the output cannot meet.
   final String ruleGlyph;
+
+  /// The fill character the stage heading is drawn as a label band with, or an
+  /// empty string when the grammar draws no band.
+  ///
+  /// The band is textual chrome, not a colour: the label is embedded in a
+  /// filled row composed at the width the stage actually has, capped at
+  /// [structureBandWidthCap]. A label band therefore keeps its hierarchy in
+  /// monochrome output and in redirected logs, where no emphasis can be shown;
+  /// inverse styling is an additional emphasis where the output declares it,
+  /// never the only reason the band is visible.
+  final String bandGlyph;
 
   /// The lead before the compact hint when the grammar does not hang it under
   /// the body indent, or null to reuse [bodyIndent].
@@ -567,11 +580,20 @@ class HeadingGlyphs {
   /// Whether this grammar draws a rule under its heading.
   bool get drawsRule => ruleGlyph.isNotEmpty;
 
+  /// Whether this grammar draws its heading as a label band.
+  bool get drawsBand => bandGlyph.isNotEmpty;
+
   /// One rule run of [cells] display cells, or an empty string when this
   /// grammar draws no rule.
   String rule(int cells) => cells <= 0 || ruleGlyph.isEmpty
       ? ''
       : List.filled(cells, ruleGlyph).join();
+
+  /// One band fill of [cells] display cells, or an empty string when this
+  /// grammar draws no band.
+  String band(int cells) => cells <= 0 || bandGlyph.isEmpty
+      ? ''
+      : List.filled(cells, bandGlyph).join();
 
   /// The typed label for [event], or null when this grammar leaves that event
   /// as a body row.
@@ -593,7 +615,12 @@ class HeadingGlyphs {
   String spelling(String text) => uppercaseHeading ? text.toUpperCase() : text;
 
   /// The opening marker of the narrow spelling.
-  String get compactPrefix => headingPrefix.trimRight();
+  ///
+  /// A band grammar keeps one fill character as its marker, so a stage too
+  /// narrow for a filled row still shows the structure instead of degrading to
+  /// the unframed reference presentation.
+  String get compactPrefix =>
+      bandGlyph.isNotEmpty ? '$bandGlyph ' : headingPrefix.trimRight();
 
   /// The display cells [compactPrefix] occupies.
   int get compactPrefixCells => TextDisplayMap(compactPrefix).cellWidth;
@@ -728,6 +755,51 @@ const _colonHeading = HeadingGlyphs(
   },
 );
 
+/// The line grammar underlines the question and indents the body and the hint
+/// below it. It has no enclosing side or bottom frame and no left edge, so the
+/// underline is the whole chrome.
+const _lineHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '',
+  bodyMarker: '  › ',
+  ruleGlyph: '─',
+);
+
+const _asciiLineHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '',
+  bodyMarker: '  > ',
+  ruleGlyph: '-',
+);
+
+/// The block grammar spells an uppercase label as a filled band and indents the
+/// body and the hint under it. The fill is the band: it is drawn in every
+/// capability profile, so the hierarchy never depends on colour or on inverse
+/// styling being available.
+const _blockHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '',
+  bodyMarker: '  ▶ ',
+  uppercaseHeading: true,
+  bandGlyph: '█',
+);
+
+const _asciiBlockHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: '',
+  bodyMarker: '  > ',
+  uppercaseHeading: true,
+  bandGlyph: '#',
+);
+
 /// Returns whether [structure] decorates its heading instead of drawing a line
 /// prefix or an enclosure.
 bool usesStructureHeading(PromptStructure structure) => switch (structure) {
@@ -737,7 +809,9 @@ bool usesStructureHeading(PromptStructure structure) => switch (structure) {
   PromptStructure.bracket ||
   PromptStructure.form ||
   PromptStructure.ledger ||
-  PromptStructure.colon => true,
+  PromptStructure.colon ||
+  PromptStructure.line ||
+  PromptStructure.block => true,
   _ => false,
 };
 
@@ -747,7 +821,7 @@ bool usesStructureHeading(PromptStructure structure) => switch (structure) {
 /// The console grammar ([PromptStructure.ascii]) and the diagnostic grammar
 /// ([PromptStructure.colon]) have one spelling only: they are always the
 /// portable ASCII vocabulary, whatever the output profile supports. The other
-/// five use their declared vocabulary when glyph support is known and fall back
+/// seven use their declared vocabulary when glyph support is known and fall back
 /// to their ASCII counterpart when it is not, exactly as the rail, branch and
 /// enclosure grammars do.
 HeadingGlyphs? headingGlyphsFor(
@@ -762,6 +836,8 @@ HeadingGlyphs? headingGlyphsFor(
     PromptStructure.form => ascii ? _asciiFormHeading : _formHeading,
     PromptStructure.ledger => ascii ? _asciiLedgerHeading : _ledgerHeading,
     PromptStructure.colon => _colonHeading,
+    PromptStructure.line => ascii ? _asciiLineHeading : _lineHeading,
+    PromptStructure.block => ascii ? _asciiBlockHeading : _blockHeading,
     _ => null,
   };
 }
@@ -776,6 +852,49 @@ const structureRuleWidthCap = 80;
 /// The display cells [structure]'s rule occupies for [width] columns.
 int structureRuleWidth(PromptStructure structure, int? width) =>
     (width ?? structureRuleWidthCap).clamp(1, structureRuleWidthCap);
+
+/// The widest a label band may be drawn, in display cells.
+///
+/// A band is chrome and it spans the stage, so it is bounded by the same total
+/// width cap an enclosure or a rule uses and by the columns the output actually
+/// offers. It is never wider than the stage it labels.
+const structureBandWidthCap = 80;
+
+/// The display cells [structure]'s label band occupies for [width] columns.
+int structureBandWidth(PromptStructure structure, int? width) =>
+    (width ?? structureBandWidthCap).clamp(1, structureBandWidthCap);
+
+/// Composes one row of [structure]'s label band.
+///
+/// The label is embedded in a filled row that is at most [width] display cells
+/// wide, with one padding cell either side of the label and the fill carrying
+/// the rest. The fill is what makes the band readable: monochrome output and
+/// redirected logs show the same hierarchy as a styled terminal, because no
+/// part of it depends on colour or on inverse styling.
+///
+/// Narrow output simplifies the chrome instead of dropping it. The padding goes
+/// first, then the trailing fill, then the space between the marker and the
+/// label; a row too narrow for any fill keeps the label alone rather than
+/// letting the band overflow the width it was measured against. [label] is
+/// already display-safe and already wrapped to the band's content width.
+String structureBandRow(
+  PromptStructure structure, {
+  required bool ascii,
+  required String label,
+  required int width,
+}) {
+  final glyphs = headingGlyphsFor(structure, ascii: ascii);
+  if (glyphs == null || !glyphs.drawsBand) return label;
+  final total = structureBandWidth(structure, width);
+  final cells = TextDisplayMap(label).cellWidth;
+  final fill = glyphs.bandGlyph;
+  if (cells + 3 <= total) {
+    return '$fill $label ${glyphs.band(total - cells - 3)}';
+  }
+  if (cells + 2 <= total) return '$fill $label';
+  if (cells + 1 <= total) return '$fill$label';
+  return label;
+}
 
 /// The display label of stage number [number] for [structure], or an empty
 /// string when [structure] does not number its stages.
