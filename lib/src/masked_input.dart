@@ -107,7 +107,55 @@ final class _WrappedNotices implements StringSink {
   void writeln([Object? object = '']) => _emit('$object');
 
   /// Writes the compact hint that closes the current structural line.
-  void hint(Object? object) => _emit('$object', closes: true);
+  ///
+  /// A heading structure keeps the hint under its body rows with its own marker,
+  /// which is the declared hint placement. Every other structure keeps the block
+  /// it always wrote, so the rail, branch and enclosing bytes are unchanged.
+  void hint(Object? object) {
+    final spine = _spine;
+    if (spine != null && spine.heads) {
+      spine.width = _width();
+      spine.hint(_output, '$object', foreground: _colors.foreground);
+      return;
+    }
+    _emit('$object', closes: true);
+  }
+
+  /// Whether a heading structure decorates this component's output.
+  bool get heads => _spine?.heads ?? false;
+
+  /// Writes one stage heading, decorated by a heading structure.
+  ///
+  /// A structure without a heading grammar keeps the single block it always
+  /// wrote, so the reference, rail, branch and enclosing presentations keep
+  /// their bytes.
+  void heading(Object? object) {
+    final spine = _spine;
+    final text = '$object';
+    if (spine == null) {
+      _emit(text);
+      return;
+    }
+    spine.width = _width();
+    spine.heading(_output, text, foreground: _colors.foreground);
+  }
+
+  /// Writes one stage opening: a heading and the text that belongs under it.
+  void opening(Object? title, Object? body) {
+    final spine = _spine;
+    if (spine == null) {
+      _emit('$title $body');
+      return;
+    }
+    spine.width = _width();
+    spine.opening(
+      _output,
+      title: '$title',
+      body: '$body',
+      foreground: _colors.foreground,
+      bodyForeground: _colors.foreground,
+    );
+  }
 
   void _emit(String text, {bool closes = false}) {
     final spine = _spine;
@@ -415,8 +463,9 @@ final class MaskedInput {
       return _linearAdaptive(source, out, keys, profileBox, session);
     }
     var draft = initialValue?.formatted ?? '';
+    out.heading('$label.');
     out.hint(
-      '$label. Enter raw or formatted value. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      'Enter raw or formatted value. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
     );
     while (true) {
       final edit = await _edit(
@@ -544,6 +593,7 @@ final class MaskedInput {
       structure: structure,
       session: session,
     );
+    out.heading('$label.');
     out.hint(
       r'/template chooses an ambiguous template; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
     );
@@ -786,7 +836,7 @@ final class MaskedInput {
     final focusCue = caretAtEnd
         ? 'slot ${slots.length} complete; caret after the last slot'
         : 'slot ${focus + 1} of ${slots.length} (${rules[focus].description}); caret inside that slot';
-    out.writeln('$label. Template: ${template.name}. Focus: $focusCue.');
+    out.opening('$label.', 'Template: ${template.name}. Focus: $focusCue.');
     final pieces = <({String text, int cells, bool focused})>[];
     var slotIndex = 0;
     for (final element in template.elements) {
@@ -1208,8 +1258,9 @@ final class MaskedInput {
     }
 
     void show() {
-      out.writeln(
-        '$label. Template: ${template.name}. Raw: ${slots.join()}. Formatted: ${formatted()}.',
+      out.opening(
+        '$label.',
+        'Template: ${template.name}. Raw: ${slots.join()}. Formatted: ${formatted()}.',
       );
       for (var i = 0; i < slots.length; i++) {
         out.writeln(
@@ -1233,10 +1284,13 @@ final class MaskedInput {
       structure: structure,
       session: session,
     );
-    out.hint(
-      r'/edit corrects a slot; /value edits the formatted value; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-    );
+    const compactHint =
+        r'/edit corrects a slot; /value edits the formatted value; /done submits. /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+    // A heading structure keeps its compact hint under the stage content; every
+    // other structure keeps the order it always had.
+    if (!out.heads) out.hint(compactHint);
     show();
+    if (out.heads) out.hint(compactHint);
     while (true) {
       final command = await edit('', {'/edit', '/value', '/done', '/review'});
       if (command.action == 'cancel') return Cancelled();

@@ -244,9 +244,23 @@ final class Slider {
       spine.hint(out, text, foreground: colors.foreground);
     }
 
+    // The stage heading is the slider's own description; the current value is
+    // body content, so a diagnostic heading never spells a value in capitals.
+    void heading(String title, String body) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.opening(
+        out,
+        title: title,
+        body: body,
+        foreground: colors.foreground,
+        bodyForeground: colors.foreground,
+      );
+    }
+
     void notice(String text) => emit(text);
-    notice(
-      '$_description. Current value: ${value.isEmpty ? 'not set' : value}.',
+    heading(
+      '$_description.',
+      'Current value: ${value.isEmpty ? 'not set' : value}.',
     );
     hint(
       mode == PromptMode.linear
@@ -288,7 +302,10 @@ final class Slider {
       var help = false;
       void show() {
         spine.reset();
-        notice('$_description. Value: ${value.isEmpty ? 'not set' : value}.');
+        heading(
+          '$_description.',
+          'Value: ${value.isEmpty ? 'not set' : value}.',
+        );
         hint(
           'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
         );
@@ -650,11 +667,25 @@ final class RangeSlider {
       spine.hint(out, text, foreground: colors.foreground);
     }
 
+    // The stage heading is the slider's own description; the endpoints are body
+    // content, so a diagnostic heading never spells a value in capitals.
+    void heading(String title, String body) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.opening(
+        out,
+        title: title,
+        body: body,
+        foreground: colors.foreground,
+        bodyForeground: colors.foreground,
+      );
+    }
+
     void notice(String text) => emit(text);
     var lower = initialLower ?? '';
     var upper = initialUpper ?? '';
-    notice(
-      '${_slider._description}, $_gapCue. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
+    heading(
+      '${_slider._description}, $_gapCue.',
+      'Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
     );
     hint(
       mode == PromptMode.linear
@@ -738,8 +769,9 @@ final class RangeSlider {
       var help = false;
       void show() {
         spine.reset();
-        notice(
-          '${_slider._description}, $_gapCue. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
+        heading(
+          '${_slider._description}, $_gapCue.',
+          'Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
         );
         hint(
           'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',

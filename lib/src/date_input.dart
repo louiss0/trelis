@@ -580,12 +580,24 @@ final class DateInput {
     /// An enclosure frames the stage: its context is the body and the focus cue
     /// is the compact hint outside the closed frame, so navigating between
     /// fields never leaves the frame open and the cue is never a body row. A
-    /// rail or branch keeps the single closing cue it already wrote.
+    /// heading structure decorates the same stage heading and keeps the cue
+    /// under its body rows. A rail or branch keeps the single closing cue it
+    /// already wrote.
     void stage(String cue) {
       if (spine.encloses) {
         spine.reset();
         write(
           '$label. Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
+        );
+      } else if (spine.heads) {
+        spine.reset();
+        spine.opening(
+          out,
+          title: '$label.',
+          body:
+              'Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
+          foreground: colors.foreground,
+          bodyForeground: colors.foreground,
         );
       }
       spine.hint(out, cue, foreground: colors.foreground);
@@ -776,7 +788,13 @@ final class DateInput {
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
-    write('$label. Active format: $format; ${calendar.name} calendar.');
+    spine.opening(
+      out,
+      title: '$label.',
+      body: 'Active format: $format; ${calendar.name} calendar.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
+    );
     write(
       'ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
     );

@@ -149,7 +149,7 @@ String _structureFeedbackLine(
       profile == null ||
       profile.glyphs == GlyphSet.ascii ||
       profile.glyphs == GlyphSet.automatic;
-  if (usesStructureEnclosure(structure)) {
+  if (usesStructureEnclosure(structure) || usesStructureHeading(structure)) {
     return '${structureLivePrefix(structure, ascii: ascii)}$line';
   }
   if (!usesStructurePrefix(structure)) return line;

@@ -220,9 +220,15 @@ final class PathInput {
           closes: closes,
         );
 
-    write(
-      '$label. Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
-      colors.foreground,
+    // The heading is the component's own label: the base path is a literal
+    // identifier, so it stays in a body row that keeps its spelling.
+    spine.opening(
+      out,
+      title: '$label.',
+      body:
+          'Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
     );
     write(
       'Literal native path; no shell expansion. Returned paths do not guarantee later operations succeed.',
