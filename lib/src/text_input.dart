@@ -285,22 +285,56 @@ enum PromptMode { rich, linear, automatic }
 /// value.
 enum InstructionDisplay { themeDefault, compact, expanded, hidden }
 
-/// Applies an instruction display policy to a component's opening guidance.
+/// Applies an instruction display policy to a labelled introduction.
 ///
-/// [InstructionDisplay.hidden] keeps only the component's label and its actual
-/// help route: hidden guidance must not hide help access. [themeDefault] keeps
-/// the reference presentation's expanded guidance until a structure supplies a
-/// component/stage default.
-String _instructionIntro(
+/// The parts keep the label and its guidance separable so an enclosure can put
+/// the label inside the frame and the guidance outside it without re-deriving
+/// either from the joined reference string.
+({String title, String guidance}) _instructionIntroParts(
   InstructionDisplay policy, {
-  required String hidden,
-  required String compact,
-  required String expanded,
+  required ({String title, String guidance}) hidden,
+  required ({String title, String guidance}) compact,
+  required ({String title, String guidance}) expanded,
 }) => switch (policy) {
   InstructionDisplay.hidden => hidden,
   InstructionDisplay.compact => compact,
   InstructionDisplay.themeDefault || InstructionDisplay.expanded => expanded,
 };
+
+/// Writes one component introduction: a label and its opening guidance.
+///
+/// The reference grammar is a single labelled block. A structure that frames
+/// with a line prefix keeps that block, so a rail or branch reads exactly as it
+/// does without the split, and an enclosure keeps the label inside the frame
+/// while the guidance stays outside as the compact hint.
+void _writeStructureIntro(
+  _StructureSpine spine,
+  StringSink output, {
+  required ({String title, String guidance}) parts,
+  required TerminalColor foreground,
+  bool rawWhenUnframed = false,
+}) {
+  final joined = parts.guidance.isEmpty
+      ? parts.title
+      : '${parts.title} ${parts.guidance}';
+  if (!usesStructureFraming(spine.structure)) {
+    // An unframed component keeps its reference introduction: the components
+    // that never route through the spine keep their single unwrapped line, and
+    // the ones that do keep the palette styling the spine applies.
+    if (rawWhenUnframed) {
+      output.writeln(joined);
+    } else {
+      spine.write(output, joined, foreground: foreground, closes: true);
+    }
+    return;
+  }
+  if (spine.encloses) {
+    spine.write(output, parts.title, foreground: foreground);
+    spine.hint(output, parts.guidance, foreground: foreground);
+    return;
+  }
+  spine.write(output, joined, foreground: foreground, closes: true);
+}
 
 /// Joins the non-empty parts of component help guidance.
 String _joinHelp(Iterable<String> parts) =>
@@ -1166,17 +1200,22 @@ bool _structureAscii(OutputProfile? profile) =>
 
 /// Writes the read-only lines of one structural stage.
 ///
-/// Every call emits one wrapped block. The first block of a stage opens the
-/// structure's spine, later blocks continue it, and a block that [closes] ends
-/// it so the compact hint finishes the rail or branch. Wrapping measures the
-/// structural prefix as part of the line, so a framed line still fits the
-/// declared width instead of overflowing it by the prefix.
+/// Every call emits one wrapped block. A rail or branch opens its spine with
+/// the first block, continues it on later blocks, and a block that [closes]
+/// ends it so the compact hint finishes the structure. A box, rounded or double
+/// structure instead encloses the stage: the first block opens the top rule,
+/// later blocks are body rows inside the frame, [hint] closes the bottom rule
+/// and writes the compact hint outside it, and later events stay outside the
+/// frame as compact indented blocks. Wrapping measures the structural prefix or
+/// the enclosure's side rules as part of the line, so a framed line still fits
+/// the declared width instead of overflowing it by the chrome.
 final class _StructureSpine {
   _StructureSpine({
     required this.structure,
     required this.ascii,
     required this.width,
     required this.background,
+    required this.border,
     required this.outputProfile,
   });
 
@@ -1184,20 +1223,212 @@ final class _StructureSpine {
   final bool ascii;
   int? width;
   final TerminalColor background;
+  final TerminalColor border;
   final OutputProfile? outputProfile;
   bool _open = false;
+  bool _closed = false;
+
+  /// A stage boundary deferred the previous frame's bottom rule.
+  ///
+  /// A repaint or a new page calls [reset] before writing its own top rule, so
+  /// the previous frame's bottom rule is held until output continues instead of
+  /// leaving a frame without its bottom edge.
+  bool _pendingClose = false;
+
+  EnclosureGlyphs? get _enclosure =>
+      enclosureGlyphsFor(structure, ascii: ascii);
+
+  /// Whether this stage is drawn as an enclosure rather than a line prefix.
+  bool get encloses => _encloses;
+
+  /// Whether this stage is drawn as an enclosure rather than a line prefix.
+  ///
+  /// Narrow output simplifies the chrome instead of replacing the structure:
+  /// below [structureEnclosureCompactWidth] the enclosure keeps only its left
+  /// rule, so the stage still shows the structure's marker.
+  bool get _encloses {
+    final glyphs = _enclosure;
+    if (glyphs == null) return false;
+    return enclosureTotalWidth(structure, width) >=
+        structureEnclosureCompactWidth;
+  }
+
+  /// The total width the enclosure may claim, including its own chrome.
+  int get _frameWidth => enclosureTotalWidth(structure, width);
+
+  /// The width a body row or enclosed block may use.
+  int get _contentWidth =>
+      enclosureContentWidth(structure, ascii: ascii, width: _frameWidth);
+
+  /// The width a hint or compact event outside the frame may use.
+  int get _outsideWidth => (_frameWidth - 2).clamp(1, _frameWidth);
+
+  void _emit(StringSink output, String line, TerminalColor foreground) {
+    if (line.isEmpty) return;
+    output.writeln(_colorText(line, foreground, background, outputProfile));
+  }
+
+  void _emitRaw(StringSink output, String line) {
+    if (line.isEmpty) return;
+    output.writeln(line);
+  }
+
+  /// Opens the enclosure with the stage's first block.
+  ///
+  /// A block that already wrapped hands its first line to the top rule and
+  /// keeps the rest as body rows, so a heading reads as part of the frame. A
+  /// block of one line stays whole inside the frame: a stage whose only content
+  /// is its title then still has a body, and no stage draws an empty enclosure.
+  void _openEnclosure(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    _open = true;
+    final lines = _wrapText(text, _contentWidth, atomicText: atomicText);
+    final titleCells = lines.isEmpty
+        ? 0
+        : TextDisplayMap(lines.first).cellWidth;
+    final title = lines.length > 1 && titleCells + 4 <= _frameWidth
+        ? lines.first
+        : null;
+    final body = title == null ? lines : lines.sublist(1);
+    _emit(
+      output,
+      enclosureTopRule(
+        structure,
+        ascii: ascii,
+        title: title,
+        width: _frameWidth,
+      ),
+      foreground,
+    );
+    for (final line in body) {
+      _emit(
+        output,
+        enclosureBodyRow(
+          structure,
+          ascii: ascii,
+          line: line,
+          width: _frameWidth,
+        ),
+        foreground,
+      );
+    }
+  }
+
+  /// Writes one enclosed body block.
+  void _writeEnclosed(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    if (!_open) {
+      _openEnclosure(output, text, foreground, atomicText);
+      return;
+    }
+    for (final line in _wrapText(text, _contentWidth, atomicText: atomicText)) {
+      _emit(
+        output,
+        enclosureBodyRow(
+          structure,
+          ascii: ascii,
+          line: line,
+          width: _frameWidth,
+        ),
+        foreground,
+      );
+    }
+  }
+
+  /// Closes the bottom rule of an open enclosure.
+  void _closeEnclosure(StringSink output) {
+    if (!_open) return;
+    _open = false;
+    _emit(
+      output,
+      enclosureBottomRule(structure, ascii: ascii, width: _frameWidth),
+      border,
+    );
+  }
+
+  /// Emits a bottom rule that a stage boundary deferred.
+  void _flushPendingClose(StringSink output) {
+    if (!_pendingClose) return;
+    _pendingClose = false;
+    _emit(
+      output,
+      enclosureBottomRule(structure, ascii: ascii, width: _frameWidth),
+      border,
+    );
+  }
+
+  /// Writes a compact block outside a closed frame.
+  void _writeOutside(
+    StringSink output,
+    String text,
+    TerminalColor foreground, {
+    Iterable<String> atomicText = const [],
+  }) {
+    for (final line in _wrapText(text, _outsideWidth, atomicText: atomicText)) {
+      _emit(output, '  $line', foreground);
+    }
+  }
 
   /// Wraps [text] to the width left by the prefix and writes it styled.
+  ///
+  /// [compact] marks a sequential event block rather than stage content. A
+  /// prefixed structure keeps its existing prefix and closure, while an
+  /// enclosure renders the block outside the frame: a repeated keystroke report
+  /// must not draw a new frame on every key.
   void write(
     StringSink output,
     String text, {
     required TerminalColor foreground,
     bool closes = false,
+    bool compact = false,
     Iterable<String> atomicText = const [],
   }) {
+    if (_encloses) {
+      _flushPendingClose(output);
+      if (compact || _closed) {
+        // A stage that already reported its compact hint keeps later events
+        // outside the frame, and they never repaint the frame above them.
+        _closeEnclosure(output);
+        _writeOutside(output, text, foreground, atomicText: atomicText);
+        return;
+      }
+      _writeEnclosed(output, text, foreground, atomicText);
+      if (closes) {
+        _closeEnclosure(output);
+        _closed = true;
+      }
+      return;
+    }
     final available = width == null
         ? null
         : (width! - structurePrefixCells(structure)).clamp(1, width!);
+    final narrowEnclosure = _enclosure != null && !_encloses;
+    if (narrowEnclosure) {
+      // Narrow output keeps the enclosure's left rule as its marker instead of
+      // silently becoming an unframed component.
+      final lines = _wrapText(text, available, atomicText: atomicText);
+      _open = !closes;
+      for (final line in lines) {
+        if (line.isEmpty) continue;
+        output.writeln(
+          _colorText(
+            '${_enclosure!.livePrefix}$line',
+            foreground,
+            background,
+            outputProfile,
+          ),
+        );
+      }
+      return;
+    }
     final framed = frameStructureLines(
       structure,
       ascii: ascii,
@@ -1212,15 +1443,55 @@ final class _StructureSpine {
     }
   }
 
+  /// Writes the compact hint that ends the stage.
+  ///
+  /// A rail or branch closes its structural line, exactly as a [write] with
+  /// `closes` does. An enclosure closes the bottom rule first and keeps the
+  /// hint outside the frame, which is where the declared grammars put it: the
+  /// hint names the stage's actions, not its content.
+  void hint(
+    StringSink output,
+    String text, {
+    required TerminalColor foreground,
+    Iterable<String> atomicText = const [],
+  }) {
+    if (!_encloses) {
+      write(
+        output,
+        text,
+        foreground: foreground,
+        closes: true,
+        atomicText: atomicText,
+      );
+      return;
+    }
+    _flushPendingClose(output);
+    _closeEnclosure(output);
+    _writeOutside(output, text, foreground, atomicText: atomicText);
+    _closed = true;
+  }
+
   /// Emits one unframed blank line, keeping the structure's breathing space
   /// without breaking the spine.
   void blank(StringSink output) {
+    if (_encloses && !_closed) {
+      // An enclosure keeps its breathing row inside the frame.
+      _emitRaw(
+        output,
+        enclosureBodyRow(structure, ascii: ascii, line: '', width: _frameWidth),
+      );
+      return;
+    }
     _open = false;
     output.writeln();
   }
 
-  /// Starts a new spine, so a repainted frame opens the structure again.
-  void reset() => _open = false;
+  /// Starts a new stage, so a repainted frame opens the structure again.
+  void reset() {
+    if (_encloses && _open) _pendingClose = true;
+    _open = false;
+    _closed = false;
+  }
 }
 
 /// Builds the structure writer for one prompt invocation.
@@ -1229,11 +1500,13 @@ _StructureSpine _structureSpine(
   required PromptStructure structure,
   required int? width,
   required TerminalColor background,
+  TerminalColor border = const TerminalColor.terminalDefault(),
 }) => _StructureSpine(
   structure: structure,
   ascii: _structureAscii(outputProfile),
   width: width,
   background: background,
+  border: border,
   outputProfile: outputProfile,
 );
 
@@ -1372,16 +1645,12 @@ void _renderTextInputOpening(
     structure: structure,
     width: width,
     background: colors.background,
+    border: colors.border,
   );
   spine.write(output, header, foreground: colors.foreground);
-  spine.write(
-    output,
-    guidance,
-    foreground: colors.muted,
-    closes: commandHint == null,
-  );
+  spine.hint(output, guidance, foreground: colors.muted);
   if (commandHint != null) {
-    spine.write(output, commandHint, foreground: colors.muted, closes: true);
+    spine.hint(output, commandHint, foreground: colors.muted);
   }
 }
 
@@ -1432,11 +1701,11 @@ void _renderTextInputValidation(
     structure: structure,
     width: width,
     background: colors.background,
-  ).write(
+    border: colors.border,
+  ).hint(
     output,
     _slot(composition, PresentationSlot.validation).text!.value,
     foreground: colors.error,
-    closes: true,
   );
 }
 
@@ -1887,21 +2156,31 @@ Future<({String action, String value})> _edit(
   ///
   /// Editor notices, help and sequential reports are deliberate events inside
   /// the current stage, so they keep the structure's continuation vocabulary
-  /// rather than opening a new frame or dumping the whole view again.
-  void writeEvent(String text, {bool closes = false}) {
+  /// rather than opening a new frame or dumping the whole view again. [compact]
+  /// marks a repeated event such as a notice or a caret report: a prefixed
+  /// structure renders it exactly as before, while an enclosure keeps it outside
+  /// a frame so a keystroke does not draw a new enclosure.
+  void writeEvent(String text, {bool closes = false, bool compact = false}) {
     final profile = activeProfile;
     _StructureSpine(
       structure: structure,
       ascii: _structureAscii(profile),
       width: profile == null ? null : _textInputWidth(profile),
       background: colors.background,
+      border: colors.border,
       outputProfile: profile,
-    ).write(output, text, foreground: colors.muted, closes: closes);
+    ).write(
+      output,
+      text,
+      foreground: colors.muted,
+      closes: closes,
+      compact: compact,
+    );
   }
 
   void notice(String text) {
     if (!sequential && !secret) output.writeln();
-    writeEvent(text, closes: true);
+    writeEvent(text, closes: true, compact: true);
   }
 
   /// Ends the editable row that the rich renderer leaves current.
@@ -2008,17 +2287,20 @@ Future<({String action, String value})> _edit(
           ascii: _structureAscii(profile),
           width: profile == null ? null : _textInputWidth(profile),
           background: colors.background,
+          border: colors.border,
           outputProfile: profile,
         );
         spine.write(
           output,
           'Current text: ${DisplayText.from(chars.join()).value}',
           foreground: colors.muted,
+          compact: true,
         );
         spine.write(
           output,
           'Cursor position: $pos of ${chars.length} graphemes.',
           foreground: colors.muted,
+          compact: true,
           closes: true,
         );
       });
@@ -2055,9 +2337,7 @@ Future<({String action, String value})> _edit(
     );
     final editable = _slot(composition, PresentationSlot.body);
     final ascii = _structureAscii(outputProfile);
-    final promptPrefix = usesStructurePrefix(structure)
-        ? glyphsFor(structure, ascii: ascii).continueLine
-        : '> ';
+    final promptPrefix = structureLivePrefix(structure, ascii: ascii);
     writePrompt(() {
       output.write(
         '\r\x1b[2K$promptPrefix${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
@@ -2208,12 +2488,10 @@ Future<({String action, String value})> _edit(
       if (help) continue;
       if (key == '\r' || key == '\n') {
         if (linear && !sequential && !secret) {
-          final promptPrefix = usesStructurePrefix(structure)
-              ? glyphsFor(
-                  structure,
-                  ascii: _structureAscii(outputProfile),
-                ).continueLine
-              : '> ';
+          final promptPrefix = structureLivePrefix(
+            structure,
+            ascii: _structureAscii(outputProfile),
+          );
           output.write(
             '\r\x1b[2K$promptPrefix${DisplayText.from(chars.join()).value}',
           );
@@ -3096,6 +3374,7 @@ final class Password {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(
@@ -3152,10 +3431,10 @@ final class Password {
         if (edit.action != 'submit') return InputEnded();
         value = edit.value;
         while (true) {
-          write(
+          spine.hint(
+            scripted.output,
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
-            colors.foreground,
-            closes: true,
+            foreground: colors.foreground,
           );
           final action = await _edit(
             inputKeys,
@@ -3426,6 +3705,7 @@ abstract class _BooleanPrompt {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
 
     // Measure and escape application text before adding terminal controls;
@@ -3444,12 +3724,12 @@ abstract class _BooleanPrompt {
       '$label. Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
       colors.foreground,
     );
-    writeStyled(
+    spine.hint(
+      out,
       mode == PromptMode.linear
           ? r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.'
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
-      closes: true,
+      foreground: colors.muted,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(renderDraft);
@@ -3568,9 +3848,13 @@ final class Multiline {
     return validate?.call(value);
   }
 
-  String _opening({required bool linear}) => linear
-      ? '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-      : '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+  ({String title, String guidance}) _openingParts({required bool linear}) => (
+    title:
+        '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+    guidance: linear
+        ? 'Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+  );
 
   /// Current-stage help for this multiline answer.
   ///
@@ -3695,13 +3979,15 @@ final class Multiline {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(out, text, foreground: foreground, closes: closes);
-    write(
-      _opening(linear: mode == PromptMode.linear),
-      colors.foreground,
-      closes: true,
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _openingParts(linear: mode == PromptMode.linear),
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
@@ -4299,7 +4585,9 @@ final class _ChoiceRow {
 ///
 /// The row keeps its stable reference, focus marker and unavailability reason
 /// while gaining the structure's continuation prefix, so a framed list reads as
-/// one spine rather than a stack of unrelated rows.
+/// one spine rather than a stack of unrelated rows. When the structure encloses
+/// its stage, the row is written through the stage's [spine] instead, so the
+/// whole list stays inside one frame.
 void _writeChoiceRow(
   StringSink output,
   _ChoiceRow row, {
@@ -4308,9 +4596,19 @@ void _writeChoiceRow(
   required ColorTheme colors,
   required OutputProfile? profile,
   PromptStructure structure = PromptStructure.plain,
+  _StructureSpine? spine,
   bool opens = false,
   bool closes = false,
 }) {
+  if (spine != null && spine._encloses) {
+    spine.write(
+      output,
+      DisplayText.from(row.text).value,
+      foreground: foreground,
+      atomicText: row.markers,
+    );
+    return;
+  }
   final available = width == null
       ? null
       : (width - structurePrefixCells(structure)).clamp(1, width);
@@ -4527,6 +4825,7 @@ abstract class _SingleChoice<T> {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(
@@ -4578,17 +4877,18 @@ abstract class _SingleChoice<T> {
           colors: colors,
           profile: effectiveProfile,
           structure: structure,
+          spine: spine,
         );
       }
     }
 
     show();
-    write(
+    spine.hint(
+      out,
       mode == PromptMode.rich
           ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
           : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      colors.muted,
-      closes: true,
+      foreground: colors.muted,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
@@ -4884,6 +5184,7 @@ final class MultiSelect<T> {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(
@@ -4944,6 +5245,7 @@ final class MultiSelect<T> {
           colors: colors,
           profile: effectiveProfile,
           structure: structure,
+          spine: spine,
         );
       }
     }
@@ -5008,12 +5310,12 @@ final class MultiSelect<T> {
     }
 
     show();
-    write(
+    spine.hint(
+      out,
       mode == PromptMode.linear
           ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
           : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
-      closes: true,
+      foreground: colors.muted,
     );
     session?._setPromptRepaint(show);
     try {
@@ -5358,17 +5660,19 @@ final class TimeInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
     write(
       '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
     );
-    write(
+    spine.hint(
+      out,
       mode == PromptMode.linear
           ? 'Enter a time of day, not a date or timezone. /help describes the format; /cancel cancels.'
           : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      closes: true,
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -5443,6 +5747,7 @@ final class TimeInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
@@ -5458,9 +5763,10 @@ final class TimeInput {
       write(
         '$label. Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
       );
-      write(
+      spine.hint(
+        out,
         'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-        closes: true,
+        foreground: colors.foreground,
       );
     }
 
@@ -5680,8 +5986,11 @@ final class TagInput {
   String get _styleName =>
       style == TagStyle.snakeCase ? 'snake_case' : 'kebab-case';
 
-  String _opening({required bool linear}) =>
-      '$label: $_styleName tags. Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'}';
+  ({String title, String guidance}) _openingParts({required bool linear}) => (
+    title: '$label: $_styleName tags.',
+    guidance:
+        'Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'}',
+  );
 
   /// Current-stage help for this tag collection.
   ///
@@ -5829,6 +6138,7 @@ final class TagInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, {bool closes = false}) => spine.write(
       input.output,
@@ -5836,7 +6146,12 @@ final class TagInput {
       foreground: colors.foreground,
       closes: closes,
     );
-    write(_opening(linear: mode == PromptMode.linear), closes: true);
+    _writeStructureIntro(
+      spine,
+      input.output,
+      parts: _openingParts(linear: mode == PromptMode.linear),
+      foreground: colors.foreground,
+    );
     try {
       while (true) {
         final result = await _edit(

@@ -288,6 +288,7 @@ final class TreeSelect<T> {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) {
       spine.width = _textInputWidth(effectiveProfile);
@@ -367,6 +368,7 @@ final class TreeSelect<T> {
               : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          spine: spine,
         );
       }
     }
@@ -745,6 +747,7 @@ final class SortableSelect<T> {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) {
       spine.width = _textInputWidth(effectiveProfile);
@@ -782,6 +785,7 @@ final class SortableSelect<T> {
         foreground: focused ? colors.accent : colors.foreground,
         colors: colors,
         profile: effectiveProfile,
+        spine: spine,
       );
     }
 

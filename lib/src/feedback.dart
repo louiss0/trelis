@@ -134,23 +134,26 @@ final class Text {
 /// Applies the declared structure's event vocabulary to one feedback line.
 ///
 /// Feedback owns its own lifecycle and cadence, so a structural theme only
-/// frames the line it already reports: the rail or branch prefix is added to
-/// the display text before styling, never to the semantic content, and a plain
-/// structure leaves the line byte-for-byte unchanged.
+/// frames the line it already reports: the rail or branch prefix, or an
+/// enclosure's side marker, is added to the display text before styling, never
+/// to the semantic content, and a plain structure leaves the line
+/// byte-for-byte unchanged. An enclosure never draws a frame around a single
+/// feedback event; the compact marker keeps the structure recognisable without
+/// claiming the event is a task stage.
 String _structureFeedbackLine(
   String line, {
   required PromptStructure structure,
   required OutputProfile? profile,
 }) {
+  final ascii =
+      profile == null ||
+      profile.glyphs == GlyphSet.ascii ||
+      profile.glyphs == GlyphSet.automatic;
+  if (usesStructureEnclosure(structure)) {
+    return '${structureLivePrefix(structure, ascii: ascii)}$line';
+  }
   if (!usesStructurePrefix(structure)) return line;
-  return frameStructureLines(
-    structure,
-    ascii:
-        profile == null ||
-        profile.glyphs == GlyphSet.ascii ||
-        profile.glyphs == GlyphSet.automatic,
-    lines: [line],
-  ).single;
+  return frameStructureLines(structure, ascii: ascii, lines: [line]).single;
 }
 
 /// The operation's reported outcome; reaching a value never implies one.

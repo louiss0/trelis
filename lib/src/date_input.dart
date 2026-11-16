@@ -570,15 +570,17 @@ final class DateInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
     var focus = 0;
     while (true) {
       if (focus == 3) {
-        write(
+        spine.hint(
+          out,
           'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab or Ctrl+B moves back.',
-          closes: true,
+          foreground: colors.foreground,
         );
         final action = await _edit(
           keys,
@@ -611,9 +613,10 @@ final class DateInput {
         continue;
       }
       final name = names[focus];
-      write(
+      spine.hint(
+        out,
         'Focus: $name. Tab or slash moves forward; Shift-Tab or Ctrl+B moves back; Up/Down adjusts without carry. Enter advances or reviews.',
-        closes: true,
+        foreground: colors.foreground,
       );
       final edit = await _edit(
         keys,
@@ -756,6 +759,7 @@ final class DateInput {
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
@@ -772,10 +776,12 @@ final class DateInput {
     write(
       'Year is ${calendar == DateCalendar.buddhist ? 'Buddhist era 2484-9999' : 'CE 0001-9999'}; Gregorian-derived months, no leap-month context. Example: $example. Arithmetic profile; date only, no timezone.',
     );
-    write(
+    spine.hint(
+      out,
       mode == PromptMode.linear
           ? 'Enter a date, then review. /help describes the format; /cancel cancels.'
           : 'Enter one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -821,15 +827,17 @@ final class DateInput {
         write(
           'Review: ${calendar.name} year ${value.inputYear}, month ${value.month}, day ${value.day}; ISO date: $iso.',
         );
-        write(
+        spine.hint(
+          out,
           'Type /submit to accept or /edit to return to the draft; /cancel cancels.',
-          closes: true,
+          foreground: colors.foreground,
         );
         var reviewFocus = 0;
         if (mode != PromptMode.linear) {
-          write(
+          spine.hint(
+            out,
             'Review action: Edit. Tab or Ctrl+B changes action; Enter activates.',
-            closes: true,
+            foreground: colors.foreground,
           );
         }
         while (true) {
@@ -855,9 +863,10 @@ final class DateInput {
                 : (key, text) {
                     if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
                       reviewFocus = 1 - reviewFocus;
-                      write(
+                      spine.hint(
+                        out,
                         'Review action: ${reviewFocus == 0 ? 'Edit' : 'Submit'}.',
-                        closes: true,
+                        foreground: colors.foreground,
                       );
                       return 'handled';
                     }

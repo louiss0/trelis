@@ -254,13 +254,18 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       structure: structure,
       width: width,
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(out, text, foreground: foreground, closes: closes);
-    final richFocusedAction =
-        '$label: c capture; d declare; r remove last; x clear; Enter submit; Ctrl+T help; Escape cancel.';
-    final linearFocusedAction =
-        '$label: /capture, /declare, /remove, /clear, /done, /help, /cancel.';
+    final richFocusedAction = (
+      title: '$label:',
+      guidance: 'c capture; d declare; r remove last; x clear; Enter submit; Ctrl+T help; Escape cancel.',
+    );
+    final linearFocusedAction = (
+      title: '$label:',
+      guidance: '/capture, /declare, /remove, /clear, /done, /help, /cancel.',
+    );
     void review() {
       spine.reset();
       write(
@@ -270,10 +275,13 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       );
     }
 
-    write(
-      selected == PromptMode.rich ? richFocusedAction : linearFocusedAction,
-      colors.foreground,
-      closes: true,
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: selected == PromptMode.rich
+          ? richFocusedAction
+          : linearFocusedAction,
+      foreground: colors.foreground,
     );
     try {
       while (true) {
@@ -360,8 +368,10 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           if (key == '\x1b') {
             if (!help) return Cancelled();
             help = false;
-            void repaintFocusedAction() =>
-                write(richFocusedAction, colors.foreground);
+            void repaintFocusedAction() => write(
+              '${richFocusedAction.title} ${richFocusedAction.guidance}',
+              colors.foreground,
+            );
             final activePrompt = promptSession;
             if (activePrompt != null) {
               activePrompt._dismissModalHelp(

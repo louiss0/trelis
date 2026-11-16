@@ -73,15 +73,15 @@ final class ColorInput {
       structure: structure,
       width: null,
       background: colors.background,
+      border: colors.border,
     );
     if (value == null) {
-      preview.write(
+      preview.hint(
         sink,
         text.isEmpty
             ? 'Preview unavailable: no color entered.'
             : 'Preview unavailable: draft is not a valid color.',
         foreground: colors.warning,
-        closes: true,
       );
       return;
     }

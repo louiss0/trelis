@@ -205,9 +205,10 @@ final class SearchSelect<T> {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     void write(String text, {bool closes = false}) {
-      if (!usesStructurePrefix(structure)) {
+      if (!usesStructureFraming(structure)) {
         out.writeln(text);
         return;
       }
@@ -527,19 +528,31 @@ final class SearchSelect<T> {
 
     session?._setPromptGeometry(effectiveProfile.geometry);
     session?._setPromptRepaint(show);
-    write(
-      _instructionIntro(
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _instructionIntroParts(
         instructions,
-        hidden:
-            '${safe(label)}. ${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
-        compact: mode == PromptMode.linear
-            ? '${safe(label)}. Enter a query, then a result reference. /help for help.'
-            : '${safe(label)}. Type a query; Enter enters results; Enter accepts a focused result. Ctrl+T help.',
-        expanded: mode == PromptMode.linear
-            ? '${safe(label)}. Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-            : '${safe(label)}. Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+        hidden: (
+          title: '${safe(label)}.',
+          guidance:
+              '${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
+        ),
+        compact: (
+          title: '${safe(label)}.',
+          guidance: mode == PromptMode.linear
+              ? 'Enter a query, then a result reference. /help for help.'
+              : 'Type a query; Enter enters results; Enter accepts a focused result. Ctrl+T help.',
+        ),
+        expanded: (
+          title: '${safe(label)}.',
+          guidance: mode == PromptMode.linear
+              ? 'Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+              : 'Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+        ),
       ),
-      closes: true,
+      foreground: colors.foreground,
+      rawWhenUnframed: true,
     );
     try {
       if (mode == PromptMode.linear) {

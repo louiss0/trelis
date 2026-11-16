@@ -230,6 +230,7 @@ final class Slider {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
@@ -238,15 +239,19 @@ final class Slider {
       spine.write(out, text, foreground: colors.foreground, closes: closes);
     }
 
+    void hint(String text) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.hint(out, text, foreground: colors.foreground);
+    }
+
     void notice(String text) => emit(text);
     notice(
       '$_description. Current value: ${value.isEmpty ? 'not set' : value}.',
     );
-    emit(
+    hint(
       mode == PromptMode.linear
           ? 'Enter an exact value, then submit. /help explains the bounds; /cancel cancels.'
           : 'Tab moves through Slider, Edit and Submit; arrows adjust; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      closes: true,
     );
     try {
       if (mode == PromptMode.linear) {
@@ -284,9 +289,8 @@ final class Slider {
       void show() {
         spine.reset();
         notice('$_description. Value: ${value.isEmpty ? 'not set' : value}.');
-        emit(
+        hint(
           'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-          closes: true,
         );
       }
 
@@ -632,6 +636,7 @@ final class RangeSlider {
       structure: structure,
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
+      border: colors.border,
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
@@ -640,17 +645,21 @@ final class RangeSlider {
       spine.write(out, text, foreground: colors.foreground, closes: closes);
     }
 
+    void hint(String text) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.hint(out, text, foreground: colors.foreground);
+    }
+
     void notice(String text) => emit(text);
     var lower = initialLower ?? '';
     var upper = initialUpper ?? '';
     notice(
       '${_slider._description}, $_gapCue. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
     );
-    emit(
+    hint(
       mode == PromptMode.linear
           ? 'Lower is asked first, then Upper; the pair is reviewed before submission. /help explains the bounds; /cancel cancels.'
           : 'Focus: Lower. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      closes: true,
     );
     try {
       if (mode == PromptMode.linear) {
@@ -732,9 +741,8 @@ final class RangeSlider {
         notice(
           '${_slider._description}, $_gapCue. Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
         );
-        emit(
+        hint(
           'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-          closes: true,
         );
       }
 

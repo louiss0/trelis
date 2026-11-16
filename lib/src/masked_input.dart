@@ -76,12 +76,13 @@ final class _WrappedNotices implements StringSink {
     PromptStructure structure = PromptStructure.plain,
     bool ascii = true,
     ColorTheme colors = ColorThemes.terminalDefault,
-  }) : _spine = usesStructurePrefix(structure)
+  }) : _spine = usesStructureFraming(structure)
            ? _StructureSpine(
                structure: structure,
                ascii: ascii,
                width: _width(),
                background: colors.background,
+               border: colors.border,
                outputProfile: null,
              )
            : null,

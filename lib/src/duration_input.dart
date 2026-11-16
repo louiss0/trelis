@@ -160,30 +160,28 @@ final class DurationInput {
         structure: structure,
         width: null,
         background: colors.background,
+        border: colors.border,
       );
       void review(String draft) {
         if (sink == null) return;
         final value = _parse(draft);
         if (value == null) {
-          reviewSpine.write(
+          reviewSpine.hint(
             sink,
             'Interpretation unavailable: enter a valid duration.',
             foreground: colors.warning,
-            closes: true,
           );
         } else if (durationMode == DurationInputMode.elapsed) {
-          reviewSpine.write(
+          reviewSpine.hint(
             sink,
             'Elapsed interpretation: ${value.microseconds} microseconds.',
             foreground: colors.muted,
-            closes: true,
           );
         } else {
-          reviewSpine.write(
+          reviewSpine.hint(
             sink,
             'Unapplied calendar components: ${value.components}; elapsed sub-day: ${value.microseconds} microseconds.',
             foreground: colors.muted,
-            closes: true,
           );
         }
       }
