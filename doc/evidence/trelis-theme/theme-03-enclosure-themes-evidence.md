@@ -19,9 +19,11 @@
     behavior.
   - `usesStructureEnclosure` and `usesStructureFraming` (prefix **or**
     enclosure).
-  - `structurePrefixCells` now reports two cells for a framed structure, and
-    `structureLivePrefix` gives the marker a live row repeats outside a frame
-    (`│ `, or `> ` for a structure that frames nothing).
+  - `structurePrefixCells` reports the cells of the marker a live row repeats:
+    two for a rail or branch, and the enclosure's whole side rule otherwise
+    (`|| ` is three cells for the ASCII double frame), so a live row lines up
+    with the frame interior. `structureLivePrefix` gives that marker (`│ `,
+    `║ `, `|| `, or `> ` for a structure that frames nothing).
   - `enclosureTotalWidth`, `enclosureContentWidth`, `enclosureTopRule`,
     `enclosureBodyRow`, `enclosureBottomRule` and the composed
     `frameEnclosureLines`: one place measures total width (borders, padding and
@@ -37,16 +39,30 @@
   from `lib/prompty.dart`.
 - `_StructureSpine` (internal, `lib/src/text_input.dart`) now renders two
   grammars through one seam:
-  - the rail/branch prefix path is byte-for-byte unchanged;
+  - the rail/branch/plain path is byte-for-byte unchanged, and
+    `test/theme_structure_rendering_test.dart` now pins the exact bytes of
+    linear `TextInput` output for rail, branch and plain at two profiles
+    instead of asserting that a prefix character appears;
   - the enclosure path opens the top rule with the stage's first block, writes
     later blocks as body rows, closes the bottom rule and writes the compact
     hint outside it (`hint`), keeps later events outside the frame as indented
-    compact blocks (`write(compact: true)`), keeps a breathing row inside the
-    frame (`blank`), and emits a deferred bottom rule at a stage boundary
-    (`reset`) so a repaint or a new page never leaves a frame without its
-    bottom edge.
-  - Every spine takes the palette's `border` colour for the bottom rule and
-    keeps each block's own foreground for its body rows.
+    compact blocks (`write(compact: true)`), draws the breathing row between a
+    heading and its choices inside the frame (`breathingRow`), and emits a
+    deferred bottom rule at a stage boundary (`reset`) so a repaint or a new
+    page never leaves a frame without its bottom edge.
+  - Every spine styles both rules with the palette's `border` colour and keeps
+    each block's own foreground for its body rows.
+- A stage that repaints itself ends every presentation: `Select`, `Radio`,
+  `MultiSelect`, `TreeSelect`, `SortableSelect`,
+  `SearchSelect`/`CommandPalette`/`TimezoneSelect`, `DateInput` fields and
+  `TimeInput` stages close the frame and keep the compact hint outside it on
+  each focus move, page, filter or toggle. A navigation therefore never leaves
+  a frame open around the next notice, and an outcome such as `Accepted: …` or
+  `Beta: checked.` is always an outside block.
+- A validation message is stage content, not a hint: `TextInput` renders the
+  warning as a row inside the frame and closes the stage with its own compact
+  hint below it, so a warning is never read as the stage's last instruction.
+  Rail, branch and plain output keep their single closing validation block.
 - Enclosure rendering wired into every applicable interactive render path in
   rich and linear: `TextInput`, `Password`, `Confirm`/`Checkbox`/`Toggle`,
   `Multiline`, `Select`/`Radio`, `MultiSelect`, `Slider`, `RangeSlider`,
@@ -63,12 +79,18 @@
 - `_writeStructureIntro` splits a labelled introduction into its label and its
   guidance: an enclosure puts the label inside the frame and the guidance
   outside as the compact hint, while an unframed or prefixed structure keeps the
-  exact single block it had before.
+  exact single block it had before. `URLInput` now uses it too, so its stage has
+  a body to frame instead of being a hint-only block.
+- A colour preview is a state change rather than a stage: `ColorInput` writes it
+  as the frame's compact event block, bounded by the output profile the prompt
+  runs under instead of a profile-less 80-cell measurement.
 - Tests:
   - `test/box_theme_factories_test.dart` (17 tests)
   - `test/round_theme_factories_test.dart` (17 tests)
   - `test/double_theme_factories_test.dart` (17 tests)
-  - `test/theme_enclosure_framing_test.dart` (111 tests)
+  - `test/theme_enclosure_framing_test.dart` (285 tests)
+  - `test/theme_structure_rendering_test.dart` (13 tests, including six
+    byte-for-byte pins of linear `TextInput` output)
   - `test/public_compatibility_inventory_test.dart` updated for the new exports.
 
 ## Verification results
@@ -77,53 +99,84 @@
 |---|---|---|
 | Formatting | `dart format .` then `dart format --output=none --set-exit-if-changed .` | 0 changed |
 | Static analysis | `dart analyze` | No issues found |
-| Full suite | `dart test` | +1567, all passed |
-| Theme verification | `dart test test/theme_enclosure_framing_test.dart test/box_theme_factories_test.dart test/round_theme_factories_test.dart test/double_theme_factories_test.dart test/theme_structure_framing_test.dart test/theme_structure_rendering_test.dart` | +304, all passed |
+| Full suite | `dart test` | +1747, all passed |
+| Theme verification | `dart test test/theme_enclosure_framing_test.dart test/box_theme_factories_test.dart test/round_theme_factories_test.dart test/double_theme_factories_test.dart test/theme_structure_framing_test.dart test/theme_structure_rendering_test.dart` | +484, all passed |
 | Issue-tracker boundary | `dart run tool/check_issue_tracker.dart` | No tracked legacy local tracker remains |
 
 ## Structure grammar check
 
-`test/theme_enclosure_framing_test.dart` runs 12 component cases through each of
-the three structures in both interaction modes and asserts:
+`test/theme_enclosure_framing_test.dart` runs every applicable interactive
+component (all 34) through each of the three structures in both interaction
+modes, plus the four feedback components per structure (and both modes for the
+three live ones), and asserts:
 
 - the stage opens with the structure's top rule and closes with its bottom rule;
 - the frame has body rows, every body row starts and ends with the side rule and
   keeps the frame's exact total width, and no line of the run exceeds the
   declared columns;
-- the compact hint is never the last framed row: some closed frame is followed by
-  a two-space-indented block that does not continue the rule;
+- every frame in a run closes exactly once, in order: walking the lines as a
+  state machine rejects a body row outside a frame, an outside block inside one,
+  a second top rule before the previous bottom rule, and a run that ends with a
+  frame still open;
+- the compact hint is outside a closed frame: the run always contains a
+  two-space-indented block that does not continue the rule;
+- a reported outcome (`Accepted: …`, `Beta: checked.`, …, where the component
+  reports one) is never a body row of a frame left open;
 - rich output uses the Unicode vocabulary and an `automatic` glyph profile falls
   back to the ASCII counterpart (`+ - |`, `. - ' |`, `+ = ||`) with no Unicode
   enclosure glyph in the output;
 - a 200-column profile still frames at exactly 80 cells, and 24 columns keep
   every line inside 24;
-- 8 and 10 columns simplify to the left rule instead of drawing a partial frame;
-- a palette `border` colour styles the bottom rule while the accepted value is
-  unchanged;
+- 8 and 10 columns simplify to the left rule instead of drawing a partial frame,
+  and a narrow choice list keeps the same marker on its heading and its rows;
+- a palette `border` colours both the top and the bottom rule while the accepted
+  value is unchanged;
+- the breathing row separates a choice heading from its first choice and lives
+  inside the frame;
+- a validation message is presented before the stage's final compact hint and
+  inside the frame;
 - a protected validation message keeps its `\u{0007}` spelling, a masked
   password is never echoed into the frame, and an unavailable choice keeps its
   reason inside the frame;
 - stage help keeps the enclosure grammar, standalone feedback gains the ASCII
-  marker, and the unframed structure still emits no enclosure chrome;
+  marker without a frame, and the unframed structure still emits no enclosure
+  chrome;
 - `TextInput`, `Select`, `Confirm` and `Password` produce the same outcome for
   `plain`, `box`, `round` and `double` in both modes;
 - the pure helpers (`glyphsFor`, `enclosureTopRule`, `enclosureBodyRow`,
-  `enclosureBottomRule`, `frameEnclosureLines`, `structureLivePrefix`) keep
-  their declared widths and refuse an oversized title.
+  `enclosureBottomRule`, `frameEnclosureLines`, `structureLivePrefix`,
+  `structurePrefixCells`) keep their declared widths and refuse an oversized
+  title.
+
+Separately, `test/theme_structure_rendering_test.dart` pins linear `TextInput`
+output byte-for-byte for `RailTheme`, `BranchTheme` and `PlainTheme` at an
+`automatic` glyph profile and at a 72-column Unicode profile, captured from the
+merged ticket-02 revision `8144538`.
 
 ## Representative visible output
 
-Normal width, `BoxTheme.select`, rich, Unicode glyphs, 72 columns:
+Normal width, `BoxTheme.select`, rich, Unicode glyphs, 72 columns (the focus
+move redrew the stage, so both frames close and the accepted outcome sits below
+the last one):
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Region Select: 2 choices.                                            │
+│                                                                      │
 │ 1. Europe [focused]                                                  │
 │ 2. United States                                                     │
 └──────────────────────────────────────────────────────────────────────┘
   Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T hel
   p; Escape cancels; Ctrl+C interrupts.
-  Accepted: Europe.
+┌──────────────────────────────────────────────────────────────────────┐
+│ Region Select: 2 choices.                                            │
+│                                                                      │
+│ 1. Europe                                                            │
+│ 2. United States [focused]                                           │
+└──────────────────────────────────────────────────────────────────────┘
+  Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T hel
+  p; Escape cancels; Ctrl+C interrupts.
+  Accepted: United States.
 ```
 
 Normal width, `RoundTheme.textInput`, linear, `automatic` glyphs, 72 columns
@@ -140,12 +193,15 @@ Normal width, `RoundTheme.textInput`, linear, `automatic` glyphs, 72 columns
   .
 ```
 
-Narrow width, `DoubleTheme.select`, linear, `automatic` glyphs, 24 columns:
+Narrow width, `DoubleTheme.select`, linear, `automatic` glyphs, 24 columns (the
+breathing row keeps the doubled side rule, and the doubled marker keeps the live
+rows lined up with the frame interior):
 
 ```text
 + Region Select: 2 ch =+
 || oices.             ||
 || Page 1 of 1.       ||
+||                    ||
 || 1. Europe [focused]||
 || 2. United States   ||
 +======================+
@@ -210,15 +266,19 @@ Forty columns, `RoundTheme.confirm`, rich, Unicode glyphs:
   how the atlas fixes its specimens at 42 cells. They do not shrink to the
   widest content line, so a short stage in a wide terminal keeps trailing
   padding inside the frame.
-- A component whose whole opening is the compact hint (for example the key
-  capture preamble before its label split was added) renders as a compact
-  indented block with no frame, because there is no stage body to enclose.
-  Components that report one event per write (`CronInput` notices,
-  `DurationInput` reviews, `ColorInput` previews, the sequential editor
-  reports) use that same compact block instead of a frame per message.
-- Rich repaints can draw the stage frame more than once in scripted output, the
-  same way a rail can repeat its spine on a repaint. `reset()` defers the
-  previous bottom rule so no frame is left open.
+- A component that reports one event per write (`CronInput` notices,
+  `DurationInput` interpretations, `ColorInput` previews, the sequential editor
+  reports) renders those events as compact indented blocks outside the frame
+  instead of a frame per message, and the enclosing stage around them still
+  closes. `ColorInput`'s preview is measured with the output profile the prompt
+  runs under, so it wraps to the declared columns.
+- Rich repaints draw the stage frame more than once in scripted output, the same
+  way a rail can repeat its spine on a repaint, but each presentation closes its
+  own bottom rule before the compact hint; no frame is left open at a stage
+  boundary or at the end of a run.
+- A repaint redraws the frame and repeats the stage's compact hint under it, so a
+  navigation transcript shows the hint once per presentation. The alternative
+  would be a frame left open around the next notice, which the contract forbids.
 - No native-terminal visual qualification was performed: every result here is
   scripted output, not a screenshot or a manual terminal review. The remaining
   structures (`minimal` through `block`) are declared vocabulary with no
@@ -229,5 +289,5 @@ Forty columns, `RoundTheme.confirm`, rich, Unicode glyphs:
 The `BoxTheme`, `RoundTheme` and `DoubleTheme` factory namespaces, the enclosure
 vocabulary and its framing helpers, and the box/rounded/double grammar across
 every applicable interactive and feedback render path are implemented, verified
-by 1567 passing tests, and committed. The ticket is **resolved** and the
+by 1747 passing tests, and committed. The ticket is **resolved** and the
 worktree is ready for merger.

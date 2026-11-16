@@ -119,13 +119,16 @@ bool usesStructureFraming(PromptStructure structure) =>
 
 /// The number of display cells a structural prefix occupies.
 ///
-/// Both the Unicode and the ASCII vocabulary spend two cells on every prefix,
-/// so a wrapped line still fits the width it was measured against. An
-/// enclosure repeats its left rule outside the frame with the same two cells,
-/// so a live row outside the frame keeps the same measurement as a prefixed
-/// one.
-int structurePrefixCells(PromptStructure structure) =>
-    usesStructureFraming(structure) ? 2 : 0;
+/// Both the Unicode and the ASCII vocabulary spend two cells on every rail or
+/// branch prefix, so a wrapped line still fits the width it was measured
+/// against. An enclosure repeats its left rule outside the frame with the same
+/// cells as that rule, so a live row outside the frame keeps the same
+/// measurement as a prefixed one and lines up with the frame interior.
+int structurePrefixCells(PromptStructure structure, {bool ascii = false}) {
+  if (usesStructurePrefix(structure)) return 2;
+  final glyphs = enclosureGlyphsFor(structure, ascii: ascii);
+  return glyphs?.livePrefixCells ?? 0;
+}
 
 /// The marker a framed structure repeats on a live row it does not enclose.
 ///
@@ -210,8 +213,15 @@ class EnclosureGlyphs {
   /// The display cells one side rule occupies.
   int get verticalCells => vertical.runes.length;
 
-  /// The marker that repeats one side of the frame on a live row outside it.
-  String get livePrefix => '${String.fromCharCode(vertical.runes.first)} ';
+  /// The marker that repeats the frame's left side on a live row outside it.
+  ///
+  /// The marker is the whole side rule, so a live row's content starts in the
+  /// same column as the body rows above it even when the side rule is drawn
+  /// with two characters.
+  String get livePrefix => '$vertical ';
+
+  /// The display cells [livePrefix] occupies.
+  int get livePrefixCells => verticalCells + 1;
 
   /// One horizontal run of [cells] display cells.
   String rule(int cells) =>

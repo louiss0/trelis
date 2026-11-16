@@ -56,8 +56,8 @@ every applicable component, tests and evidence.
 
 - `dart format .` then `dart format --output=none --set-exit-if-changed .` → 0 changed.
 - `dart analyze` → No issues found.
-- `dart test` → +1567, all passed.
-- `dart test test/theme_enclosure_framing_test.dart test/box_theme_factories_test.dart test/round_theme_factories_test.dart test/double_theme_factories_test.dart test/theme_structure_framing_test.dart test/theme_structure_rendering_test.dart` → +304, all passed.
+- `dart test` → +1747, all passed.
+- `dart test test/theme_enclosure_framing_test.dart test/box_theme_factories_test.dart test/round_theme_factories_test.dart test/double_theme_factories_test.dart test/theme_structure_framing_test.dart test/theme_structure_rendering_test.dart` → +484, all passed.
 - `dart run tool/check_issue_tracker.dart` → No tracked legacy local tracker remains.
 
 **Answer.** All acceptance bullets are satisfied. The three enclosure
@@ -70,3 +70,34 @@ narrow output simplified to the structure's marker instead of being replaced.
 Task behavior, accepted values, choice references, input bindings and outcomes
 are unchanged. Automated verification is green and the worktree is clean and
 ready for merger.
+
+**Fix round.** A reviewer found one blocking regression and three should-fix
+defects, plus four nits; all were fixed on the same branch:
+
+- Blocking: `_renderTextInputOpening` had routed the guidance through `hint`,
+  which turned the merged rail/branch linear spine inside out
+  (`└ guidance` followed by a reopened `├ command hint`). The enclosure now uses
+  the frame-ending hint path while every prefixed/plain structure keeps its
+  exact `closes:` semantics, and `test/theme_structure_rendering_test.dart`
+  pins linear `TextInput` bytes for rail, branch and plain instead of asserting
+  that a prefix character is present.
+- Rich navigation no longer leaves a frame open: `Select`/`Radio`,
+  `MultiSelect`, `TreeSelect`, `SortableSelect`,
+  `SearchSelect`/`CommandPalette`/`TimezoneSelect` and the `DateInput` field
+  stages close the bottom rule and re-emit the compact hint on every focus move,
+  page, filter or toggle, so an outcome such as `Accepted: …` is never a body
+  row. A rich-navigation test walks every frame in the run and asserts the
+  outcome is outside a closed one.
+- The breathing row is emitted (inside the frame, before the choice rows) for
+  every `_writeChoiceRow` list, and the dead `blank` helper is gone.
+- Coverage is now the whole interactive surface (all 34 components plus the four
+  feedback components) in both modes for each structure, with the frame
+  state machine replacing the first-frame heuristic.
+- Nits: a validation message renders inside the frame before the stage's compact
+  hint; both rules use the palette's `border` colour; the ASCII double live row
+  repeats `|| ` and the editable-row budget follows the declared marker; a
+  narrow choice list keeps the structure's marker on its rows.
+
+Re-verified after the fixes: formatting 0 changed, `dart analyze` no issues,
+`dart test` +1747 all passed, theme verification +484 all passed, tracker check
+clean, `git status` clean.

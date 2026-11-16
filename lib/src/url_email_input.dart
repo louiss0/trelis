@@ -200,9 +200,13 @@ final class URLInput {
     );
     void write(String text, TerminalColor foreground, {bool closes = false}) =>
         spine.write(out, text, foreground: foreground, closes: closes);
-    spine.hint(
+    _writeStructureIntro(
+      spine,
       out,
-      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+      parts: (
+        title: '$label.',
+        guidance: 'Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+      ),
       foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));

@@ -1268,11 +1268,6 @@ final class _StructureSpine {
     output.writeln(_colorText(line, foreground, background, outputProfile));
   }
 
-  void _emitRaw(StringSink output, String line) {
-    if (line.isEmpty) return;
-    output.writeln(line);
-  }
-
   /// Opens the enclosure with the stage's first block.
   ///
   /// A block that already wrapped hands its first line to the top rule and
@@ -1294,6 +1289,8 @@ final class _StructureSpine {
         ? lines.first
         : null;
     final body = title == null ? lines : lines.sublist(1);
+    // The chrome is the structure's border, not the block's own foreground:
+    // both rules then read as one frame around content of any colour.
     _emit(
       output,
       enclosureTopRule(
@@ -1302,7 +1299,7 @@ final class _StructureSpine {
         title: title,
         width: _frameWidth,
       ),
-      foreground,
+      border,
     );
     for (final line in body) {
       _emit(
@@ -1409,7 +1406,10 @@ final class _StructureSpine {
     }
     final available = width == null
         ? null
-        : (width! - structurePrefixCells(structure)).clamp(1, width!);
+        : (width! - structurePrefixCells(structure, ascii: ascii)).clamp(
+            1,
+            width!,
+          );
     final narrowEnclosure = _enclosure != null && !_encloses;
     if (narrowEnclosure) {
       // Narrow output keeps the enclosure's left rule as its marker instead of
@@ -1471,19 +1471,19 @@ final class _StructureSpine {
     _closed = true;
   }
 
-  /// Emits one unframed blank line, keeping the structure's breathing space
-  /// without breaking the spine.
-  void blank(StringSink output) {
-    if (_encloses && !_closed) {
-      // An enclosure keeps its breathing row inside the frame.
-      _emitRaw(
-        output,
-        enclosureBodyRow(structure, ascii: ascii, line: '', width: _frameWidth),
-      );
-      return;
-    }
-    _open = false;
-    output.writeln();
+  /// Emits the breathing row that separates a heading from its choices.
+  ///
+  /// An enclosure keeps that row inside the frame, so the side rules continue
+  /// through it exactly as the declared grammar draws it. A rail or branch has
+  /// no interior to breathe in and keeps the rows it already wrote, so this is
+  /// silent for them rather than adding a line they never had.
+  void breathingRow(StringSink output) {
+    if (!_encloses || !_open || _closed) return;
+    _emit(
+      output,
+      enclosureBodyRow(structure, ascii: ascii, line: '', width: _frameWidth),
+      border,
+    );
   }
 
   /// Starts a new stage, so a repainted frame opens the structure again.
@@ -1597,6 +1597,40 @@ void _finishFieldLine(StringSink out, String action) {
   }
 }
 
+/// Resolves a TextInput instruction policy to the display it actually uses.
+InstructionDisplay _resolvedInstructions(InstructionDisplay instructions) =>
+    instructions == InstructionDisplay.themeDefault
+    ? InstructionDisplay.expanded
+    : instructions;
+
+/// The opening guidance a TextInput instruction policy asks for.
+///
+/// The opening and a re-presented validation share this one text, so a warning
+/// never repeats a differently worded hint.
+String _textInputGuidance({
+  required bool linear,
+  required InstructionDisplay instructions,
+}) {
+  final route = linear ? '/help opens help.' : 'Ctrl+T opens help.';
+  return switch (_resolvedInstructions(instructions)) {
+    InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
+    InstructionDisplay.expanded =>
+      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. $route Escape cancels; Ctrl+C interrupts.',
+    InstructionDisplay.hidden => route,
+    InstructionDisplay.themeDefault => throw StateError(
+      'Instructions resolved above.',
+    ),
+  };
+}
+
+/// The linear command hint that follows the guidance, when the policy shows it.
+String? _textInputCommandHint({
+  required bool linear,
+  required InstructionDisplay instructions,
+}) => linear && _resolvedInstructions(instructions) != InstructionDisplay.hidden
+    ? r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.'
+    : null;
+
 void _renderTextInputOpening(
   StringSink output,
   String label, {
@@ -1623,23 +1657,14 @@ void _renderTextInputOpening(
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
   final header =
       '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}';
-  final resolvedInstructions = instructions == InstructionDisplay.themeDefault
-      ? InstructionDisplay.expanded
-      : instructions;
-  final route = linear ? '/help opens help.' : 'Ctrl+T opens help.';
-  final guidance = switch (resolvedInstructions) {
-    InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
-    InstructionDisplay.expanded =>
-      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. $route Escape cancels; Ctrl+C interrupts.',
-    InstructionDisplay.hidden => route,
-    InstructionDisplay.themeDefault => throw StateError(
-      'Instructions resolved above.',
-    ),
-  };
-  final commandHint =
-      linear && resolvedInstructions != InstructionDisplay.hidden
-      ? r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.'
-      : null;
+  final guidance = _textInputGuidance(
+    linear: linear,
+    instructions: instructions,
+  );
+  final commandHint = _textInputCommandHint(
+    linear: linear,
+    instructions: instructions,
+  );
   final spine = _structureSpine(
     outputProfile,
     structure: structure,
@@ -1648,7 +1673,20 @@ void _renderTextInputOpening(
     border: colors.border,
   );
   spine.write(output, header, foreground: colors.foreground);
-  spine.hint(output, guidance, foreground: colors.muted);
+  if (spine.encloses) {
+    // A frame ends with its compact hint, so the guidance and the command hint
+    // are both outside blocks below the bottom rule.
+    spine.hint(output, guidance, foreground: colors.muted);
+  } else {
+    // A rail or branch keeps its merged spine: the guidance ends the structural
+    // line only when no command hint continues it.
+    spine.write(
+      output,
+      guidance,
+      foreground: colors.muted,
+      closes: commandHint == null,
+    );
+  }
   if (commandHint != null) {
     spine.hint(output, commandHint, foreground: colors.muted);
   }
@@ -1680,6 +1718,8 @@ String _renderEditableText(
 void _renderTextInputValidation(
   StringSink output,
   String message, {
+  bool linear = false,
+  InstructionDisplay instructions = InstructionDisplay.themeDefault,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
   PromptStructure structure = PromptStructure.plain,
@@ -1696,16 +1736,30 @@ void _renderTextInputValidation(
     ),
   );
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
-  _structureSpine(
+  final validation = _slot(
+    composition,
+    PresentationSlot.validation,
+  ).text!.value;
+  final spine = _structureSpine(
     outputProfile,
     structure: structure,
     width: width,
     background: colors.background,
     border: colors.border,
-  ).hint(
+  );
+  if (!spine.encloses) {
+    // A rail, branch or plain stage keeps its single closing validation block.
+    spine.hint(output, validation, foreground: colors.error);
+    return;
+  }
+  // A validation is stage content, not the compact hint: the message is the
+  // frame's warning row and the stage's own compact hint closes the frame below
+  // it, so a warning is never read as the stage's last instruction.
+  spine.write(output, validation, foreground: colors.error);
+  spine.hint(
     output,
-    _slot(composition, PresentationSlot.validation).text!.value,
-    foreground: colors.error,
+    _textInputGuidance(linear: linear, instructions: instructions),
+    foreground: colors.muted,
   );
 }
 
@@ -2070,6 +2124,8 @@ final class TextInput {
           _renderTextInputValidation(
             scripted.output,
             message,
+            linear: mode == PromptMode.linear,
+            instructions: instructions,
             outputProfile: effectiveProfile,
             colors: colors,
             structure: structure,
@@ -2085,6 +2141,8 @@ final class TextInput {
           _renderTextInputValidation(
             scripted.output,
             error,
+            linear: mode == PromptMode.linear,
+            instructions: instructions,
             outputProfile: effectiveProfile,
             colors: colors,
             structure: structure,
@@ -2309,12 +2367,22 @@ Future<({String action, String value})> _edit(
     final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
+    final livePrefix = structureLivePrefix(
+      structure,
+      ascii: _structureAscii(profile),
+    );
+    final liveCells = TextDisplayMap(livePrefix).cellWidth;
     final totalWidth = profile == null ? null : _textInputWidth(profile);
     if (totalWidth != null) {
-      // `> ` is structural chrome; each truthful overflow marker consumes one
-      // cell too. Reserve both markers while centring around the actual caret,
-      // then add only whole graphemes from the display map.
-      final budget = (totalWidth - 2 - 2).clamp(0, _textInputTotalWidthCap);
+      // The live marker is structural chrome; each truthful overflow marker
+      // consumes one cell too. Reserve the declared marker and both markers
+      // while centring around the actual caret, then add only whole graphemes
+      // from the display map, so the row lines up with the frame interior and
+      // still fits the declared width.
+      final budget = (totalWidth - liveCells - 2).clamp(
+        0,
+        _textInputTotalWidthCap,
+      );
       int cells(int index) => displayMap.entries[index].cellWidth;
       var used = displayMap.caretCells(pos);
       while (start < pos && used > budget) {
@@ -2336,11 +2404,9 @@ Future<({String action, String value})> _edit(
       ),
     );
     final editable = _slot(composition, PresentationSlot.body);
-    final ascii = _structureAscii(outputProfile);
-    final promptPrefix = structureLivePrefix(structure, ascii: ascii);
     writePrompt(() {
       output.write(
-        '\r\x1b[2K$promptPrefix${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
+        '\r\x1b[2K$livePrefix${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
       );
     });
   }
@@ -4587,7 +4653,8 @@ final class _ChoiceRow {
 /// while gaining the structure's continuation prefix, so a framed list reads as
 /// one spine rather than a stack of unrelated rows. When the structure encloses
 /// its stage, the row is written through the stage's [spine] instead, so the
-/// whole list stays inside one frame.
+/// whole list stays inside one frame and keeps the structure's marker even when
+/// the width is too narrow to frame it.
 void _writeChoiceRow(
   StringSink output,
   _ChoiceRow row, {
@@ -4600,7 +4667,10 @@ void _writeChoiceRow(
   bool opens = false,
   bool closes = false,
 }) {
-  if (spine != null && spine._encloses) {
+  if (spine != null && spine._enclosure != null) {
+    // The stage's spine owns the row: a body row inside the frame, or the
+    // structure's live marker when the width cannot frame the stage. Either way
+    // a choice row never silently loses the structure the heading keeps.
     spine.write(
       output,
       DisplayText.from(row.text).value,
@@ -4609,12 +4679,13 @@ void _writeChoiceRow(
     );
     return;
   }
+  final ascii = _structureAscii(profile);
   final available = width == null
       ? null
-      : (width - structurePrefixCells(structure)).clamp(1, width);
+      : (width - structurePrefixCells(structure, ascii: ascii)).clamp(1, width);
   final lines = frameStructureLines(
     structure,
-    ascii: _structureAscii(profile),
+    ascii: ascii,
     opens: opens,
     closes: closes,
     lines: _wrapText(
@@ -4842,6 +4913,10 @@ abstract class _SingleChoice<T> {
     if (focus < 0 && choices.isNotEmpty) focus = 0;
     var page = 0;
     const pageSize = 10;
+    final hint = mode == PromptMode.rich
+        ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
+        : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+    var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
       spine.reset();
@@ -4860,6 +4935,7 @@ abstract class _SingleChoice<T> {
           colors.muted,
         );
       }
+      if (start < end) spine.breathingRow(out);
       for (var i = start; i < end; i++) {
         final c = choices[i];
         _writeChoiceRow(
@@ -4880,16 +4956,17 @@ abstract class _SingleChoice<T> {
           spine: spine,
         );
       }
+      // An enclosure ends every presentation: the bottom rule closes the frame
+      // and the compact hint stays outside it, so navigation never leaves the
+      // stage framed but unclosed and an outcome is never a body row. A rail or
+      // branch reports the hint once and continues its spine on a repaint.
+      if (spine.encloses || !hintShown) {
+        spine.hint(out, hint, foreground: colors.muted);
+        hintShown = true;
+      }
     }
 
     show();
-    spine.hint(
-      out,
-      mode == PromptMode.rich
-          ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
-          : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      foreground: colors.muted,
-    );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
     try {
@@ -5207,6 +5284,10 @@ final class MultiSelect<T> {
       for (var i = 0; i < choices.length; i++)
         if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
     ];
+    final hint = mode == PromptMode.linear
+        ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
+    var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
       spine.reset();
@@ -5226,6 +5307,7 @@ final class MultiSelect<T> {
           colors.muted,
         );
       }
+      if (shown.isNotEmpty) spine.breathingRow(out);
       for (final i in shown) {
         final c = choices[i];
         final focused =
@@ -5247,6 +5329,14 @@ final class MultiSelect<T> {
           structure: structure,
           spine: spine,
         );
+      }
+      // An enclosure ends every presentation: the bottom rule closes the frame
+      // and the compact hint stays outside it, so a toggle or navigation never
+      // leaves the stage framed but unclosed and an outcome is never a body row.
+      // A rail or branch reports the hint once and continues on a repaint.
+      if (spine.encloses || !hintShown) {
+        spine.hint(out, hint, foreground: colors.muted);
+        hintShown = true;
       }
     }
 
@@ -5310,13 +5400,6 @@ final class MultiSelect<T> {
     }
 
     show();
-    spine.hint(
-      out,
-      mode == PromptMode.linear
-          ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-          : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-      foreground: colors.muted,
-    );
     session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {

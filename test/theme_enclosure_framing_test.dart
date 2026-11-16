@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:prompty/prompty.dart';
 import 'package:prompty/src/text_measurement.dart';
@@ -9,9 +10,10 @@ import 'package:test/test.dart';
 /// Behavior, accepted values, input bindings and outcomes are covered by the
 /// per-component suites and the factory matrices. These tests assert the
 /// presentation contract instead: an enclosure frames the stage it renders, the
-/// compact hint stays outside the bottom rule, the frame counts its own chrome
-/// against the declared width, capability chooses the ASCII counterpart, and a
-/// palette override styles the frame without changing the answer.
+/// frame always closes, the compact hint stays outside the bottom rule, the
+/// outcome of a stage is never swallowed as a body row, the frame counts its own
+/// chrome against the declared width, capability chooses the ASCII counterpart,
+/// and a palette override styles the frame without changing the answer.
 
 OutputProfile _profile(
   PromptMode mode, {
@@ -53,16 +55,17 @@ List<String> _lines(String text) => [
 
 int _cells(String line) => TextDisplayMap(line).cellWidth;
 
-/// The enclosure vocabulary a theme must draw for one capability profile.
-({
+typedef _Enclosure = ({
   String topLeft,
   String topRight,
   String bottomLeft,
   String bottomRight,
   String horizontal,
   String vertical,
-})
-_expected(PromptStructure structure, {required bool ascii}) {
+});
+
+/// The enclosure vocabulary a theme must draw for one capability profile.
+_Enclosure _expected(PromptStructure structure, {required bool ascii}) {
   final glyphs = enclosureGlyphsFor(structure, ascii: ascii)!;
   return (
     topLeft: glyphs.topLeft,
@@ -75,12 +78,23 @@ _expected(PromptStructure structure, {required bool ascii}) {
 }
 
 class _Case {
-  const _Case(this.name, this.label, this.answer, this.run, {this.richAnswer});
+  const _Case(
+    this.name,
+    this.label,
+    this.answer,
+    this.run, {
+    this.richAnswer,
+    this.outcome,
+  });
 
   final String name;
   final String label;
   final String answer;
   final String? richAnswer;
+
+  /// A reported outcome or notice that must be presented outside a closed
+  /// frame, never swallowed as a body row of a frame left open.
+  final String? outcome;
   final Future<Object?> Function(
     PromptMode mode,
     ScriptedInput input,
@@ -92,6 +106,12 @@ class _Case {
       mode == PromptMode.rich ? (richAnswer ?? answer) : answer;
 }
 
+/// The interactive components, each with a real render/task path per structure
+/// and mode.
+///
+/// The matrix is the whole public interactive surface (34 components), not a
+/// family sample: a structure that frames one choice list but not another is a
+/// defect this matrix has to catch.
 List<_Case> _cases() => [
   _Case(
     'TextInput',
@@ -120,6 +140,25 @@ List<_Case> _cases() => [
       structure: structure,
     ).prompt(source: input, mode: mode),
     richAnswer: 'y\r',
+    outcome: 'Accepted: Yes.',
+  ),
+  _Case(
+    'Checkbox',
+    'Terms',
+    'yes\r',
+    (mode, input, structure) => Checkbox(
+      'Terms',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: 'y\r',
+  ),
+  _Case(
+    'Toggle',
+    'Cache',
+    'yes\r',
+    (mode, input, structure) =>
+        Toggle('Cache', structure: structure).prompt(source: input, mode: mode),
+    richAnswer: 'y\r',
   ),
   _Case(
     'Multiline',
@@ -140,6 +179,18 @@ List<_Case> _cases() => [
       Choice('b', 'Second'),
     ], structure: structure).prompt(source: input, mode: mode),
     richAnswer: '\x1b[B\r',
+    outcome: 'Accepted: Second.',
+  ),
+  _Case(
+    'Radio',
+    'Signal',
+    '2\r',
+    (mode, input, structure) => Radio<String>('Signal', [
+      Choice('a', 'Red'),
+      Choice('b', 'Green'),
+    ], structure: structure).prompt(source: input, mode: mode),
+    richAnswer: '\x1b[B\r',
+    outcome: 'Accepted: Green.',
   ),
   _Case(
     'MultiSelect',
@@ -150,6 +201,7 @@ List<_Case> _cases() => [
       Choice('b', 'Beta'),
     ], structure: structure).prompt(source: input, mode: mode),
     richAnswer: '\x1b[B \x1b[A \r',
+    outcome: 'Beta: checked.',
   ),
   _Case(
     'Slider',
@@ -166,12 +218,188 @@ List<_Case> _cases() => [
     richAnswer: '\x1b[C\t\t\r',
   ),
   _Case(
+    'RangeSlider',
+    'Window',
+    '\x7f2\r\x7f8\r\r',
+    (mode, input, structure) => RangeSlider(
+      'Window',
+      minimum: '0',
+      maximum: '10',
+      step: '1',
+      initialLower: '3',
+      initialUpper: '5',
+      minimumGap: '2',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\x1b[C\t\x1b[C\t\t\t\r',
+  ),
+  _Case(
+    'TreeSelect',
+    'Tree',
+    '/choose\r2\r',
+    (mode, input, structure) => TreeSelect<String>(
+      'Tree',
+      [TreeNode('a', 'A'), TreeNode('b', 'B')],
+      defaultValue: 'b',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\r',
+    outcome: 'Accepted: B.',
+  ),
+  _Case(
+    'SortableSelect',
+    'Order',
+    '/move\r2\r1\r/done\r',
+    (mode, input, structure) => SortableSelect<String>('Order', [
+      Choice('a', 'A'),
+      Choice('b', 'B'),
+    ], structure: structure).prompt(source: input, mode: mode),
+    richAnswer: ' \x1b[B\r\r',
+    outcome: 'A moved to position 1 of 2.',
+  ),
+  _Case(
+    'TimeInput',
+    'Time',
+    '\r',
+    (mode, input, structure) => TimeInput(
+      'Time',
+      initialValue: '23:59',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: '+\t+\t\t\r',
+  ),
+  _Case(
+    'TagInput',
+    'Tags',
+    'NewTag\r/done\r',
+    (mode, input, structure) => TagInput(
+      'Tags',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: 'NewTag\r\t\r',
+  ),
+  _Case(
+    'Autocomplete',
+    'Suggestion',
+    'A\r1\r/submit\r',
+    (mode, input, structure) => Autocomplete(
+      'Suggestion',
+      suggestions: (_) => ['Ada'],
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: 'A\x1b[B\r\r',
+  ),
+  _Case(
+    'SearchSelect',
+    'Fruit',
+    '\r1\r',
+    (mode, input, structure) => SearchSelect<String>('Fruit', [
+      Choice('a', 'Apple'),
+    ], structure: structure).prompt(source: input, mode: mode),
+    richAnswer: '\r\r',
+  ),
+  _Case(
+    'CommandPalette',
+    'Commands',
+    'sav\r1\r',
+    (mode, input, structure) => CommandPalette<String>('Commands', [
+      Choice('save', 'Save'),
+    ], structure: structure).prompt(source: input, mode: mode),
+    richAnswer: 'sav\r\r',
+  ),
+  _Case(
+    'TimezoneSelect',
+    'Zone',
+    'US/Eastern\r105\r',
+    (mode, input, structure) => TimezoneSelect(
+      'Zone',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: 'US/Eastern\r\r',
+  ),
+  _Case(
+    'MaskedInput',
+    'Code',
+    '/value\r\x7f3\r/done\r',
+    (mode, input, structure) => MaskedInput(
+      'Code',
+      templates: [
+        MaskTemplate('code', [
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+          MaskLiteral('-'),
+          MaskSlot('digit', (s) => '0123456789'.contains(s)),
+        ]),
+      ],
+      initialValue: MaskedValue('code', ['1', '2'], '1-2'),
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\x7f3\r',
+  ),
+  _Case(
     'NumberInput',
     'Count',
     '12\r',
     (mode, input, structure) => NumberInput(
       'Count',
       convention: NumericConvention.ascii(),
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'PortInput',
+    'Port',
+    '99999\r\x7f\x7f\x7f\x7f\x7f443\r',
+    (mode, input, structure) => PortInput(
+      'Port',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'IPAddressInput',
+    'Address',
+    '192.0.2.7/24\r',
+    (mode, input, structure) => IPAddressInput(
+      'Address',
+      cidr: true,
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'URLInput',
+    'URL',
+    'https://example.com/\r',
+    (mode, input, structure) => URLInput(
+      'URL',
+      allowedSchemes: {'https'},
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'EmailInput',
+    'Email',
+    'Case@example.com\r',
+    (mode, input, structure) => EmailInput(
+      'Email',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'ColorInput',
+    'Colour',
+    '\r',
+    (mode, input, structure) => ColorInput(
+      'Colour',
+      initialValue: '#fff',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'DurationInput',
+    'Span',
+    '1s\r',
+    (mode, input, structure) => DurationInput(
+      'Span',
+      durationMode: DurationInputMode.elapsed,
       structure: structure,
     ).prompt(source: input, mode: mode),
   ),
@@ -186,24 +414,15 @@ List<_Case> _cases() => [
     ).prompt(source: input, mode: mode),
   ),
   _Case(
-    'TagInput',
-    'Tags',
-    'NewTag\r/done\r',
-    (mode, input, structure) => TagInput(
-      'Tags',
+    'CronInput',
+    'Schedule',
+    '* * * * *\r/submit\r',
+    (mode, input, structure) => CronInput(
+      'Schedule',
+      profile: CronProfile.unix,
       structure: structure,
     ).prompt(source: input, mode: mode),
-    richAnswer: 'NewTag\r\t\r',
-  ),
-  _Case(
-    'Keypress',
-    'Shortcut',
-    '/capture\ra/done\r',
-    (mode, input, structure) => Keypress(
-      'Shortcut',
-      structure: structure,
-    ).prompt(source: input, mode: mode),
-    richAnswer: 'ca\r',
+    richAnswer: '* * * * *\r\t\r\t\r',
   ),
   _Case(
     'PathInput',
@@ -216,7 +435,50 @@ List<_Case> _cases() => [
       structure: structure,
     ).prompt(source: input, mode: mode),
   ),
+  _Case(
+    'FilePicker',
+    'Workspace',
+    'choose 1\r\r',
+    (mode, input, structure) => FilePicker(
+      'Workspace',
+      base: _pickerBase,
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'DirectoryPicker',
+    'Workspace',
+    'choose\r\r',
+    (mode, input, structure) => DirectoryPicker(
+      'Workspace',
+      base: _pickerBase,
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+  ),
+  _Case(
+    'Keypress',
+    'Shortcut',
+    '/capture\ra/done\r',
+    (mode, input, structure) => Keypress(
+      'Shortcut',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: 'ca\r',
+  ),
+  _Case(
+    'KeyChordInput',
+    'Sequence',
+    '/capture\ra/capture\rb/done\r',
+    (mode, input, structure) => KeyChordInput(
+      'Sequence',
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: 'cacb\r',
+  ),
 ];
+
+/// A directory the picker cases browse; created once for the file tree.
+late String _pickerBase;
 
 /// Runs one case through a structural theme's rendered structure.
 Future<String> _render(
@@ -242,6 +504,74 @@ Future<String> _render(
   return out.toString();
 }
 
+/// Asserts every frame in [lines] opens and closes exactly once, in order.
+///
+/// A stage that reopens its frame on a focus move without closing it leaves the
+/// following notice or outcome inside an open frame; walking the lines catches
+/// that wherever it happens, which a check of the first frame alone cannot. A
+/// rule line is identified by its corners, so a title embedded in the top rule
+/// is still a rule and a styled line is never mistaken for one.
+void _expectClosedFrames(
+  List<String> lines, {
+  required _Enclosure expected,
+  String? outcome,
+}) {
+  var open = false;
+  var closed = 0;
+  for (final line in lines) {
+    final isTop =
+        line.startsWith(expected.topLeft) && line.endsWith(expected.topRight);
+    final isBottom =
+        line.startsWith(expected.bottomLeft) &&
+        line.endsWith(expected.bottomRight);
+    if (isTop || isBottom) {
+      // A square frame draws the same corners on both rules, so an ambiguous
+      // rule closes the open frame and opens the next one.
+      final closes = isTop == isBottom ? open : isBottom;
+      if (closes) {
+        expect(
+          open,
+          isTrue,
+          reason: 'a bottom rule closes an open frame: "$line"',
+        );
+        open = false;
+        closed++;
+      } else {
+        expect(
+          open,
+          isFalse,
+          reason: 'a frame opens before the previous one closes: "$line"',
+        );
+        open = true;
+      }
+      continue;
+    }
+    if (outcome != null && line.contains(outcome)) {
+      expect(
+        open,
+        isFalse,
+        reason: 'the outcome "$outcome" is never a row of an open frame',
+      );
+      expect(
+        line.startsWith(expected.vertical),
+        isFalse,
+        reason: 'the outcome "$outcome" is not a frame body row',
+      );
+    }
+    if (line.startsWith(expected.vertical)) {
+      expect(open, isTrue, reason: 'a body row stays inside a frame: "$line"');
+      continue;
+    }
+    expect(
+      open,
+      isFalse,
+      reason: 'an outside block is never written inside an open frame: "$line"',
+    );
+  }
+  expect(open, isFalse, reason: 'the last frame of the run closes');
+  expect(closed, greaterThan(0), reason: 'the run drew at least one frame');
+}
+
 /// Asserts the enclosing grammar of one rendered stage.
 void _expectEnclosed(
   String text, {
@@ -249,6 +579,7 @@ void _expectEnclosed(
   required bool ascii,
   required String label,
   required int columns,
+  String? outcome,
 }) {
   final expected = _expected(structure, ascii: ascii);
   final lines = _lines(text);
@@ -288,30 +619,14 @@ void _expectEnclosed(
       reason: 'body row "$line" closes at the right rule',
     );
   }
-  // The compact hint is outside a bottom rule. Rich repaints can draw more than
-  // one frame, so the contract is that some closed frame is followed by an
-  // indented outside block, never that the hint continues the frame.
-  bool isRule(String line) =>
-      (line.startsWith(expected.bottomLeft) ||
-          line.startsWith(expected.topLeft)) &&
-      line.contains(expected.horizontal * 3) &&
-      !line.contains('\x1b');
-  final rules = [
-    for (var index = 0; index < lines.length; index++)
-      if (isRule(lines[index])) index,
-  ];
-  expect(rules, isNotEmpty, reason: 'the frame closes');
-  final closes = rules.any((index) {
-    final after = lines.skip(index + 1).where((line) => line.isNotEmpty);
-    return after.isNotEmpty &&
-        after.first.startsWith('  ') &&
-        !after.first.startsWith(expected.vertical);
-  });
+  // The compact hint is outside a closed frame: rich repaints can draw more
+  // than one frame, but each of them closes before the hint is written.
   expect(
-    closes,
+    lines.any((line) => line.startsWith('  ')),
     isTrue,
     reason: 'the compact hint is indented outside the bottom rule',
   );
+  _expectClosedFrames(lines, expected: expected, outcome: outcome);
 }
 
 const _themes = <PromptStructure, String>{
@@ -321,6 +636,17 @@ const _themes = <PromptStructure, String>{
 };
 
 void main() {
+  late Directory pickerDirectory;
+
+  setUpAll(() async {
+    pickerDirectory = await Directory.systemTemp.createTemp('enclosure-');
+    await File('${pickerDirectory.path}${Platform.pathSeparator}answer.txt')
+        .writeAsString('data');
+    _pickerBase = pickerDirectory.path;
+  });
+
+  tearDownAll(() => pickerDirectory.delete(recursive: true));
+
   for (final entry in _themes.entries) {
     final structure = entry.key;
     final themeName = entry.value;
@@ -336,6 +662,7 @@ void main() {
               ascii: mode != PromptMode.rich,
               label: testCase.label,
               columns: 72,
+              outcome: testCase.outcome,
             );
           });
         }
@@ -434,10 +761,38 @@ void main() {
           );
           expect(_cells(line), lessThanOrEqualTo(8));
         }
-        expect(text, contains('${expected.vertical[0]} '));
+        expect(
+          text,
+          contains(enclosureGlyphsFor(structure, ascii: true)!.livePrefix),
+        );
         expect(text, contains('Name'));
       },
     );
+
+    test('$themeName keeps a narrow choice list marked by the structure', () async {
+      final out = StringBuffer();
+      await Select<String>('Region', [
+        Choice('a', 'Europe'),
+        Choice('b', 'Asia'),
+      ], structure: structure).prompt(
+        source: _scripted(PromptMode.linear, '1\r', out, columns: 10),
+        mode: PromptMode.linear,
+      );
+      final expected = _expected(structure, ascii: true);
+      final marker = enclosureGlyphsFor(structure, ascii: true)!.livePrefix;
+      final text = out.toString();
+      for (final line in _lines(text)) {
+        if (line.contains('\x1b')) continue;
+        expect(
+          line.startsWith(marker),
+          isTrue,
+          reason:
+              'narrow output keeps the structure marker on every row: "$line"',
+        );
+      }
+      expect(expected.vertical, isNotEmpty);
+      expect(text, contains('1. '));
+    });
 
     test(
       '$themeName keeps a palette border without changing the answer',
@@ -456,10 +811,285 @@ void main() {
               mode: PromptMode.rich,
             );
         expect((result as Accepted<String>).value, 'Ada');
-        expect(out.toString(), contains('\x1b[38;2;12;34;56;'));
+        final text = out.toString();
+        expect(text, contains('\x1b[38;2;12;34;56;'));
+        // Both rules are chrome, so both carry the palette's border colour.
+        final expected = _expected(structure, ascii: false);
+        final rules = _lines(text).where(
+          (line) =>
+              line.contains(expected.topLeft) ||
+              line.contains(expected.bottomLeft),
+        );
+        expect(rules, isNotEmpty);
+        for (final rule in rules) {
+          expect(
+            rule,
+            contains('\x1b[38;2;12;34;56;'),
+            reason: 'the rule is styled as a border: "$rule"',
+          );
+        }
       },
     );
   }
+
+  group('rich navigation closes every frame', () {
+    for (final entry in _themes.entries) {
+      final structure = entry.key;
+
+      test('${entry.value} closes the frame a focus move reopens', () async {
+        final out = StringBuffer();
+        final result =
+            await Select<String>('Region', [
+              Choice('a', 'Europe'),
+              Choice('b', 'United States'),
+            ], structure: structure).prompt(
+              source: _scripted(PromptMode.rich, '\x1b[B\r', out),
+              mode: PromptMode.rich,
+            );
+        expect((result as Accepted<String>).value, 'b');
+        final expected = _expected(structure, ascii: false);
+        final lines = _lines(out.toString());
+        _expectClosedFrames(
+          lines,
+          expected: expected,
+          outcome: 'Accepted: United States.',
+        );
+        // The navigation redrew the stage, so the outcome belongs to the frame
+        // that closed last, not to a frame that never did.
+        final lastRule = lines.lastIndexWhere(
+          (line) =>
+              line.startsWith(expected.bottomLeft) &&
+              line.contains(expected.horizontal * 3),
+        );
+        final outcome = lines.indexWhere(
+          (line) => line.contains('Accepted: United States.'),
+        );
+        expect(outcome, greaterThan(lastRule));
+      });
+
+      test('${entry.value} closes the frame a toggle reopens', () async {
+        final out = StringBuffer();
+        final result =
+            await MultiSelect<String>('Choices', [
+              Choice('a', 'Alpha'),
+              Choice('b', 'Beta'),
+            ], structure: structure).prompt(
+              source: _scripted(PromptMode.rich, '\x1b[B \r', out),
+              mode: PromptMode.rich,
+            );
+        expect((result as Accepted<List<String>>).value, ['b']);
+        final expected = _expected(structure, ascii: false);
+        _expectClosedFrames(
+          _lines(out.toString()),
+          expected: expected,
+          outcome: 'Beta: checked.',
+        );
+      });
+
+      test(
+        '${entry.value} closes the frame a date field move reopens',
+        () async {
+          final out = StringBuffer();
+          await DateInput(
+            'Date',
+            order: DateFieldOrder.dayMonthYear,
+            structure: structure,
+          ).prompt(
+            source: _scripted(PromptMode.rich, '29\t02\r', out),
+            mode: PromptMode.rich,
+          );
+          final expected = _expected(structure, ascii: false);
+          final lines = _lines(out.toString());
+          _expectClosedFrames(lines, expected: expected);
+          expect(
+            lines
+                .where(
+                  (line) =>
+                      line.startsWith(expected.topLeft) &&
+                      line.contains(expected.horizontal * 3),
+                )
+                .length,
+            greaterThan(1),
+            reason: 'each field stage is framed, not just the introduction',
+          );
+        },
+      );
+
+      test('${entry.value} closes the frame a time stage reopens', () async {
+        final out = StringBuffer();
+        await TimeInput('Time', structure: structure).prompt(
+          source: _scripted(PromptMode.rich, '10\t30\r\t\r', out),
+          mode: PromptMode.rich,
+        );
+        final expected = _expected(structure, ascii: false);
+        final lines = _lines(out.toString());
+        _expectClosedFrames(lines, expected: expected);
+        expect(
+          lines
+              .where(
+                (line) =>
+                    line.startsWith(expected.topLeft) &&
+                    line.contains(expected.horizontal * 3),
+              )
+              .length,
+          greaterThan(1),
+          reason: 'each field stage is framed, not just the introduction',
+        );
+      });
+    }
+  });
+
+  group('enclosure body composition', () {
+    for (final entry in _themes.entries) {
+      test(
+        '${entry.value} draws the breathing row above the choices',
+        () async {
+          final out = StringBuffer();
+          await Select<String>('Region', [
+            Choice('a', 'Europe'),
+          ], structure: entry.key).prompt(
+            source: _scripted(PromptMode.linear, '1\r', out),
+            mode: PromptMode.linear,
+          );
+          final expected = _expected(entry.key, ascii: true);
+          final lines = _lines(out.toString());
+          bool isBreathing(String line) =>
+              line.startsWith(expected.vertical) &&
+              line.replaceAll(expected.vertical, '').trim().isEmpty;
+          final heading = lines.indexWhere(
+            (line) =>
+                line.startsWith(expected.vertical) && line.contains('Region'),
+          );
+          final breathing = lines.indexWhere(isBreathing);
+          expect(heading, greaterThanOrEqualTo(0));
+          expect(
+            breathing,
+            greaterThan(heading),
+            reason: 'the breathing row separates the heading from the choices',
+          );
+          expect(lines[breathing + 1], contains('1. Europe'));
+        },
+      );
+
+      test('${entry.value} keeps validation before the compact hint', () async {
+        final out = StringBuffer();
+        final result =
+            await TextInput(
+              'Name',
+              structure: entry.key,
+              validate: (value) => value == 'Ada' ? null : 'Name must be Ada.',
+            ).prompt(
+              source: _scripted(
+                PromptMode.linear,
+                'Bob\r\x7f\x7f\x7fAda\r',
+                out,
+              ),
+              mode: PromptMode.linear,
+            );
+        expect((result as Accepted<String>).value, 'Ada');
+        final text = out.toString();
+        final validation = text.indexOf('Name must be Ada.');
+        expect(validation, greaterThan(0));
+        expect(
+          text.lastIndexOf('Left/Right move'),
+          greaterThan(validation),
+          reason: 'the compact hint closes the stage after the warning',
+        );
+        expect(
+          text
+              .substring(validation)
+              .contains('${_expected(entry.key, ascii: true).vertical} '),
+          isTrue,
+          reason: 'the warning sits inside the frame, not below the hint',
+        );
+      });
+    }
+  });
+
+  group('enclosure feedback', () {
+    for (final entry in _themes.entries) {
+      final structure = entry.key;
+      final expected = _expected(structure, ascii: true);
+      // Standalone feedback has no declared glyph capability, so the portable
+      // ASCII marker is the conservative choice.
+      final marker = enclosureGlyphsFor(structure, ascii: true)!.livePrefix;
+
+      /// A feedback event is a marked line, never a frame around one line.
+      void expectMarkedLines(String text) {
+        final lines = [
+          for (final line in text.split('\n'))
+            if (line.isNotEmpty) line,
+        ];
+        expect(lines, isNotEmpty);
+        for (final line in lines) {
+          expect(
+            line,
+            contains(marker),
+            reason: 'a feedback line keeps the structure marker: "$line"',
+          );
+          expect(
+            line,
+            isNot(contains(expected.horizontal * 3)),
+            reason: 'a feedback event never draws a rule: "$line"',
+          );
+        }
+      }
+
+      test('${entry.value} keeps the lifecycle and gains the marker', () {
+        final out = StringBuffer();
+        Text(
+          'Build finished',
+          kind: TextKind.success,
+          structure: structure,
+        ).present(output: out);
+        expect(out.toString(), contains('Success: Build finished'));
+        expect(out.toString(), startsWith(marker));
+      });
+
+      for (final mode in [PromptMode.linear, PromptMode.rich]) {
+        test('${entry.value} progress is a marked line / ${mode.name}', () {
+          final out = StringBuffer();
+          final progress = Progress('Copy', total: 4, structure: structure);
+          progress.start(output: out, mode: mode, supportsRich: true);
+          progress.update(2);
+          progress.finish(FeedbackOutcome.completed);
+          final text = out.toString();
+          expect(text, contains('Copy: completed'));
+          expectMarkedLines(text);
+        });
+
+        test('${entry.value} spinner keeps its cadence / ${mode.name}', () {
+          final out = StringBuffer();
+          final spinner = Spinner('Index', structure: structure);
+          spinner.start(output: out, mode: mode, supportsRich: true);
+          spinner.update('waiting');
+          spinner.finish(FeedbackOutcome.failed, detail: 'disk');
+          final text = out.toString();
+          expect(text, contains('Index: waiting'));
+          expect(text, contains('failed: disk'));
+          expectMarkedLines(text);
+        });
+
+        test(
+          '${entry.value} multi-spinner keeps its summary / ${mode.name}',
+          () {
+            final out = StringBuffer();
+            final tasks = MultiSpinner(const [
+              'fetch',
+              'build',
+            ], structure: structure);
+            tasks.start(output: out, mode: mode, supportsRich: true);
+            tasks.finishTask('fetch', FeedbackOutcome.completed);
+            tasks.finishTask('build', FeedbackOutcome.skipped);
+            final text = out.toString();
+            expect(text, contains('Summary:'));
+            expect(text, contains('build: skipped'));
+            expectMarkedLines(text);
+          },
+        );
+      }
+    }
+  });
 
   group('enclosure vocabulary', () {
     test('only the three enclosure structures have enclosure glyphs', () {
@@ -500,6 +1130,7 @@ void main() {
       expect(double.horizontal, '=');
       expect(double.vertical, '||');
       expect(double.verticalCells, 2);
+      expect(double.livePrefix, '|| ');
     });
 
     test('the Unicode vocabulary is the declared enclosure grammar', () {
@@ -515,12 +1146,22 @@ void main() {
       expect([double.horizontal, double.vertical], ['═', '║']);
     });
 
-    test('a framed line uses the two-cell live marker', () {
+    test('a live row repeats the whole side rule of its frame', () {
       expect(structurePrefixCells(PromptStructure.box), 2);
+      expect(
+        structurePrefixCells(PromptStructure.double, ascii: true),
+        3,
+        reason: 'the ASCII double frame draws a two-cell side rule',
+      );
+      expect(
+        structurePrefixCells(PromptStructure.double, ascii: false),
+        2,
+        reason: 'the Unicode double frame draws a one-cell side rule',
+      );
       expect(structureLivePrefix(PromptStructure.box, ascii: false), '│ ');
       expect(structureLivePrefix(PromptStructure.round, ascii: true), '| ');
       expect(structureLivePrefix(PromptStructure.double, ascii: false), '║ ');
-      expect(structureLivePrefix(PromptStructure.double, ascii: true), '| ');
+      expect(structureLivePrefix(PromptStructure.double, ascii: true), '|| ');
       expect(structureLivePrefix(PromptStructure.plain, ascii: false), '> ');
       expect(structureLivePrefix(PromptStructure.rail, ascii: false), '│ ');
     });
@@ -576,7 +1217,7 @@ void main() {
 
   group('enclosure content contracts', () {
     test(
-      'a protected validation message stays spelled outside the frame',
+      'a protected validation message stays spelled inside the frame',
       () async {
         final out = StringBuffer();
         final result =
@@ -636,22 +1277,19 @@ void main() {
       expect(out.toString(), contains('└'));
     });
 
-    test(
-      'feedback keeps its lifecycle and gains the enclosure marker',
-      () async {
-        final out = StringBuffer();
-        BoxTheme.text(
-          'Build finished',
-          kind: TextKind.success,
-        ).present(output: out);
-        expect(
-          out.toString(),
-          // Standalone feedback has no declared glyph capability, so the
-          // portable ASCII marker is the conservative choice.
-          contains('| Success: Build finished'),
-        );
-      },
-    );
+    test('feedback keeps its lifecycle and gains the enclosure marker', () {
+      final out = StringBuffer();
+      BoxTheme.text(
+        'Build finished',
+        kind: TextKind.success,
+      ).present(output: out);
+      expect(
+        out.toString(),
+        // Standalone feedback has no declared glyph capability, so the
+        // portable ASCII marker is the conservative choice.
+        contains('| Success: Build finished'),
+      );
+    });
 
     test('a narrow enclosure never draws a partial frame', () async {
       final out = StringBuffer();

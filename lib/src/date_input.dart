@@ -574,13 +574,28 @@ final class DateInput {
     );
     void write(String text, {bool closes = false}) =>
         spine.write(out, text, foreground: colors.foreground, closes: closes);
+
+    /// Presents one field stage.
+    ///
+    /// An enclosure frames the stage: its context is the body and the focus cue
+    /// is the compact hint outside the closed frame, so navigating between
+    /// fields never leaves the frame open and the cue is never a body row. A
+    /// rail or branch keeps the single closing cue it already wrote.
+    void stage(String cue) {
+      if (spine.encloses) {
+        spine.reset();
+        write(
+          '$label. Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
+        );
+      }
+      spine.hint(out, cue, foreground: colors.foreground);
+    }
+
     var focus = 0;
     while (true) {
       if (focus == 3) {
-        spine.hint(
-          out,
+        stage(
           'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab or Ctrl+B moves back.',
-          foreground: colors.foreground,
         );
         final action = await _edit(
           keys,
@@ -613,10 +628,8 @@ final class DateInput {
         continue;
       }
       final name = names[focus];
-      spine.hint(
-        out,
+      stage(
         'Focus: $name. Tab or slash moves forward; Shift-Tab or Ctrl+B moves back; Up/Down adjusts without carry. Enter advances or reviews.',
-        foreground: colors.foreground,
       );
       final edit = await _edit(
         keys,

@@ -255,6 +255,29 @@ final class SearchSelect<T> {
         ? visible().skip(page * size).take(size).toList()
         : visible();
 
+    // The instruction policy is shared by the introduction and by every results
+    // presentation, so the compact hint under a repainted frame is the same
+    // text a reader already saw above it.
+    final introParts = _instructionIntroParts(
+      instructions,
+      hidden: (
+        title: '${safe(label)}.',
+        guidance: '${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
+      ),
+      compact: (
+        title: '${safe(label)}.',
+        guidance: mode == PromptMode.linear
+            ? 'Enter a query, then a result reference. /help for help.'
+            : 'Type a query; Enter enters results; Enter accepts a focused result. Ctrl+T help.',
+      ),
+      expanded: (
+        title: '${safe(label)}.',
+        guidance: mode == PromptMode.linear
+            ? 'Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+            : 'Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+      ),
+    );
+
     // The typed projection is built before any output, and only for a current,
     // open presentation: stale responses are rejected above it.
     QueryResultsPresentation project() {
@@ -348,10 +371,17 @@ final class SearchSelect<T> {
       if (projection.pageCount != null && projection.totalResults > 0) {
         write('Page ${projection.page} of ${projection.pageCount}.');
       }
+      if (projection.rows.isNotEmpty) spine.breathingRow(out);
       for (final row in projection.rows) {
         write(
           '${row.reference}. ${row.label.value}${row.focused ? ' [focused]' : ''}${row.isDefault ? ' [default]' : ''}${row.unavailableReason == null ? '' : ' [unavailable: ${row.unavailableReason!.value}]'}',
         );
+      }
+      if (spine.encloses) {
+        // An enclosure ends every results presentation: the bottom rule closes
+        // the frame and the stage's compact hint stays outside it, so a query,
+        // a focus move or an acceptance is never written into an open frame.
+        spine.hint(out, introParts.guidance, foreground: colors.foreground);
       }
     }
 
@@ -531,26 +561,7 @@ final class SearchSelect<T> {
     _writeStructureIntro(
       spine,
       out,
-      parts: _instructionIntroParts(
-        instructions,
-        hidden: (
-          title: '${safe(label)}.',
-          guidance:
-              '${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
-        ),
-        compact: (
-          title: '${safe(label)}.',
-          guidance: mode == PromptMode.linear
-              ? 'Enter a query, then a result reference. /help for help.'
-              : 'Type a query; Enter enters results; Enter accepts a focused result. Ctrl+T help.',
-        ),
-        expanded: (
-          title: '${safe(label)}.',
-          guidance: mode == PromptMode.linear
-              ? 'Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-              : 'Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-        ),
-      ),
+      parts: introParts,
       foreground: colors.foreground,
       rawWhenUnframed: true,
     );
