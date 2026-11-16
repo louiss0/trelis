@@ -62,6 +62,11 @@ final class _Args {
     suggested++;
     return const [];
   }
+
+  NumericConvention? conventionProvider() {
+    conventionAsked++;
+    return null;
+  }
 }
 
 /// One factory's typed surface across the fifteen namespaces.
@@ -1499,6 +1504,7 @@ final _probes = <_SurfaceProbe>[
       initialValue: 'seed',
       required: true,
       maxLength: 20,
+      validate: a.validate,
       colors: a.colors,
       instructions: a.instructions,
       supplementaryHelp: a.help,
@@ -1514,6 +1520,7 @@ final _probes = <_SurfaceProbe>[
       'Token',
       mask: true,
       required: true,
+      validate: a.validate,
       colors: a.colors,
       instructions: a.instructions,
       supplementaryHelp: a.help,
@@ -1572,6 +1579,7 @@ final _probes = <_SurfaceProbe>[
       initialValue: 'seed',
       required: true,
       maxLength: 100,
+      validate: a.validate,
       colors: a.colors,
       instructions: a.instructions,
       supplementaryHelp: a.help,
@@ -1704,6 +1712,7 @@ final _probes = <_SurfaceProbe>[
       'Tags',
       style: TagStyle.snakeCase,
       maxLength: 8,
+      validate: a.validate,
       colors: a.colors,
       instructions: a.instructions,
       supplementaryHelp: a.help,
@@ -1720,6 +1729,7 @@ final _probes = <_SurfaceProbe>[
       initialValue: 'seed',
       required: true,
       maxLength: 20,
+      validate: a.validate,
       colors: a.colors,
       instructions: a.instructions,
       supplementaryHelp: a.help,
@@ -1798,6 +1808,7 @@ final _probes = <_SurfaceProbe>[
       minimum: '0',
       maximum: '99',
       precision: 1,
+      conventionProvider: a.conventionProvider,
       required: false,
       colors: a.colors,
       instructions: a.instructions,

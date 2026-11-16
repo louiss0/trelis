@@ -3,7 +3,7 @@
 **Status:** published with ticket 07
 **Source revision:** the commit that records this document on
 `ticket/theme-07-theme-matrix`, over the test revision
-`728630a0448833baab802721feeccfa498fff016`
+`ee54b97`
 **Integration base:** `2feac1ba216d3066fcd61dcaa48ac01328e657cf`
 (`merge(themes): integrate line and block structural themes`)
 **Ticket:** [07: Verify the full theme matrix and publish migration guidance](../../../docs/issues/trelis-theme-integration/issues/07-theme-matrix-and-migration.md)
