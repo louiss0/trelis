@@ -570,6 +570,57 @@ void main() {
     }
   });
 
+  group('representative normal and narrow observations', () {
+    // The specification asks for representative observation of themed stages at
+    // a normal and a narrow width. These are scripted observations of the
+    // visible stage an agent can read, not a native-terminal visual
+    // qualification: every row of every structure's stage is measured against
+    // the columns the output was opened with, and the structure's own grammar
+    // must still be there at both widths.
+    for (final entry in _structures.entries) {
+      final structure = entry.key;
+
+      for (final columns in [80, 24]) {
+        test('${entry.value} fits $columns columns', () async {
+          final out = StringBuffer();
+          final result =
+              await TextInput('Deployment target', structure: structure).prompt(
+                source: _scripted(
+                  PromptMode.rich,
+                  'Ada\r',
+                  out,
+                  columns: columns,
+                ),
+                mode: PromptMode.rich,
+              );
+          expect((result as Accepted<String>).value, 'Ada');
+          final text = out.toString();
+          final rows = _rows(text);
+          expect(rows, isNotEmpty);
+          for (final row in rows) {
+            expect(
+              _cells(row),
+              lessThanOrEqualTo(columns),
+              reason: '"$row" overflows the $columns columns it was drawn in',
+            );
+          }
+          expect(
+            _showsGrammar(
+              structure,
+              _plain(text),
+              rows,
+              structureHeadingText(structure, 'Deployment target'),
+              ascii: false,
+            ),
+            isTrue,
+            reason:
+                'the ${structure.name} grammar is absent at $columns columns',
+          );
+        });
+      }
+    }
+  });
+
   group('matrix evidence', () {
     test('every planned render/task path was executed', () {
       final interactive = _executed
