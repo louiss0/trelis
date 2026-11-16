@@ -12,7 +12,12 @@ result = result.replace(
     f'{structure.capitalize()}-theme factory namespace.\n///\n/// Components created through these factories are configured with [PromptStructure.{structure}].',
 )
 # Add structure forwarding before every `colors: colors,` in a forwarding call.
-result = re.sub(r"(\n    colors: colors,\n)", f"    structure: PromptStructure.{structure},\n\\1", result)
+result = re.sub(
+    r"(\n    colors: colors,\n)",
+    f"\n    structure: PromptStructure.{structure},"
+    "\\1",
+    result,
+)
 # Feedback factories forward structure on one line.
 result = re.sub(
     r", colors: colors\)",
