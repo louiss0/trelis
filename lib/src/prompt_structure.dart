@@ -435,13 +435,36 @@ List<String> frameEnclosureLines(
   ];
 }
 
+/// The kind of stage line a component writes through the structure spine.
+///
+/// A structure that declares typed event prefixes spells them before the line
+/// it already composed: the label is a display label only, so the semantic
+/// content after it stays exactly as the component wrote it. No typed prefix is
+/// ever a parser command or a component identity.
+enum StageEvent {
+  /// Read-only stage content: guidance, descriptions, choice rows, editable
+  /// rows.
+  body,
+
+  /// A state or context row, such as a live draft or a retained default.
+  state,
+
+  /// A validation, warning or refusal notice.
+  warning,
+
+  /// A reported outcome: accepted, cancelled, interrupted or input ended.
+  result,
+}
+
 /// Drawing characters for a [PromptStructure] heading grammar.
 ///
 /// A heading structure decorates the stage heading, indents the body rows that
 /// follow it and marks the compact hint, instead of drawing a line prefix or an
-/// enclosure. The four lightweight grammars are deliberately different
+/// enclosure. The seven heading/decorated grammars are deliberately different
 /// arrangements, not colour variants of one layout: a conversational label, a
-/// question-mark console heading, a forward chevron and a bracketed band.
+/// question-mark console heading, a forward chevron, a bracketed band, a
+/// fixed-label form with a rule and a left edge, a numbered ledger with a dotted
+/// rule, and a key:value diagnostic with typed prefixes.
 class HeadingGlyphs {
   const HeadingGlyphs({
     required this.headingPrefix,
@@ -450,6 +473,11 @@ class HeadingGlyphs {
     required this.hintPrefix,
     required this.bodyMarker,
     this.uppercaseHeading = false,
+    this.ruleGlyph = '',
+    this.hintIndent,
+    this.headingIndent,
+    this.numbered = false,
+    this.eventPrefixes = const <StageEvent, String>{},
   });
 
   /// The decoration before the heading text.
@@ -473,10 +501,46 @@ class HeadingGlyphs {
 
   /// Whether the heading text alone is spelled in capitals.
   ///
-  /// Only the console grammar declares this, and it applies to the heading the
-  /// component owns. Body rows, answer data, literal commands and stable choice
-  /// references are never case-transformed.
+  /// The console and form grammars declare this, and it applies to the heading
+  /// the component owns. Body rows, answer data, literal commands and stable
+  /// choice references are never case-transformed.
   final bool uppercaseHeading;
+
+  /// The character a stage rule is drawn with under the heading, or an empty
+  /// string when the grammar draws no rule.
+  ///
+  /// The rule is composed from the width the stage actually has, capped at
+  /// [structureRuleWidthCap], so a specimen's rule length never becomes an
+  /// alignment requirement the output cannot meet.
+  final String ruleGlyph;
+
+  /// The lead before the compact hint when the grammar does not hang it under
+  /// the body indent, or null to reuse [bodyIndent].
+  ///
+  /// The diagnostic grammar writes its hint at the reference column so the
+  /// `hint:` label lines up with the other typed labels.
+  final String? hintIndent;
+
+  /// The indent a wrapped heading continuation takes, or null to reuse
+  /// [bodyIndent].
+  ///
+  /// The form heading is a fixed label, not a field row, so its continuation
+  /// lines are indented like guidance instead of repeating the field's left
+  /// edge. A grammar that leaves this unset keeps the body indent it always
+  /// used.
+  final String? headingIndent;
+
+  /// Whether each stage heading carries a prompt-local stage number.
+  ///
+  /// Numbering is display sequencing only: it is allocated per invocation by
+  /// the stage writer, never by this vocabulary and never by a global counter.
+  final bool numbered;
+
+  /// The typed labels this grammar puts before a non-body [StageEvent].
+  ///
+  /// An empty map is the conversational grammar: events keep the body rows
+  /// they always had, and no other structure's bytes change.
+  final Map<StageEvent, String> eventPrefixes;
 
   /// The display cells [headingPrefix] occupies.
   int get headingPrefixCells => TextDisplayMap(headingPrefix).cellWidth;
@@ -489,6 +553,37 @@ class HeadingGlyphs {
 
   /// The display cells [hintPrefix] occupies.
   int get hintPrefixCells => TextDisplayMap(hintPrefix).cellWidth;
+
+  /// The lead before the compact hint: [hintIndent], or [bodyIndent] when the
+  /// grammar does not declare one, followed by [hintPrefix].
+  String get hintLead => '${hintIndent ?? bodyIndent}$hintPrefix';
+
+  /// The display cells [hintLead] occupies.
+  int get hintLeadCells => TextDisplayMap(hintLead).cellWidth;
+
+  /// The indent a wrapped heading continuation line takes.
+  String get headingContinuation => headingIndent ?? bodyIndent;
+
+  /// Whether this grammar draws a rule under its heading.
+  bool get drawsRule => ruleGlyph.isNotEmpty;
+
+  /// One rule run of [cells] display cells, or an empty string when this
+  /// grammar draws no rule.
+  String rule(int cells) => cells <= 0 || ruleGlyph.isEmpty
+      ? ''
+      : List.filled(cells, ruleGlyph).join();
+
+  /// The typed label for [event], or null when this grammar leaves that event
+  /// as a body row.
+  String? eventPrefix(StageEvent event) => eventPrefixes[event];
+
+  /// The display label of stage number [number]: two digits, then ` / `.
+  String stageNumberLabel(int number) =>
+      '${number.toString().padLeft(2, '0')} / ';
+
+  /// The heading [text] spelled with stage number [number].
+  String numberedHeading(int number, String text) =>
+      '${stageNumberLabel(number)}${spelling(text)}';
 
   /// The display cells the whole heading decoration spends on its first line.
   int get headingCells => headingPrefixCells + headingSuffixCells;
@@ -566,24 +661,95 @@ const _asciiBracketHeading = HeadingGlyphs(
   bodyMarker: '> ',
 );
 
+/// The form grammar draws a rule under an uppercase fixed label and repeats a
+/// left edge down the body rows the label owns. The hint sits below the edged
+/// field, indented like the rule rather than edged like the field.
+const _formHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '│ ',
+  hintPrefix: '',
+  hintIndent: '  ',
+  headingIndent: '  ',
+  bodyMarker: '│ ',
+  uppercaseHeading: true,
+  ruleGlyph: '─',
+);
+
+const _asciiFormHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '| ',
+  hintPrefix: '',
+  hintIndent: '  ',
+  headingIndent: '  ',
+  bodyMarker: '| ',
+  uppercaseHeading: true,
+  ruleGlyph: '-',
+);
+
+/// The ledger grammar numbers the task stage, rules it with a dotted line,
+/// indents the body rows and closes the stage with a `note:` line.
+const _ledgerHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '   ',
+  hintPrefix: 'note: ',
+  bodyMarker: '   > ',
+  numbered: true,
+  ruleGlyph: '·',
+);
+
+const _asciiLedgerHeading = HeadingGlyphs(
+  headingPrefix: '',
+  headingSuffix: '',
+  bodyIndent: '   ',
+  hintPrefix: 'note: ',
+  bodyMarker: '   > ',
+  numbered: true,
+  ruleGlyph: '.',
+);
+
+/// The diagnostic grammar is ASCII in every capability profile: `ask:`, `hint:`
+/// and the typed event labels are the structure, so no output profile changes
+/// its spelling. Its labels sit at the reference column and its content is
+/// indented under them, exactly as a key:value diagnostic record reads.
+const _colonHeading = HeadingGlyphs(
+  headingPrefix: 'ask:',
+  headingSuffix: '',
+  bodyIndent: '  ',
+  hintPrefix: 'hint:',
+  hintIndent: '',
+  bodyMarker: '  :: ',
+  eventPrefixes: {
+    StageEvent.state: 'state:',
+    StageEvent.warning: 'warning:',
+    StageEvent.result: 'result:',
+  },
+);
+
 /// Returns whether [structure] decorates its heading instead of drawing a line
 /// prefix or an enclosure.
 bool usesStructureHeading(PromptStructure structure) => switch (structure) {
   PromptStructure.minimal ||
   PromptStructure.ascii ||
   PromptStructure.chevron ||
-  PromptStructure.bracket => true,
+  PromptStructure.bracket ||
+  PromptStructure.form ||
+  PromptStructure.ledger ||
+  PromptStructure.colon => true,
   _ => false,
 };
 
 /// Returns the heading vocabulary for [structure], or null when [structure]
 /// draws a line prefix or an enclosure instead.
 ///
-/// The console grammar ([PromptStructure.ascii]) has one spelling only: it is
-/// always the portable ASCII vocabulary, whatever the output profile supports.
-/// The other three use their declared vocabulary when glyph support is known
-/// and fall back to their ASCII counterpart when it is not, exactly as the rail,
-/// branch and enclosure grammars do.
+/// The console grammar ([PromptStructure.ascii]) and the diagnostic grammar
+/// ([PromptStructure.colon]) have one spelling only: they are always the
+/// portable ASCII vocabulary, whatever the output profile supports. The other
+/// five use their declared vocabulary when glyph support is known and fall back
+/// to their ASCII counterpart when it is not, exactly as the rail, branch and
+/// enclosure grammars do.
 HeadingGlyphs? headingGlyphsFor(
   PromptStructure structure, {
   required bool ascii,
@@ -593,9 +759,61 @@ HeadingGlyphs? headingGlyphsFor(
     PromptStructure.ascii => _asciiConsoleHeading,
     PromptStructure.chevron => ascii ? _asciiChevronHeading : _chevronHeading,
     PromptStructure.bracket => ascii ? _asciiBracketHeading : _bracketHeading,
+    PromptStructure.form => ascii ? _asciiFormHeading : _formHeading,
+    PromptStructure.ledger => ascii ? _asciiLedgerHeading : _ledgerHeading,
+    PromptStructure.colon => _colonHeading,
     _ => null,
   };
 }
+
+/// The widest a stage rule may be drawn, in display cells.
+///
+/// The rule is chrome, so it is bounded by the same total-width cap an enclosure
+/// uses and by the columns the output actually offers. It is never a specimen's
+/// rule length.
+const structureRuleWidthCap = 80;
+
+/// The display cells [structure]'s rule occupies for [width] columns.
+int structureRuleWidth(PromptStructure structure, int? width) =>
+    (width ?? structureRuleWidthCap).clamp(1, structureRuleWidthCap);
+
+/// The display label of stage number [number] for [structure], or an empty
+/// string when [structure] does not number its stages.
+String structureStageNumberLabel(
+  PromptStructure structure,
+  int number, {
+  bool ascii = false,
+}) {
+  final glyphs = headingGlyphsFor(structure, ascii: ascii);
+  if (glyphs == null || !glyphs.numbered) return '';
+  return glyphs.stageNumberLabel(number);
+}
+
+/// The heading [text] with stage number [number], as [structure] spells it.
+///
+/// The number is display sequencing supplied by the invocation that writes the
+/// stage. This helper only spells it, so numbering stays a per-invocation fact
+/// rather than a property of the vocabulary or of a global counter.
+String structureStageHeading(
+  PromptStructure structure,
+  int number,
+  String text, {
+  bool ascii = false,
+}) {
+  final glyphs = headingGlyphsFor(structure, ascii: ascii);
+  if (glyphs == null || !glyphs.numbered) {
+    return structureHeadingText(structure, text, ascii: ascii);
+  }
+  return glyphs.numberedHeading(number, text);
+}
+
+/// The typed label [structure] puts before an event of [event], or null when
+/// the grammar leaves that event as a body row.
+String? structureEventPrefix(
+  PromptStructure structure,
+  StageEvent event, {
+  bool ascii = false,
+}) => headingGlyphsFor(structure, ascii: ascii)?.eventPrefix(event);
 
 /// The heading spelling of [text] for [structure].
 ///
@@ -611,11 +829,11 @@ String structureHeadingText(
 /// Applies [structure]'s heading decoration to already-wrapped [lines].
 ///
 /// The first line carries the heading prefix, the last carries the heading
-/// suffix, and wrapped continuation lines take the body indent so a wrapped
-/// heading still reads as one block. [compact] selects the narrow spelling: the
-/// decoration is simplified to its marker instead of the structure being
-/// replaced by an unframed one. A structure with no heading grammar returns
-/// [lines] unchanged.
+/// suffix, and wrapped continuation lines take the grammar's continuation
+/// indent so a wrapped heading still reads as one block. [compact] selects the
+/// narrow spelling: the decoration is simplified to its marker instead of the
+/// structure being replaced by an unframed one. A structure with no heading
+/// grammar returns [lines] unchanged.
 List<String> frameHeadingLines(
   PromptStructure structure, {
   required bool ascii,
@@ -634,7 +852,7 @@ List<String> frameHeadingLines(
       if (lines[i].isEmpty)
         ''
       else
-        '${i == first ? prefix : glyphs.bodyIndent}${lines[i]}'
+        '${i == first ? prefix : glyphs.headingContinuation}${lines[i]}'
             '${i == last ? suffix : ''}',
   ];
 }
