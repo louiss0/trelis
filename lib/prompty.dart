@@ -31,3 +31,5 @@ export 'src/themes/bracket_theme.dart';
 export 'src/themes/form_theme.dart';
 export 'src/themes/ledger_theme.dart';
 export 'src/themes/colon_theme.dart';
+export 'src/themes/line_theme.dart';
+export 'src/themes/block_theme.dart';
