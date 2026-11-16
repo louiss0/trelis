@@ -290,13 +290,19 @@ final class TreeSelect<T> {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) {
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
       spine.write(
         out,
         DisplayText.from(text).value,
         foreground: foreground,
         closes: closes,
+        event: event,
       );
     }
 
@@ -344,11 +350,14 @@ final class TreeSelect<T> {
         DisplayText.from('$label TreeSelect:').value,
         foreground: colors.foreground,
       );
-      if (all.isEmpty) write('No nodes available.', colors.warning);
+      if (all.isEmpty) {
+        write('No nodes available.', colors.warning, event: StageEvent.warning);
+      }
       if (mode == PromptMode.linear) {
         write(
           'Path: ${current.isEmpty ? 'root' : path(current)}',
           colors.muted,
+          event: StageEvent.state,
         );
         if (defaultValue != null) {
           final row = all.firstWhere((r) => r.$1.value == defaultValue);
@@ -358,6 +367,7 @@ final class TreeSelect<T> {
             '${row.$1.disabledReason == null ? '' : ' [unavailable: ${row.$1.disabledReason}]'}'
             '${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
             colors.muted,
+            event: StageEvent.state,
           );
         }
       }
@@ -424,14 +434,22 @@ final class TreeSelect<T> {
             return InputEnded();
           }
           if (action.action != 'command') {
-            write('Use /open, /up or /choose.', colors.warning);
+            write(
+              'Use /open, /up or /choose.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (action.value == '/up') {
             if (current.isNotEmpty) {
               current = current.sublist(0, current.length - 1);
             } else {
-              write('Already at root.', colors.warning);
+              write(
+                'Already at root.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
             }
             show();
             continue;
@@ -456,37 +474,58 @@ final class TreeSelect<T> {
           if (reference.action == 'cancel') return Cancelled();
           if (reference.action == 'interrupt') return Interrupted();
           if (reference.action == 'command') {
-            write('Enter a node reference.', colors.warning);
+            write(
+              'Enter a node reference.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (reference.action != 'submit') return InputEnded();
           final n = int.tryParse(reference.value);
           if (n == null || n < 1 || n > all.length) {
-            write('Enter a valid node reference.', colors.warning);
+            write(
+              'Enter a valid node reference.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final row = all[n - 1];
           final node = row.$1;
           if (!currentPath(row.$2)) {
-            write('Node is no longer available.', colors.warning);
+            write(
+              'Node is no longer available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (action.value == '/open') {
             if (row.$2.length != current.length + 1 ||
                 (current.isNotEmpty &&
                     !identical(row.$2[current.length - 1], current.last))) {
-              write('Open a node in the current path.', colors.warning);
+              write(
+                'Open a node in the current path.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             if (node.childrenUnavailableReason != null) {
               write(
                 'Children unavailable: ${node.childrenUnavailableReason}.',
                 colors.warning,
+                event: StageEvent.warning,
               );
               continue;
             }
             if (node.children.isEmpty) {
-              write('Node has no children.', colors.warning);
+              write(
+                'Node has no children.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             expanded.add(node.value);
@@ -495,14 +534,26 @@ final class TreeSelect<T> {
             continue;
           }
           if (!node.canSelect) {
-            write('Node is not selectable.', colors.warning);
+            write(
+              'Node is not selectable.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (node.disabledReason != null) {
-            write('Unavailable: ${node.disabledReason}.', colors.warning);
+            write(
+              'Unavailable: ${node.disabledReason}.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
-          write('Accepted: ${path(row.$2)}.', colors.success);
+          write(
+            'Accepted: ${path(row.$2)}.',
+            colors.success,
+            event: StageEvent.result,
+          );
           return Accepted(node.value);
         }
       }
@@ -546,13 +597,18 @@ final class TreeSelect<T> {
           focus = rows[index + 1].$1;
         }
         if (key == '\x1b[C' && index >= 0 && !currentPath(rows[index].$2)) {
-          write('Node is no longer available.', colors.warning);
+          write(
+            'Node is no longer available.',
+            colors.warning,
+            event: StageEvent.warning,
+          );
           continue;
         }
         if (key == '\x1b[C' && focus?.childrenUnavailableReason != null) {
           write(
             'Children unavailable: ${focus!.childrenUnavailableReason}.',
             colors.warning,
+            event: StageEvent.warning,
           );
         }
         if (key == '\x1b[C' && focus != null && focus.children.isNotEmpty) {
@@ -567,24 +623,41 @@ final class TreeSelect<T> {
         }
         if (key == '\r' || key == '\n') {
           if (focus == null) {
-            write('No node available.', colors.warning);
+            write(
+              'No node available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (index < 0 || !currentPath(rows[index].$2)) {
-            write('Node is no longer available.', colors.warning);
+            write(
+              'Node is no longer available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (!focus.canSelect) {
-            write('Node is not selectable.', colors.warning);
+            write(
+              'Node is not selectable.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (focus.disabledReason != null) {
-            write('Unavailable: ${focus.disabledReason}.', colors.warning);
+            write(
+              'Unavailable: ${focus.disabledReason}.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           write(
             'Accepted: ${path(all.firstWhere((r) => identical(r.$1, focus)).$2)}.',
             colors.success,
+            event: StageEvent.result,
           );
           return Accepted(focus.value);
         }
@@ -766,13 +839,19 @@ final class SortableSelect<T> {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) {
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
       spine.write(
         out,
         DisplayText.from(text).value,
         foreground: foreground,
         closes: closes,
+        event: event,
       );
     }
 
@@ -836,6 +915,7 @@ final class SortableSelect<T> {
         write(
           'Locked: ${choices[order[from]].disabledReason}.',
           colors.warning,
+          event: StageEvent.warning,
         );
         return false;
       }
@@ -844,7 +924,11 @@ final class SortableSelect<T> {
       if (order
           .sublist(low, high + 1)
           .any((i) => choices[i].disabledReason != null)) {
-        write('Cannot cross a locked anchor.', colors.warning);
+        write(
+          'Cannot cross a locked anchor.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return false;
       }
       final item = order.removeAt(from);
@@ -852,6 +936,7 @@ final class SortableSelect<T> {
       write(
         '${choices[item].label} moved to position ${to + 1} of ${order.length}.',
         colors.success,
+        event: StageEvent.result,
       );
       return true;
     }
@@ -939,7 +1024,11 @@ final class SortableSelect<T> {
           if (r.action == 'command') {
             entry = '';
             if (r.value == '/done') {
-              write('Accepted order.', colors.success);
+              write(
+                'Accepted order.',
+                colors.success,
+                event: StageEvent.result,
+              );
               return Accepted(answer());
             }
             if (r.value == '/move') {
@@ -953,12 +1042,20 @@ final class SortableSelect<T> {
           final n = int.tryParse(entry);
           if (stage == 1) {
             if (n == null || n < 1 || n > choices.length) {
-              write('Enter a valid choice reference.', colors.warning);
+              write(
+                'Enter a valid choice reference.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             ref = n - 1;
             if (choices[ref].disabledReason != null) {
-              write('Locked: ${choices[ref].disabledReason}.', colors.warning);
+              write(
+                'Locked: ${choices[ref].disabledReason}.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             stage = 2;
@@ -969,7 +1066,11 @@ final class SortableSelect<T> {
             );
           } else if (stage == 2) {
             if (n == null || n < 1 || n > order.length) {
-              write('Enter a valid destination position.', colors.warning);
+              write(
+                'Enter a valid destination position.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             move(order.indexOf(ref!), n - 1);
@@ -977,7 +1078,11 @@ final class SortableSelect<T> {
             entry = '';
             show();
           } else {
-            write('Use /move or /done.', colors.warning);
+            write(
+              'Use /move or /done.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
           }
         }
       }
@@ -1037,6 +1142,7 @@ final class SortableSelect<T> {
             write(
               'Locked: ${choices[order[focus]].disabledReason}.',
               colors.warning,
+              event: StageEvent.warning,
             );
           } else {
             moving = true;
@@ -1050,7 +1156,7 @@ final class SortableSelect<T> {
             write('Dropped.', colors.muted);
             show();
           } else {
-            write('Accepted order.', colors.success);
+            write('Accepted order.', colors.success, event: StageEvent.result);
             return Accepted(answer());
           }
         }

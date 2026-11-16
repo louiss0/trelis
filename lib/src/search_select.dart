@@ -207,12 +207,22 @@ final class SearchSelect<T> {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, {bool closes = false}) {
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       if (!usesStructureFraming(structure)) {
         out.writeln(text);
         return;
       }
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     var query = '';

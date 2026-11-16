@@ -212,13 +212,18 @@ final class PathInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(
-          out,
-          DisplayText.from(text).value,
-          foreground: foreground,
-          closes: closes,
-        );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      DisplayText.from(text).value,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
 
     // The heading is the component's own label: the base path is a literal
     // identifier, so it stays in a body row that keeps its spelling.
@@ -275,6 +280,7 @@ final class PathInput {
             'Base: $base. Candidate: ${candidate ?? draft}. $error',
             colors.warning,
             closes: true,
+            event: StageEvent.warning,
           );
           continue;
         }
@@ -312,6 +318,7 @@ final class PathInput {
             'Enter to accept, or type edit to correct.',
             colors.warning,
             closes: true,
+            event: StageEvent.warning,
           );
         }
       }

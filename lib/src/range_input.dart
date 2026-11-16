@@ -234,9 +234,19 @@ final class Slider {
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
-    void emit(String text, {bool closes = false}) {
+    void emit(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     void hint(String text) {
@@ -246,7 +256,11 @@ final class Slider {
 
     // The stage heading is the slider's own description; the current value is
     // body content, so a diagnostic heading never spells a value in capitals.
-    void heading(String title, String body) {
+    void heading(
+      String title,
+      String body, {
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
       spine.opening(
         out,
@@ -254,13 +268,18 @@ final class Slider {
         body: body,
         foreground: colors.foreground,
         bodyForeground: colors.foreground,
+        event: event,
       );
     }
 
-    void notice(String text) => emit(text);
+    // A refusal or a validation notice is a typed warning, so a grammar that
+    // spells typed labels shows it as one; ordinary guidance stays a body row.
+    void notice(String text, {StageEvent event = StageEvent.body}) =>
+        emit(text, event: event);
     heading(
       '$_description.',
       'Current value: ${value.isEmpty ? 'not set' : value}.',
+      event: StageEvent.state,
     );
     hint(
       mode == PromptMode.linear
@@ -287,12 +306,15 @@ final class Slider {
           if (edit.action != 'submit') return InputEnded();
           value = edit.value;
           if (value.isEmpty) {
-            notice('Required: enter a non-empty value and submit again.');
+            notice(
+              'Required: enter a non-empty value and submit again.',
+              event: StageEvent.warning,
+            );
             continue;
           }
           final error = _validate(value);
           if (error != null) {
-            notice(error);
+            notice(error, event: StageEvent.warning);
             continue;
           }
           return Accepted(value);
@@ -357,7 +379,10 @@ final class Slider {
               );
               if (_validate(candidate) == null) value = candidate;
             } else {
-              notice('Edit a valid value before adjusting.');
+              notice(
+                'Edit a valid value before adjusting.',
+                event: StageEvent.warning,
+              );
             }
             show();
             continue;
@@ -384,7 +409,7 @@ final class Slider {
             if (edit.action != 'submit') return InputEnded();
             value = edit.value;
             final error = _validate(value);
-            if (error != null) notice(error);
+            if (error != null) notice(error, event: StageEvent.warning);
             show();
             session?._setPromptRepaint(show);
             continue;
@@ -392,7 +417,7 @@ final class Slider {
           if ((key == '\r' || key == '\n') && focus == 2) {
             final error = _validate(value);
             if (error == null) return Accepted(value);
-            notice(error);
+            notice(error, event: StageEvent.warning);
           }
         }
       } finally {
@@ -657,9 +682,19 @@ final class RangeSlider {
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
-    void emit(String text, {bool closes = false}) {
+    void emit(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       spine.width = _textInputWidth(effectiveProfile);
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     void hint(String text) {
@@ -680,7 +715,10 @@ final class RangeSlider {
       );
     }
 
-    void notice(String text) => emit(text);
+    // A refusal or a validation notice is a typed warning, so a grammar that
+    // spells typed labels shows it as one; ordinary guidance stays a body row.
+    void notice(String text, {StageEvent event = StageEvent.body}) =>
+        emit(text, event: event);
     var lower = initialLower ?? '';
     var upper = initialUpper ?? '';
     heading(
@@ -714,7 +752,7 @@ final class RangeSlider {
           lower = l.value;
           final lowerError = _slider._validate(lower);
           if (lowerError != null) {
-            notice(lowerError);
+            notice(lowerError, event: StageEvent.warning);
             continue;
           }
           while (true) {
@@ -737,12 +775,12 @@ final class RangeSlider {
             upper = u.value;
             final upperError = _slider._validate(upper);
             if (upperError != null) {
-              notice(upperError);
+              notice(upperError, event: StageEvent.warning);
               continue;
             }
             final pairError = _pairError(lower, upper);
             if (pairError != null) {
-              notice(pairError);
+              notice(pairError, event: StageEvent.warning);
               break;
             }
             notice('Review Lower $lower, Upper $upper. Submit: press Enter.');
@@ -835,7 +873,10 @@ final class RangeSlider {
                 }
               }
             } else {
-              notice('Edit both endpoints to valid values before adjustment.');
+              notice(
+                'Edit both endpoints to valid values before adjustment.',
+                event: StageEvent.warning,
+              );
             }
             show();
             continue;
@@ -866,7 +907,7 @@ final class RangeSlider {
               upper = edit.value;
             }
             final error = _pairError(lower, upper);
-            if (error != null) notice(error);
+            if (error != null) notice(error, event: StageEvent.warning);
             show();
             session?._setPromptRepaint(show);
             continue;
@@ -874,7 +915,7 @@ final class RangeSlider {
           if ((key == '\r' || key == '\n') && focus == 4) {
             final error = _pairError(lower, upper);
             if (error == null) return Accepted((lower, upper));
-            notice(error);
+            notice(error, event: StageEvent.warning);
           }
         }
       } finally {

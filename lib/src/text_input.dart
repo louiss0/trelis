@@ -1232,6 +1232,23 @@ final class _StructureSpine {
   bool _open = false;
   bool _closed = false;
 
+  /// The stage numbers this invocation has already displayed, by stage
+  /// identity.
+  ///
+  /// A numbered structure allocates a number on the first entry of a meaningful
+  /// task stage and reuses it on a revisit, so a repaint, a resize, a field
+  /// change inside one stage or a temporary help screen never advances the
+  /// sequence. The map belongs to this invocation's stage writer alone: no
+  /// static or global counter is shared across prompt objects, constructors or
+  /// concurrent sessions, and this is display sequencing only, never a change
+  /// to a task transition or an outcome.
+  final Map<String, int> _stageNumbers = <String, int>{};
+  int _nextStageNumber = 1;
+
+  /// The prompt-local display number of the stage identified by [identity].
+  int _stageNumberFor(String identity) =>
+      _stageNumbers.putIfAbsent(identity, () => _nextStageNumber++);
+
   /// A stage boundary deferred the previous frame's bottom rule.
   ///
   /// A repaint or a new page calls [reset] before writing its own top rule, so
@@ -1260,6 +1277,20 @@ final class _StructureSpine {
     if (glyphs == null) return false;
     return enclosureTotalWidth(structure, width) >=
         structureEnclosureCompactWidth;
+  }
+
+  /// The width a heading stage claims.
+  ///
+  /// A grammar that draws a rule draws it at [structureRuleWidth], which is
+  /// capped so a rule stays chrome instead of becoming a specimen constant.
+  /// The heading, the body rows and the hint are measured against that same
+  /// width, so above the cap the rule spans the stage instead of falling short
+  /// of the content it rules. A grammar without a rule keeps the full width it
+  /// always had, and so does every structure that is not a heading grammar.
+  int? get _headingWidth {
+    final glyphs = _heading;
+    if (glyphs == null || !glyphs.drawsRule) return width;
+    return structureRuleWidth(structure, width);
   }
 
   /// The total width the enclosure may claim, including its own chrome.
@@ -1389,6 +1420,11 @@ final class _StructureSpine {
   /// prefixed structure keeps its existing prefix and closure, while an
   /// enclosure renders the block outside the frame: a repeated keystroke report
   /// must not draw a new frame on every key.
+  ///
+  /// [event] is the kind of line the component is writing. A structure that
+  /// declares typed event prefixes spells them before the line and leaves the
+  /// semantic content after them exactly as it was composed; every other
+  /// structure writes the same bytes it wrote before the kind existed.
   void write(
     StringSink output,
     String text, {
@@ -1396,6 +1432,7 @@ final class _StructureSpine {
     bool closes = false,
     bool compact = false,
     Iterable<String> atomicText = const [],
+    StageEvent event = StageEvent.body,
   }) {
     if (_encloses) {
       _flushPendingClose(output);
@@ -1414,7 +1451,7 @@ final class _StructureSpine {
       return;
     }
     if (_heading != null) {
-      _writeHeadedBody(output, text, foreground, atomicText);
+      _writeHeadedBody(output, text, foreground, atomicText, event: event);
       return;
     }
     final available = width == null
@@ -1470,6 +1507,7 @@ final class _StructureSpine {
     required TerminalColor bodyForeground,
     bool closes = false,
     Iterable<String> atomicText = const [],
+    StageEvent event = StageEvent.body,
   }) {
     if (_heading == null) {
       final joined = body.isEmpty ? title : '$title $body';
@@ -1490,6 +1528,7 @@ final class _StructureSpine {
       foreground: bodyForeground,
       closes: closes,
       atomicText: atomicText,
+      event: event,
     );
   }
 
@@ -1499,9 +1538,11 @@ final class _StructureSpine {
   /// would, so a rail, branch, enclosure or the reference presentation keeps
   /// the bytes it had. A heading structure decorates the heading with its own
   /// vocabulary, spells it with the declared casing rule, and indents every
-  /// wrapped continuation line as part of the same heading. Narrow output
-  /// simplifies the decoration to its marker rather than replacing the
-  /// structure with an unframed one.
+  /// wrapped continuation line as part of the same heading. A numbered structure
+  /// prefixes the stage with the number this invocation allocated for it, and a
+  /// ruled structure draws its rule under the heading at the width the stage
+  /// actually has. Narrow output simplifies the decoration to its marker rather
+  /// than replacing the structure with an unframed one.
   void heading(
     StringSink output,
     String text, {
@@ -1514,29 +1555,70 @@ final class _StructureSpine {
       return;
     }
     _open = true;
-    final compact = width != null && width! <= glyphs.headingCells + 2;
-    final decorate = compact ? glyphs.compactPrefixCells : glyphs.headingCells;
-    // Wrapped heading lines take the body indent, so the heading budget is the
-    // tighter of the decoration and that indent.
-    final reserve = decorate > glyphs.bodyIndentCells
-        ? decorate
-        : glyphs.bodyIndentCells;
-    final available = width == null
+    // The rule is drawn at the measured stage width, so the heading is measured
+    // against that same width rather than the columns the output offers.
+    final stageWidth = _headingWidth;
+    final compact = stageWidth != null && stageWidth <= glyphs.headingCells + 2;
+    final number = glyphs.numbered ? _stageNumberFor(text) : 0;
+    final numberCells = glyphs.numbered
+        ? TextDisplayMap(glyphs.stageNumberLabel(number)).cellWidth
+        : 0;
+    // A width that cannot hold the stage number and any content at all keeps
+    // the heading and drops the number: the structure is simplified, never
+    // replaced, and the number it allocated is retained for a later width.
+    final numbered =
+        glyphs.numbered && (stageWidth == null || stageWidth > numberCells + 1);
+    final decoration = compact
+        ? glyphs.compactPrefixCells
+        : glyphs.headingCells;
+    // A decoration wider than the columns the stage has cannot be printed at
+    // all: the label is dropped rather than overflowing the width, and the
+    // body, the rule and the hint keep the structure recognisable.
+    final dropsDecoration = stageWidth != null && decoration + 1 > stageWidth;
+    final decorate =
+        (dropsDecoration ? 0 : decoration) + (numbered ? numberCells : 0);
+    // Wrapped heading lines take the grammar's continuation indent, so the
+    // heading budget is the tighter of the decoration, the body indent and
+    // that continuation.
+    var reserve = decorate;
+    if (glyphs.bodyIndentCells > reserve) reserve = glyphs.bodyIndentCells;
+    final continuationCells = TextDisplayMap(glyphs.headingContinuation)
+        .cellWidth;
+    if (continuationCells > reserve) reserve = continuationCells;
+    final available = stageWidth == null
         ? null
-        : (width! - reserve).clamp(1, width!);
-    final lines = frameHeadingLines(
-      structure,
-      ascii: ascii,
-      compact: compact,
-      lines: _wrapText(
-        glyphs.spelling(text),
-        available,
-        atomicText: atomicText,
-      ),
+        : (stageWidth - reserve).clamp(1, stageWidth);
+    final wrapped = _wrapText(
+      glyphs.spelling(text),
+      available,
+      atomicText: atomicText,
     );
+    if (numbered) {
+      final first = wrapped.indexWhere((line) => line.isNotEmpty);
+      if (first >= 0) {
+        wrapped[first] = '${glyphs.stageNumberLabel(number)}${wrapped[first]}';
+      }
+    }
+    final lines = dropsDecoration
+        ? wrapped
+        : frameHeadingLines(
+            structure,
+            ascii: ascii,
+            compact: compact,
+            lines: wrapped,
+          );
     for (final line in lines) {
       if (line.isEmpty) continue;
       _emit(output, line, foreground);
+    }
+    if (glyphs.drawsRule) {
+      // The rule is chrome of the stage, so it is drawn in the border role and
+      // measured against the same width as the heading and body above it.
+      _emit(
+        output,
+        glyphs.rule(structureRuleWidth(structure, stageWidth)),
+        border,
+      );
     }
   }
 
@@ -1544,17 +1626,42 @@ final class _StructureSpine {
   ///
   /// Body rows are the stage's read-only content, its choice rows and its
   /// events. They keep their own spelling: only the heading the component owns
-  /// is decorated or case-transformed.
+  /// is decorated or case-transformed. An [event] the grammar labels is written
+  /// as that typed label at the reference column with the component's own
+  /// content after it, wrapped with it and never reworded or re-cased.
   void _writeHeadedBody(
     StringSink output,
     String text,
     TerminalColor foreground,
-    Iterable<String> atomicText,
-  ) {
+    Iterable<String> atomicText, {
+    StageEvent event = StageEvent.body,
+  }) {
     final glyphs = _heading!;
-    final available = width == null
+    // Body rows are measured against the same stage width the heading and the
+    // rule claim, so a ruled stage keeps its rule as wide as its content.
+    final stageWidth = _headingWidth;
+    final typed = event == StageEvent.body ? null : glyphs.eventPrefix(event);
+    if (typed != null && typed.isNotEmpty) {
+      final leadCells = TextDisplayMap(typed).cellWidth;
+      // A typed label wider than the columns leaves no room for content: the
+      // event keeps its words and drops the label rather than overflowing.
+      final dropsLabel = stageWidth != null && leadCells + 1 > stageWidth;
+      final lead = dropsLabel ? '' : typed;
+      final available = stageWidth == null
+          ? null
+          : (stageWidth - (dropsLabel ? 0 : leadCells)).clamp(1, stageWidth);
+      final continuation = ' ' * (dropsLabel ? 0 : leadCells);
+      var firstLine = true;
+      for (final line in _wrapText(text, available, atomicText: atomicText)) {
+        if (line.isEmpty) continue;
+        _emit(output, '${firstLine ? lead : continuation}$line', foreground);
+        firstLine = false;
+      }
+      return;
+    }
+    final available = stageWidth == null
         ? null
-        : (width! - glyphs.bodyIndentCells).clamp(1, width!);
+        : (stageWidth - glyphs.bodyIndentCells).clamp(1, stageWidth);
     for (final line in _wrapText(text, available, atomicText: atomicText)) {
       if (line.isEmpty) continue;
       _emit(output, glyphs.body(line), foreground);
@@ -1578,18 +1685,27 @@ final class _StructureSpine {
       // A heading structure keeps its hint under the body rows, marked with the
       // structure's own hint vocabulary and wrapped inside the width the same
       // marker leaves. No block above it is repainted.
-      final lead = '${glyphs.bodyIndent}${glyphs.hintPrefix}';
-      final leadCells = glyphs.bodyIndentCells + glyphs.hintPrefixCells;
+      final stageWidth = _headingWidth;
+      final lead = glyphs.hintLead;
+      final leadCells = glyphs.hintLeadCells;
       // Narrow output simplifies the marker instead of overflowing the width:
       // the structure keeps its hint vocabulary at the column it can afford.
-      final narrow = width != null && leadCells + 1 > width!;
-      final first = narrow ? glyphs.hintPrefix.trimRight() : lead;
-      final continuation = narrow
-          ? ' ' * TextDisplayMap(first).cellWidth
-          : '${glyphs.bodyIndent}${' ' * glyphs.hintPrefixCells}';
-      final available = width == null
+      final narrow = stageWidth != null && leadCells + 1 > stageWidth;
+      final trimmed = glyphs.hintPrefix.trimRight();
+      final trimmedCells = TextDisplayMap(trimmed).cellWidth;
+      // A hint marker wider than the columns keeps the hint's words and drops
+      // the marker, so the stage never overflows its own width.
+      final dropsMarker = stageWidth != null && trimmedCells + 1 > stageWidth;
+      final first = dropsMarker ? '' : (narrow ? trimmed : lead);
+      final continuation = dropsMarker
+          ? ''
+          : narrow
+          ? ' ' * trimmedCells
+          : '${glyphs.hintIndent ?? glyphs.bodyIndent}'
+                '${' ' * glyphs.hintPrefixCells}';
+      final available = stageWidth == null
           ? null
-          : (width! - TextDisplayMap(first).cellWidth).clamp(1, width!);
+          : (stageWidth - TextDisplayMap(first).cellWidth).clamp(1, stageWidth);
       var firstLine = true;
       for (final line in _wrapText(text, available, atomicText: atomicText)) {
         if (line.isEmpty) continue;
@@ -1898,7 +2014,12 @@ void _renderTextInputValidation(
   // A validation is stage content, not the compact hint: the message is the
   // stage's warning row and the stage's own compact hint closes it below, so a
   // warning is never read as the stage's last instruction.
-  spine.write(output, validation, foreground: colors.error);
+  spine.write(
+    output,
+    validation,
+    foreground: colors.error,
+    event: StageEvent.warning,
+  );
   spine.hint(
     output,
     _textInputGuidance(linear: linear, instructions: instructions),
@@ -2361,7 +2482,16 @@ Future<({String action, String value})> _edit(
   /// marks a repeated event such as a notice or a caret report: a prefixed
   /// structure renders it exactly as before, while an enclosure keeps it outside
   /// a frame so a keystroke does not draw a new enclosure.
-  void writeEvent(String text, {bool closes = false, bool compact = false}) {
+  ///
+  /// [event] is the kind of line this is. A refusal or a validation notice is a
+  /// [StageEvent.warning], so a grammar that spells typed labels shows it as one;
+  /// every other structure writes the bytes it always wrote.
+  void writeEvent(
+    String text, {
+    bool closes = false,
+    bool compact = false,
+    StageEvent event = StageEvent.body,
+  }) {
     final profile = activeProfile;
     _StructureSpine(
       structure: structure,
@@ -2376,12 +2506,17 @@ Future<({String action, String value})> _edit(
       foreground: colors.muted,
       closes: closes,
       compact: compact,
+      event: event,
     );
   }
 
-  void notice(String text) {
+  /// Writes one notice as a compact event of the current stage.
+  ///
+  /// A refusal or a validation notice is a [StageEvent.warning] so a grammar
+  /// that spells typed labels presents it as one; guidance keeps its body row.
+  void notice(String text, {StageEvent event = StageEvent.body}) {
     if (!sequential && !secret) output.writeln();
-    writeEvent(text, closes: true, compact: true);
+    writeEvent(text, closes: true, compact: true, event: event);
   }
 
   /// Ends the editable row that the rich renderer leaves current.
@@ -2418,7 +2553,10 @@ Future<({String action, String value})> _edit(
               ('\\$command').startsWith(candidate),
         );
     if (limit != null && count > limit && !commandPrefix) {
-      notice('Insertion rejected: character limit is $limit graphemes.');
+      notice(
+        'Insertion rejected: character limit is $limit graphemes.',
+        event: StageEvent.warning,
+      );
       return;
     }
     final added = data.characters.toList();
@@ -2496,12 +2634,14 @@ Future<({String action, String value})> _edit(
           'Current text: ${DisplayText.from(chars.join()).value}',
           foreground: colors.muted,
           compact: true,
+          event: StageEvent.state,
         );
         spine.write(
           output,
           'Cursor position: $pos of ${chars.length} graphemes.',
           foreground: colors.muted,
           compact: true,
+          event: StageEvent.state,
           closes: true,
         );
       });
@@ -2817,7 +2957,10 @@ Future<({String action, String value})> _edit(
           }
         }
       } else if (key == '\x1b[999~') {
-        notice('Paste rejected: exceeds 4096 UTF-16 code units.');
+        notice(
+          'Paste rejected: exceeds 4096 UTF-16 code units.',
+          event: StageEvent.warning,
+        );
       } else if (key.startsWith('\x1b[200~')) {
         var data = key.substring(6, key.length - 6);
         if (multilinePaste) {
@@ -2827,7 +2970,10 @@ Future<({String action, String value})> _edit(
           (r) =>
               (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
         )) {
-          notice('Paste rejected: single-line printable text only.');
+          notice(
+            'Paste rejected: single-line printable text only.',
+            event: StageEvent.warning,
+          );
           display();
           continue;
         }
@@ -3585,13 +3731,18 @@ final class Password {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(
-          scripted.output,
-          text,
-          foreground: foreground,
-          closes: closes,
-        );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      scripted.output,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
     spine.opening(
       scripted.output,
       title: '$label (${required ? 'Required' : 'Optional'}).',
@@ -3677,6 +3828,7 @@ final class Password {
                   'Secret does not satisfy the requirements. Choose edit or clear and try again.',
                   colors.error,
                   closes: true,
+                  event: StageEvent.warning,
                 );
                 continue;
               }
@@ -3702,6 +3854,7 @@ final class Password {
                 'Choose one of the listed actions.',
                 colors.warning,
                 closes: true,
+                event: StageEvent.warning,
               );
               continue;
           }
@@ -3927,10 +4080,20 @@ abstract class _BooleanPrompt {
       String text,
       TerminalColor foreground, {
       bool closes = false,
-    }) => spine.write(out, text, foreground: foreground, closes: closes);
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
 
-    void renderDraft() =>
-        writeStyled('Draft: ${_state(draft)}.', colors.accent);
+    void renderDraft() => writeStyled(
+      'Draft: ${_state(draft)}.',
+      colors.accent,
+      event: StageEvent.state,
+    );
 
     spine.opening(
       out,
@@ -3938,6 +4101,7 @@ abstract class _BooleanPrompt {
       body: 'Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
       foreground: colors.foreground,
       bodyForeground: colors.foreground,
+      event: StageEvent.state,
     );
     spine.hint(
       out,
@@ -3970,12 +4134,17 @@ abstract class _BooleanPrompt {
           entry = result.value;
           final answer = entry.isEmpty ? draft : _parse(entry);
           if (answer != null) {
-            writeStyled('Accepted: ${_state(answer)}.', colors.success);
+            writeStyled(
+              'Accepted: ${_state(answer)}.',
+              colors.success,
+              event: StageEvent.result,
+            );
             return Accepted(answer);
           }
           writeStyled(
             'Enter yes/y or no/n, or erase the line and submit the displayed default.',
             colors.warning,
+            event: StageEvent.warning,
           );
         }
       }
@@ -4001,7 +4170,11 @@ abstract class _BooleanPrompt {
         }
         if (help) continue;
         if (key == '\r' || key == '\n') {
-          writeStyled('Accepted: ${_state(draft)}.', colors.success);
+          writeStyled(
+            'Accepted: ${_state(draft)}.',
+            colors.success,
+            event: StageEvent.result,
+          );
           return Accepted(draft);
         }
         if (kind == _BooleanKind.confirm &&
@@ -4196,8 +4369,18 @@ final class Multiline {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(out, text, foreground: foreground, closes: closes);
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
     _writeStructureIntro(
       spine,
       out,
@@ -4257,7 +4440,7 @@ final class Multiline {
             final value = lines.join('\n');
             final error = _error(value);
             if (error == null) return Accepted(value);
-            write(error, colors.error, closes: true);
+            write(error, colors.error, closes: true, event: StageEvent.warning);
             continue;
           }
           if (result.value == '/list') {
@@ -4290,7 +4473,12 @@ final class Multiline {
             final index = (int.tryParse(number.value) ?? 0) - 1;
             if (index < 0 ||
                 index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
-              write('Invalid line number.', colors.error, closes: true);
+              write(
+                'Invalid line number.',
+                colors.error,
+                closes: true,
+                event: StageEvent.warning,
+              );
               continue;
             }
             if (result.value == '/remove') {
@@ -4361,6 +4549,7 @@ final class Multiline {
                   'Quote commands to enter them as text.',
                   colors.warning,
                   closes: true,
+                  event: StageEvent.warning,
                 );
                 continue;
               }
@@ -4390,6 +4579,7 @@ final class Multiline {
           'Insertion rejected: character limit is $maxLength graphemes.',
           foreground: colors.error,
           closes: true,
+          event: StageEvent.warning,
         );
         return;
       }
@@ -4575,7 +4765,13 @@ final class Multiline {
             final value = chars.join();
             final error = _error(value);
             if (error == null) return Accepted(value);
-            spine.write(out, error, foreground: colors.error, closes: true);
+            spine.write(
+              out,
+              error,
+              foreground: colors.error,
+              closes: true,
+              event: StageEvent.warning,
+            );
             action = 0;
             continue;
           }
@@ -5048,13 +5244,18 @@ abstract class _SingleChoice<T> {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(
-          out,
-          DisplayText.from(text).value,
-          foreground: foreground,
-          closes: closes,
-        );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      DisplayText.from(text).value,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
 
     var focus = defaultValue == null
         ? -1
@@ -5077,7 +5278,13 @@ abstract class _SingleChoice<T> {
         ).value,
         foreground: colors.foreground,
       );
-      if (choices.isEmpty) write('No choices available.', colors.warning);
+      if (choices.isEmpty) {
+        write(
+          'No choices available.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
+      }
       final start = mode == PromptMode.linear ? page * pageSize : 0;
       final end = mode == PromptMode.linear
           ? (start + pageSize).clamp(0, choices.length)
@@ -5086,6 +5293,7 @@ abstract class _SingleChoice<T> {
         write(
           'Page ${page + 1} of ${(choices.length + pageSize - 1) ~/ pageSize}.',
           colors.muted,
+          event: StageEvent.state,
         );
       }
       if (start < end) spine.breathingRow(out);
@@ -5158,6 +5366,7 @@ abstract class _SingleChoice<T> {
               'Enter a valid choice reference.',
               colors.warning,
               closes: true,
+              event: StageEvent.warning,
             );
             continue;
           }
@@ -5167,10 +5376,16 @@ abstract class _SingleChoice<T> {
               'Unavailable: ${c.disabledReason}. Choose an enabled reference.',
               colors.warning,
               closes: true,
+              event: StageEvent.warning,
             );
             continue;
           }
-          write('Accepted: ${c.label}.', colors.success, closes: true);
+          write(
+            'Accepted: ${c.label}.',
+            colors.success,
+            closes: true,
+            event: StageEvent.result,
+          );
           return Accepted(c.value);
         }
       }
@@ -5201,7 +5416,11 @@ abstract class _SingleChoice<T> {
         }
         if (key == '\r' || key == '\n') {
           if (focus < 0) {
-            write('No choice available.', colors.warning);
+            write(
+              'No choice available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final c = choices[focus];
@@ -5209,10 +5428,15 @@ abstract class _SingleChoice<T> {
             write(
               'Unavailable: ${c.disabledReason}. Navigate to an enabled choice.',
               colors.warning,
+              event: StageEvent.warning,
             );
             continue;
           }
-          write('Accepted: ${c.label}.', colors.success);
+          write(
+            'Accepted: ${c.label}.',
+            colors.success,
+            event: StageEvent.result,
+          );
           return Accepted(c.value);
         }
       }
@@ -5416,13 +5640,18 @@ final class MultiSelect<T> {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, TerminalColor foreground, {bool closes = false}) =>
-        spine.write(
-          out,
-          DisplayText.from(text).value,
-          foreground: foreground,
-          closes: closes,
-        );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      DisplayText.from(text).value,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
 
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     final selected = <int>{
@@ -5453,7 +5682,13 @@ final class MultiSelect<T> {
         ).value,
         foreground: colors.foreground,
       );
-      if (items.isEmpty) write('No matching choices.', colors.warning);
+      if (items.isEmpty) {
+        write(
+          'No matching choices.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
+      }
       final shown = mode == PromptMode.linear
           ? items.skip(page * size).take(size)
           : items;
@@ -5461,6 +5696,7 @@ final class MultiSelect<T> {
         write(
           'Page ${page + 1} of ${(items.length + size - 1) ~/ size}.',
           colors.muted,
+          event: StageEvent.state,
         );
       }
       if (shown.isNotEmpty) spine.breathingRow(out);
@@ -5511,13 +5747,21 @@ final class MultiSelect<T> {
     void toggle(int i) {
       final c = choices[i];
       if (c.disabledReason != null) {
-        write('Unavailable: ${c.disabledReason}.', colors.warning);
+        write(
+          'Unavailable: ${c.disabledReason}.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return;
       }
       if (selected.contains(i)) {
         selected.remove(i);
       } else if (max != null && selected.length >= max!) {
-        write('Maximum $max selections.', colors.warning);
+        write(
+          'Maximum $max selections.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return;
       } else {
         selected.add(i);
@@ -5526,6 +5770,7 @@ final class MultiSelect<T> {
       write(
         '${c.label}: ${checked ? 'checked' : 'unchecked'}.',
         checked ? colors.success : colors.muted,
+        event: StageEvent.state,
       );
     }
 
@@ -5534,7 +5779,11 @@ final class MultiSelect<T> {
           .where((i) => choices[i].disabledReason == null)
           .toSet();
       if (add && max != null && selected.union(enabled).length > max!) {
-        write('Maximum $max selections; no changes made.', colors.warning);
+        write(
+          'Maximum $max selections; no changes made.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return;
       }
       if (add) {
@@ -5546,7 +5795,11 @@ final class MultiSelect<T> {
 
     PromptResult<List<T>>? submit() {
       if (selected.length < min) {
-        write('Minimum $min selections required.', colors.warning);
+        write(
+          'Minimum $min selections required.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return null;
       }
       return Accepted([
@@ -5901,8 +6154,17 @@ final class TimeInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, {bool closes = false}) =>
-        spine.write(out, text, foreground: colors.foreground, closes: closes);
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
     spine.opening(
       out,
       title: '$label.',
@@ -5910,6 +6172,7 @@ final class TimeInput {
           'Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
       foreground: colors.foreground,
       bodyForeground: colors.foreground,
+      event: StageEvent.state,
     );
     spine.hint(
       out,
@@ -5993,8 +6256,17 @@ final class TimeInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, {bool closes = false}) =>
-        spine.write(out, text, foreground: colors.foreground, closes: closes);
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
 
     String current() {
       if (fields.every((field) => field.isEmpty) && period.isEmpty) return '';
@@ -6389,11 +6661,16 @@ final class TagInput {
       background: colors.background,
       border: colors.border,
     );
-    void write(String text, {bool closes = false}) => spine.write(
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       input.output,
       text,
       foreground: colors.foreground,
       closes: closes,
+      event: event,
     );
     _writeStructureIntro(
       spine,

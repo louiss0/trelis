@@ -152,12 +152,22 @@ final class Autocomplete {
     // An unframed component keeps its unwrapped event lines; a declared
     // structure frames and wraps them so rail/branch continuity or the
     // enclosure holds.
-    void write(String text, {bool closes = false}) {
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       if (!usesStructureFraming(structure)) {
         out.writeln(text);
         return;
       }
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     _writeStructureIntro(
@@ -387,12 +397,22 @@ final class Autocomplete {
     // An unframed component keeps its unwrapped event lines; a declared
     // structure frames and wraps them so rail/branch continuity or the
     // enclosure holds.
-    void write(String text, {bool closes = false}) {
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
       if (!usesStructureFraming(structure)) {
         out.writeln(text);
         return;
       }
-      spine.write(out, text, foreground: colors.foreground, closes: closes);
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
     }
 
     _writeStructureIntro(

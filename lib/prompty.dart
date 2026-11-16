@@ -28,3 +28,6 @@ export 'src/themes/minimal_theme.dart';
 export 'src/themes/ascii_theme.dart';
 export 'src/themes/chevron_theme.dart';
 export 'src/themes/bracket_theme.dart';
+export 'src/themes/form_theme.dart';
+export 'src/themes/ledger_theme.dart';
+export 'src/themes/colon_theme.dart';
