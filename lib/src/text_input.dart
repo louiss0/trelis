@@ -2558,6 +2558,7 @@ Future<({String action, String value})> _edit(
   String Function()? liveLinearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  String? Function(String draft)? livePreview,
   void Function()? onHelpDismissed,
   void Function(bool visible)? onHelpVisibilityChanged,
   TextInputTranscript? transcript,
@@ -2586,6 +2587,13 @@ Future<({String action, String value})> _edit(
     synthetic = 0;
   }
   var activeProfile = outputProfile;
+
+  /// Whether the live preview line is currently drawn below the editable row.
+  ///
+  /// The preview is live state rather than committed history: [display] draws it
+  /// inside the region it rewrites, and anything that commits a line or ends
+  /// the editor erases it instead of leaving it behind.
+  var previewDrawn = false;
 
   /// Writes one editor event through the component's structural grammar.
   ///
@@ -2623,11 +2631,39 @@ Future<({String action, String value})> _edit(
     );
   }
 
+  /// Erases the live preview line drawn below the editable row.
+  ///
+  /// The preview is part of the region the rich renderer rewrites, so a write
+  /// that commits history or ends the editor releases it first: only the draft
+  /// row the reader already had stays behind. Sequential and private entries
+  /// never draw the line, so this is a no-op for them.
+  void finishLivePreview() {
+    if (!previewDrawn) return;
+    previewDrawn = false;
+    // The caret is parked on the editable row, so the line below it is the
+    // only one to release; clearing to the end of the screen also removes the
+    // rows an overlong preview wrapped onto.
+    void clear() => output.write('\x1b[s\n\r\x1b[J\x1b[u');
+    final activeSession = session;
+    if (activeSession == null) {
+      clear();
+    } else {
+      activeSession._writeShared(clear);
+    }
+  }
+
+  /// Ends the editor with [action], releasing the live preview line first.
+  ({String action, String value}) leave(String action, [String value = '']) {
+    finishLivePreview();
+    return (action: action, value: value);
+  }
+
   /// Writes one notice as a compact event of the current stage.
   ///
   /// A refusal or a validation notice is a [StageEvent.warning] so a grammar
   /// that spells typed labels presents it as one; guidance keeps its body row.
   void notice(String text, {StageEvent event = StageEvent.body}) {
+    finishLivePreview();
     if (!sequential && !secret) output.writeln();
     writeEvent(text, closes: true, compact: true, event: event);
   }
@@ -2644,6 +2680,7 @@ Future<({String action, String value})> _edit(
   /// entry never exposes a draft row to terminate.
   void finishEditableRow() {
     if (sequential || secret) return;
+    finishLivePreview();
     void clear() => output.write('\r\x1b[2K\n');
     final activeSession = session;
     if (activeSession == null) {
@@ -2800,10 +2837,31 @@ Future<({String action, String value})> _edit(
       ),
     );
     final editable = _slot(composition, PresentationSlot.body);
+    final preview = livePreview?.call(chars.join());
     writePrompt(() {
       output.write(
         '\r\x1b[2K$livePrefix${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
       );
+      if (preview == null && !previewDrawn) return;
+      // A live preview is part of this region rather than a line appended
+      // around it: it is drawn under the editable row, the same marker starts
+      // it, and the redraw clears the row it occupied, so a keystroke replaces
+      // the preview instead of adding another copy to the transcript. Clearing
+      // to the end of the screen also releases the rows a longer previous
+      // preview wrapped onto, and the caret returns to the editable row.
+      output.write('\x1b[s\n\r\x1b[2K');
+      if (preview != null) {
+        output.write(
+          _colorText(
+            '$livePrefix$preview',
+            colors.foreground,
+            colors.background,
+            outputProfile,
+          ),
+        );
+      }
+      output.write('\x1b[J\x1b[u');
+      previewDrawn = preview != null;
     });
   }
 
@@ -2888,18 +2946,18 @@ Future<({String action, String value})> _edit(
   try {
     while (true) {
       final key = await keys.next();
-      if (key == null || key == '\x1a') return (action: 'eof', value: '');
-      if (key == '\x03') return (action: 'interrupt', value: '');
+      if (key == null || key == '\x1a') return leave('eof');
+      if (key == '\x03') return leave('interrupt');
       if (!help) {
         final action = intercept?.call(key, chars.join());
         if (action == 'handled') {
           display();
           continue;
         }
-        if (action != null) return (action: action, value: chars.join());
+        if (action != null) return leave(action, chars.join());
       }
       if (key == '\x1b') {
-        if (!help) return (action: 'cancel', value: '');
+        if (!help) return leave('cancel');
         help = false;
         onHelpVisibilityChanged?.call(false);
         if (session != null) {
@@ -2958,6 +3016,7 @@ Future<({String action, String value})> _edit(
             '\r\x1b[2K$promptPrefix${DisplayText.from(chars.join()).value}',
           );
         }
+        finishLivePreview();
         output.writeln();
         var text = chars.join();
         final literal =
@@ -6869,8 +6928,11 @@ final class TagInput {
             finishFocused = false;
             return null;
           },
-          onChanged: mode == PromptMode.rich
-              ? (text) => write('Preview: ${_canonical(text)}')
+          // The canonical preview is live state, not a committed line: it is
+          // handed to the editor so each keystroke rewrites the line under the
+          // draft row instead of appending another copy to the transcript.
+          livePreview: mode == PromptMode.rich
+              ? (text) => 'Preview: ${_canonical(text)}'
               : null,
         );
         if (result.action == 'cancel') return Cancelled();
