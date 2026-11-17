@@ -25,7 +25,7 @@ Update the `prompty` dependency to `trelis` in `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  trelis: ^2.0.0
+  trelis: ^1.0.0
 ```
 
 ## Unchanged

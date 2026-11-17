@@ -15,11 +15,11 @@ changed.
 
 ## What changed
 
-- `pubspec.yaml`: `name: trelis`, `version: 2.0.0`, public `repository`
+- `pubspec.yaml`: `name: trelis`, `version: 1.0.0`, public `repository`
   (`https://github.com/louiss0/trelis`).
 - Entry point: `lib/prompty.dart` → `lib/trelis.dart`.
 - 171 `package:prompty/...` import sites rewritten to `package:trelis/...`.
-- `README.md`, `LICENSE` copyright, `CHANGELOG.md` (2.0.0 entry) and
+- `README.md`, `LICENSE` copyright, `CHANGELOG.md` (1.0.0 entry) and
   `example/prompty_example.dart` → `example/trelis_example.dart`.
 - Migration guidance: `doc/evidence/trelis-package-rename/migration.md`.
 

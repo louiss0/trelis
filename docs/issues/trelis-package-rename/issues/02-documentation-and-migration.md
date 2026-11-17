@@ -38,7 +38,7 @@ passed. `dart run tool/check_doc_links.dart` → 0 broken links.
 
 **Answer.** README title/import/example path, `example/prompty_example.dart`
 (renamed to `trelis_example.dart`), LICENSE copyright and the CHANGELOG now use
-`trelis`; a `2.0.0` CHANGELOG entry and
+`trelis`; a `1.0.0` CHANGELOG entry and
 `doc/evidence/trelis-package-rename/migration.md` document the breaking import
 change and the one-line migration. Remaining `prompty` text is intentionally
 left: historical evidence/research/tracker docs, the archived
