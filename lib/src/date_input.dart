@@ -556,6 +556,7 @@ final class DateInput {
     TerminalSession? session,
     TerminalResizeObserver? resizeObserver, {
     PromptStructure structure = PromptStructure.plain,
+    required bool rich,
   }) async {
     final names = switch (order) {
       DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
@@ -571,6 +572,7 @@ final class DateInput {
       width: width,
       background: colors.background,
       border: colors.border,
+      rich: rich,
     );
     void write(
       String text, {
@@ -594,12 +596,12 @@ final class DateInput {
     /// already wrote.
     void stage(String cue) {
       if (spine.encloses) {
-        spine.reset();
+        spine.reset(out);
         write(
           '$label. Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
         );
       } else if (spine.heads) {
-        spine.reset();
+        spine.reset(out);
         spine.opening(
           out,
           title: '$label.',
@@ -860,6 +862,7 @@ final class DateInput {
                 session,
                 scripted.resizeObserver,
                 structure: structure,
+                rich: mode == PromptMode.rich,
               );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();

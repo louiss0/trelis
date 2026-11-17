@@ -231,6 +231,7 @@ final class Slider {
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
@@ -323,7 +324,7 @@ final class Slider {
       var focus = 0;
       var help = false;
       void show() {
-        spine.reset();
+        spine.reset(out);
         heading(
           '$_description.',
           'Value: ${value.isEmpty ? 'not set' : value}.',
@@ -679,6 +680,7 @@ final class RangeSlider {
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
@@ -806,7 +808,7 @@ final class RangeSlider {
       var focus = 0;
       var help = false;
       void show() {
-        spine.reset();
+        spine.reset(out);
         heading(
           '${_slider._description}, $_gapCue.',
           'Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',

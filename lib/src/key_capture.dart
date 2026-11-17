@@ -255,6 +255,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       width: width,
       background: colors.background,
       border: colors.border,
+      rich: selected == PromptMode.rich,
     );
     void write(
       String text,
@@ -277,7 +278,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       guidance: '/capture, /declare, /remove, /clear, /done, /help, /cancel.',
     );
     void review() {
-      spine.reset();
+      spine.reset(out);
       write(
         'Review: ${gestures.isEmpty ? "empty" : gestures.map((g) => "${g.modifiers.map((m) => m.name).join('+')} ${g.key} (${g.provenance.name})").join(', ')}',
         colors.foreground,

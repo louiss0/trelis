@@ -324,6 +324,7 @@ void _writeStructureIntro(
     // the ones that do keep the palette styling the spine applies.
     if (rawWhenUnframed) {
       output.writeln(joined);
+      spine.countWrappedRow(joined);
     } else {
       spine.write(output, joined, foreground: foreground, closes: true);
     }
@@ -1230,6 +1231,7 @@ final class _StructureSpine {
     required this.background,
     required this.border,
     required this.outputProfile,
+    this.rich = false,
   });
 
   final PromptStructure structure;
@@ -1238,6 +1240,8 @@ final class _StructureSpine {
   final TerminalColor background;
   final TerminalColor border;
   final OutputProfile? outputProfile;
+  final bool rich;
+  int _lines = 0;
   bool _open = false;
   bool _closed = false;
 
@@ -1321,6 +1325,7 @@ final class _StructureSpine {
   void _emit(StringSink output, String line, TerminalColor foreground) {
     if (line.isEmpty) return;
     output.writeln(_colorText(line, foreground, background, outputProfile));
+    _lines++;
   }
 
   /// Opens the enclosure with the stage's first block.
@@ -1491,6 +1496,7 @@ final class _StructureSpine {
             outputProfile,
           ),
         );
+        _lines++;
       }
       return;
     }
@@ -1505,6 +1511,7 @@ final class _StructureSpine {
     for (final line in framed) {
       if (line.isEmpty) continue;
       output.writeln(_colorText(line, foreground, background, outputProfile));
+      _lines++;
     }
   }
 
@@ -1599,6 +1606,7 @@ final class _StructureSpine {
       );
       final styled = _colorText(row, foreground, background, outputProfile);
       output.writeln(inverse ? _inverted(styled) : styled);
+      _lines++;
     }
   }
 
@@ -1819,9 +1827,38 @@ final class _StructureSpine {
     );
   }
 
+  /// Counts rows a caller drew itself.
+  ///
+  /// A choice row a line-prefix structure draws is written straight to the
+  /// output with the row's own marker, so the spine never sees that write. The
+  /// caller reports the rows it drew, so a rich repaint still rewinds over the
+  /// whole region it presented instead of part of it.
+  void countRows(int rows) => _lines += rows;
+
+  /// Counts one raw write a caller made, wrapped at the stage width.
+  ///
+  /// Unframed output is written as the component worded it, so the rows it
+  /// occupies are measured here rather than guessed: a repaint rewinds over the
+  /// rows the reader actually saw.
+  void countWrappedRow(String text) =>
+      _lines += text.isEmpty ? 0 : _wrapText(text, width).length;
+
   /// Starts a new stage, so a repainted frame opens the structure again.
-  void reset() {
-    if (_encloses && _open) _pendingClose = true;
+  ///
+  /// In a rich, cursor-capable presentation this first rewinds the cursor over
+  /// the lines the previous render drew and clears to the end of the screen, so
+  /// the next render overwrites the same region instead of appending. Linear
+  /// output stays sequential and keeps the deferred bottom-rule behaviour.
+  void reset(StringSink output) {
+    if (rich) {
+      if (_lines > 0) {
+        output.write('\x1b[${_lines}A\x1b[J');
+        _lines = 0;
+      }
+      _pendingClose = false;
+    } else if (_encloses && _open) {
+      _pendingClose = true;
+    }
     _open = false;
     _closed = false;
   }
@@ -1834,6 +1871,7 @@ _StructureSpine _structureSpine(
   required int? width,
   required TerminalColor background,
   TerminalColor border = const TerminalColor.terminalDefault(),
+  bool rich = false,
 }) => _StructureSpine(
   structure: structure,
   ascii: _structureAscii(outputProfile),
@@ -1841,6 +1879,7 @@ _StructureSpine _structureSpine(
   background: background,
   border: border,
   outputProfile: outputProfile,
+  rich: rich,
 );
 
 /// Splits [text] into the display lines that fit [width] cells.
@@ -5114,10 +5153,16 @@ void _writeChoiceRow(
       atomicText: row.markers,
     ),
   );
+  var drawn = 0;
   for (final line in lines) {
     if (line.isEmpty) continue;
     output.writeln(_colorText(line, foreground, colors.background, profile));
+    drawn++;
   }
+  // The row is the stage's content, so the spine counts it even though the row
+  // marker belongs to the structure: a rich repaint rewinds over the rows it
+  // presented, not only over the heading and the hint.
+  spine?.countRows(drawn);
 }
 
 final class Select<T> extends _SingleChoice<T> {
@@ -5317,6 +5362,7 @@ abstract class _SingleChoice<T> {
       width: width,
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     void write(
       String text,
@@ -5344,7 +5390,7 @@ abstract class _SingleChoice<T> {
     var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
-      spine.reset();
+      spine.reset(out);
       spine.heading(
         out,
         DisplayText.from(
@@ -5713,6 +5759,7 @@ final class MultiSelect<T> {
       width: width,
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     void write(
       String text,
@@ -5746,7 +5793,7 @@ final class MultiSelect<T> {
     var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
-      spine.reset();
+      spine.reset(out);
       final items = visible();
       final hidden = selected.where((i) => !items.contains(i)).length;
       spine.heading(
@@ -6323,12 +6370,15 @@ final class TimeInput {
       'Submit',
     ];
     var focus = 0;
+    // This presentation only runs in rich mode, so every repaint rewinds the
+    // region it drew instead of appending another copy.
     final spine = _structureSpine(
       profile,
       structure: structure,
       width: width,
       background: colors.background,
       border: colors.border,
+      rich: true,
     );
     void write(
       String text, {
@@ -6349,7 +6399,7 @@ final class TimeInput {
     }
 
     void show() {
-      spine.reset();
+      spine.reset(out);
       spine.opening(
         out,
         title: '$label.',

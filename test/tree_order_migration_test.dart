@@ -747,11 +747,12 @@ void main() {
     },
   );
 
-  test('rich tree and order paint transcript rows without owning the caret', () async {
-    // A monochrome rich profile: the components compose rows and notices only.
-    // No cursor addressing, erase-line, alternate-screen or caret sequence is
-    // emitted, so the shared editor keeps caret and viewport ownership in the
-    // modes that have one.
+  test('rich tree and order repaint their rows in place', () async {
+    // A rich profile: a focus move rewinds the region the list drew and redraws
+    // it, so a navigation never leaves a second copy of the list behind. The
+    // rewind is the only caret sequence a list component writes — no erase
+    // line, no save/restore, no absolute addressing and no alternate screen —
+    // so the shared editor keeps drawing the live line it owns.
     final treeOutput = StringBuffer();
     final tree =
         await TreeSelect<String>('Pick', [
@@ -765,7 +766,22 @@ void main() {
           mode: PromptMode.rich,
         );
     expect((tree as Accepted<String>).value, 'b');
-    expect(treeOutput.toString(), isNot(contains('\x1b')));
+    final treeText = treeOutput.toString();
+    expect(
+      treeText,
+      contains(RegExp(r'\x1b\[\d+A\x1b\[J')),
+      reason: 'a focus move repaints the list in place',
+    );
+    expect(
+      treeText.replaceAll(RegExp(r'\x1b\[\d+A\x1b\[J'), ''),
+      isNot(contains('\x1b')),
+      reason: 'the tree writes no caret sequence other than the repaint rewind',
+    );
+    expect(
+      RegExp(RegExp.escape('1. A')).allMatches(treeText),
+      hasLength(3),
+      reason: 'each of the three presentations draws the row once',
+    );
 
     final orderOutput = StringBuffer();
     final order =
@@ -781,8 +797,43 @@ void main() {
           mode: PromptMode.rich,
         );
     expect((order as Accepted<List<String>>).value, ['b', 'a']);
-    expect(orderOutput.toString(), isNot(contains('\x1b')));
+    final orderText = orderOutput.toString();
+    expect(
+      orderText,
+      contains(RegExp(r'\x1b\[\d+A\x1b\[J')),
+      reason: 'a reorder repaints the list in place',
+    );
+    expect(
+      orderText.replaceAll(RegExp(r'\x1b\[\d+A\x1b\[J'), ''),
+      isNot(contains('\x1b')),
+      reason:
+          'the order list writes no caret sequence other than the repaint '
+          'rewind',
+    );
   });
+
+  test(
+    'a rich editable line keeps its shared-editor caret ownership',
+    () async {
+      // Editable input is refreshed by the shared editor, not by a rewind: the
+      // editor erases the line it owns and restores the caret it saved, so the
+      // component never moves the cursor on its own.
+      final output = StringBuffer();
+      final result = await TextInput('Name').prompt(
+        source: ScriptedInput(
+          Stream.value('Ada\r'),
+          output,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<String>).value, 'Ada');
+      final transcript = output.toString();
+      expect(transcript, contains('\r\x1b[2K'));
+      expect(transcript, contains('\x1b[s'));
+      expect(transcript, isNot(contains(RegExp(r'\x1b\[\d+A\x1b\[J'))));
+    },
+  );
 
   test('tree keeps every terminal outcome distinct', () async {
     final tree = TreeSelect<String>('Pick', [TreeNode('a', 'A')]);

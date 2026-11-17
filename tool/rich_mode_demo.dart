@@ -15,8 +15,10 @@ Future<void> main() async {
     supportsRich: true,
     outputProfile: profile,
   );
-  final result = await RailTheme.textInput('Project name', required: true)
-      .prompt(source: source, mode: PromptMode.rich);
+  final result = await RailTheme.textInput(
+    'Project name',
+    required: true,
+  ).prompt(source: source, mode: PromptMode.rich);
   final escaped = out
       .toString()
       .replaceAll('\r', r'\r')

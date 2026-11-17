@@ -275,6 +275,7 @@ final class _FilesystemPicker {
       width: width,
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     void write(
       String text,
@@ -294,7 +295,7 @@ final class _FilesystemPicker {
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       while (true) {
-        spine.reset();
+        spine.reset(out);
         spine.opening(
           out,
           title: '$label.',

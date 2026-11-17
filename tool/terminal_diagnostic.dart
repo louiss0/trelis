@@ -43,15 +43,19 @@ void _reportCursorVt() {
   const stdErrorHandle = -12;
   const enableVirtualTerminalProcessing = 4;
   final kernel32 = DynamicLibrary.open('kernel32.dll');
-  final getStdHandle = kernel32.lookupFunction<IntPtr Function(Int32), int Function(int)>('GetStdHandle');
-  final getConsoleMode = kernel32.lookupFunction<
-    Int32 Function(IntPtr, Pointer<Uint32>),
-    int Function(int, Pointer<Uint32>)
-  >('GetConsoleMode');
-  final setConsoleMode = kernel32.lookupFunction<
-    Int32 Function(IntPtr, Uint32),
-    int Function(int, int)
-  >('SetConsoleMode');
+  final getStdHandle = kernel32
+      .lookupFunction<IntPtr Function(Int32), int Function(int)>(
+        'GetStdHandle',
+      );
+  final getConsoleMode = kernel32
+      .lookupFunction<
+        Int32 Function(IntPtr, Pointer<Uint32>),
+        int Function(int, Pointer<Uint32>)
+      >('GetConsoleMode');
+  final setConsoleMode = kernel32
+      .lookupFunction<Int32 Function(IntPtr, Uint32), int Function(int, int)>(
+        'SetConsoleMode',
+      );
 
   for (final (name, stdHandle) in [
     ('stdout handle', stdOutputHandle),
@@ -70,7 +74,10 @@ void _reportCursorVt() {
       continue;
     }
     final original = mode.value;
-    final enabled = setConsoleMode(handle, original | enableVirtualTerminalProcessing);
+    final enabled = setConsoleMode(
+      handle,
+      original | enableVirtualTerminalProcessing,
+    );
     // Restore the original mode so the probe leaves the console untouched.
     setConsoleMode(handle, original);
     print(

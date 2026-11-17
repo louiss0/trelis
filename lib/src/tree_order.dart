@@ -289,6 +289,7 @@ final class TreeSelect<T> {
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     void write(
       String text,
@@ -342,7 +343,7 @@ final class TreeSelect<T> {
     }
 
     void show() {
-      spine.reset();
+      spine.reset(out);
       session?._setPromptGeometry(effectiveProfile.geometry);
       spine.width = _textInputWidth(effectiveProfile);
       spine.heading(
@@ -838,6 +839,7 @@ final class SortableSelect<T> {
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     void write(
       String text,
@@ -889,7 +891,7 @@ final class SortableSelect<T> {
     }
 
     void show() {
-      spine.reset();
+      spine.reset(out);
       session?._setPromptGeometry(effectiveProfile.geometry);
       spine.width = _textInputWidth(effectiveProfile);
       spine.heading(

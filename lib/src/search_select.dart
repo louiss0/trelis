@@ -206,6 +206,7 @@ final class SearchSelect<T> {
       width: _textInputWidth(effectiveProfile),
       background: colors.background,
       border: colors.border,
+      rich: mode == PromptMode.rich,
     );
     void write(
       String text, {
@@ -214,6 +215,10 @@ final class SearchSelect<T> {
     }) {
       if (!usesStructureFraming(structure)) {
         out.writeln(text);
+        // An unframed structure has no spine-owned row, so the spine is told
+        // how many rows the stage drew: a rich repaint rewinds over the whole
+        // presentation, not only over the rows it wrote itself.
+        spine.countWrappedRow(text);
         return;
       }
       spine.write(
@@ -351,7 +356,7 @@ final class SearchSelect<T> {
     }
 
     void show() {
-      spine.reset();
+      spine.reset(out);
       final projection = project();
       // The query is answer data, so it stays in the body rows: a diagnostic
       // heading never spells retained input in capitals.

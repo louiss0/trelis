@@ -47,10 +47,20 @@ ScriptedInput _scripted(
   outputProfile: _profile(mode, ascii: ascii, rgb: rgb, columns: columns),
 );
 
-/// Splits output into display lines, dropping rich repaint carriage returns.
+/// The repaint sequence a rich presentation writes before the region it
+/// redraws: the cursor moves up over the region and the screen is cleared from
+/// there.
+final _repaintPrefix = RegExp(r'^(?:(?:\r|\x1b\[\d+A\x1b\[J))+');
+
+/// Splits output into display lines, dropping rich repaint sequences.
+///
+/// A rich repaint rewinds over the region it drew and clears it, so that
+/// sequence is prefixed to the line that takes the region's place rather than
+/// being a line of its own, and a carriage return is the shared editor's own
+/// refresh of one line.
 List<String> _lines(String text) => [
   for (final line in text.split('\n'))
-    if (line.isNotEmpty) line.replaceFirst(RegExp(r'^\r+'), ''),
+    if (line.isNotEmpty) line.replaceFirst(_repaintPrefix, ''),
 ];
 
 /// The display lines a reader actually sees, with styling removed.
