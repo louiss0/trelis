@@ -921,7 +921,7 @@ final class TerminalSession {
         'Session output must be identical to its input adapter output.',
       );
     }
-    final selectedSink = output ?? selectedOutput ?? stderr;
+    final selectedSink = output ?? selectedOutput ?? stdout;
     _claimScreen(selectedSink, Object());
     final session = TerminalSession._(
       selectedSink,
@@ -2351,7 +2351,7 @@ final class TextInput {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -3744,7 +3744,7 @@ final class Password {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -4067,7 +4067,7 @@ abstract class _BooleanPrompt {
           }
           return await _terminal<bool>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -4396,7 +4396,7 @@ final class Multiline {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -5266,7 +5266,7 @@ abstract class _SingleChoice<T> {
           }
           return await _terminal<T>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -5649,7 +5649,7 @@ final class MultiSelect<T> {
           }
           return await _terminal<List<T>>(
             selectedMode,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -6178,7 +6178,7 @@ final class TimeInput {
           }
           return await _terminal<({int hour, int minute, int? second})>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (nativeSource, nativeMode, _) =>
                 _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
@@ -6662,7 +6662,7 @@ final class TagInput {
           }
           return await _terminal<List<String>>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _runTags(source, mode, outputProfile: outputProfile),
           );

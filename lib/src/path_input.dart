@@ -118,7 +118,7 @@ final class PathInput {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 run(source, mode, outputProfile: outputProfile),
           );

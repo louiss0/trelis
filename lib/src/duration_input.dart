@@ -153,7 +153,7 @@ final class DurationInput {
           : source == null
           ? (session != null
                 ? _SessionOutputSink(session)
-                : output ?? terminal?.output ?? stderr)
+                : output ?? terminal?.output ?? stdout)
           : null;
       final reviewSpine = _structureSpine(
         outputProfile,

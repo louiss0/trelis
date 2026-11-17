@@ -325,7 +325,7 @@ final class MaskedInput {
         }
         return await _terminal<MaskedValue>(
           selected,
-          output ?? stderr,
+          output ?? stdout,
           (nativeSource, nativeMode, _) =>
               _run(nativeSource, nativeMode, outputProfile: outputProfile),
         );

@@ -102,7 +102,7 @@ final class Autocomplete {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );

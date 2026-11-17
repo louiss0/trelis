@@ -449,7 +449,7 @@ final class DateInput {
           }
           return await _terminal<CivilDate>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (nativeSource, nativeMode, _) =>
                 _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );

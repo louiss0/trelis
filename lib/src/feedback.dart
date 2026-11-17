@@ -36,7 +36,7 @@ StringSink _selectedOutput({StringSink? output, TerminalIo? terminal}) {
   if (output != null && terminal != null) {
     throw ArgumentError('Specify either output or terminal, not both.');
   }
-  return output ?? terminal?.output ?? stderr;
+  return output ?? terminal?.output ?? stdout;
 }
 
 bool _supportsRich({

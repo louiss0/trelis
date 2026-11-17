@@ -128,7 +128,7 @@ final class ColorInput {
         : source == null
         ? (session != null
               ? _SessionOutputSink(session)
-              : output ?? terminal?.output ?? stderr)
+              : output ?? terminal?.output ?? stdout)
         : null;
     _previewProfile = source is ScriptedInput
         ? _effectiveOutputProfile(source, outputProfile)

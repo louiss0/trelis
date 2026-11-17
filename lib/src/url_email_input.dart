@@ -152,7 +152,7 @@ final class URLInput {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -407,7 +407,7 @@ final class EmailInput {
           ? source.output
           : session != null
           ? _SessionOutputSink(session)
-          : output ?? terminal?.output ?? stderr;
+          : output ?? terminal?.output ?? stdout;
       // The domain interpretation is component-owned content, so a heading
       // structure writes it as one of its body rows. Every other structure
       // keeps the exact raw row it already wrote.

@@ -147,7 +147,7 @@ final class SearchSelect<T> {
           }
           return await _terminal<T>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );

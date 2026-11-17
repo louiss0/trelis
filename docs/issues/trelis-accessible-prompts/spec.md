@@ -82,7 +82,7 @@ exact recorded environment can support a whole-library accessibility claim.
 17. As a library consumer, I want mode selection to respect the current user's explicit choice and saved preference before application defaults, so that accessibility preferences are not silently overridden.
 18. As a library consumer, I want rich mode chosen automatically only when its required capabilities exist, so that capable terminals receive rich interaction and others receive linear interaction.
 19. As a library consumer, I want an explicitly requested unavailable rich interaction to fail before partial setup, so that I can explain or correct the environment without a hidden downgrade.
-20. As a library consumer, I want prompt and feedback output on stderr by default, so that stdout remains available for application-owned results and pipelines.
+20. As a library consumer, I want prompt and feedback output on stdout by default, so that terminal output follows the ordinary interactive stream.
 21. As a library consumer, I want explicit input-source selection, so that piped data or supplied answers are not confused with interactive commands.
 22. As a library consumer, I want redirected prompt output to be stable text without cursor addressing or animation, so that logs and transcripts remain meaningful.
 23. As a library consumer, I want a distinct input-ended outcome when an explicitly selected input stream reaches EOF, so that incomplete data is not accepted or treated as cancellation.
@@ -286,7 +286,7 @@ exact recorded environment can support a whole-library accessibility claim.
 - Linear interaction remains sequential and reviewable. It does not mean noninteractive, and it does not permit a pending-default workaround where actual editable initial values are required.
 - Actual editable initial values are mandatory in both modes. If the selected editor/backend/stream arrangement cannot provide them, report unavailable. Plain line reads or printing a default do not establish prefill.
 - Command-aware editors track literal answer data separately from display encoding. Pasted literal ranges retain provenance. Decode/recognize once on logical submission where permitted, rather than reparsing intermediate editor state.
-- Prompt and feedback output defaults to stderr. Applications may explicitly select streams. Standard output remains application-owned.
+- Prompt and feedback output defaults to stdout. Applications may explicitly select streams.
 - Check input and each output stream independently. Redirected prompt output uses stable text without cursor addressing or animation.
 - Redirected/missing interactive input requires explicit supplied answers or an opted-in line-input source. Never implicitly consume a pipe, open a controlling terminal or accept a default because no interaction is available.
 - EOF produces a distinct input-ended outcome. It does not submit partial data, execute an unterminated command or become cancellation/default acceptance.

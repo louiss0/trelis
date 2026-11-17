@@ -724,7 +724,7 @@ final class CronInput {
           }
           return await _terminal<CronExpression>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, restore) => _run(
               source,
               mode,

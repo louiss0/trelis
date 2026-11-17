@@ -232,7 +232,7 @@ final class _FilesystemPicker {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 run(source, mode, outputProfile: outputProfile),
           );

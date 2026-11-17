@@ -145,7 +145,7 @@ final class TreeSelect<T> {
           }
           return await _terminal<T>(
             selectedMode,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -762,7 +762,7 @@ final class SortableSelect<T> {
           }
           return await _terminal<List<T>>(
             selectedMode,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );

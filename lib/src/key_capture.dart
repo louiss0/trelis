@@ -584,7 +584,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
     }
     return await _terminal<List<KeyGesture>>(
       selected,
-      output ?? stderr,
+      output ?? stdout,
       (input, selected, restore) => run(
         input,
         selected,

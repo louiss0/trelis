@@ -179,7 +179,7 @@ final class Slider {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (nativeSource, nativeMode, _) =>
                 _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
@@ -625,7 +625,7 @@ final class RangeSlider {
           }
           return await _terminal<(String, String)>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (nativeSource, nativeMode, _) =>
                 _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
