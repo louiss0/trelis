@@ -8,7 +8,7 @@ library compiling and the full test suite green.
 
 **Blocked by:** —
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] `pubspec.yaml`: `name: trelis`.
 - [ ] `lib/prompty.dart` renamed to `lib/trelis.dart`.
@@ -22,3 +22,7 @@ library compiling and the full test suite green.
       not treat the edit itself as a pass.
 
 ## Comments
+
+**Claim.** Claimed on `integration/trelis-package-rename` from base
+`c947a37`. The rename is atomic at the package level, so this ticket changes
+the pubspec name, the entry point and every `package:prompty` import together.
