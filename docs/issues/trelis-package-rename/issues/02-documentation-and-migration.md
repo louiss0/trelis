@@ -8,7 +8,7 @@ publish truthful consumer migration guidance and a CHANGELOG entry.
 **Blocked by:**
 - [01: Rename package identifier, entry point and imports](01-rename-package-identifier.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] `README.md` and `example/` reflect the `trelis` package name and the
       renamed entry point; sample code imports `package:trelis/trelis.dart`.
@@ -25,3 +25,9 @@ publish truthful consumer migration guidance and a CHANGELOG entry.
       not treat the edit itself as a pass.
 
 ## Comments
+
+**Claim.** Claimed on `integration/trelis-package-rename`. Ticket 01 is
+resolved, so the code imports are already `package:trelis`. This ticket
+renames the live documentation, the example filename, and publishes
+migration guidance; historical evidence/research docs and the archived
+prototype-themes stay as written.
