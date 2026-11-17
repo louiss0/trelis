@@ -1,4 +1,4 @@
-# Prompty
+# Trelis
 
 A Dart prompting-library project, currently at the design-to-implementation
 stage. TextInput is the first public prompt component; other component APIs
@@ -7,7 +7,7 @@ are not implemented yet.
 ## TextInput
 
 ```dart
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 final result = await TextInput(
   'Name',
@@ -132,7 +132,7 @@ dart test
 Windows native console regressions can also be run with the PowerShell scripts
 in `test/`, including `text_input_windows.ps1`.
 
-`dart run example/prompty_example.dart` runs a short interactive flow across
+`dart run example/trelis_example.dart` runs a short interactive flow across
 several components; add `--scripted` to replay it from a fixed stream without a
 terminal, or `--linear` to force sequential interaction.
 

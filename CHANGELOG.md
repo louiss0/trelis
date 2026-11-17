@@ -1,3 +1,14 @@
+## 2.0.0
+
+- The Dart package is renamed from `prompty` to `trelis` to match the
+  project name. The package entry point moves from `lib/prompty.dart` to
+  `lib/trelis.dart` and every import changes:
+  `import 'package:prompty/prompty.dart';` ->
+  `import 'package:trelis/trelis.dart';`.
+- No component, API, behavior, theme, palette or outcome changed. This is a
+  packaging and naming migration only.
+- Migration guidance: `doc/evidence/trelis-package-rename/migration.md`.
+
 ## 1.0.0
 
 - 38 prompt and feedback components over one public session seam: text and

@@ -4,7 +4,7 @@ import 'package:trelis/trelis.dart';
 
 /// A short end-to-end flow over the public component seam.
 ///
-/// Run `dart run example/prompty_example.dart` in a terminal. The mode is
+/// Run `dart run example/trelis_example.dart` in a terminal. The mode is
 /// selected automatically, or forced with `--rich` or `--linear`. Add
 /// `--scripted` to replay the same flow from a fixed scripted stream, which
 /// also works without a terminal. Nothing here needs a secret, a network or a
