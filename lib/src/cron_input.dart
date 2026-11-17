@@ -491,7 +491,11 @@ final class CronInput {
     required this.profile,
     this.initialValue = '',
     this.preview,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     _input = TextInput(
       '$label (${profile.name} profile; expression limit $maxExpressionLength UTF-16 code units; matching preview is not configured)',
       initialValue: initialValue,
@@ -500,12 +504,20 @@ final class CronInput {
       validate: (value) => _valid(value)
           ? null
           : 'Invalid or unsupported cron expression for the selected profile.',
+      colors: colors,
+      structure: structure,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
     );
   }
   final String label;
   final String initialValue;
   final CronPreviewConfig? preview;
   final CronProfile profile;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   late final TextInput _input;
   bool _active = false;
 
@@ -712,7 +724,7 @@ final class CronInput {
           }
           return await _terminal<CronExpression>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, restore) => _run(
               source,
               mode,
@@ -790,7 +802,15 @@ final class CronInput {
     // of being appended to the field the user just left.
     void writeNotice(String text) {
       if (!linear) out.write('\r\x1b[2K');
-      _writeWrappedText(out, text, width);
+      // Every notice is its own event, so an enclosure renders it as a compact
+      // block outside a frame instead of drawing one frame per message.
+      _structureSpine(
+        effectiveProfile,
+        structure: structure,
+        width: width,
+        background: colors.background,
+        border: colors.border,
+      ).hint(out, text, foreground: colors.foreground);
     }
 
     var draft = initialValue;
@@ -813,6 +833,7 @@ final class CronInput {
           helpText: _entryHelp(linear: linear),
           linearHelpText: _entryHelp(linear: true),
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
           resizeObserver: linear ? null : source.resizeObserver,
         );
@@ -845,6 +866,7 @@ final class CronInput {
             helpText: _reviewHelp(linear: linear),
             linearHelpText: _reviewHelp(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
             resizeObserver: linear ? null : source.resizeObserver,
             intercept: linear
@@ -929,7 +951,18 @@ final class CronInput {
               'Matching preview: ${result.status.name}; zone ${config.zone}; qualified provider snapshot timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
             );
             for (final instant in result.instants) {
-              out.writeln(instant);
+              _structureSpine(
+                effectiveProfile,
+                structure: structure,
+                width: width,
+                background: colors.background,
+                border: colors.border,
+              ).write(
+                out,
+                instant.toString(),
+                foreground: colors.foreground,
+                closes: true,
+              );
             }
             if (!linear) {
               // Review state must never be implicit after a preview round: keep

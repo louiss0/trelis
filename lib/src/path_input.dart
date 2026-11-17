@@ -12,7 +12,10 @@ final class PathInput {
     this.allowNonexistent = false,
     this.target = PathTarget.any,
     this.colors = ColorThemes.terminalDefault,
-  }) {
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -30,6 +33,9 @@ final class PathInput {
   final bool allowNonexistent;
   final PathTarget target;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<String>> prompt({
@@ -112,7 +118,7 @@ final class PathInput {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 run(source, mode, outputProfile: outputProfile),
           );
@@ -199,28 +205,46 @@ final class PathInput {
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
     final linear = mode == PromptMode.linear;
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
       DisplayText.from(text).value,
-      width,
       foreground: foreground,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      closes: closes,
+      event: event,
     );
 
-    write(
-      '$label. Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
-      colors.foreground,
+    // The heading is the component's own label: the base path is a literal
+    // identifier, so it stays in a body row that keeps its spelling.
+    spine.opening(
+      out,
+      title: '$label.',
+      body:
+          'Base: $base. ${allowNonexistent ? 'Nonexistent targets permitted' : 'Existing target required'}; target type: ${target.name}.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
     );
     write(
       'Literal native path; no shell expansion. Returned paths do not guarantee later operations succeed.',
       colors.muted,
     );
-    write(
+    spine.hint(
+      out,
       linear
           ? r'Enter edits the path, then review and confirm. Exact /help and /cancel are commands; quote them with a backslash. Double a leading backslash: enter three for a UNC pair. Identified paste is literal. Escape cancels; Ctrl+C interrupts.'
           : 'Enter edits the path, then review and confirm. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
+      foreground: colors.muted,
     );
     final entryHelp = _pathEntryHelp(
       linear: linear,
@@ -242,6 +266,7 @@ final class PathInput {
           helpText: entryHelp,
           linearHelpText: entryHelp,
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
         );
         if (edit.action == 'cancel') return Cancelled();
@@ -254,12 +279,15 @@ final class PathInput {
           write(
             'Base: $base. Candidate: ${candidate ?? draft}. $error',
             colors.warning,
+            closes: true,
+            event: StageEvent.warning,
           );
           continue;
         }
         write(
           'Base: $base. Resolved candidate: $candidate. Enter to accept, or type edit to correct.',
           colors.accent,
+          closes: true,
         );
         final reviewHelp = _pathReviewHelp(
           linear: linear,
@@ -278,6 +306,7 @@ final class PathInput {
             helpText: reviewHelp,
             linearHelpText: reviewHelp,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (review.action == 'cancel') return Cancelled();
@@ -285,7 +314,12 @@ final class PathInput {
           if (review.action != 'submit') return InputEnded();
           if (review.value.isEmpty) return Accepted(candidate);
           if (review.value == 'edit') break;
-          write('Enter to accept, or type edit to correct.', colors.warning);
+          write(
+            'Enter to accept, or type edit to correct.',
+            colors.warning,
+            closes: true,
+            event: StageEvent.warning,
+          );
         }
       }
     } finally {

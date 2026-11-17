@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'color_theme.dart';
+import 'output_profile.dart';
+import 'prompt_structure.dart';
 import 'terminal_io.dart';
 import 'text_input.dart'
     show PromptMode, TerminalSession, TerminalSessionFeedbackRegion;
@@ -20,11 +23,20 @@ String _safe(String value) => value.runes.map((c) {
   return String.fromCharCode(c);
 }).join();
 
+OutputProfile _outputProfile({TerminalIo? terminal}) {
+  final t = terminal;
+  if (t is TerminalIoOutputProfile) {
+    final profile = (t as TerminalIoOutputProfile).outputProfile;
+    return profile;
+  }
+  return const OutputProfile(colorDepth: ColorDepth.rgb);
+}
+
 StringSink _selectedOutput({StringSink? output, TerminalIo? terminal}) {
   if (output != null && terminal != null) {
     throw ArgumentError('Specify either output or terminal, not both.');
   }
-  return output ?? terminal?.output ?? stderr;
+  return output ?? terminal?.output ?? stdout;
 }
 
 bool _supportsRich({
@@ -61,9 +73,16 @@ TerminalSessionFeedbackRegion _startInSession(
 
 /// Literal, feedback-only text.
 final class Text {
-  Text(this.content, {this.kind = TextKind.ordinary});
+  Text(
+    this.content, {
+    this.kind = TextKind.ordinary,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+  });
   final String content;
   final TextKind kind;
+  final ColorTheme colors;
+  final PromptStructure structure;
 
   void present({
     StringSink? output,
@@ -77,20 +96,64 @@ final class Text {
       TextKind.warning => 'Warning: ',
       TextKind.error => 'Error: ',
     };
-    final line = '$prefix${_safe(content)}';
+    final role = switch (kind) {
+      TextKind.ordinary => colors.foreground,
+      TextKind.hint => colors.muted,
+      TextKind.success => colors.success,
+      TextKind.warning => colors.warning,
+      TextKind.error => colors.error,
+    };
+    final background = colors.background;
+    final line = _structureFeedbackLine(
+      '$prefix${_safe(content)}',
+      structure: structure,
+      profile: _outputProfile(terminal: terminal),
+    );
+    final profile = _outputProfile(terminal: terminal);
+    final styled = terminalStyledText(
+      line,
+      foreground: role,
+      background: background,
+      depth: profile.colorDepth,
+    );
     if (session != null) {
       if (output != null || terminal != null) {
         throw ArgumentError(
           'Text attached to a session inherits its output; do not supply output or terminal.',
         );
       }
-      session.presentText(line);
+      session.presentText(styled);
       return;
     }
     final sink = _selectedOutput(output: output, terminal: terminal);
     TerminalSession.ensureStandaloneOutputAvailable(sink);
-    sink.writeln(line);
+    sink.writeln(styled);
   }
+}
+
+/// Applies the declared structure's event vocabulary to one feedback line.
+///
+/// Feedback owns its own lifecycle and cadence, so a structural theme only
+/// frames the line it already reports: the rail or branch prefix, or an
+/// enclosure's side marker, is added to the display text before styling, never
+/// to the semantic content, and a plain structure leaves the line
+/// byte-for-byte unchanged. An enclosure never draws a frame around a single
+/// feedback event; the compact marker keeps the structure recognisable without
+/// claiming the event is a task stage.
+String _structureFeedbackLine(
+  String line, {
+  required PromptStructure structure,
+  required OutputProfile? profile,
+}) {
+  final ascii =
+      profile == null ||
+      profile.glyphs == GlyphSet.ascii ||
+      profile.glyphs == GlyphSet.automatic;
+  if (usesStructureEnclosure(structure) || usesStructureHeading(structure)) {
+    return '${structureLivePrefix(structure, ascii: ascii)}$line';
+  }
+  if (!usesStructurePrefix(structure)) return line;
+  return frameStructureLines(structure, ascii: ascii, lines: [line]).single;
 }
 
 /// The operation's reported outcome; reaching a value never implies one.
@@ -143,6 +206,8 @@ final class Progress {
     this.interval = const Duration(seconds: 5),
     this.milestone = 10,
     FeedbackClock? clock,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : _total = total,
        _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative || milestone <= 0 || milestone > 100) {
@@ -154,12 +219,16 @@ final class Progress {
   final Duration interval;
   final int milestone;
   final FeedbackClock _clock;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  OutputProfile? _profile;
   Duration? _lastUpdate;
   FeedbackTimer? _timer;
   int _shownPercent = 0;
   int? _pending;
   String? _phase;
   int? _total;
+  int? get total => _total;
   int _value = 0;
   StringSink? _output;
   Object? _standaloneOwner;
@@ -190,8 +259,10 @@ final class Progress {
         supportsRich: supportsRich,
       );
       _rich = _sessionRegion!.rich;
+      _profile = const OutputProfile(colorDepth: ColorDepth.rgb);
     } else {
       final sink = _selectedOutput(output: output, terminal: terminal);
+      final profile = _outputProfile(terminal: terminal);
       final capable = _supportsRich(
         output: sink,
         declared: supportsRich,
@@ -208,6 +279,7 @@ final class Progress {
       _rich = capable && selected != PromptMode.linear;
       _output = sink;
       _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
+      _profile = profile;
     }
     _show();
   }
@@ -301,10 +373,24 @@ final class Progress {
 
   void _emit(String line, {bool finalLine = false}) {
     final region = _sessionRegion;
+    final framed = _structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    final foreground = finalLine && framed.contains(': failed')
+        ? colors.error
+        : colors.foreground;
+    final styled = terminalStyledText(
+      framed,
+      foreground: foreground,
+      background: colors.background,
+      depth: _profile?.colorDepth ?? ColorDepth.none,
+    );
     if (region != null) {
-      region.write(line);
+      region.write(styled);
     } else {
-      _output!.writeln(_rich ? '[status] $line' : line);
+      _output!.writeln(_rich ? '[status] $styled' : styled);
     }
   }
 
@@ -345,8 +431,15 @@ final class Progress {
 
 /// Feedback for activity whose total work is unknown.
 final class Spinner {
-  Spinner(this.label);
+  Spinner(
+    this.label, {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+  });
   final String label;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  OutputProfile? _profile;
   StringSink? _output;
   Object? _standaloneOwner;
   TerminalSessionFeedbackRegion? _sessionRegion;
@@ -377,8 +470,10 @@ final class Spinner {
         supportsRich: supportsRich,
       );
       _rich = _sessionRegion!.rich;
+      _profile = const OutputProfile(colorDepth: ColorDepth.rgb);
     } else {
       final sink = _selectedOutput(output: output, terminal: terminal);
+      final profile = _outputProfile(terminal: terminal);
       final capable = _supportsRich(
         output: sink,
         declared: supportsRich,
@@ -395,6 +490,7 @@ final class Spinner {
       _rich = capable && selected != PromptMode.linear;
       _output = sink;
       _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
+      _profile = profile;
     }
     _emit('${_safe(label)}: $_state');
   }
@@ -411,10 +507,24 @@ final class Spinner {
 
   void _emit(String line, {bool finalLine = false}) {
     final region = _sessionRegion;
+    final framed = _structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    final foreground = finalLine && framed.contains(': failed')
+        ? colors.error
+        : colors.foreground;
+    final styled = terminalStyledText(
+      framed,
+      foreground: foreground,
+      background: colors.background,
+      depth: _profile?.colorDepth ?? ColorDepth.none,
+    );
     if (region != null) {
-      region.write(line);
+      region.write(styled);
     } else {
-      _output!.writeln(_rich ? '[status] $line' : line);
+      _output!.writeln(_rich ? '[status] $styled' : styled);
     }
   }
 
@@ -470,6 +580,8 @@ final class MultiSpinner {
     Iterable<String> tasks, {
     this.interval = const Duration(seconds: 5),
     FeedbackClock? clock,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
     final displayNames = <String>{};
@@ -490,6 +602,9 @@ final class MultiSpinner {
   final Map<String, _GroupTask> _tasks = {};
   final Set<String> _pending = {};
   final FeedbackClock _clock;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  OutputProfile? _profile;
   Duration? _lastBatch;
   FeedbackTimer? _timer;
   StringSink? _output;
@@ -521,8 +636,10 @@ final class MultiSpinner {
         supportsRich: supportsRich,
       );
       _rich = _sessionRegion!.rich;
+      _profile = const OutputProfile(colorDepth: ColorDepth.rgb);
     } else {
       final sink = _selectedOutput(output: output, terminal: terminal);
+      final profile = _outputProfile(terminal: terminal);
       final capable = _supportsRich(
         output: sink,
         declared: supportsRich,
@@ -539,6 +656,7 @@ final class MultiSpinner {
       _rich = capable && selected != PromptMode.linear;
       _output = sink;
       _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
+      _profile = profile;
     }
     for (final entry in _tasks.entries) {
       _emit('${_safe(entry.key)}: ${entry.value.description}');
@@ -620,10 +738,24 @@ final class MultiSpinner {
 
   void _emit(String line) {
     final region = _sessionRegion;
+    final framed = _structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    final foreground = framed.contains(': failed')
+        ? colors.error
+        : (framed.contains(': completed') ? colors.success : colors.foreground);
+    final styled = terminalStyledText(
+      framed,
+      foreground: foreground,
+      background: colors.background,
+      depth: _profile?.colorDepth ?? ColorDepth.none,
+    );
     if (region != null) {
-      region.write(line);
+      region.write(styled);
     } else {
-      _output!.writeln(_rich ? '[status] $line' : line);
+      _output!.writeln(_rich ? '[status] $styled' : styled);
     }
   }
 

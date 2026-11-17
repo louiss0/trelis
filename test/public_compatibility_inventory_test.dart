@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 /// Compile- and source-level checks of the public compatibility inventory.
@@ -293,7 +293,7 @@ List<Object> _feedback() => [
 void main() {
   group('public authoring surface', () {
     test('the barrel exports only the documented implementation libraries', () {
-      final exports = File('lib/prompty.dart')
+      final exports = File('lib/trelis.dart')
           .readAsLinesSync()
           .map((line) => line.trim())
           .where((line) => line.startsWith('export '))
@@ -306,12 +306,30 @@ void main() {
           "export 'src/feedback.dart';",
           "export 'src/output_profile.dart';",
           "export 'src/color_theme.dart';",
+          "export 'src/prompt_structure.dart';",
           "export 'src/terminal_io.dart';",
+          "export 'src/themes/plain_theme.dart';",
+          "export 'src/themes/rail_theme.dart';",
+          "export 'src/themes/branch_theme.dart';",
+          "export 'src/themes/box_theme.dart';",
+          "export 'src/themes/round_theme.dart';",
+          "export 'src/themes/double_theme.dart';",
+          "export 'src/themes/minimal_theme.dart';",
+          "export 'src/themes/ascii_theme.dart';",
+          "export 'src/themes/chevron_theme.dart';",
+          "export 'src/themes/bracket_theme.dart';",
+          "export 'src/themes/form_theme.dart';",
+          "export 'src/themes/ledger_theme.dart';",
+          "export 'src/themes/colon_theme.dart';",
+          "export 'src/themes/line_theme.dart';",
+          "export 'src/themes/block_theme.dart';",
         ],
         reason:
             'The presentation projection, layout and compositor stay internal: '
             'they are observed through the public transcript, not authored by '
-            'library consumers. Adding an export here is a public API decision.',
+            'library consumers. The structural vocabulary enum and theme '
+            'factory namespaces are public authoring surface and are exported '
+            'alongside the component libraries.',
       );
     });
   });

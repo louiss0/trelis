@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:characters/characters.dart';
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 final _richProfile = OutputProfile(

@@ -2,8 +2,15 @@ part of 'text_input.dart';
 
 /// Absolute URLs using explicitly permitted web schemes.
 final class URLInput {
-  URLInput(this.label, {required Set<String> allowedSchemes})
-    : allowedSchemes = Set.unmodifiable(allowedSchemes) {
+  URLInput(
+    this.label, {
+    required Set<String> allowedSchemes,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : allowedSchemes = Set.unmodifiable(allowedSchemes),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -14,6 +21,10 @@ final class URLInput {
   }
   final String label;
   final Set<String> allowedSchemes;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String? _validate(String value) {
@@ -141,7 +152,7 @@ final class URLInput {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -180,10 +191,33 @@ final class URLInput {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedText(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
-      '$label. Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
-      width,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: (
+        title: '$label.',
+        guidance: 'Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+      ),
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = '';
@@ -201,6 +235,7 @@ final class URLInput {
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -220,13 +255,16 @@ final class URLInput {
           if (!authority.startsWith('[')) {
             final host = authority.split(':').first;
             const idna = Uts46();
-            out.writeln(
+            write(
               'Host interpretation -- Unicode: ${idna.toUnicode(host)}; ASCII: ${idna.toAscii(host)}.',
+              colors.success,
+              closes: true,
+              event: StageEvent.state,
             );
           }
           return Accepted(value);
         }
-        out.writeln(error);
+        write(error, colors.error, closes: true, event: StageEvent.warning);
       }
     } finally {
       if (keys == null) await inputKeys.close();
@@ -252,6 +290,7 @@ final class EmailInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (initialValue.isNotEmpty && _validate(initialValue) != null) {
       throw ArgumentError('Invalid initial email address.');
@@ -267,12 +306,14 @@ final class EmailInput {
         ...supplementaryHelp,
       ],
       colors: colors,
+      structure: structure,
     );
   }
   final bool smtpUtf8;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   late final TextInput _input;
 
   String? _validate(String value) {
@@ -366,12 +407,36 @@ final class EmailInput {
           ? source.output
           : session != null
           ? _SessionOutputSink(session)
-          : output ?? terminal?.output ?? stderr;
+          : output ?? terminal?.output ?? stdout;
+      // The domain interpretation is component-owned content, so a heading
+      // structure writes it as one of its body rows. Every other structure
+      // keeps the exact raw row it already wrote.
+      void writeInterpretation(String text) {
+        if (!usesStructureHeading(structure)) {
+          sink.writeln(text);
+          return;
+        }
+        final profile = source is ScriptedInput ? source.outputProfile : null;
+        _structureSpine(
+          profile,
+          structure: structure,
+          width: profile == null ? null : _textInputWidth(profile),
+          background: colors.background,
+          border: colors.border,
+        ).write(
+          sink,
+          text,
+          foreground: colors.muted,
+          compact: true,
+          event: StageEvent.state,
+        );
+      }
+
       if (domain.startsWith('[')) {
-        sink.writeln('Transport address literal: $domain.');
+        writeInterpretation('Transport address literal: $domain.');
       } else {
         const idna = Uts46();
-        sink.writeln(
+        writeInterpretation(
           'Domain interpretation -- Unicode: ${idna.toUnicode(domain)}; ASCII: ${idna.toAscii(domain)}.',
         );
       }

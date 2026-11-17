@@ -419,7 +419,7 @@ static DurationInput durationInput(
 ```dart
 static DateInput dateInput(
   String label, {
-  DateOrder? order,
+  DateFieldOrder? order,
   DateCalendar? calendar,
   DateDigits? digits,
   String? initialValue,

@@ -1,4 +1,4 @@
-import 'package:prompty/src/presentation.dart';
+import 'package:trelis/src/presentation.dart';
 import 'package:test/test.dart';
 
 void main() {

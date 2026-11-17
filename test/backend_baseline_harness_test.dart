@@ -1,4 +1,4 @@
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 import 'support/backend_baseline_fixture.dart';

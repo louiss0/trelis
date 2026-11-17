@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 /// Prose help wraps inside the declared width, so phrases are compared without

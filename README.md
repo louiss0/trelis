@@ -1,4 +1,4 @@
-# Prompty
+# Trelis
 
 A Dart prompting-library project, currently at the design-to-implementation
 stage. TextInput is the first public prompt component; other component APIs
@@ -7,7 +7,7 @@ are not implemented yet.
 ## TextInput
 
 ```dart
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 final result = await TextInput(
   'Name',
@@ -29,7 +29,7 @@ switch (result) {
 Construction does not acquire the terminal. Each invocation starts a new
 session; overlapping sessions on the same prompt or console are rejected.
 Interactive console input currently requires Windows. Prompt output defaults to
-stderr; pass `output: stdout` to select stdout. Redirected output is sequential,
+stdout; pass `output: stderr` to select stderr explicitly. Redirected output is sequential,
 without cursor addressing. On a cursor-capable terminal, TextInput keeps the active answer on one
 editable line with the visible cursor at its editing position; instructions and
 completed exchanges remain in the transcript. Long answers scroll horizontally;
@@ -132,7 +132,7 @@ dart test
 Windows native console regressions can also be run with the PowerShell scripts
 in `test/`, including `text_input_windows.ps1`.
 
-`dart run example/prompty_example.dart` runs a short interactive flow across
+`dart run example/trelis_example.dart` runs a short interactive flow across
 several components; add `--scripted` to replay it from a fixed stream without a
 terminal, or `--linear` to force sequential interaction.
 
@@ -741,7 +741,7 @@ limit. The `/help` command is cleared instead of being run as an action.
 started with `start()`, updated by the application, and finalized with
 `finish(FeedbackOutcome.completed)` or another explicit outcome. A null total
 is indeterminate; `setTotal` reports recalculation. `dispose()` releases the
-presentation without asserting success. Feedback defaults to stderr and never
+presentation without asserting success. Feedback defaults to stdout and never
 reads input or controls the operation. Linear progress defaults to ten-percent
 milestones and a five-second intermediate interval; both are configurable.
 Static rich output is available with `PromptMode.rich` on capable outputs;
@@ -912,7 +912,7 @@ stable display order, then start presentation explicitly:
 
 ```dart
 final jobs = MultiSpinner(['build', 'tests']);
-jobs.start(); // stderr by default
+jobs.start(); // stdout by default
 jobs.update('build', TaskActivity.running, phase: 'compiling');
 jobs.finishTask('tests', FeedbackOutcome.failed, detail: 'assertion failed');
 jobs.finishTask('build', FeedbackOutcome.completed);

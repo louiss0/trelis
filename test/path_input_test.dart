@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 void main() {

@@ -47,7 +47,11 @@ final class TreeSelect<T> {
     this.isCurrent,
     this.defaultValue,
     this.colors = ColorThemes.terminalDefault,
-  }) : nodes = List.unmodifiable(nodes) {
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : nodes = List.unmodifiable(nodes),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -70,6 +74,9 @@ final class TreeSelect<T> {
   final List<TreeNode<T>> nodes;
   final T? defaultValue;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
 
   /// Optional currentness check for nodes that can disappear during a prompt.
   final bool Function(T value)? isCurrent;
@@ -138,7 +145,7 @@ final class TreeSelect<T> {
           }
           return await _terminal<T>(
             selectedMode,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -276,17 +283,39 @@ final class TreeSelect<T> {
 
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      _textInputWidth(effectiveProfile),
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
       background: colors.background,
-      outputProfile: effectiveProfile,
+      border: colors.border,
+      rich: mode == PromptMode.rich,
     );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.write(
+        out,
+        DisplayText.from(text).value,
+        foreground: foreground,
+        closes: closes,
+        event: event,
+      );
+    }
 
     int referenceOf((TreeNode<T>, List<TreeNode<T>>) row) =>
         all.indexOf(row) + 1;
+
+    // The compact hint ends the stage. An enclosure writes it outside the
+    // closed frame; a rail or branch keeps the order it always had and writes
+    // it before the list.
+    final hint = mode == PromptMode.linear
+        ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
+        : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
 
     /// One typed tree row: the stable reference, the full path, focus, the
     /// displayed default, the expansion state, selectability and staleness stay
@@ -314,13 +343,22 @@ final class TreeSelect<T> {
     }
 
     void show() {
+      spine.reset(out);
       session?._setPromptGeometry(effectiveProfile.geometry);
-      write('$label TreeSelect:', colors.foreground);
-      if (all.isEmpty) write('No nodes available.', colors.warning);
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.heading(
+        out,
+        DisplayText.from('$label TreeSelect:').value,
+        foreground: colors.foreground,
+      );
+      if (all.isEmpty) {
+        write('No nodes available.', colors.warning, event: StageEvent.warning);
+      }
       if (mode == PromptMode.linear) {
         write(
           'Path: ${current.isEmpty ? 'root' : path(current)}',
           colors.muted,
+          event: StageEvent.state,
         );
         if (defaultValue != null) {
           final row = all.firstWhere((r) => r.$1.value == defaultValue);
@@ -330,6 +368,7 @@ final class TreeSelect<T> {
             '${row.$1.disabledReason == null ? '' : ' [unavailable: ${row.$1.disabledReason}]'}'
             '${currentPath(row.$2) ? '' : ' [unavailable: no longer available]'}',
             colors.muted,
+            event: StageEvent.state,
           );
         }
       }
@@ -342,6 +381,7 @@ final class TreeSelect<T> {
                           identical(r.$2[current.length - 1], current.last))),
             )
           : visible();
+      if (rows.isNotEmpty) spine.breathingRow(out);
       for (final row in rows) {
         _writeChoiceRow(
           out,
@@ -352,16 +392,21 @@ final class TreeSelect<T> {
               : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          spine: spine,
         );
+      }
+      if (spine.encloses || spine.heads) {
+        // An enclosure keeps the compact hint outside the closed frame on every
+        // repaint, and a heading structure keeps it under the body rows, so a
+        // navigation never leaves the stage without its declared hint.
+        spine.hint(out, hint, foreground: colors.muted);
       }
     }
 
-    write(
-      mode == PromptMode.linear
-          ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
-          : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
-    );
+    // A rail or branch opens its stage with the compact hint, exactly as it did
+    // before enclosures existed; an enclosure or a heading structure writes it
+    // after its own content.
+    if (!spine.encloses && !spine.heads) write(hint, colors.muted);
     show();
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
@@ -378,6 +423,7 @@ final class TreeSelect<T> {
             extraCommands: const {'/open', '/up', '/choose'},
             linearHelpText: helpText(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           // A nested editor clears the session repaint registration on exit, so
@@ -389,14 +435,22 @@ final class TreeSelect<T> {
             return InputEnded();
           }
           if (action.action != 'command') {
-            write('Use /open, /up or /choose.', colors.warning);
+            write(
+              'Use /open, /up or /choose.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (action.value == '/up') {
             if (current.isNotEmpty) {
               current = current.sublist(0, current.length - 1);
             } else {
-              write('Already at root.', colors.warning);
+              write(
+                'Already at root.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
             }
             show();
             continue;
@@ -414,43 +468,65 @@ final class TreeSelect<T> {
               stage: _TreeHelpStage.reference,
             ),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           session?._setPromptRepaint(show);
           if (reference.action == 'cancel') return Cancelled();
           if (reference.action == 'interrupt') return Interrupted();
           if (reference.action == 'command') {
-            write('Enter a node reference.', colors.warning);
+            write(
+              'Enter a node reference.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (reference.action != 'submit') return InputEnded();
           final n = int.tryParse(reference.value);
           if (n == null || n < 1 || n > all.length) {
-            write('Enter a valid node reference.', colors.warning);
+            write(
+              'Enter a valid node reference.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final row = all[n - 1];
           final node = row.$1;
           if (!currentPath(row.$2)) {
-            write('Node is no longer available.', colors.warning);
+            write(
+              'Node is no longer available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (action.value == '/open') {
             if (row.$2.length != current.length + 1 ||
                 (current.isNotEmpty &&
                     !identical(row.$2[current.length - 1], current.last))) {
-              write('Open a node in the current path.', colors.warning);
+              write(
+                'Open a node in the current path.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             if (node.childrenUnavailableReason != null) {
               write(
                 'Children unavailable: ${node.childrenUnavailableReason}.',
                 colors.warning,
+                event: StageEvent.warning,
               );
               continue;
             }
             if (node.children.isEmpty) {
-              write('Node has no children.', colors.warning);
+              write(
+                'Node has no children.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             expanded.add(node.value);
@@ -459,14 +535,26 @@ final class TreeSelect<T> {
             continue;
           }
           if (!node.canSelect) {
-            write('Node is not selectable.', colors.warning);
+            write(
+              'Node is not selectable.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (node.disabledReason != null) {
-            write('Unavailable: ${node.disabledReason}.', colors.warning);
+            write(
+              'Unavailable: ${node.disabledReason}.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
-          write('Accepted: ${path(row.$2)}.', colors.success);
+          write(
+            'Accepted: ${path(row.$2)}.',
+            colors.success,
+            event: StageEvent.result,
+          );
           return Accepted(node.value);
         }
       }
@@ -510,13 +598,18 @@ final class TreeSelect<T> {
           focus = rows[index + 1].$1;
         }
         if (key == '\x1b[C' && index >= 0 && !currentPath(rows[index].$2)) {
-          write('Node is no longer available.', colors.warning);
+          write(
+            'Node is no longer available.',
+            colors.warning,
+            event: StageEvent.warning,
+          );
           continue;
         }
         if (key == '\x1b[C' && focus?.childrenUnavailableReason != null) {
           write(
             'Children unavailable: ${focus!.childrenUnavailableReason}.',
             colors.warning,
+            event: StageEvent.warning,
           );
         }
         if (key == '\x1b[C' && focus != null && focus.children.isNotEmpty) {
@@ -531,24 +624,41 @@ final class TreeSelect<T> {
         }
         if (key == '\r' || key == '\n') {
           if (focus == null) {
-            write('No node available.', colors.warning);
+            write(
+              'No node available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (index < 0 || !currentPath(rows[index].$2)) {
-            write('Node is no longer available.', colors.warning);
+            write(
+              'Node is no longer available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (!focus.canSelect) {
-            write('Node is not selectable.', colors.warning);
+            write(
+              'Node is not selectable.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (focus.disabledReason != null) {
-            write('Unavailable: ${focus.disabledReason}.', colors.warning);
+            write(
+              'Unavailable: ${focus.disabledReason}.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           write(
             'Accepted: ${path(all.firstWhere((r) => identical(r.$1, focus)).$2)}.',
             colors.success,
+            event: StageEvent.result,
           );
           return Accepted(focus.value);
         }
@@ -568,7 +678,11 @@ final class SortableSelect<T> {
     this.label,
     List<Choice<T>> choices, {
     this.colors = ColorThemes.terminalDefault,
-  }) : choices = List.unmodifiable(choices) {
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : choices = List.unmodifiable(choices),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -581,6 +695,9 @@ final class SortableSelect<T> {
 
   /// The component palette for order rows, guidance and notices.
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<List<T>>> prompt({
@@ -646,7 +763,7 @@ final class SortableSelect<T> {
           }
           return await _terminal<List<T>>(
             selectedMode,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -716,18 +833,36 @@ final class SortableSelect<T> {
     final out = scripted.output;
     // Guidance and rows follow the current output geometry, so a resize repaint
     // wraps to the observed width instead of the invocation width.
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
-      out,
-      DisplayText.from(text).value,
-      _textInputWidth(effectiveProfile),
-      foreground: foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
       background: colors.background,
-      outputProfile: effectiveProfile,
+      border: colors.border,
+      rich: mode == PromptMode.rich,
     );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.write(
+        out,
+        DisplayText.from(text).value,
+        foreground: foreground,
+        closes: closes,
+        event: event,
+      );
+    }
 
     var focus = 0;
     var moving = false;
     List<int>? moveStart;
+    final hint = mode == PromptMode.rich
+        ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
+        : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
 
     /// One typed order row: the stable reference, the current position, focus,
     /// the locked-anchor reason and a pick-up state stay separate facts, and
@@ -751,17 +886,29 @@ final class SortableSelect<T> {
         foreground: focused ? colors.accent : colors.foreground,
         colors: colors,
         profile: effectiveProfile,
+        spine: spine,
       );
     }
 
     void show() {
+      spine.reset(out);
       session?._setPromptGeometry(effectiveProfile.geometry);
-      write(
-        '$label SortableSelect: ${order.length} choices.',
-        colors.foreground,
+      spine.width = _textInputWidth(effectiveProfile);
+      spine.heading(
+        out,
+        DisplayText.from('$label SortableSelect: ${order.length} choices.')
+            .value,
+        foreground: colors.foreground,
       );
+      if (order.isNotEmpty) spine.breathingRow(out);
       for (var p = 0; p < order.length; p++) {
         writeRow(p);
+      }
+      if (spine.encloses || spine.heads) {
+        // An enclosure keeps the compact hint outside the closed frame on every
+        // repaint, and a heading structure keeps it under the body rows, so a
+        // move never leaves the stage without its declared hint.
+        spine.hint(out, hint, foreground: colors.muted);
       }
     }
 
@@ -770,6 +917,7 @@ final class SortableSelect<T> {
         write(
           'Locked: ${choices[order[from]].disabledReason}.',
           colors.warning,
+          event: StageEvent.warning,
         );
         return false;
       }
@@ -778,7 +926,11 @@ final class SortableSelect<T> {
       if (order
           .sublist(low, high + 1)
           .any((i) => choices[i].disabledReason != null)) {
-        write('Cannot cross a locked anchor.', colors.warning);
+        write(
+          'Cannot cross a locked anchor.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return false;
       }
       final item = order.removeAt(from);
@@ -786,6 +938,7 @@ final class SortableSelect<T> {
       write(
         '${choices[item].label} moved to position ${to + 1} of ${order.length}.',
         colors.success,
+        event: StageEvent.result,
       );
       return true;
     }
@@ -831,12 +984,12 @@ final class SortableSelect<T> {
     }
 
     show();
-    write(
-      mode == PromptMode.rich
-          ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
-          : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      colors.muted,
-    );
+    if (!spine.encloses && !spine.heads) {
+      // A rail or branch reports its compact hint below the list, exactly as it
+      // did before enclosures existed; an enclosure or a heading structure
+      // writes it after its own content.
+      write(hint, colors.muted);
+    }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
     void Function() stopResize = () {};
@@ -862,6 +1015,7 @@ final class SortableSelect<T> {
               },
             ),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           // A nested editor clears the session repaint registration on exit, so
@@ -872,7 +1026,11 @@ final class SortableSelect<T> {
           if (r.action == 'command') {
             entry = '';
             if (r.value == '/done') {
-              write('Accepted order.', colors.success);
+              write(
+                'Accepted order.',
+                colors.success,
+                event: StageEvent.result,
+              );
               return Accepted(answer());
             }
             if (r.value == '/move') {
@@ -886,12 +1044,20 @@ final class SortableSelect<T> {
           final n = int.tryParse(entry);
           if (stage == 1) {
             if (n == null || n < 1 || n > choices.length) {
-              write('Enter a valid choice reference.', colors.warning);
+              write(
+                'Enter a valid choice reference.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             ref = n - 1;
             if (choices[ref].disabledReason != null) {
-              write('Locked: ${choices[ref].disabledReason}.', colors.warning);
+              write(
+                'Locked: ${choices[ref].disabledReason}.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             stage = 2;
@@ -902,7 +1068,11 @@ final class SortableSelect<T> {
             );
           } else if (stage == 2) {
             if (n == null || n < 1 || n > order.length) {
-              write('Enter a valid destination position.', colors.warning);
+              write(
+                'Enter a valid destination position.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             move(order.indexOf(ref!), n - 1);
@@ -910,7 +1080,11 @@ final class SortableSelect<T> {
             entry = '';
             show();
           } else {
-            write('Use /move or /done.', colors.warning);
+            write(
+              'Use /move or /done.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
           }
         }
       }
@@ -970,6 +1144,7 @@ final class SortableSelect<T> {
             write(
               'Locked: ${choices[order[focus]].disabledReason}.',
               colors.warning,
+              event: StageEvent.warning,
             );
           } else {
             moving = true;
@@ -983,7 +1158,7 @@ final class SortableSelect<T> {
             write('Dropped.', colors.muted);
             show();
           } else {
-            write('Accepted order.', colors.success);
+            write('Accepted order.', colors.success, event: StageEvent.result);
             return Accepted(answer());
           }
         }

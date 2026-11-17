@@ -2,11 +2,28 @@ part of 'text_input.dart';
 
 /// Selects an existing file without opening or changing it.
 final class FilePicker {
-  FilePicker(this.label, {this.base, this.colors = ColorThemes.terminalDefault})
-    : _picker = _FilesystemPicker(label, base, PathTarget.file, colors);
+  FilePicker(
+    this.label, {
+    this.base,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+  }) : _picker = _FilesystemPicker(
+         label,
+         base,
+         PathTarget.file,
+         colors,
+         structure,
+         instructions,
+         supplementaryHelp,
+       );
   final String label;
   final String? base;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
@@ -36,10 +53,24 @@ final class DirectoryPicker {
     this.label, {
     this.base,
     this.colors = ColorThemes.terminalDefault,
-  }) : _picker = _FilesystemPicker(label, base, PathTarget.directory, colors);
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+  }) : _picker = _FilesystemPicker(
+         label,
+         base,
+         PathTarget.directory,
+         colors,
+         structure,
+         instructions,
+         supplementaryHelp,
+       );
   final String label;
   final String? base;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   final _FilesystemPicker _picker;
 
   Future<PromptResult<String>> prompt({
@@ -91,11 +122,22 @@ final class _PickerEntry {
 }
 
 final class _FilesystemPicker {
-  _FilesystemPicker(this.label, this.base, this.target, this.colors);
+  _FilesystemPicker(
+    this.label,
+    this.base,
+    this.target,
+    this.colors,
+    this.structure,
+    this.instructions,
+    this.supplementaryHelp,
+  );
   final String label;
   final String? base;
   final PathTarget target;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String get _component =>
@@ -119,6 +161,9 @@ final class _FilesystemPicker {
         base: base,
         target: target,
         colors: colors,
+        structure: structure,
+        instructions: instructions,
+        supplementaryHelp: supplementaryHelp,
       );
       Future<PromptResult<String>> run(
         PromptSource source,
@@ -187,7 +232,7 @@ final class _FilesystemPicker {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 run(source, mode, outputProfile: outputProfile),
           );
@@ -224,13 +269,25 @@ final class _FilesystemPicker {
     final linear = mode == PromptMode.linear;
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+      rich: mode == PromptMode.rich,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
       DisplayText.from(text).value,
-      width,
       foreground: foreground,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      closes: closes,
+      event: event,
     );
 
     var current = base ?? Directory.current.path;
@@ -238,9 +295,14 @@ final class _FilesystemPicker {
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
       while (true) {
-        write(
-          '$label. Current directory: $current. Existing ${target.name} required.',
-          colors.foreground,
+        spine.reset(out);
+        spine.opening(
+          out,
+          title: '$label.',
+          body:
+              'Current directory: $current. Existing ${target.name} required.',
+          foreground: colors.foreground,
+          bodyForeground: colors.foreground,
         );
         write(
           'Open N opens a directory; Choose N chooses an entry${target == PathTarget.directory ? '; Choose selects the current directory' : ''}. Path enters a literal path. Parent, Refresh, Hidden toggle are available.',
@@ -249,6 +311,8 @@ final class _FilesystemPicker {
         write(
           'Hidden entries: ${showHidden ? 'shown' : 'hidden'}. Links require explicit per-open approval. The base is not a sandbox.',
           colors.warning,
+          closes: true,
+          event: StageEvent.warning,
         );
         final entries = <_PickerEntry>[];
         try {
@@ -289,6 +353,7 @@ final class _FilesystemPicker {
           write(
             'Cannot list $current: ${error.message}. Context retained; use Parent, Path or Refresh.',
             colors.warning,
+            event: StageEvent.warning,
           );
         }
         final browseHelp = _browseHelp(
@@ -309,6 +374,7 @@ final class _FilesystemPicker {
           helpText: browseHelp,
           linearHelpText: browseHelp,
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
         );
         if (action.action == 'cancel') return Cancelled();
@@ -342,11 +408,19 @@ final class _FilesystemPicker {
               if (result != null) return result;
               continue;
             }
-            write('An entry reference is required.', colors.warning);
+            write(
+              'An entry reference is required.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           if (reference < 1 || reference > entries.length) {
-            write('Invalid entry reference; listing retained.', colors.warning);
+            write(
+              'Invalid entry reference; listing retained.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final entry = entries[reference - 1];
@@ -354,6 +428,7 @@ final class _FilesystemPicker {
             write(
               'Entry reference $reference is stale; refreshing instead of targeting a replacement.',
               colors.warning,
+              event: StageEvent.warning,
             );
             continue;
           }
@@ -363,11 +438,16 @@ final class _FilesystemPicker {
               write(
                 'Cannot open linked directory ${entry.path} without explicit opt-in; use open $reference links.',
                 colors.warning,
+                event: StageEvent.warning,
               );
               continue;
             }
             if (!linked && match[3] != null) {
-              write('Link approval only applies to links.', colors.warning);
+              write(
+                'Link approval only applies to links.',
+                colors.warning,
+                event: StageEvent.warning,
+              );
               continue;
             }
             if (await FileSystemEntity.type(entry.path) !=
@@ -375,6 +455,7 @@ final class _FilesystemPicker {
               write(
                 'Cannot open ${entry.path}: not an accessible directory.',
                 colors.warning,
+                event: StageEvent.warning,
               );
               continue;
             }
@@ -387,6 +468,7 @@ final class _FilesystemPicker {
                   write(
                     'Cannot open ${entry.path}: linked-directory cycle to $resolved; current directory retained.',
                     colors.warning,
+                    event: StageEvent.warning,
                   );
                   break;
                 }
@@ -407,6 +489,7 @@ final class _FilesystemPicker {
               write(
                 'Cannot resolve linked directory ${entry.path}: ${error.message}; current directory retained.',
                 colors.warning,
+                event: StageEvent.warning,
               );
             }
             continue;
@@ -418,6 +501,7 @@ final class _FilesystemPicker {
             write(
               'Cannot choose ${entry.path}: target must be a ${target.name}.',
               colors.warning,
+              event: StageEvent.warning,
             );
             continue;
           }
@@ -451,6 +535,7 @@ final class _FilesystemPicker {
             helpText: pathHelp,
             linearHelpText: pathHelp,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (entry.action == 'cancel') return Cancelled();
@@ -459,7 +544,12 @@ final class _FilesystemPicker {
           final candidate = input._candidate(entry.value, current);
           final error = await input._error(candidate);
           if (error != null) {
-            write('Cannot choose $candidate: $error', colors.warning);
+            write(
+              'Cannot choose $candidate: $error',
+              colors.warning,
+              closes: true,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final result = await _review(
@@ -474,7 +564,12 @@ final class _FilesystemPicker {
           if (result != null) return result;
           continue;
         }
-        write('Unknown action; listing and context retained.', colors.warning);
+        write(
+          'Unknown action; listing and context retained.',
+          colors.warning,
+          closes: true,
+          event: StageEvent.warning,
+        );
       }
     } finally {
       if (keys == null) await inputKeys.close();
@@ -492,14 +587,19 @@ final class _FilesystemPicker {
   }) async {
     final linear = mode == PromptMode.linear;
     final error = await input._error(candidate);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+      border: colors.border,
+    );
     if (error != null) {
-      _writeWrappedColorText(
+      spine.write(
         scripted.output,
         DisplayText.from('Cannot choose $candidate: $error').value,
-        _textInputWidth(effectiveProfile),
         foreground: colors.warning,
-        background: colors.background,
-        outputProfile: effectiveProfile,
+        closes: true,
       );
       return null;
     }
@@ -511,13 +611,11 @@ final class _FilesystemPicker {
     );
     final reviewMessage =
         'Choose $candidate. Enter to accept, or type edit to return.';
-    _writeWrappedColorText(
+    spine.write(
       scripted.output,
       DisplayText.from(reviewMessage).value,
-      _textInputWidth(effectiveProfile),
       foreground: colors.accent,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      closes: true,
     );
     final review = await _edit(
       keys,
@@ -529,6 +627,7 @@ final class _FilesystemPicker {
       helpText: reviewHelp,
       linearHelpText: reviewHelp,
       outputProfile: effectiveProfile,
+      structure: structure,
       session: session,
     );
     if (review.action == 'cancel') return Cancelled();
@@ -537,19 +636,13 @@ final class _FilesystemPicker {
     if (review.value.isNotEmpty) return null;
     final finalError = await input._error(candidate);
     if (finalError == null) return Accepted(candidate);
-    final wrappedError = StringBuffer();
-    _writeWrappedText(
-      wrappedError,
+    spine.write(
+      scripted.output,
       DisplayText.from('Cannot choose $candidate: $finalError').value,
-      _textInputWidth(effectiveProfile),
+      foreground: colors.warning,
+      closes: true,
+      event: StageEvent.warning,
     );
-    for (final line in wrappedError.toString().split('\n')) {
-      if (line.isNotEmpty) {
-        scripted.output.writeln(
-          _colorText(line, colors.warning, colors.background, effectiveProfile),
-        );
-      }
-    }
     return null;
   }
 }

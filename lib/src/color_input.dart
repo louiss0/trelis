@@ -29,7 +29,9 @@ final class ColorInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
-  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
+    this.structure = PromptStructure.plain,
+  }) : initialValue = initialValue,
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -39,7 +41,7 @@ final class ColorInput {
     _input = TextInput._(
       '$label (CSS sRGB color: hex, RGB, HSL, or static name).',
       required: required,
-      initialValue: initialValue,
+      initialValue: this.initialValue,
       onChanged: _showPreview,
       validate: (value) =>
           value.isEmpty && !required || _parseColor(value) != null ? null : 'Enter a valid sRGB color: hex, static name, or literal RGB/HSL. RGB channels must be 0-255 or 0-100%; HSL saturation and lightness 0-100%; alpha 0-1 or 0-100%. Use at most 12 digits per number; expressions and other color spaces are not supported.',
@@ -49,35 +51,63 @@ final class ColorInput {
         ...supplementaryHelp,
       ],
       colors: colors,
+      structure: structure,
     );
   }
   final bool required;
+  final String initialValue;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   late final TextInput _input;
   StringSink? _sink;
+  OutputProfile? _previewProfile;
   bool _active = false;
 
+  /// Presents one preview of the current draft.
+  ///
+  /// A preview is a state change rather than a stage, so it is written as the
+  /// stage's compact event block instead of a new enclosure: a keystroke must
+  /// not repaint a frame. The frame's own width comes from the output profile
+  /// the prompt actually runs under, so the wrapped preview never claims more
+  /// columns than the terminal offers.
   void _showPreview(String text) {
     final value = _parseColor(text);
     final sink = _sink;
     if (sink == null) return;
+    final previewProfile = _previewProfile;
+    final preview = _structureSpine(
+      previewProfile,
+      structure: structure,
+      width: previewProfile == null ? null : _textInputWidth(previewProfile),
+      background: colors.background,
+      border: colors.border,
+    );
     if (value == null) {
-      sink.writeln(
+      preview.hint(
+        sink,
         text.isEmpty
             ? 'Preview unavailable: no color entered.'
             : 'Preview unavailable: draft is not a valid color.',
+        foreground: colors.warning,
       );
       return;
     }
     String byte(double v) =>
         (v * 255).round().toRadixString(16).padLeft(2, '0');
-    sink.writeln(
+    preview.write(
+      sink,
       'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
+      foreground: colors.foreground,
+      compact: true,
     );
-    sink.writeln(
+    preview.write(
+      sink,
       'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
+      foreground: colors.foreground,
+      compact: true,
+      closes: true,
     );
   }
 
@@ -98,8 +128,11 @@ final class ColorInput {
         : source == null
         ? (session != null
               ? _SessionOutputSink(session)
-              : output ?? terminal?.output ?? stderr)
+              : output ?? terminal?.output ?? stdout)
         : null;
+    _previewProfile = source is ScriptedInput
+        ? _effectiveOutputProfile(source, outputProfile)
+        : outputProfile;
     try {
       final result = await _input.prompt(
         source: source,

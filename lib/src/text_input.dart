@@ -15,6 +15,7 @@ import 'output_profile.dart';
 import 'color_theme.dart';
 import 'native_resize.dart';
 import 'presentation.dart';
+import 'prompt_structure.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
 import 'uts46.dart';
@@ -284,22 +285,58 @@ enum PromptMode { rich, linear, automatic }
 /// value.
 enum InstructionDisplay { themeDefault, compact, expanded, hidden }
 
-/// Applies an instruction display policy to a component's opening guidance.
+/// Applies an instruction display policy to a labelled introduction.
 ///
-/// [InstructionDisplay.hidden] keeps only the component's label and its actual
-/// help route: hidden guidance must not hide help access. [themeDefault] keeps
-/// the reference presentation's expanded guidance until a structure supplies a
-/// component/stage default.
-String _instructionIntro(
+/// The parts keep the label and its guidance separable so an enclosure can put
+/// the label inside the frame and the guidance outside it without re-deriving
+/// either from the joined reference string.
+({String title, String guidance}) _instructionIntroParts(
   InstructionDisplay policy, {
-  required String hidden,
-  required String compact,
-  required String expanded,
+  required ({String title, String guidance}) hidden,
+  required ({String title, String guidance}) compact,
+  required ({String title, String guidance}) expanded,
 }) => switch (policy) {
   InstructionDisplay.hidden => hidden,
   InstructionDisplay.compact => compact,
   InstructionDisplay.themeDefault || InstructionDisplay.expanded => expanded,
 };
+
+/// Writes one component introduction: a label and its opening guidance.
+///
+/// The reference grammar is a single labelled block. A structure that frames
+/// with a line prefix keeps that block, so a rail or branch reads exactly as it
+/// does without the split. A structure that encloses the stage, or decorates its
+/// heading, separates the two: the label is the stage heading and the guidance
+/// is the compact hint under it, which is where the declared grammars put it.
+void _writeStructureIntro(
+  _StructureSpine spine,
+  StringSink output, {
+  required ({String title, String guidance}) parts,
+  required TerminalColor foreground,
+  bool rawWhenUnframed = false,
+}) {
+  final joined = parts.guidance.isEmpty
+      ? parts.title
+      : '${parts.title} ${parts.guidance}';
+  if (!usesStructureFraming(spine.structure)) {
+    // An unframed component keeps its reference introduction: the components
+    // that never route through the spine keep their single unwrapped line, and
+    // the ones that do keep the palette styling the spine applies.
+    if (rawWhenUnframed) {
+      output.writeln(joined);
+      spine.countWrappedRow(joined);
+    } else {
+      spine.write(output, joined, foreground: foreground, closes: true);
+    }
+    return;
+  }
+  if (spine.encloses || spine.heads) {
+    spine.heading(output, parts.title, foreground: foreground);
+    spine.hint(output, parts.guidance, foreground: foreground);
+    return;
+  }
+  spine.write(output, joined, foreground: foreground, closes: true);
+}
 
 /// Joins the non-empty parts of component help guidance.
 String _joinHelp(Iterable<String> parts) =>
@@ -885,7 +922,7 @@ final class TerminalSession {
         'Session output must be identical to its input adapter output.',
       );
     }
-    final selectedSink = output ?? selectedOutput ?? stderr;
+    final selectedSink = output ?? selectedOutput ?? stdout;
     _claimScreen(selectedSink, Object());
     final session = TerminalSession._(
       selectedSink,
@@ -1156,26 +1193,694 @@ void _writeWrappedText(
   }
 }
 
-/// Wraps [text] to [width] display cells and styles each emitted line.
+/// Whether [profile] cannot be trusted to render a structure's Unicode
+/// vocabulary, so its ASCII counterpart is used instead.
+bool _structureAscii(OutputProfile? profile) =>
+    profile == null ||
+    profile.glyphs == GlyphSet.ascii ||
+    profile.glyphs == GlyphSet.automatic;
+
+/// Whether [profile] declares support for monochrome SGR styles, so a label
+/// band may be drawn inverted as well as filled.
 ///
-/// Escaping and measurement happen before any style control is added: a
-/// component style is an instruction to the terminal rather than display
-/// content, so measuring it would charge its spelling to the line and the
-/// safety renderer would correctly show it as literal text instead.
-void _writeWrappedColorText(
-  StringSink output,
-  String text,
-  int? width, {
-  required TerminalColor foreground,
-  required TerminalColor background,
-  required OutputProfile? outputProfile,
-  Iterable<String> atomicText = const [],
-}) {
-  for (final line in _wrapText(text, width, atomicText: atomicText)) {
-    if (line.isEmpty) continue;
+/// Inverse styling is emphasis, never the structure: an unknown, automatic or
+/// unsupported style capability leaves the band as the filled row it always is,
+/// so the hierarchy survives monochrome output and redirected logs.
+bool _structureInverse(OutputProfile? profile) =>
+    profile != null && profile.styles == CapabilitySupport.supported;
+
+/// Writes the read-only lines of one structural stage.
+///
+/// Every call emits one wrapped block. A rail or branch opens its spine with
+/// the first block, continues it on later blocks, and a block that [closes]
+/// ends it so the compact hint finishes the structure. A box, rounded or double
+/// structure instead encloses the stage: the first block opens the top rule,
+/// later blocks are body rows inside the frame, [hint] closes the bottom rule
+/// and writes the compact hint outside it, and later events stay outside the
+/// frame as compact indented blocks. A heading structure decorates [heading],
+/// indents every other block as a body row and marks the compact hint, so its
+/// grammar is the declared heading/body/hint arrangement rather than a frame.
+/// Wrapping measures the structural prefix, the enclosure's side rules or the
+/// heading's decoration as part of the line, so a framed line still fits the
+/// declared width instead of overflowing it by the chrome.
+final class _StructureSpine {
+  _StructureSpine({
+    required this.structure,
+    required this.ascii,
+    required this.width,
+    required this.background,
+    required this.border,
+    required this.outputProfile,
+    this.rich = false,
+  });
+
+  final PromptStructure structure;
+  final bool ascii;
+  int? width;
+  final TerminalColor background;
+  final TerminalColor border;
+  final OutputProfile? outputProfile;
+  final bool rich;
+  int _lines = 0;
+  bool _open = false;
+  bool _closed = false;
+
+  /// The stage numbers this invocation has already displayed, by stage
+  /// identity.
+  ///
+  /// A numbered structure allocates a number on the first entry of a meaningful
+  /// task stage and reuses it on a revisit, so a repaint, a resize, a field
+  /// change inside one stage or a temporary help screen never advances the
+  /// sequence. The map belongs to this invocation's stage writer alone: no
+  /// static or global counter is shared across prompt objects, constructors or
+  /// concurrent sessions, and this is display sequencing only, never a change
+  /// to a task transition or an outcome.
+  final Map<String, int> _stageNumbers = <String, int>{};
+  int _nextStageNumber = 1;
+
+  /// The prompt-local display number of the stage identified by [identity].
+  int _stageNumberFor(String identity) =>
+      _stageNumbers.putIfAbsent(identity, () => _nextStageNumber++);
+
+  /// A stage boundary deferred the previous frame's bottom rule.
+  ///
+  /// A repaint or a new page calls [reset] before writing its own top rule, so
+  /// the previous frame's bottom rule is held until output continues instead of
+  /// leaving a frame without its bottom edge.
+  bool _pendingClose = false;
+
+  EnclosureGlyphs? get _enclosure =>
+      enclosureGlyphsFor(structure, ascii: ascii);
+
+  HeadingGlyphs? get _heading => headingGlyphsFor(structure, ascii: ascii);
+
+  /// Whether this stage is drawn by a heading grammar rather than a frame.
+  bool get heads => _heading != null;
+
+  /// Whether this stage is drawn as an enclosure rather than a line prefix.
+  bool get encloses => _encloses;
+
+  /// Whether this stage is drawn as an enclosure rather than a line prefix.
+  ///
+  /// Narrow output simplifies the chrome instead of replacing the structure:
+  /// below [structureEnclosureCompactWidth] the enclosure keeps only its left
+  /// rule, so the stage still shows the structure's marker.
+  bool get _encloses {
+    final glyphs = _enclosure;
+    if (glyphs == null) return false;
+    return enclosureTotalWidth(structure, width) >=
+        structureEnclosureCompactWidth;
+  }
+
+  /// The width a heading stage claims.
+  ///
+  /// A grammar that draws a rule draws it at [structureRuleWidth], which is
+  /// capped so a rule stays chrome instead of becoming a specimen constant. A
+  /// grammar that draws a label band fills it to [structureBandWidth], the same
+  /// bounded total width, so the band spans the stage instead of trailing off
+  /// wherever its label happens to end. The heading, the body rows and the hint
+  /// are measured against that same width, so above the cap the decoration spans
+  /// the stage instead of falling short of the content it labels. A grammar with
+  /// neither keeps the full width it always had, and so does every structure
+  /// that is not a heading grammar.
+  int? get _headingWidth {
+    final glyphs = _heading;
+    if (glyphs == null) return width;
+    if (!glyphs.drawsRule && !glyphs.drawsBand) return width;
+    return glyphs.drawsBand
+        ? structureBandWidth(structure, width)
+        : structureRuleWidth(structure, width);
+  }
+
+  /// The total width the enclosure may claim, including its own chrome.
+  int get _frameWidth => enclosureTotalWidth(structure, width);
+
+  /// The width a body row or enclosed block may use.
+  int get _contentWidth =>
+      enclosureContentWidth(structure, ascii: ascii, width: _frameWidth);
+
+  /// The width a hint or compact event outside the frame may use.
+  int get _outsideWidth => (_frameWidth - 2).clamp(1, _frameWidth);
+
+  void _emit(StringSink output, String line, TerminalColor foreground) {
+    if (line.isEmpty) return;
     output.writeln(_colorText(line, foreground, background, outputProfile));
+    _lines++;
+  }
+
+  /// Opens the enclosure with the stage's first block.
+  ///
+  /// A block that already wrapped hands its first line to the top rule and
+  /// keeps the rest as body rows, so a heading reads as part of the frame. A
+  /// block of one line stays whole inside the frame: a stage whose only content
+  /// is its title then still has a body, and no stage draws an empty enclosure.
+  void _openEnclosure(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    _open = true;
+    final lines = _wrapText(text, _contentWidth, atomicText: atomicText);
+    final titleCells = lines.isEmpty
+        ? 0
+        : TextDisplayMap(lines.first).cellWidth;
+    final title = lines.length > 1 && titleCells + 4 <= _frameWidth
+        ? lines.first
+        : null;
+    final body = title == null ? lines : lines.sublist(1);
+    // The chrome is the structure's border, not the block's own foreground:
+    // both rules then read as one frame around content of any colour.
+    _emit(
+      output,
+      enclosureTopRule(
+        structure,
+        ascii: ascii,
+        title: title,
+        width: _frameWidth,
+      ),
+      border,
+    );
+    for (final line in body) {
+      _emit(
+        output,
+        enclosureBodyRow(
+          structure,
+          ascii: ascii,
+          line: line,
+          width: _frameWidth,
+        ),
+        foreground,
+      );
+    }
+  }
+
+  /// Writes one enclosed body block.
+  void _writeEnclosed(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    if (!_open) {
+      _openEnclosure(output, text, foreground, atomicText);
+      return;
+    }
+    for (final line in _wrapText(text, _contentWidth, atomicText: atomicText)) {
+      _emit(
+        output,
+        enclosureBodyRow(
+          structure,
+          ascii: ascii,
+          line: line,
+          width: _frameWidth,
+        ),
+        foreground,
+      );
+    }
+  }
+
+  /// Closes the bottom rule of an open enclosure.
+  void _closeEnclosure(StringSink output) {
+    if (!_open) return;
+    _open = false;
+    _emit(
+      output,
+      enclosureBottomRule(structure, ascii: ascii, width: _frameWidth),
+      border,
+    );
+  }
+
+  /// Emits a bottom rule that a stage boundary deferred.
+  void _flushPendingClose(StringSink output) {
+    if (!_pendingClose) return;
+    _pendingClose = false;
+    _emit(
+      output,
+      enclosureBottomRule(structure, ascii: ascii, width: _frameWidth),
+      border,
+    );
+  }
+
+  /// Writes a compact block outside a closed frame.
+  void _writeOutside(
+    StringSink output,
+    String text,
+    TerminalColor foreground, {
+    Iterable<String> atomicText = const [],
+  }) {
+    for (final line in _wrapText(text, _outsideWidth, atomicText: atomicText)) {
+      _emit(output, '  $line', foreground);
+    }
+  }
+
+  /// Wraps [text] to the width left by the prefix and writes it styled.
+  ///
+  /// [compact] marks a sequential event block rather than stage content. A
+  /// prefixed structure keeps its existing prefix and closure, while an
+  /// enclosure renders the block outside the frame: a repeated keystroke report
+  /// must not draw a new frame on every key.
+  ///
+  /// [event] is the kind of line the component is writing. A structure that
+  /// declares typed event prefixes spells them before the line and leaves the
+  /// semantic content after them exactly as it was composed; every other
+  /// structure writes the same bytes it wrote before the kind existed.
+  void write(
+    StringSink output,
+    String text, {
+    required TerminalColor foreground,
+    bool closes = false,
+    bool compact = false,
+    Iterable<String> atomicText = const [],
+    StageEvent event = StageEvent.body,
+  }) {
+    if (_encloses) {
+      _flushPendingClose(output);
+      if (compact || _closed) {
+        // A stage that already reported its compact hint keeps later events
+        // outside the frame, and they never repaint the frame above them.
+        _closeEnclosure(output);
+        _writeOutside(output, text, foreground, atomicText: atomicText);
+        return;
+      }
+      _writeEnclosed(output, text, foreground, atomicText);
+      if (closes) {
+        _closeEnclosure(output);
+        _closed = true;
+      }
+      return;
+    }
+    if (_heading != null) {
+      _writeHeadedBody(output, text, foreground, atomicText, event: event);
+      return;
+    }
+    final available = width == null
+        ? null
+        : (width! - structurePrefixCells(structure, ascii: ascii)).clamp(
+            1,
+            width!,
+          );
+    final narrowEnclosure = _enclosure != null && !_encloses;
+    if (narrowEnclosure) {
+      // Narrow output keeps the enclosure's left rule as its marker instead of
+      // silently becoming an unframed component.
+      final lines = _wrapText(text, available, atomicText: atomicText);
+      _open = !closes;
+      for (final line in lines) {
+        if (line.isEmpty) continue;
+        output.writeln(
+          _colorText(
+            '${_enclosure!.livePrefix}$line',
+            foreground,
+            background,
+            outputProfile,
+          ),
+        );
+        _lines++;
+      }
+      return;
+    }
+    final framed = frameStructureLines(
+      structure,
+      ascii: ascii,
+      lines: _wrapText(text, available, atomicText: atomicText),
+      opens: !_open,
+      closes: closes,
+    );
+    _open = !closes;
+    for (final line in framed) {
+      if (line.isEmpty) continue;
+      output.writeln(_colorText(line, foreground, background, outputProfile));
+      _lines++;
+    }
+  }
+
+  /// Writes one stage opening: a heading and the guidance that belongs to it.
+  ///
+  /// A structure without a heading grammar writes the single merged block it
+  /// always wrote, so the reference, rail, branch and enclosing presentations
+  /// keep their bytes. A heading structure separates the two: the title is the
+  /// decorated heading and the guidance follows as its body rows.
+  void opening(
+    StringSink output, {
+    required String title,
+    required String body,
+    required TerminalColor foreground,
+    required TerminalColor bodyForeground,
+    bool closes = false,
+    Iterable<String> atomicText = const [],
+    StageEvent event = StageEvent.body,
+  }) {
+    if (_heading == null) {
+      final joined = body.isEmpty ? title : '$title $body';
+      write(
+        output,
+        joined,
+        foreground: foreground,
+        closes: closes,
+        atomicText: atomicText,
+      );
+      return;
+    }
+    heading(output, title, foreground: foreground, atomicText: atomicText);
+    if (body.isEmpty) return;
+    write(
+      output,
+      body,
+      foreground: bodyForeground,
+      closes: closes,
+      atomicText: atomicText,
+      event: event,
+    );
+  }
+
+  /// Wraps already styled [text] in the reverse-video style.
+  ///
+  /// The trailing reset of the colour sequence is reused, so a styled band
+  /// closes both the emphasis and the colour with one sequence instead of
+  /// leaving a second reset behind.
+  String _inverted(String text) {
+    final colourReset = text.endsWith('\x1b[0m')
+        ? text.substring(0, text.length - '\x1b[0m'.length)
+        : text;
+    return '\x1b[7m$colourReset\x1b[0m';
+  }
+
+  /// Writes one stage heading as a filled label band.
+  ///
+  /// The band is textual chrome: the label is embedded in a filled row of the
+  /// measured stage width, so the stage keeps its hierarchy in monochrome output
+  /// and in redirected logs. Where the output declares style support the same
+  /// row is printed inverted as well, which strengthens the band without ever
+  /// being the reason it can be seen.
+  ///
+  /// The label is wrapped inside the band's padding first, so every row stays
+  /// within the declared width; a width too narrow for the fill keeps the label
+  /// alone rather than overflowing, and the body, the indented rows and the
+  /// hint keep the structure recognisable. The band is chrome, so it is drawn in
+  /// the stage's own foreground while the body rows keep theirs.
+  void _writeBand(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText,
+  ) {
+    final glyphs = _heading!;
+    _open = true;
+    final stageWidth = _headingWidth;
+    final available = stageWidth == null
+        ? null
+        : (stageWidth - 2).clamp(1, stageWidth);
+    final inverse = _structureInverse(outputProfile);
+    for (final line in _wrapText(
+      glyphs.spelling(text),
+      available,
+      atomicText: atomicText,
+    )) {
+      if (line.isEmpty) continue;
+      final row = structureBandRow(
+        structure,
+        ascii: ascii,
+        label: line,
+        width: stageWidth ?? structureBandWidthCap,
+      );
+      final styled = _colorText(row, foreground, background, outputProfile);
+      output.writeln(inverse ? _inverted(styled) : styled);
+      _lines++;
+    }
+  }
+
+  /// Writes the stage heading of one heading structure.
+  ///
+  /// A structure without a heading grammar writes the block exactly as [write]
+  /// would, so a rail, branch, enclosure or the reference presentation keeps
+  /// the bytes it had. A heading structure decorates the heading with its own
+  /// vocabulary, spells it with the declared casing rule, and indents every
+  /// wrapped continuation line as part of the same heading. A numbered structure
+  /// prefixes the stage with the number this invocation allocated for it, and a
+  /// ruled structure draws its rule under the heading at the width the stage
+  /// actually has. Narrow output simplifies the decoration to its marker rather
+  /// than replacing the structure with an unframed one.
+  void heading(
+    StringSink output,
+    String text, {
+    required TerminalColor foreground,
+    Iterable<String> atomicText = const [],
+  }) {
+    final glyphs = _heading;
+    if (glyphs == null) {
+      write(output, text, foreground: foreground, atomicText: atomicText);
+      return;
+    }
+    if (glyphs.drawsBand) {
+      _writeBand(output, text, foreground, atomicText);
+      return;
+    }
+    _open = true;
+    // The rule is drawn at the measured stage width, so the heading is measured
+    // against that same width rather than the columns the output offers.
+    final stageWidth = _headingWidth;
+    final compact = stageWidth != null && stageWidth <= glyphs.headingCells + 2;
+    final number = glyphs.numbered ? _stageNumberFor(text) : 0;
+    final numberCells = glyphs.numbered
+        ? TextDisplayMap(glyphs.stageNumberLabel(number)).cellWidth
+        : 0;
+    // A width that cannot hold the stage number and any content at all keeps
+    // the heading and drops the number: the structure is simplified, never
+    // replaced, and the number it allocated is retained for a later width.
+    final numbered =
+        glyphs.numbered && (stageWidth == null || stageWidth > numberCells + 1);
+    final decoration = compact
+        ? glyphs.compactPrefixCells
+        : glyphs.headingCells;
+    // A decoration wider than the columns the stage has cannot be printed at
+    // all: the label is dropped rather than overflowing the width, and the
+    // body, the rule and the hint keep the structure recognisable.
+    final dropsDecoration = stageWidth != null && decoration + 1 > stageWidth;
+    final decorate =
+        (dropsDecoration ? 0 : decoration) + (numbered ? numberCells : 0);
+    // Wrapped heading lines take the grammar's continuation indent, so the
+    // heading budget is the tighter of the decoration, the body indent and
+    // that continuation.
+    var reserve = decorate;
+    if (glyphs.bodyIndentCells > reserve) reserve = glyphs.bodyIndentCells;
+    final continuationCells = TextDisplayMap(glyphs.headingContinuation)
+        .cellWidth;
+    if (continuationCells > reserve) reserve = continuationCells;
+    final available = stageWidth == null
+        ? null
+        : (stageWidth - reserve).clamp(1, stageWidth);
+    final wrapped = _wrapText(
+      glyphs.spelling(text),
+      available,
+      atomicText: atomicText,
+    );
+    if (numbered) {
+      final first = wrapped.indexWhere((line) => line.isNotEmpty);
+      if (first >= 0) {
+        wrapped[first] = '${glyphs.stageNumberLabel(number)}${wrapped[first]}';
+      }
+    }
+    final lines = dropsDecoration
+        ? wrapped
+        : frameHeadingLines(
+            structure,
+            ascii: ascii,
+            compact: compact,
+            lines: wrapped,
+          );
+    for (final line in lines) {
+      if (line.isEmpty) continue;
+      _emit(output, line, foreground);
+    }
+    if (glyphs.drawsRule) {
+      // The rule is chrome of the stage, so it is drawn in the border role and
+      // measured against the same width as the heading and body above it.
+      _emit(
+        output,
+        glyphs.rule(structureRuleWidth(structure, stageWidth)),
+        border,
+      );
+    }
+  }
+
+  /// Writes one body row of a heading structure under its heading.
+  ///
+  /// Body rows are the stage's read-only content, its choice rows and its
+  /// events. They keep their own spelling: only the heading the component owns
+  /// is decorated or case-transformed. An [event] the grammar labels is written
+  /// as that typed label at the reference column with the component's own
+  /// content after it, wrapped with it and never reworded or re-cased.
+  void _writeHeadedBody(
+    StringSink output,
+    String text,
+    TerminalColor foreground,
+    Iterable<String> atomicText, {
+    StageEvent event = StageEvent.body,
+  }) {
+    final glyphs = _heading!;
+    // Body rows are measured against the same stage width the heading and the
+    // rule claim, so a ruled stage keeps its rule as wide as its content.
+    final stageWidth = _headingWidth;
+    final typed = event == StageEvent.body ? null : glyphs.eventPrefix(event);
+    if (typed != null && typed.isNotEmpty) {
+      final leadCells = TextDisplayMap(typed).cellWidth;
+      // A typed label wider than the columns leaves no room for content: the
+      // event keeps its words and drops the label rather than overflowing.
+      final dropsLabel = stageWidth != null && leadCells + 1 > stageWidth;
+      final lead = dropsLabel ? '' : typed;
+      final available = stageWidth == null
+          ? null
+          : (stageWidth - (dropsLabel ? 0 : leadCells)).clamp(1, stageWidth);
+      final continuation = ' ' * (dropsLabel ? 0 : leadCells);
+      var firstLine = true;
+      for (final line in _wrapText(text, available, atomicText: atomicText)) {
+        if (line.isEmpty) continue;
+        _emit(output, '${firstLine ? lead : continuation}$line', foreground);
+        firstLine = false;
+      }
+      return;
+    }
+    final available = stageWidth == null
+        ? null
+        : (stageWidth - glyphs.bodyIndentCells).clamp(1, stageWidth);
+    for (final line in _wrapText(text, available, atomicText: atomicText)) {
+      if (line.isEmpty) continue;
+      _emit(output, glyphs.body(line), foreground);
+    }
+  }
+
+  /// Writes the compact hint that ends the stage.
+  ///
+  /// A rail or branch closes its structural line, exactly as a [write] with
+  /// `closes` does. An enclosure closes the bottom rule first and keeps the
+  /// hint outside the frame, which is where the declared grammars put it: the
+  /// hint names the stage's actions, not its content.
+  void hint(
+    StringSink output,
+    String text, {
+    required TerminalColor foreground,
+    Iterable<String> atomicText = const [],
+  }) {
+    final glyphs = _heading;
+    if (glyphs != null) {
+      // A heading structure keeps its hint under the body rows, marked with the
+      // structure's own hint vocabulary and wrapped inside the width the same
+      // marker leaves. No block above it is repainted.
+      final stageWidth = _headingWidth;
+      final lead = glyphs.hintLead;
+      final leadCells = glyphs.hintLeadCells;
+      // Narrow output simplifies the marker instead of overflowing the width:
+      // the structure keeps its hint vocabulary at the column it can afford.
+      final narrow = stageWidth != null && leadCells + 1 > stageWidth;
+      final trimmed = glyphs.hintPrefix.trimRight();
+      final trimmedCells = TextDisplayMap(trimmed).cellWidth;
+      // A hint marker wider than the columns keeps the hint's words and drops
+      // the marker, so the stage never overflows its own width.
+      final dropsMarker = stageWidth != null && trimmedCells + 1 > stageWidth;
+      final first = dropsMarker ? '' : (narrow ? trimmed : lead);
+      final continuation = dropsMarker
+          ? ''
+          : narrow
+          ? ' ' * trimmedCells
+          : '${glyphs.hintIndent ?? glyphs.bodyIndent}'
+                '${' ' * glyphs.hintPrefixCells}';
+      final available = stageWidth == null
+          ? null
+          : (stageWidth - TextDisplayMap(first).cellWidth).clamp(1, stageWidth);
+      var firstLine = true;
+      for (final line in _wrapText(text, available, atomicText: atomicText)) {
+        if (line.isEmpty) continue;
+        _emit(output, '${firstLine ? first : continuation}$line', foreground);
+        firstLine = false;
+      }
+      return;
+    }
+    if (!_encloses) {
+      write(
+        output,
+        text,
+        foreground: foreground,
+        closes: true,
+        atomicText: atomicText,
+      );
+      return;
+    }
+    _flushPendingClose(output);
+    _closeEnclosure(output);
+    _writeOutside(output, text, foreground, atomicText: atomicText);
+    _closed = true;
+  }
+
+  /// Emits the breathing row that separates a heading from its choices.
+  ///
+  /// An enclosure keeps that row inside the frame, so the side rules continue
+  /// through it exactly as the declared grammar draws it. A rail or branch has
+  /// no interior to breathe in and keeps the rows it already wrote, so this is
+  /// silent for them rather than adding a line they never had.
+  void breathingRow(StringSink output) {
+    if (!_encloses || !_open || _closed) return;
+    _emit(
+      output,
+      enclosureBodyRow(structure, ascii: ascii, line: '', width: _frameWidth),
+      border,
+    );
+  }
+
+  /// Counts rows a caller drew itself.
+  ///
+  /// A choice row a line-prefix structure draws is written straight to the
+  /// output with the row's own marker, so the spine never sees that write. The
+  /// caller reports the rows it drew, so a rich repaint still rewinds over the
+  /// whole region it presented instead of part of it.
+  void countRows(int rows) => _lines += rows;
+
+  /// Counts one raw write a caller made, wrapped at the stage width.
+  ///
+  /// Unframed output is written as the component worded it, so the rows it
+  /// occupies are measured here rather than guessed: a repaint rewinds over the
+  /// rows the reader actually saw.
+  void countWrappedRow(String text) =>
+      _lines += text.isEmpty ? 0 : _wrapText(text, width).length;
+
+  /// Starts a new stage, so a repainted frame opens the structure again.
+  ///
+  /// In a rich, cursor-capable presentation this first rewinds the cursor over
+  /// the lines the previous render drew and clears to the end of the screen, so
+  /// the next render overwrites the same region instead of appending. Linear
+  /// output stays sequential and keeps the deferred bottom-rule behaviour.
+  void reset(StringSink output) {
+    if (rich) {
+      if (_lines > 0) {
+        output.write('\x1b[${_lines}A\x1b[J');
+        _lines = 0;
+      }
+      _pendingClose = false;
+    } else if (_encloses && _open) {
+      _pendingClose = true;
+    }
+    _open = false;
+    _closed = false;
   }
 }
+
+/// Builds the structure writer for one prompt invocation.
+_StructureSpine _structureSpine(
+  OutputProfile? outputProfile, {
+  required PromptStructure structure,
+  required int? width,
+  required TerminalColor background,
+  TerminalColor border = const TerminalColor.terminalDefault(),
+  bool rich = false,
+}) => _StructureSpine(
+  structure: structure,
+  ascii: _structureAscii(outputProfile),
+  width: width,
+  background: background,
+  border: border,
+  outputProfile: outputProfile,
+  rich: rich,
+);
 
 /// Splits [text] into the display lines that fit [width] cells.
 ///
@@ -1264,6 +1969,40 @@ void _finishFieldLine(StringSink out, String action) {
   }
 }
 
+/// Resolves a TextInput instruction policy to the display it actually uses.
+InstructionDisplay _resolvedInstructions(InstructionDisplay instructions) =>
+    instructions == InstructionDisplay.themeDefault
+    ? InstructionDisplay.expanded
+    : instructions;
+
+/// The opening guidance a TextInput instruction policy asks for.
+///
+/// The opening and a re-presented validation share this one text, so a warning
+/// never repeats a differently worded hint.
+String _textInputGuidance({
+  required bool linear,
+  required InstructionDisplay instructions,
+}) {
+  final route = linear ? '/help opens help.' : 'Ctrl+T opens help.';
+  return switch (_resolvedInstructions(instructions)) {
+    InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
+    InstructionDisplay.expanded =>
+      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. $route Escape cancels; Ctrl+C interrupts.',
+    InstructionDisplay.hidden => route,
+    InstructionDisplay.themeDefault => throw StateError(
+      'Instructions resolved above.',
+    ),
+  };
+}
+
+/// The linear command hint that follows the guidance, when the policy shows it.
+String? _textInputCommandHint({
+  required bool linear,
+  required InstructionDisplay instructions,
+}) => linear && _resolvedInstructions(instructions) != InstructionDisplay.hidden
+    ? r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.'
+    : null;
+
 void _renderTextInputOpening(
   StringSink output,
   String label, {
@@ -1273,6 +2012,7 @@ void _renderTextInputOpening(
   required InstructionDisplay instructions,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
+  PromptStructure structure = PromptStructure.plain,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -1287,34 +2027,40 @@ void _renderTextInputOpening(
     ),
   );
   final width = outputProfile == null ? null : _textInputWidth(outputProfile);
-  _writeWrappedColorText(
-    output,
-    '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}',
-    width,
-    foreground: colors.foreground,
-    background: colors.background,
-    outputProfile: outputProfile,
+  final header =
+      '${_slot(composition, PresentationSlot.label).text!.value} ${_slot(composition, PresentationSlot.context).text!.value}';
+  final guidance = _textInputGuidance(
+    linear: linear,
+    instructions: instructions,
   );
-  final resolvedInstructions = instructions == InstructionDisplay.themeDefault
-      ? InstructionDisplay.expanded
-      : instructions;
-  final route = linear ? '/help opens help.' : 'Ctrl+T opens help.';
-  final guidance = switch (resolvedInstructions) {
-    InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
-    InstructionDisplay.expanded =>
-      'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. $route Escape cancels; Ctrl+C interrupts.',
-    InstructionDisplay.hidden => route,
-    InstructionDisplay.themeDefault => throw StateError(
-      'Instructions resolved above.',
-    ),
-  };
-  _writeWrappedText(output, guidance, width);
-  if (linear && resolvedInstructions != InstructionDisplay.hidden) {
-    _writeWrappedText(
+  final commandHint = _textInputCommandHint(
+    linear: linear,
+    instructions: instructions,
+  );
+  final spine = _structureSpine(
+    outputProfile,
+    structure: structure,
+    width: width,
+    background: colors.background,
+    border: colors.border,
+  );
+  spine.heading(output, header, foreground: colors.foreground);
+  if (spine.encloses || spine.heads) {
+    // A frame or a decorated heading ends with its compact hint, so the
+    // guidance and the command hint are both marked blocks below it.
+    spine.hint(output, guidance, foreground: colors.muted);
+  } else {
+    // A rail or branch keeps its merged spine: the guidance continues the
+    // structural line only when no command hint closes it.
+    spine.write(
       output,
-      r'Exact /help and /cancel are commands. Quote a command with a backslash; double a leading backslash to enter one. Identified paste is literal.',
-      width,
+      guidance,
+      foreground: colors.muted,
+      closes: commandHint == null,
     );
+  }
+  if (commandHint != null) {
+    spine.hint(output, commandHint, foreground: colors.muted);
   }
 }
 
@@ -1344,8 +2090,11 @@ String _renderEditableText(
 void _renderTextInputValidation(
   StringSink output,
   String message, {
+  bool linear = false,
+  InstructionDisplay instructions = InstructionDisplay.themeDefault,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
+  PromptStructure structure = PromptStructure.plain,
 }) {
   final composition = _composeTextInput(
     TextInputPresentationContent(
@@ -1358,13 +2107,36 @@ void _renderTextInputValidation(
       ),
     ),
   );
-  _writeWrappedColorText(
-    output,
-    _slot(composition, PresentationSlot.validation).text!.value,
-    outputProfile == null ? null : _textInputWidth(outputProfile),
-    foreground: colors.error,
+  final width = outputProfile == null ? null : _textInputWidth(outputProfile);
+  final validation = _slot(
+    composition,
+    PresentationSlot.validation,
+  ).text!.value;
+  final spine = _structureSpine(
+    outputProfile,
+    structure: structure,
+    width: width,
     background: colors.background,
-    outputProfile: outputProfile,
+    border: colors.border,
+  );
+  if (!spine.encloses && !spine.heads) {
+    // A rail, branch or plain stage keeps its single closing validation block.
+    spine.hint(output, validation, foreground: colors.error);
+    return;
+  }
+  // A validation is stage content, not the compact hint: the message is the
+  // stage's warning row and the stage's own compact hint closes it below, so a
+  // warning is never read as the stage's last instruction.
+  spine.write(
+    output,
+    validation,
+    foreground: colors.error,
+    event: StageEvent.warning,
+  );
+  spine.hint(
+    output,
+    _textInputGuidance(linear: linear, instructions: instructions),
+    foreground: colors.muted,
   );
 }
 
@@ -1504,6 +2276,7 @@ final class TextInput {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     ColorTheme colors = ColorThemes.terminalDefault,
+    PromptStructure structure = PromptStructure.plain,
   }) : this._(
          label,
          initialValue: initialValue,
@@ -1513,6 +2286,7 @@ final class TextInput {
          instructions: instructions,
          supplementaryHelp: supplementaryHelp,
          colors: colors,
+         structure: structure,
        );
 
   TextInput._(
@@ -1524,6 +2298,7 @@ final class TextInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this._onChanged,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
@@ -1547,6 +2322,9 @@ final class TextInput {
 
   /// Complete palette for this prompt; it never alters global terminal state.
   final ColorTheme colors;
+
+  /// Structural grammar used to frame the prompt.
+  final PromptStructure structure;
   final void Function(String)? _onChanged;
   bool _active = false;
   Future<PromptResult<String>> prompt({
@@ -1612,7 +2390,7 @@ final class TextInput {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -1668,6 +2446,7 @@ final class TextInput {
       instructions: instructions,
       outputProfile: effectiveProfile,
       colors: colors,
+      structure: structure,
     );
     scripted.transcript?._event(
       TextInputPresentationEventKind.opened,
@@ -1694,6 +2473,7 @@ final class TextInput {
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
           colors: colors,
+          structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -1721,8 +2501,11 @@ final class TextInput {
           _renderTextInputValidation(
             scripted.output,
             message,
+            linear: mode == PromptMode.linear,
+            instructions: instructions,
             outputProfile: effectiveProfile,
             colors: colors,
+            structure: structure,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -1735,8 +2518,11 @@ final class TextInput {
           _renderTextInputValidation(
             scripted.output,
             error,
+            linear: mode == PromptMode.linear,
+            instructions: instructions,
             outputProfile: effectiveProfile,
             colors: colors,
+            structure: structure,
           );
           scripted.transcript?._event(
             TextInputPresentationEventKind.validation,
@@ -1777,6 +2563,7 @@ Future<({String action, String value})> _edit(
   TextInputTranscript? transcript,
   OutputProfile? outputProfile,
   ColorTheme colors = ColorThemes.terminalDefault,
+  PromptStructure structure = PromptStructure.plain,
   TerminalResizeObserver? resizeObserver,
   TerminalSession? session,
   void Function(bool literal)? onSubmit,
@@ -1798,9 +2585,51 @@ Future<({String action, String value})> _edit(
     pos++;
     synthetic = 0;
   }
-  void notice(String text) {
+  var activeProfile = outputProfile;
+
+  /// Writes one editor event through the component's structural grammar.
+  ///
+  /// Editor notices, help and sequential reports are deliberate events inside
+  /// the current stage, so they keep the structure's continuation vocabulary
+  /// rather than opening a new frame or dumping the whole view again. [compact]
+  /// marks a repeated event such as a notice or a caret report: a prefixed
+  /// structure renders it exactly as before, while an enclosure keeps it outside
+  /// a frame so a keystroke does not draw a new enclosure.
+  ///
+  /// [event] is the kind of line this is. A refusal or a validation notice is a
+  /// [StageEvent.warning], so a grammar that spells typed labels shows it as one;
+  /// every other structure writes the bytes it always wrote.
+  void writeEvent(
+    String text, {
+    bool closes = false,
+    bool compact = false,
+    StageEvent event = StageEvent.body,
+  }) {
+    final profile = activeProfile;
+    _StructureSpine(
+      structure: structure,
+      ascii: _structureAscii(profile),
+      width: profile == null ? null : _textInputWidth(profile),
+      background: colors.background,
+      border: colors.border,
+      outputProfile: profile,
+    ).write(
+      output,
+      text,
+      foreground: colors.muted,
+      closes: closes,
+      compact: compact,
+      event: event,
+    );
+  }
+
+  /// Writes one notice as a compact event of the current stage.
+  ///
+  /// A refusal or a validation notice is a [StageEvent.warning] so a grammar
+  /// that spells typed labels presents it as one; guidance keeps its body row.
+  void notice(String text, {StageEvent event = StageEvent.body}) {
     if (!sequential && !secret) output.writeln();
-    output.writeln(text);
+    writeEvent(text, closes: true, compact: true, event: event);
   }
 
   /// Ends the editable row that the rich renderer leaves current.
@@ -1837,7 +2666,10 @@ Future<({String action, String value})> _edit(
               ('\\$command').startsWith(candidate),
         );
     if (limit != null && count > limit && !commandPrefix) {
-      notice('Insertion rejected: character limit is $limit graphemes.');
+      notice(
+        'Insertion rejected: character limit is $limit graphemes.',
+        event: StageEvent.warning,
+      );
       return;
     }
     final added = data.characters.toList();
@@ -1866,8 +2698,6 @@ Future<({String action, String value})> _edit(
       offset = end;
     }
   }
-
-  var activeProfile = outputProfile;
 
   void display() {
     void writePrompt(void Function() action) {
@@ -1904,20 +2734,51 @@ Future<({String action, String value})> _edit(
     );
     if (sequential) {
       writePrompt(() {
-        output.writeln('Current text: ${DisplayText.from(chars.join()).value}');
-        output.writeln('Cursor position: $pos of ${chars.length} graphemes.');
+        final spine = _StructureSpine(
+          structure: structure,
+          ascii: _structureAscii(profile),
+          width: profile == null ? null : _textInputWidth(profile),
+          background: colors.background,
+          border: colors.border,
+          outputProfile: profile,
+        );
+        spine.write(
+          output,
+          'Current text: ${DisplayText.from(chars.join()).value}',
+          foreground: colors.muted,
+          compact: true,
+          event: StageEvent.state,
+        );
+        spine.write(
+          output,
+          'Cursor position: $pos of ${chars.length} graphemes.',
+          foreground: colors.muted,
+          compact: true,
+          event: StageEvent.state,
+          closes: true,
+        );
       });
       return;
     }
     final displayMap = TextDisplayMap(chars.join());
     var start = 0;
     var end = chars.length;
+    final livePrefix = structureLivePrefix(
+      structure,
+      ascii: _structureAscii(profile),
+    );
+    final liveCells = TextDisplayMap(livePrefix).cellWidth;
     final totalWidth = profile == null ? null : _textInputWidth(profile);
     if (totalWidth != null) {
-      // `> ` is structural chrome; each truthful overflow marker consumes one
-      // cell too. Reserve both markers while centring around the actual caret,
-      // then add only whole graphemes from the display map.
-      final budget = (totalWidth - 2 - 2).clamp(0, _textInputTotalWidthCap);
+      // The live marker is structural chrome; each truthful overflow marker
+      // consumes one cell too. Reserve the declared marker and both markers
+      // while centring around the actual caret, then add only whole graphemes
+      // from the display map, so the row lines up with the frame interior and
+      // still fits the declared width.
+      final budget = (totalWidth - liveCells - 2).clamp(
+        0,
+        _textInputTotalWidthCap,
+      );
       int cells(int index) => displayMap.entries[index].cellWidth;
       var used = displayMap.caretCells(pos);
       while (start < pos && used > budget) {
@@ -1941,7 +2802,7 @@ Future<({String action, String value})> _edit(
     final editable = _slot(composition, PresentationSlot.body);
     writePrompt(() {
       output.write(
-        '\r\x1b[2K> ${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
+        '\r\x1b[2K$livePrefix${start > 0 ? '<' : ''}${_colorText(_renderEditableText(editable, beforeCaret: true), colors.foreground, colors.background, outputProfile)}\x1b[s${_colorText(_renderEditableText(editable, beforeCaret: false), colors.foreground, colors.background, outputProfile)}${end < chars.length ? '>' : ''}\x1b[u',
       );
     });
   }
@@ -2072,8 +2933,7 @@ Future<({String action, String value})> _edit(
         } else {
           finishEditableRow();
         }
-        _writeWrappedText(
-          output,
+        writeEvent(
           liveHelpText?.call() ??
               helpText ??
               _textInputHelp(
@@ -2082,7 +2942,7 @@ Future<({String action, String value})> _edit(
                 maxLength: maxLength,
                 supplementaryHelp: supplementaryHelp,
               ),
-          outputProfile == null ? null : _textInputWidth(outputProfile),
+          closes: true,
         );
         transcript?._event(TextInputPresentationEventKind.help);
         continue;
@@ -2090,7 +2950,13 @@ Future<({String action, String value})> _edit(
       if (help) continue;
       if (key == '\r' || key == '\n') {
         if (linear && !sequential && !secret) {
-          output.write('\r\x1b[2K> ${DisplayText.from(chars.join()).value}');
+          final promptPrefix = structureLivePrefix(
+            structure,
+            ascii: _structureAscii(outputProfile),
+          );
+          output.write(
+            '\r\x1b[2K$promptPrefix${DisplayText.from(chars.join()).value}',
+          );
         }
         output.writeln();
         var text = chars.join();
@@ -2119,28 +2985,27 @@ Future<({String action, String value})> _edit(
               // A component that supplies its own command-aware help keeps that
               // content; the exact command spellings are appended rather than
               // replacing it with the generic command list.
-              _writeWrappedText(
-                output,
+              writeEvent(
                 extraCommands.isEmpty
                     ? componentHelp
                     : '$componentHelp Exact commands: ${extraCommands.join(', ')}, /help and /cancel. Quote a command with a backslash; double a leading backslash.',
-                outputProfile == null ? null : _textInputWidth(outputProfile),
+                closes: true,
               );
               transcript?._event(TextInputPresentationEventKind.help);
             } else if (extraCommands.isNotEmpty) {
-              output.writeln(
+              writeEvent(
                 'Help: ${extraCommands.join(', ')}, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.',
+                closes: true,
               );
             } else {
-              _writeWrappedText(
-                output,
+              writeEvent(
                 _textInputHelp(
                   linear: true,
                   required: required,
                   maxLength: maxLength,
                   supplementaryHelp: supplementaryHelp,
                 ),
-                outputProfile == null ? null : _textInputWidth(outputProfile),
+                closes: true,
               );
               transcript?._event(TextInputPresentationEventKind.help);
             }
@@ -2205,7 +3070,10 @@ Future<({String action, String value})> _edit(
           }
         }
       } else if (key == '\x1b[999~') {
-        notice('Paste rejected: exceeds 4096 UTF-16 code units.');
+        notice(
+          'Paste rejected: exceeds 4096 UTF-16 code units.',
+          event: StageEvent.warning,
+        );
       } else if (key.startsWith('\x1b[200~')) {
         var data = key.substring(6, key.length - 6);
         if (multilinePaste) {
@@ -2215,7 +3083,10 @@ Future<({String action, String value})> _edit(
           (r) =>
               (r < 32 && !(multilinePaste && (r == 9 || r == 10))) || r == 127,
         )) {
-          notice('Paste rejected: single-line printable text only.');
+          notice(
+            'Paste rejected: single-line printable text only.',
+            event: StageEvent.warning,
+          );
           display();
           continue;
         }
@@ -2822,7 +3693,11 @@ final class Password {
     this.mask = false,
     this.required = false,
     this.validate,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -2835,6 +3710,10 @@ final class Password {
   final bool mask;
   final bool required;
   final String? Function(String)? validate;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<String>> prompt({
@@ -2904,7 +3783,7 @@ final class Password {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -2958,23 +3837,45 @@ final class Password {
           : PromptMode.linear;
     }
     final width = _textInputWidth(effectiveProfile);
-    _writeWrappedText(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       scripted.output,
-      '$label (${required ? 'Required' : 'Optional'}). Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      width,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
+    spine.opening(
+      scripted.output,
+      title: '$label (${required ? 'Required' : 'Optional'}).',
+      body: 'Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      foreground: colors.foreground,
+      bodyForeground: colors.muted,
+      closes: !mask && initialValue.isEmpty,
     );
     if (mask) {
-      _writeWrappedText(
-        scripted.output,
+      write(
         'Masking is enabled and discloses length.',
-        width,
+        colors.muted,
+        closes: initialValue.isEmpty,
       );
     }
     if (initialValue.isNotEmpty) {
-      _writeWrappedText(
-        scripted.output,
+      write(
         'Secret prefill is enabled; the secret is retained in memory.',
-        width,
+        colors.muted,
+        closes: true,
       );
     }
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
@@ -2994,6 +3895,7 @@ final class Password {
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
+          structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
               : null,
@@ -3005,10 +3907,10 @@ final class Password {
         if (edit.action != 'submit') return InputEnded();
         value = edit.value;
         while (true) {
-          _writeWrappedText(
+          spine.hint(
             scripted.output,
             'Actions: submit, edit, clear, help, cancel. /help and /cancel are also available. Enter an action:',
-            width,
+            foreground: colors.foreground,
           );
           final action = await _edit(
             inputKeys,
@@ -3022,6 +3924,7 @@ final class Password {
                 effectiveProfile.alternateScreen == CapabilitySupport.supported,
             transcript: scripted.transcript,
             outputProfile: effectiveProfile,
+            structure: structure,
             resizeObserver: mode == PromptMode.rich
                 ? scripted.resizeObserver
                 : null,
@@ -3034,8 +3937,11 @@ final class Password {
           switch (action.value) {
             case 'submit':
               if ((required && value.isEmpty) || _validationFailed(value)) {
-                scripted.output.writeln(
+                write(
                   'Secret does not satisfy the requirements. Choose edit or clear and try again.',
+                  colors.error,
+                  closes: true,
+                  event: StageEvent.warning,
                 );
                 continue;
               }
@@ -3050,12 +3956,19 @@ final class Password {
               return Cancelled();
             case 'help':
             case '/help':
-              scripted.output.writeln(
+              write(
                 'Submit validates; edit reopens the secret; clear starts empty; cancel ends the prompt.',
+                colors.muted,
+                closes: true,
               );
               continue;
             default:
-              scripted.output.writeln('Choose one of the listed actions.');
+              write(
+                'Choose one of the listed actions.',
+                colors.warning,
+                closes: true,
+                event: StageEvent.warning,
+              );
               continue;
           }
           break;
@@ -3077,6 +3990,9 @@ final class Confirm extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.confirm);
 }
 
@@ -3085,6 +4001,9 @@ final class Checkbox extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.checkbox);
 }
 
@@ -3093,6 +4012,9 @@ final class Toggle extends _BooleanPrompt {
     super.label, {
     super.initialValue = false,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(kind: _BooleanKind.toggle);
 }
 
@@ -3104,7 +4026,10 @@ abstract class _BooleanPrompt {
     required this.initialValue,
     required this.kind,
     required this.colors,
-  }) {
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -3113,6 +4038,9 @@ abstract class _BooleanPrompt {
   final bool initialValue;
   final _BooleanKind kind;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   Future<PromptResult<bool>> prompt({
@@ -3178,7 +4106,7 @@ abstract class _BooleanPrompt {
           }
           return await _terminal<bool>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -3250,31 +4178,50 @@ abstract class _BooleanPrompt {
     final width = _textInputWidth(effectiveProfile);
     var draft = initialValue;
 
-    void writeStyled(String text, TerminalColor foreground) =>
-        // Measure and escape application text before adding terminal controls;
-        // otherwise the safety renderer would correctly spell the controls out
-        // as visible text instead of applying this component-owned style.
-        _writeWrappedColorText(
-          out,
-          text,
-          width,
-          foreground: foreground,
-          background: colors.background,
-          outputProfile: effectiveProfile,
-        );
-
-    void renderDraft() =>
-        writeStyled('Draft: ${_state(draft)}.', colors.accent);
-
-    writeStyled(
-      '$label. Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
-      colors.foreground,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
     );
-    writeStyled(
+
+    // Measure and escape application text before adding terminal controls;
+    // otherwise the safety renderer would correctly spell the controls out as
+    // visible text instead of applying this component-owned style.
+    void writeStyled(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
+
+    void renderDraft() => writeStyled(
+      'Draft: ${_state(draft)}.',
+      colors.accent,
+      event: StageEvent.state,
+    );
+
+    spine.opening(
+      out,
+      title: '$label.',
+      body: 'Default: ${_state(initialValue)}. Draft: ${_state(draft)}.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
+      event: StageEvent.state,
+    );
+    spine.hint(
+      out,
       mode == PromptMode.linear
           ? r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.'
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
+      foreground: colors.muted,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(renderDraft);
@@ -3291,6 +4238,7 @@ abstract class _BooleanPrompt {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (result.action == 'cancel') return Cancelled();
@@ -3299,12 +4247,17 @@ abstract class _BooleanPrompt {
           entry = result.value;
           final answer = entry.isEmpty ? draft : _parse(entry);
           if (answer != null) {
-            writeStyled('Accepted: ${_state(answer)}.', colors.success);
+            writeStyled(
+              'Accepted: ${_state(answer)}.',
+              colors.success,
+              event: StageEvent.result,
+            );
             return Accepted(answer);
           }
           writeStyled(
             'Enter yes/y or no/n, or erase the line and submit the displayed default.',
             colors.warning,
+            event: StageEvent.warning,
           );
         }
       }
@@ -3330,7 +4283,11 @@ abstract class _BooleanPrompt {
         }
         if (help) continue;
         if (key == '\r' || key == '\n') {
-          writeStyled('Accepted: ${_state(draft)}.', colors.success);
+          writeStyled(
+            'Accepted: ${_state(draft)}.',
+            colors.success,
+            event: StageEvent.result,
+          );
           return Accepted(draft);
         }
         if (kind == _BooleanKind.confirm &&
@@ -3356,7 +4313,11 @@ final class Multiline {
     this.required = false,
     this.validate,
     this.maxLength,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -3373,6 +4334,10 @@ final class Multiline {
   final bool required;
   final String? Function(String)? validate;
   final int? maxLength;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
   static String _normalize(String value) =>
       value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -3384,9 +4349,13 @@ final class Multiline {
     return validate?.call(value);
   }
 
-  String _opening({required bool linear}) => linear
-      ? '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-      : '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}). Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+  ({String title, String guidance}) _openingParts({required bool linear}) => (
+    title:
+        '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
+    guidance: linear
+        ? 'Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+  );
 
   /// Current-stage help for this multiline answer.
   ///
@@ -3466,7 +4435,7 @@ final class Multiline {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -3505,10 +4474,31 @@ final class Multiline {
           : PromptMode.linear;
     }
     final out = scripted.output;
-    _writeWrappedText(
+    final width = _textInputWidth(effectiveProfile);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
-      _opening(linear: mode == PromptMode.linear),
-      _textInputWidth(effectiveProfile),
+      text,
+      foreground: foreground,
+      closes: closes,
+      event: event,
+    );
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _openingParts(linear: mode == PromptMode.linear),
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
@@ -3532,6 +4522,7 @@ final class Multiline {
             },
             multilinePaste: true,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
             linearHelpText: _help(linear: true),
             maxLength: maxLength == null
@@ -3562,19 +4553,23 @@ final class Multiline {
             final value = lines.join('\n');
             final error = _error(value);
             if (error == null) return Accepted(value);
-            out.writeln(error);
+            write(error, colors.error, closes: true, event: StageEvent.warning);
             continue;
           }
           if (result.value == '/list') {
             for (var i = 0; i < lines.length; i++) {
-              out.writeln('${i + 1}: ${lines[i]}');
+              write(
+                '${i + 1}: ${lines[i]}',
+                colors.foreground,
+                closes: i == lines.length - 1,
+              );
             }
             continue;
           }
           if (result.value == '/edit' ||
               result.value == '/insert' ||
               result.value == '/remove') {
-            out.writeln('Enter line number:');
+            write('Enter line number:', colors.foreground, closes: true);
             final number = await _edit(
               inputKeys,
               '',
@@ -3582,6 +4577,7 @@ final class Multiline {
               linear: true,
               sequential: true,
               outputProfile: effectiveProfile,
+              structure: structure,
               session: session,
             );
             if (number.action == 'cancel') return Cancelled();
@@ -3590,11 +4586,20 @@ final class Multiline {
             final index = (int.tryParse(number.value) ?? 0) - 1;
             if (index < 0 ||
                 index >= lines.length + (result.value == '/insert' ? 1 : 0)) {
-              out.writeln('Invalid line number.');
+              write(
+                'Invalid line number.',
+                colors.error,
+                closes: true,
+                event: StageEvent.warning,
+              );
               continue;
             }
             if (result.value == '/remove') {
-              out.writeln('Remove line ${index + 1}? Enter y to confirm.');
+              write(
+                'Remove line ${index + 1}? Enter y to confirm.',
+                colors.foreground,
+                closes: true,
+              );
               final confirm = await _edit(
                 inputKeys,
                 '',
@@ -3602,6 +4607,7 @@ final class Multiline {
                 linear: true,
                 sequential: true,
                 outputProfile: effectiveProfile,
+                structure: structure,
                 session: session,
               );
               if (confirm.action == 'cancel') return Cancelled();
@@ -3609,7 +4615,7 @@ final class Multiline {
               if (confirm.action != 'submit') return InputEnded();
               if (confirm.value == 'y') lines.removeAt(index);
             } else {
-              out.writeln('Edit line:');
+              write('Edit line:', colors.foreground, closes: true);
               final edited = await _edit(
                 inputKeys,
                 result.value == '/edit' ? lines[index] : '',
@@ -3625,6 +4631,7 @@ final class Multiline {
                 },
                 multilinePaste: true,
                 outputProfile: effectiveProfile,
+                structure: structure,
                 session: session,
                 linearHelpText: _help(linear: true),
                 maxLength: maxLength == null
@@ -3651,7 +4658,12 @@ final class Multiline {
               if (edited.action == 'cancel') return Cancelled();
               if (edited.action == 'interrupt') return Interrupted();
               if (edited.action == 'command') {
-                out.writeln('Quote commands to enter them as text.');
+                write(
+                  'Quote commands to enter them as text.',
+                  colors.warning,
+                  closes: true,
+                  event: StageEvent.warning,
+                );
                 continue;
               }
               if (edited.action != 'submit') return InputEnded();
@@ -3675,8 +4687,12 @@ final class Multiline {
       final before = chars.take(pos).join() + text;
       final candidate = before + chars.skip(pos).join();
       if (maxLength != null && candidate.characters.length > maxLength!) {
-        out.writeln(
+        spine.write(
+          out,
           'Insertion rejected: character limit is $maxLength graphemes.',
+          foreground: colors.error,
+          closes: true,
+          event: StageEvent.warning,
         );
         return;
       }
@@ -3816,10 +4832,11 @@ final class Multiline {
           } else if (transient) {
             out.write('\x1b[?1049h\x1b[H');
           }
-          _writeWrappedText(
+          spine.write(
             out,
             _help(linear: false),
-            _textInputWidth(effectiveProfile),
+            foreground: colors.foreground,
+            closes: true,
           );
           continue;
         }
@@ -3861,7 +4878,13 @@ final class Multiline {
             final value = chars.join();
             final error = _error(value);
             if (error == null) return Accepted(value);
-            out.writeln(error);
+            spine.write(
+              out,
+              error,
+              foreground: colors.error,
+              closes: true,
+              event: StageEvent.warning,
+            );
             action = 0;
             continue;
           }
@@ -4083,6 +5106,13 @@ final class _ChoiceRow {
 }
 
 /// Writes one shared choice row within the declared width.
+///
+/// The row keeps its stable reference, focus marker and unavailability reason
+/// while gaining the structure's continuation prefix, so a framed list reads as
+/// one spine rather than a stack of unrelated rows. When the structure encloses
+/// its stage, the row is written through the stage's [spine] instead, so the
+/// whole list stays inside one frame and keeps the structure's marker even when
+/// the width is too narrow to frame it.
 void _writeChoiceRow(
   StringSink output,
   _ChoiceRow row, {
@@ -4090,15 +5120,50 @@ void _writeChoiceRow(
   required TerminalColor foreground,
   required ColorTheme colors,
   required OutputProfile? profile,
-}) => _writeWrappedColorText(
-  output,
-  DisplayText.from(row.text).value,
-  width,
-  foreground: foreground,
-  background: colors.background,
-  outputProfile: profile,
-  atomicText: row.markers,
-);
+  PromptStructure structure = PromptStructure.plain,
+  _StructureSpine? spine,
+  bool opens = false,
+  bool closes = false,
+}) {
+  if (spine != null && (spine._enclosure != null || spine.heads)) {
+    // The stage's spine owns the row: a body row inside the frame, a body row
+    // under a heading structure's heading, or the structure's live marker when
+    // the width cannot frame the stage. Either way a choice row never silently
+    // loses the structure the heading keeps.
+    spine.write(
+      output,
+      DisplayText.from(row.text).value,
+      foreground: foreground,
+      atomicText: row.markers,
+    );
+    return;
+  }
+  final ascii = _structureAscii(profile);
+  final available = width == null
+      ? null
+      : (width - structurePrefixCells(structure, ascii: ascii)).clamp(1, width);
+  final lines = frameStructureLines(
+    structure,
+    ascii: ascii,
+    opens: opens,
+    closes: closes,
+    lines: _wrapText(
+      DisplayText.from(row.text).value,
+      available,
+      atomicText: row.markers,
+    ),
+  );
+  var drawn = 0;
+  for (final line in lines) {
+    if (line.isEmpty) continue;
+    output.writeln(_colorText(line, foreground, colors.background, profile));
+    drawn++;
+  }
+  // The row is the stage's content, so the spine counts it even though the row
+  // marker belongs to the structure: a rich repaint rewinds over the rows it
+  // presented, not only over the heading and the hint.
+  spine?.countRows(drawn);
+}
 
 final class Select<T> extends _SingleChoice<T> {
   Select(
@@ -4106,6 +5171,9 @@ final class Select<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(radio: false);
 }
 
@@ -4115,6 +5183,9 @@ final class Radio<T> extends _SingleChoice<T> {
     super.choices, {
     super.defaultValue,
     super.colors = ColorThemes.terminalDefault,
+    super.structure = PromptStructure.plain,
+    super.instructions = InstructionDisplay.themeDefault,
+    super.supplementaryHelp = const [],
   }) : super(radio: true);
 }
 
@@ -4125,7 +5196,11 @@ abstract class _SingleChoice<T> {
     this.defaultValue,
     required this.radio,
     required this.colors,
-  }) : choices = List.unmodifiable(choices) {
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : choices = List.unmodifiable(choices),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4141,6 +5216,9 @@ abstract class _SingleChoice<T> {
   final T? defaultValue;
   final bool radio;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   /// Component help led by this family's controls.
@@ -4233,7 +5311,7 @@ abstract class _SingleChoice<T> {
           }
           return await _terminal<T>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -4278,13 +5356,25 @@ abstract class _SingleChoice<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+      rich: mode == PromptMode.rich,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
       DisplayText.from(text).value,
-      width,
       foreground: foreground,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      closes: closes,
+      event: event,
     );
 
     var focus = defaultValue == null
@@ -4294,13 +5384,27 @@ abstract class _SingleChoice<T> {
     if (focus < 0 && choices.isNotEmpty) focus = 0;
     var page = 0;
     const pageSize = 10;
+    final hint = mode == PromptMode.rich
+        ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
+        : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+    var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
-      write(
-        '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
-        colors.foreground,
+      spine.reset(out);
+      spine.heading(
+        out,
+        DisplayText.from(
+          '$label ${radio ? 'Radio' : 'Select'}: ${choices.length} choices.',
+        ).value,
+        foreground: colors.foreground,
       );
-      if (choices.isEmpty) write('No choices available.', colors.warning);
+      if (choices.isEmpty) {
+        write(
+          'No choices available.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
+      }
       final start = mode == PromptMode.linear ? page * pageSize : 0;
       final end = mode == PromptMode.linear
           ? (start + pageSize).clamp(0, choices.length)
@@ -4309,8 +5413,10 @@ abstract class _SingleChoice<T> {
         write(
           'Page ${page + 1} of ${(choices.length + pageSize - 1) ~/ pageSize}.',
           colors.muted,
+          event: StageEvent.state,
         );
       }
+      if (start < end) spine.breathingRow(out);
       for (var i = start; i < end; i++) {
         final c = choices[i];
         _writeChoiceRow(
@@ -4327,17 +5433,21 @@ abstract class _SingleChoice<T> {
           foreground: i == focus ? colors.accent : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          structure: structure,
+          spine: spine,
         );
+      }
+      // An enclosure ends every presentation: the bottom rule closes the frame
+      // and the compact hint stays outside it, so navigation never leaves the
+      // stage framed but unclosed and an outcome is never a body row. A rail or
+      // branch reports the hint once and continues its spine on a repaint.
+      if (spine.encloses || !hintShown) {
+        spine.hint(out, hint, foreground: colors.muted);
+        hintShown = true;
       }
     }
 
     show();
-    write(
-      mode == PromptMode.rich
-          ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
-          : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.',
-      colors.muted,
-    );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
     try {
@@ -4353,6 +5463,7 @@ abstract class _SingleChoice<T> {
             extraCommands: const {'/next', '/previous'},
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (result.action == 'cancel') return Cancelled();
@@ -4371,7 +5482,12 @@ abstract class _SingleChoice<T> {
           entry = result.value;
           final n = int.tryParse(entry);
           if (n == null || n < 1 || n > choices.length) {
-            write('Enter a valid choice reference.', colors.warning);
+            write(
+              'Enter a valid choice reference.',
+              colors.warning,
+              closes: true,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final c = choices[n - 1];
@@ -4379,10 +5495,17 @@ abstract class _SingleChoice<T> {
             write(
               'Unavailable: ${c.disabledReason}. Choose an enabled reference.',
               colors.warning,
+              closes: true,
+              event: StageEvent.warning,
             );
             continue;
           }
-          write('Accepted: ${c.label}.', colors.success);
+          write(
+            'Accepted: ${c.label}.',
+            colors.success,
+            closes: true,
+            event: StageEvent.result,
+          );
           return Accepted(c.value);
         }
       }
@@ -4413,7 +5536,11 @@ abstract class _SingleChoice<T> {
         }
         if (key == '\r' || key == '\n') {
           if (focus < 0) {
-            write('No choice available.', colors.warning);
+            write(
+              'No choice available.',
+              colors.warning,
+              event: StageEvent.warning,
+            );
             continue;
           }
           final c = choices[focus];
@@ -4421,10 +5548,15 @@ abstract class _SingleChoice<T> {
             write(
               'Unavailable: ${c.disabledReason}. Navigate to an enabled choice.',
               colors.warning,
+              event: StageEvent.warning,
             );
             continue;
           }
-          write('Accepted: ${c.label}.', colors.success);
+          write(
+            'Accepted: ${c.label}.',
+            colors.success,
+            event: StageEvent.result,
+          );
           return Accepted(c.value);
         }
       }
@@ -4444,8 +5576,12 @@ final class MultiSelect<T> {
     this.min = 0,
     this.max,
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
-       defaultValues = List.unmodifiable(defaultValues) {
+       defaultValues = List.unmodifiable(defaultValues),
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4469,6 +5605,9 @@ final class MultiSelect<T> {
   final int min;
   final int? max;
   final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   /// Component help led by this family's toggle, review and filter actions.
@@ -4556,7 +5695,7 @@ final class MultiSelect<T> {
           }
           return await _terminal<List<T>>(
             selectedMode,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -4614,13 +5753,25 @@ final class MultiSelect<T> {
     }
     final out = scripted.output;
     final width = _textInputWidth(effectiveProfile);
-    void write(String text, TerminalColor foreground) => _writeWrappedColorText(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+      rich: mode == PromptMode.rich,
+    );
+    void write(
+      String text,
+      TerminalColor foreground, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
       DisplayText.from(text).value,
-      width,
       foreground: foreground,
-      background: colors.background,
-      outputProfile: effectiveProfile,
+      closes: closes,
+      event: event,
     );
 
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
@@ -4636,15 +5787,29 @@ final class MultiSelect<T> {
       for (var i = 0; i < choices.length; i++)
         if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
     ];
+    final hint = mode == PromptMode.linear
+        ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
+    var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
+      spine.reset(out);
       final items = visible();
       final hidden = selected.where((i) => !items.contains(i)).length;
-      write(
-        '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
-        colors.foreground,
+      spine.heading(
+        out,
+        DisplayText.from(
+          '$label MultiSelect: ${selected.length} selected, $hidden hidden selected; ${items.length} results. Minimum $min${max == null ? '' : ', maximum $max'}.',
+        ).value,
+        foreground: colors.foreground,
       );
-      if (items.isEmpty) write('No matching choices.', colors.warning);
+      if (items.isEmpty) {
+        write(
+          'No matching choices.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
+      }
       final shown = mode == PromptMode.linear
           ? items.skip(page * size).take(size)
           : items;
@@ -4652,8 +5817,10 @@ final class MultiSelect<T> {
         write(
           'Page ${page + 1} of ${(items.length + size - 1) ~/ size}.',
           colors.muted,
+          event: StageEvent.state,
         );
       }
+      if (shown.isNotEmpty) spine.breathingRow(out);
       for (final i in shown) {
         final c = choices[i];
         final focused =
@@ -4672,7 +5839,17 @@ final class MultiSelect<T> {
           foreground: focused ? colors.accent : colors.foreground,
           colors: colors,
           profile: effectiveProfile,
+          structure: structure,
+          spine: spine,
         );
+      }
+      // An enclosure ends every presentation: the bottom rule closes the frame
+      // and the compact hint stays outside it, so a toggle or navigation never
+      // leaves the stage framed but unclosed and an outcome is never a body row.
+      // A rail or branch reports the hint once and continues on a repaint.
+      if (spine.encloses || !hintShown) {
+        spine.hint(out, hint, foreground: colors.muted);
+        hintShown = true;
       }
     }
 
@@ -4691,13 +5868,21 @@ final class MultiSelect<T> {
     void toggle(int i) {
       final c = choices[i];
       if (c.disabledReason != null) {
-        write('Unavailable: ${c.disabledReason}.', colors.warning);
+        write(
+          'Unavailable: ${c.disabledReason}.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return;
       }
       if (selected.contains(i)) {
         selected.remove(i);
       } else if (max != null && selected.length >= max!) {
-        write('Maximum $max selections.', colors.warning);
+        write(
+          'Maximum $max selections.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return;
       } else {
         selected.add(i);
@@ -4706,6 +5891,7 @@ final class MultiSelect<T> {
       write(
         '${c.label}: ${checked ? 'checked' : 'unchecked'}.',
         checked ? colors.success : colors.muted,
+        event: StageEvent.state,
       );
     }
 
@@ -4714,7 +5900,11 @@ final class MultiSelect<T> {
           .where((i) => choices[i].disabledReason == null)
           .toSet();
       if (add && max != null && selected.union(enabled).length > max!) {
-        write('Maximum $max selections; no changes made.', colors.warning);
+        write(
+          'Maximum $max selections; no changes made.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return;
       }
       if (add) {
@@ -4726,7 +5916,11 @@ final class MultiSelect<T> {
 
     PromptResult<List<T>>? submit() {
       if (selected.length < min) {
-        write('Minimum $min selections required.', colors.warning);
+        write(
+          'Minimum $min selections required.',
+          colors.warning,
+          event: StageEvent.warning,
+        );
         return null;
       }
       return Accepted([
@@ -4736,12 +5930,6 @@ final class MultiSelect<T> {
     }
 
     show();
-    write(
-      mode == PromptMode.linear
-          ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-          : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
-      colors.muted,
-    );
     session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {
@@ -4763,6 +5951,7 @@ final class MultiSelect<T> {
             },
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (r.action == 'cancel') return Cancelled();
@@ -4796,6 +5985,7 @@ final class MultiSelect<T> {
                   linear: true,
                   sequential: true,
                   outputProfile: effectiveProfile,
+                  structure: structure,
                   session: session,
                 );
                 if (f.action == 'cancel') return Cancelled();
@@ -4832,7 +6022,7 @@ final class MultiSelect<T> {
         }
         if (key == '\x14') {
           help = true;
-          write(_help(linear: false), colors.foreground);
+          write(_help(linear: false), colors.foreground, closes: true);
           continue;
         }
         if (help) continue;
@@ -4865,6 +6055,7 @@ final class MultiSelect<T> {
             '',
             out,
             outputProfile: effectiveProfile,
+            structure: structure,
             session: session,
           );
           if (f.action == 'interrupt') return Interrupted();
@@ -4900,7 +6091,11 @@ final class TimeInput {
     this.twelveHour = false,
     this.seconds = false,
     this.initialValue,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
     }
@@ -4912,6 +6107,10 @@ final class TimeInput {
   final bool twelveHour;
   final bool seconds;
   final String? initialValue;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String get _format =>
@@ -5026,7 +6225,7 @@ final class TimeInput {
           }
           return await _terminal<({int hour, int minute, int? second})>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (nativeSource, nativeMode, _) =>
                 _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
@@ -5069,17 +6268,39 @@ final class TimeInput {
         ? scripted.resizeObserver
         : null;
     var value = initialValue ?? '';
-    _writeWrappedText(
-      out,
-      '$label. Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
-      width,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
     );
-    _writeWrappedText(
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
+    spine.opening(
+      out,
+      title: '$label.',
+      body:
+          'Format: $_format. Active format cue: ${seconds ? 'seconds included' : 'minutes only'}; ${twelveHour ? 'AM/PM period required' : '24-hour clock'}.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
+      event: StageEvent.state,
+    );
+    spine.hint(
       out,
       mode == PromptMode.linear
           ? 'Enter a time of day, not a date or timezone. /help describes the format; /cancel cancels.'
           : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      width,
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -5094,6 +6315,7 @@ final class TimeInput {
             clearHelpCommand: true,
             linearHelpText: _help(linear: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             resizeObserver: resizeObserver,
             session: session,
           );
@@ -5103,14 +6325,13 @@ final class TimeInput {
           value = edit.value;
           final parsed = _parse(value);
           if (parsed != null) {
-            _writeWrappedText(
-              out,
+            write(
               'Review: $value is a time of day without date or timezone.',
-              width,
+              closes: true,
             );
             return Accepted(parsed);
           }
-          _writeWrappedText(out, '$_error Correct the retained draft.', width);
+          write('$_error Correct the retained draft.', closes: true);
         }
       }
       return await _runRich(
@@ -5149,6 +6370,27 @@ final class TimeInput {
       'Submit',
     ];
     var focus = 0;
+    // This presentation only runs in rich mode, so every repaint rewinds the
+    // region it drew instead of appending another copy.
+    final spine = _structureSpine(
+      profile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+      rich: true,
+    );
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
 
     String current() {
       if (fields.every((field) => field.isEmpty) && period.isEmpty) return '';
@@ -5157,15 +6399,19 @@ final class TimeInput {
     }
 
     void show() {
-      _writeWrappedText(
+      spine.reset(out);
+      spine.opening(
         out,
-        '$label. Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
-        width,
+        title: '$label.',
+        body:
+            'Format: $_format. Draft: ${current().trim().isEmpty ? 'not set' : current()}.',
+        foreground: colors.foreground,
+        bodyForeground: colors.foreground,
       );
-      _writeWrappedText(
+      spine.hint(
         out,
         'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-        width,
+        foreground: colors.foreground,
       );
     }
 
@@ -5184,16 +6430,13 @@ final class TimeInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(linear: false, field: name),
           outputProfile: profile,
+          structure: structure,
           resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
             if (key.startsWith('\x1b[200~') &&
                 (key.contains(':') || key.contains(' '))) {
-              _writeWrappedText(
-                out,
-                'Paste only one time field at a time.',
-                width,
-              );
+              write('Paste only one time field at a time.', closes: true);
               return 'handled';
             }
             if (key == '\t') return 'next';
@@ -5221,10 +6464,9 @@ final class TimeInput {
           } else {
             final currentValue = int.tryParse(edit.value);
             if (currentValue == null) {
-              _writeWrappedText(
-                out,
+              write(
                 'Enter a complete numeric field before adjustment.',
-                width,
+                closes: true,
               );
             } else {
               final min = focus == 0 && twelveHour ? 1 : 0;
@@ -5247,11 +6489,7 @@ final class TimeInput {
         continue;
       }
       if (focus == segmentCount) {
-        _writeWrappedText(
-          out,
-          'Edit formatted time; Enter finishes editing.',
-          width,
-        );
+        write('Edit formatted time; Enter finishes editing.', closes: true);
         final edit = await _edit(
           keys,
           current(),
@@ -5259,6 +6497,7 @@ final class TimeInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(linear: false, stage: _TimeHelpStage.formatted),
           outputProfile: profile,
+          structure: structure,
           resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
@@ -5292,7 +6531,7 @@ final class TimeInput {
         }
         period = twelveHour && parts.length > 1 ? parts.skip(1).join(' ') : '';
         if (_parse(current()) == null) {
-          _writeWrappedText(out, _error, width);
+          write(_error, closes: true);
         }
         show();
         continue;
@@ -5304,6 +6543,7 @@ final class TimeInput {
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
         helpText: _help(linear: false, stage: _TimeHelpStage.submit),
         outputProfile: profile,
+        structure: structure,
         resizeObserver: resizeObserver,
         session: session,
         intercept: (key, text) {
@@ -5332,14 +6572,13 @@ final class TimeInput {
       if (submit.action == 'submit') {
         final parsed = _parse(current());
         if (parsed != null) {
-          _writeWrappedText(
-            out,
+          write(
             'Review: ${current()} is a time of day without date or timezone.',
-            width,
+            closes: true,
           );
           return Accepted(parsed);
         }
-        _writeWrappedText(out, _error, width);
+        write(_error, closes: true);
         show();
       }
     }
@@ -5354,7 +6593,11 @@ final class TagInput {
     this.style = TagStyle.kebabCase,
     this.maxLength,
     this.validate,
-  }) {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (maxLength != null && maxLength! < 0) {
       throw ArgumentError.value(maxLength, 'maxLength');
     }
@@ -5363,6 +6606,10 @@ final class TagInput {
   final TagStyle style;
   final int? maxLength;
   final String? Function(String)? validate;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   String _canonical(String text) {
@@ -5384,8 +6631,11 @@ final class TagInput {
   String get _styleName =>
       style == TagStyle.snakeCase ? 'snake_case' : 'kebab-case';
 
-  String _opening({required bool linear}) =>
-      '$label: $_styleName tags. Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'}';
+  ({String title, String guidance}) _openingParts({required bool linear}) => (
+    title: '$label: $_styleName tags.',
+    guidance:
+        'Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'}',
+  );
 
   /// Current-stage help for this tag collection.
   ///
@@ -5462,7 +6712,7 @@ final class TagInput {
           }
           return await _terminal<List<String>>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _runTags(source, mode, outputProfile: outputProfile),
           );
@@ -5527,10 +6777,30 @@ final class TagInput {
     int? editing;
     int? focused;
     var finishFocused = false;
-    _writeWrappedText(
+    final width = _textInputWidth(effectiveProfile);
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+    );
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       input.output,
-      _opening(linear: mode == PromptMode.linear),
-      _textInputWidth(effectiveProfile),
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
+    _writeStructureIntro(
+      spine,
+      input.output,
+      parts: _openingParts(linear: mode == PromptMode.linear),
+      foreground: colors.foreground,
     );
     try {
       while (true) {
@@ -5544,6 +6814,7 @@ final class TagInput {
           helpText: _help(linear: false),
           linearHelpText: _help(linear: true),
           outputProfile: effectiveProfile,
+          structure: structure,
           session: session,
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
@@ -5555,12 +6826,12 @@ final class TagInput {
             if (mode != PromptMode.rich) return null;
             if (key == '\t') {
               finishFocused = true;
-              input.output.writeln('Finish focused; Enter submits.');
+              write('Finish focused; Enter submits.');
               return 'handled';
             }
             if (finishFocused && (key == '\r' || key == '\n')) {
               if (text.isNotEmpty) {
-                input.output.writeln(
+                write(
                   'Add the draft or press Ctrl+X to discard it before finishing.',
                 );
                 finishFocused = false;
@@ -5571,7 +6842,7 @@ final class TagInput {
             if (key == '\x7f' || key == '\x08') {
               if (text.isEmpty && tags.isNotEmpty) {
                 focused ??= tags.length - 1;
-                input.output.writeln('Focused: ${tags[focused!]}');
+                write('Focused: ${tags[focused!]}');
                 return 'handled';
               }
             }
@@ -5582,7 +6853,7 @@ final class TagInput {
                 0,
                 tags.length - 1,
               );
-              input.output.writeln('Focused: ${tags[focused!]}');
+              write('Focused: ${tags[focused!]}');
               return 'handled';
             }
             if ((key == '\r' || key == '\n') &&
@@ -5591,7 +6862,7 @@ final class TagInput {
               return 'edit-focused';
             }
             if (key == '\x1b[3~' && text.isEmpty && focused != null) {
-              input.output.writeln('Removed: ${tags.removeAt(focused!)}');
+              write('Removed: ${tags.removeAt(focused!)}');
               focused = null;
               return 'handled';
             }
@@ -5599,7 +6870,7 @@ final class TagInput {
             return null;
           },
           onChanged: mode == PromptMode.rich
-              ? (text) => input.output.writeln('Preview: ${_canonical(text)}')
+              ? (text) => write('Preview: ${_canonical(text)}')
               : null,
         );
         if (result.action == 'cancel') return Cancelled();
@@ -5609,13 +6880,13 @@ final class TagInput {
           draft = '';
           editing = null;
           finishFocused = false;
-          input.output.writeln('Draft discarded.');
+          write('Draft discarded.');
           continue;
         }
         if (result.action == 'edit-focused') {
           editing = focused;
           draft = tags[editing!];
-          input.output.writeln('Editing: $draft');
+          write('Editing: $draft');
           focused = null;
           continue;
         }
@@ -5625,11 +6896,11 @@ final class TagInput {
         if (selectingRemoval || selectingEdit) {
           final index = int.tryParse(result.value);
           if (index == null || index < 1 || index > tags.length) {
-            input.output.writeln('Select a listed tag number.');
+            write('Select a listed tag number.');
             continue;
           }
           if (selectingRemoval) {
-            input.output.writeln('Removed: ${tags.removeAt(index - 1)}');
+            write('Removed: ${tags.removeAt(index - 1)}');
             selectingRemoval = false;
           } else {
             editing = index - 1;
@@ -5646,14 +6917,14 @@ final class TagInput {
                 result.value == '/remove' ||
                 result.value == '/edit')) {
           for (var i = 0; i < tags.length; i++) {
-            input.output.writeln('${i + 1}. ${tags[i]}');
+            write('${i + 1}. ${tags[i]}');
           }
           if (result.value == '/remove' && tags.isNotEmpty) {
             selectingRemoval = true;
-            input.output.writeln('Enter the number of the tag to remove.');
+            write('Enter the number of the tag to remove.');
           } else if (result.value == '/edit' && tags.isNotEmpty) {
             selectingEdit = true;
-            input.output.writeln('Enter the number of the tag to edit.');
+            write('Enter the number of the tag to edit.');
           }
           continue;
         }
@@ -5661,7 +6932,7 @@ final class TagInput {
           r'[^\p{L}\p{M}\p{N}\s_-]',
           unicode: true,
         ).hasMatch(result.value)) {
-          input.output.writeln('Unsupported punctuation; edit the draft.');
+          write('Unsupported punctuation; edit the draft.');
           draft = result.value;
           continue;
         }
@@ -5669,7 +6940,7 @@ final class TagInput {
           r'^(?:[\p{L}\p{Nd}]\p{M}*|[\s_-])*$',
           unicode: true,
         ).hasMatch(result.value)) {
-          input.output.writeln(
+          write(
             'Combining marks must follow a letter or digit; edit the draft.',
           );
           draft = result.value;
@@ -5677,7 +6948,7 @@ final class TagInput {
         }
         final value = _canonical(result.value);
         if (value.isEmpty) {
-          input.output.writeln('Enter a tag, or use Finish (/done).');
+          write('Enter a tag, or use Finish (/done).');
           draft = result.value;
           continue;
         }
@@ -5685,20 +6956,20 @@ final class TagInput {
             ? value.replaceAll('-', '_')
             : value;
         if (maxLength != null && canonical.characters.length > maxLength!) {
-          input.output.writeln('Maximum $maxLength graphemes; edit the draft.');
+          write('Maximum $maxLength graphemes; edit the draft.');
           draft = result.value;
           continue;
         }
         final validationError = validate?.call(canonical);
         if (validationError != null) {
-          input.output.writeln(validationError);
+          write(validationError);
           draft = result.value;
           continue;
         }
         if (tags.asMap().entries.any(
           (entry) => entry.key != editing && entry.value == canonical,
         )) {
-          input.output.writeln('Duplicate tag; edit the draft.');
+          write('Duplicate tag; edit the draft.');
           draft = result.value;
           continue;
         }
@@ -5709,7 +6980,7 @@ final class TagInput {
           editing = null;
         }
         draft = '';
-        input.output.writeln('Added: $canonical');
+        write('Added: $canonical');
       }
     } finally {
       if (keys == null) await inputKeys.close();

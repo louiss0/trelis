@@ -9,6 +9,8 @@ final class Autocomplete {
     this.required = false,
     this.validate,
     this.maxLength,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
@@ -18,12 +20,18 @@ final class Autocomplete {
          required: required,
          validate: validate,
          maxLength: maxLength,
+         colors: colors,
+         structure: structure,
+         instructions: instructions,
+         supplementaryHelp: supplementaryHelp,
        );
 
   final String label;
   final String initialValue;
   final bool required;
   final int? maxLength;
+  final ColorTheme colors;
+  final PromptStructure structure;
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final String? Function(String)? validate;
@@ -94,7 +102,7 @@ final class Autocomplete {
           }
           return await _terminal<String>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (source, mode, _) =>
                 _run(source, mode, outputProfile: outputProfile),
           );
@@ -134,15 +142,51 @@ final class Autocomplete {
     final out = source.output;
     final transcript = source.transcript;
     String safe(String value) => DisplayText.from(value).value;
-    out.writeln(
-      _instructionIntro(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+      border: colors.border,
+    );
+    // An unframed component keeps its unwrapped event lines; a declared
+    // structure frames and wraps them so rail/branch continuity or the
+    // enclosure holds.
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
+      if (!usesStructureFraming(structure)) {
+        out.writeln(text);
+        return;
+      }
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
+    }
+
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _instructionIntroParts(
         instructions,
-        hidden: '${safe(label)}. /help for help.',
-        compact:
-            '${safe(label)}. Enter a query; then a candidate number or /submit. /help for help.',
-        expanded:
-            '${safe(label)}. Enter a query; select a number, /submit, /edit, /help or /cancel.',
+        hidden: (title: '${safe(label)}.', guidance: '/help for help.'),
+        compact: (
+          title: '${safe(label)}.',
+          guidance: 'Enter a query; then a candidate number or /submit. /help for help.',
+        ),
+        expanded: (
+          title: '${safe(label)}.',
+          guidance: 'Enter a query; select a number, /submit, /edit, /help or /cancel.',
+        ),
       ),
+      foreground: colors.foreground,
+      rawWhenUnframed: true,
     );
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var pending = initialValue;
@@ -199,6 +243,7 @@ final class Autocomplete {
           transcript: transcript,
           session: session,
           outputProfile: effectiveProfile,
+          structure: structure,
           allowCommandPrefixes: true,
           maxLength: editing ? maxLength : null,
           extraCommands: editing ? const {} : const {'/submit', '/edit'},
@@ -223,7 +268,7 @@ final class Autocomplete {
         if (editing) {
           if (maxLength != null &&
               result.value.characters.length > maxLength!) {
-            out.writeln('Text exceeds maximum length; edit and submit again.');
+            write('Text exceeds maximum length; edit and submit again.');
             pending = result.value;
             continue;
           }
@@ -239,9 +284,9 @@ final class Autocomplete {
             candidates = items
                 .where((item) => !item.runes.any((r) => r < 32 || r == 127))
                 .toList();
-            out.writeln('${candidates.length} suggestions.');
+            write('${candidates.length} suggestions.');
             for (var i = 0; i < candidates.length; i++) {
-              out.writeln('${i + 1}. ${safe(candidates[i])}');
+              write('${i + 1}. ${safe(candidates[i])}');
             }
             recordResults();
           }
@@ -250,7 +295,7 @@ final class Autocomplete {
             if (closed || request != generation) return;
             loading = false;
             failed = true;
-            out.writeln('Suggestions unavailable.');
+            write('Suggestions unavailable.');
             recordResults();
           }
 
@@ -267,7 +312,7 @@ final class Autocomplete {
             if (response is List<String>) {
               apply(response);
             } else {
-              out.writeln('Loading suggestions.');
+              write('Loading suggestions.');
               Future<List<String>>.value(response).then(
                 (items) => guarded(() => apply(items)),
                 onError: (Object error) => guarded(() => fail(error)),
@@ -277,7 +322,7 @@ final class Autocomplete {
             fail(error);
           }
           recordResults();
-          out.writeln(
+          write(
             'Pending answer: ${safe(pending)}. Choose a number or /submit, /edit, /help, /cancel.',
           );
           editing = false;
@@ -285,7 +330,7 @@ final class Autocomplete {
         } else if (result.action == 'command' && result.value == '/submit') {
           final error = _error(pending);
           if (error != null) {
-            out.writeln(safe(error));
+            write(safe(error));
             continue;
           }
           return Accepted(pending);
@@ -301,12 +346,12 @@ final class Autocomplete {
           if (index != null && index > 0 && index <= candidates.length) {
             final candidate = candidates[index - 1];
             if (maxLength != null && candidate.characters.length > maxLength!) {
-              out.writeln('Candidate exceeds maximum length.');
+              write('Candidate exceeds maximum length.');
               transcript?._event(TextInputPresentationEventKind.rejected);
               continue;
             }
             pending = candidate;
-            out.writeln(
+            write(
               'Accepted into pending answer: ${safe(pending)}. Use /submit to finish or /edit to change.',
             );
             // Candidates are response-local: the ordinal identifies a position
@@ -317,9 +362,7 @@ final class Autocomplete {
               text: candidate,
             );
           } else {
-            out.writeln(
-              'Choose a listed number or /submit, /edit, /help, /cancel.',
-            );
+            write('Choose a listed number or /submit, /edit, /help, /cancel.');
             transcript?._event(TextInputPresentationEventKind.rejected);
           }
         }
@@ -344,15 +387,51 @@ final class Autocomplete {
     final out = source.output;
     final transcript = source.transcript;
     String safe(String value) => DisplayText.from(value).value;
-    out.writeln(
-      _instructionIntro(
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+      border: colors.border,
+    );
+    // An unframed component keeps its unwrapped event lines; a declared
+    // structure frames and wraps them so rail/branch continuity or the
+    // enclosure holds.
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) {
+      if (!usesStructureFraming(structure)) {
+        out.writeln(text);
+        return;
+      }
+      spine.write(
+        out,
+        text,
+        foreground: colors.foreground,
+        closes: closes,
+        event: event,
+      );
+    }
+
+    _writeStructureIntro(
+      spine,
+      out,
+      parts: _instructionIntroParts(
         instructions,
-        hidden: '${safe(label)}. Ctrl+T for help.',
-        compact:
-            '${safe(label)}. Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',
-        expanded:
-            '${safe(label)}. Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
+        hidden: (title: '${safe(label)}.', guidance: 'Ctrl+T for help.'),
+        compact: (
+          title: '${safe(label)}.',
+          guidance: 'Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',
+        ),
+        expanded: (
+          title: '${safe(label)}.',
+          guidance: 'Type text; Up/Down inspect suggestions; Tab accepts the first or active candidate; Enter accepts an active candidate or submits text; Escape dismisses suggestions, then cancels.',
+        ),
       ),
+      foreground: colors.foreground,
+      rawWhenUnframed: true,
     );
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
     var value = initialValue;
@@ -371,7 +450,7 @@ final class Autocomplete {
       if (helpVisible) {
         deferredNotice = text;
       } else {
-        out.writeln(text);
+        write(text);
       }
     }
 
@@ -452,7 +531,7 @@ final class Autocomplete {
         if (result is List<String>) {
           apply(result);
         } else {
-          out.writeln('Loading suggestions.');
+          write('Loading suggestions.');
           Future<List<String>>.value(result).then(
             (items) => guarded(() => apply(items)),
             onError: (Object error) => guarded(() => fail(error)),
@@ -471,6 +550,7 @@ final class Autocomplete {
           out,
           session: session,
           outputProfile: effectiveProfile,
+          structure: structure,
           transcript: transcript,
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
@@ -478,7 +558,7 @@ final class Autocomplete {
           onChanged: changed,
           onHelpVisibilityChanged: (visible) => helpVisible = visible,
           onHelpDismissed: () {
-            if (deferredNotice case final text?) out.writeln(text);
+            if (deferredNotice case final text?) write(text);
             deferredNotice = null;
           },
           maxLength: maxLength,
@@ -501,7 +581,7 @@ final class Autocomplete {
               generation++;
               candidates = [];
               recordResults(notice: QueryResultsNotice.dismissed, idle: true);
-              out.writeln('Suggestions dismissed.');
+              write('Suggestions dismissed.');
               return 'handled';
             }
             if ((key == '\x1b[B' || key == '\x1b[A') &&
@@ -515,7 +595,7 @@ final class Autocomplete {
                     : (focus - 1).clamp(0, candidates.length - 1);
               }
               recordResults();
-              out.writeln(
+              write(
                 'Active candidate, not accepted: ${safe(candidates[focus])}.',
               );
               return 'handled';
@@ -534,7 +614,7 @@ final class Autocomplete {
         if (result.action == 'submit') {
           final error = _error(result.value);
           if (error == null) return Accepted(result.value);
-          out.writeln(safe(error));
+          write(safe(error));
           value = result.value;
           continue;
         }
@@ -542,7 +622,7 @@ final class Autocomplete {
         if (result.action == 'accept') {
           final candidate = candidates[focus < 0 ? 0 : focus];
           if (maxLength != null && candidate.characters.length > maxLength!) {
-            out.writeln('Candidate exceeds maximum length.');
+            write('Candidate exceeds maximum length.');
             transcript?._event(TextInputPresentationEventKind.rejected);
             continue;
           }
@@ -552,9 +632,7 @@ final class Autocomplete {
           open = false;
           generation++;
           candidates = [];
-          out.writeln(
-            'Accepted into editable text: ${safe(value)}. Enter submits.',
-          );
+          write('Accepted into editable text: ${safe(value)}. Enter submits.');
           transcript?._event(
             TextInputPresentationEventKind.candidateAccepted,
             text: candidate,

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 // In stale mode, type a then b: the a response is released after ab.
 Future<List<Choice<String>>> Function(String) controlledSearch(

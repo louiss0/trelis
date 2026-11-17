@@ -1,8 +1,8 @@
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 /// Smoke tests for the exported surface: every component must be constructible
-/// through `package:prompty/prompty.dart` alone, and the shared session seam
+/// through `package:trelis/trelis.dart` alone, and the shared session seam
 /// must be usable through it.
 void main() {
   test('the public library exposes all 38 components', () {

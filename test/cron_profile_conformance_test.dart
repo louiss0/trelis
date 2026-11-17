@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 import 'package:test/test.dart';

@@ -26,6 +26,7 @@ final class DurationInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
     this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -47,6 +48,7 @@ final class DurationInput {
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   final ColorTheme colors;
+  final PromptStructure structure;
   bool _active = false;
   static final _limit = BigInt.parse('9223372036854775807');
   static const _units = <String, int>{
@@ -151,20 +153,35 @@ final class DurationInput {
           : source == null
           ? (session != null
                 ? _SessionOutputSink(session)
-                : output ?? terminal?.output ?? stderr)
+                : output ?? terminal?.output ?? stdout)
           : null;
+      final reviewSpine = _structureSpine(
+        outputProfile,
+        structure: structure,
+        width: null,
+        background: colors.background,
+        border: colors.border,
+      );
       void review(String draft) {
         if (sink == null) return;
         final value = _parse(draft);
         if (value == null) {
-          sink.writeln('Interpretation unavailable: enter a valid duration.');
+          reviewSpine.hint(
+            sink,
+            'Interpretation unavailable: enter a valid duration.',
+            foreground: colors.warning,
+          );
         } else if (durationMode == DurationInputMode.elapsed) {
-          sink.writeln(
+          reviewSpine.hint(
+            sink,
             'Elapsed interpretation: ${value.microseconds} microseconds.',
+            foreground: colors.muted,
           );
         } else {
-          sink.writeln(
+          reviewSpine.hint(
+            sink,
             'Unapplied calendar components: ${value.components}; elapsed sub-day: ${value.microseconds} microseconds.',
+            foreground: colors.muted,
           );
         }
       }
@@ -185,6 +202,7 @@ final class DurationInput {
               ...supplementaryHelp,
             ],
             colors: colors,
+            structure: structure,
           ).prompt(
             source: source,
             mode: mode,

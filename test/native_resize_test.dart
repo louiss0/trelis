@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
-import 'package:prompty/src/native_resize.dart';
+import 'package:trelis/trelis.dart';
+import 'package:trelis/src/native_resize.dart';
 import 'package:test/test.dart';
 
 void main() {

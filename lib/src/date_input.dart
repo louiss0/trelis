@@ -305,8 +305,13 @@ final class DateInput {
     DateCalendar? calendar,
     DateDigits? digits,
     this.initialValue,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    this.instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
   }) : calendar = calendar ?? DateCalendar.gregorian,
-       digits = digits ?? DateDigits.ascii {
+       digits = digits ?? DateDigits.ascii,
+       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (order == null && (calendar != null || digits != null)) {
       throw ArgumentError(
         'A calendar or digit override requires an explicit field order.',
@@ -328,6 +333,10 @@ final class DateInput {
   final DateCalendar calendar;
   final DateDigits digits;
   final String? initialValue;
+  final ColorTheme colors;
+  final PromptStructure structure;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
   bool _active = false;
 
   CivilDate? _parse(String text, DateFieldOrder order) {
@@ -440,7 +449,7 @@ final class DateInput {
           }
           return await _terminal<CivilDate>(
             selected,
-            output ?? stderr,
+            output ?? stdout,
             (nativeSource, nativeMode, _) =>
                 _run(nativeSource, nativeMode, outputProfile: outputProfile),
           );
@@ -545,8 +554,10 @@ final class DateInput {
     DateFieldOrder order,
     OutputProfile profile,
     TerminalSession? session,
-    TerminalResizeObserver? resizeObserver,
-  ) async {
+    TerminalResizeObserver? resizeObserver, {
+    PromptStructure structure = PromptStructure.plain,
+    required bool rich,
+  }) async {
     final names = switch (order) {
       DateFieldOrder.dayMonthYear => ['day', 'month', 'year'],
       DateFieldOrder.monthDayYear => ['month', 'day', 'year'],
@@ -555,13 +566,60 @@ final class DateInput {
     final width = _textInputWidth(profile);
     final split = draft.split('/');
     final segments = List.generate(3, (i) => i < split.length ? split[i] : '');
+    final spine = _structureSpine(
+      profile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
+      rich: rich,
+    );
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
+
+    /// Presents one field stage.
+    ///
+    /// An enclosure frames the stage: its context is the body and the focus cue
+    /// is the compact hint outside the closed frame, so navigating between
+    /// fields never leaves the frame open and the cue is never a body row. A
+    /// heading structure decorates the same stage heading and keeps the cue
+    /// under its body rows. A rail or branch keeps the single closing cue it
+    /// already wrote.
+    void stage(String cue) {
+      if (spine.encloses) {
+        spine.reset(out);
+        write(
+          '$label. Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
+        );
+      } else if (spine.heads) {
+        spine.reset(out);
+        spine.opening(
+          out,
+          title: '$label.',
+          body:
+              'Active format: ${_format(order)}; ${calendar.name} calendar. Draft: ${segments.join('/')}.',
+          foreground: colors.foreground,
+          bodyForeground: colors.foreground,
+          event: StageEvent.state,
+        );
+      }
+      spine.hint(out, cue, foreground: colors.foreground);
+    }
+
     var focus = 0;
     while (true) {
       if (focus == 3) {
-        _writeWrappedText(
-          out,
+        stage(
           'Focus: Review. Enter reviews; Tab moves forward; Shift-Tab or Ctrl+B moves back.',
-          width,
         );
         final action = await _edit(
           keys,
@@ -570,6 +628,7 @@ final class DateInput {
           transientHelp: profile.alternateScreen == CapabilitySupport.supported,
           helpText: _help(order, linear: false, review: true),
           outputProfile: profile,
+          structure: structure,
           resizeObserver: resizeObserver,
           session: session,
           intercept: (key, text) {
@@ -593,10 +652,8 @@ final class DateInput {
         continue;
       }
       final name = names[focus];
-      _writeWrappedText(
-        out,
+      stage(
         'Focus: $name. Tab or slash moves forward; Shift-Tab or Ctrl+B moves back; Up/Down adjusts without carry. Enter advances or reviews.',
-        width,
       );
       final edit = await _edit(
         keys,
@@ -606,15 +663,12 @@ final class DateInput {
         transientHelp: profile.alternateScreen == CapabilitySupport.supported,
         helpText: _help(order, linear: false, field: name),
         outputProfile: profile,
+        structure: structure,
         resizeObserver: resizeObserver,
         session: session,
         intercept: (key, text) {
           if (key.startsWith('\x1b[200~') && key.contains('/')) {
-            _writeWrappedText(
-              out,
-              'Paste only one numeric segment at a time.',
-              width,
-            );
+            write('Paste only one numeric segment at a time.', closes: true);
             return 'handled';
           }
           if (key == '\t') return 'next';
@@ -625,10 +679,9 @@ final class DateInput {
                 text.runes.length <= (name == 'year' ? 4 : 2) &&
                 (name != 'year' || text.runes.length == 4);
             if (valid && focus < 2) return 'next';
-            _writeWrappedText(
-              out,
+            write(
               'Slash cannot skip an incomplete field or submit.',
-              width,
+              closes: true,
             );
             return 'handled';
           }
@@ -647,11 +700,7 @@ final class DateInput {
       if (edit.action == 'increase' || edit.action == 'decrease') {
         final number = _segmentNumber(edit.value);
         if (number == null) {
-          _writeWrappedText(
-            out,
-            'Enter a numeric segment before adjustment.',
-            width,
-          );
+          write('Enter a numeric segment before adjustment.', closes: true);
         } else {
           final next = number + (edit.action == 'increase' ? 1 : -1);
           final max = name == 'year'
@@ -742,15 +791,34 @@ final class DateInput {
         : null;
     final format = _format(resolvedOrder);
     var draft = initialValue ?? '';
-    _writeWrappedText(
-      out,
-      '$label. Active format: $format; ${calendar.name} calendar.',
-      width,
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: width,
+      background: colors.background,
+      border: colors.border,
     );
-    _writeWrappedText(
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
       out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
+    spine.opening(
+      out,
+      title: '$label.',
+      body: 'Active format: $format; ${calendar.name} calendar.',
+      foreground: colors.foreground,
+      bodyForeground: colors.foreground,
+      event: StageEvent.state,
+    );
+    write(
       'ASCII and ${digits.name} digits (one repertoire per field); four-digit year, one or two digit month and day. Slash separators.',
-      width,
     );
     final sampleYear = calendar == DateCalendar.buddhist ? '2567' : '2024';
     final example = switch (resolvedOrder) {
@@ -758,17 +826,15 @@ final class DateInput {
       DateFieldOrder.monthDayYear => '2/29/$sampleYear',
       DateFieldOrder.yearMonthDay => '$sampleYear/2/29',
     };
-    _writeWrappedText(
-      out,
+    write(
       'Year is ${calendar == DateCalendar.buddhist ? 'Buddhist era 2484-9999' : 'CE 0001-9999'}; Gregorian-derived months, no leap-month context. Example: $example. Arithmetic profile; date only, no timezone.',
-      width,
     );
-    _writeWrappedText(
+    spine.hint(
       out,
       mode == PromptMode.linear
           ? 'Enter a date, then review. /help describes the format; /cancel cancels.'
           : 'Enter one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
-      width,
+      foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     try {
@@ -783,6 +849,7 @@ final class DateInput {
                 maxLength: 10,
                 linearHelpText: _help(resolvedOrder, linear: true),
                 outputProfile: effectiveProfile,
+                structure: structure,
                 resizeObserver: resizeObserver,
                 session: session,
               )
@@ -794,6 +861,8 @@ final class DateInput {
                 effectiveProfile,
                 session,
                 scripted.resizeObserver,
+                structure: structure,
+                rich: mode == PromptMode.rich,
               );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
@@ -801,31 +870,28 @@ final class DateInput {
         draft = edit.value;
         final value = _parse(draft, resolvedOrder);
         if (value == null) {
-          _writeWrappedText(
-            out,
+          write(
             '${_dateError(draft, resolvedOrder)} Correct the retained draft.',
-            width,
+            closes: true,
           );
           continue;
         }
         final iso =
             '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-        _writeWrappedText(
-          out,
+        write(
           'Review: ${calendar.name} year ${value.inputYear}, month ${value.month}, day ${value.day}; ISO date: $iso.',
-          width,
         );
-        _writeWrappedText(
+        spine.hint(
           out,
           'Type /submit to accept or /edit to return to the draft; /cancel cancels.',
-          width,
+          foreground: colors.foreground,
         );
         var reviewFocus = 0;
         if (mode != PromptMode.linear) {
-          _writeWrappedText(
+          spine.hint(
             out,
             'Review action: Edit. Tab or Ctrl+B changes action; Enter activates.',
-            width,
+            foreground: colors.foreground,
           );
         }
         while (true) {
@@ -843,6 +909,7 @@ final class DateInput {
             helpText: _help(resolvedOrder, linear: false, review: true),
             linearHelpText: _help(resolvedOrder, linear: true, review: true),
             outputProfile: effectiveProfile,
+            structure: structure,
             resizeObserver: resizeObserver,
             session: session,
             intercept: mode == PromptMode.linear
@@ -850,10 +917,10 @@ final class DateInput {
                 : (key, text) {
                     if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
                       reviewFocus = 1 - reviewFocus;
-                      _writeWrappedText(
+                      spine.hint(
                         out,
                         'Review action: ${reviewFocus == 0 ? 'Edit' : 'Submit'}.',
-                        width,
+                        foreground: colors.foreground,
                       );
                       return 'handled';
                     }
@@ -875,7 +942,7 @@ final class DateInput {
               (action.action == 'command' && action.value == '/edit')) {
             break;
           }
-          _writeWrappedText(out, 'Use /submit or /edit.', width);
+          write('Use /submit or /edit.', closes: true);
         }
       }
     } finally {
