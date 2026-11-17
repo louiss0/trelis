@@ -1,4 +1,4 @@
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 /// Synthetic rich output declares positive geometry; the legacy rich hint is

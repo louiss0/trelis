@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 /// Bracket-theme factory namespace.
 ///

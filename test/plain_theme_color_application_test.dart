@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 final _linearRgbProfile = OutputProfile(colorDepth: ColorDepth.rgb);

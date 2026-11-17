@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 Future<void> main() async {
   final result = await DateInput(

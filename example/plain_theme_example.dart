@@ -1,4 +1,4 @@
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 /// Demonstrates PlainTheme factories and named/custom colour themes.
 ///

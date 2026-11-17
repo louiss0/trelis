@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 /// Compile- and source-level checks of the public compatibility inventory.
@@ -293,7 +293,7 @@ List<Object> _feedback() => [
 void main() {
   group('public authoring surface', () {
     test('the barrel exports only the documented implementation libraries', () {
-      final exports = File('lib/prompty.dart')
+      final exports = File('lib/trelis.dart')
           .readAsLinesSync()
           .map((line) => line.trim())
           .where((line) => line.startsWith('export '))

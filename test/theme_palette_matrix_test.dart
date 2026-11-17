@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
 
 /// Independent verification of the 45 named colour palettes.

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
-import 'package:prompty/src/text_measurement.dart';
+import 'package:trelis/trelis.dart';
+import 'package:trelis/src/text_measurement.dart';
 import 'package:test/test.dart';
 
 import 'theme_matrix_cases.dart';

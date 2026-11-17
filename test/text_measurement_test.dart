@@ -1,5 +1,5 @@
-import 'package:prompty/src/presentation.dart';
-import 'package:prompty/src/text_measurement.dart';
+import 'package:trelis/src/presentation.dart';
+import 'package:trelis/src/text_measurement.dart';
 import 'package:test/test.dart';
 
 /// Adversarial application text: controls, formats, bidi, joiners and the

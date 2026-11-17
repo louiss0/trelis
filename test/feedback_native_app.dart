@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 Future<void> main(List<String> args) async {
   Text('literal\x1b[31m', kind: TextKind.warning).present();

@@ -1,4 +1,4 @@
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 /// One public component's real render/task path for a structural theme.
 ///

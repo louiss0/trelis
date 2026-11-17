@@ -1,4 +1,4 @@
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 Future<void> main(List<String> args) async {
   final mode = args[0] == 'linear' ? PromptMode.linear : PromptMode.rich;

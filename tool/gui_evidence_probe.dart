@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:prompty/prompty.dart';
+import 'package:trelis/trelis.dart';
 
 /// Explicit ASCII/no-colour profile for the visible fallback scenario.
 final asciiOutputProfile = OutputProfile(
