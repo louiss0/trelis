@@ -8,7 +8,7 @@ green end to end.
 **Blocked by:**
 - [02: Update documentation and publish migration guidance](02-documentation-and-migration.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] `pubspec.yaml` carries a correct `description` and the public `repository`
       URL (`https://github.com/louiss0/trelis`); version is intentional.
@@ -24,3 +24,7 @@ green end to end.
       not treat the edit itself as a pass.
 
 ## Comments
+
+**Claim.** Claimed on `integration/trelis-package-rename`. Tickets 01 and 02
+are resolved. This ticket finalizes release metadata, runs the full
+verification battery, and records the verdict.
