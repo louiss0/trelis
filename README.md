@@ -29,7 +29,7 @@ switch (result) {
 Construction does not acquire the terminal. Each invocation starts a new
 session; overlapping sessions on the same prompt or console are rejected.
 Interactive console input currently requires Windows. Prompt output defaults to
-stderr; pass `output: stdout` to select stdout. Redirected output is sequential,
+stdout; pass `output: stderr` to select stderr explicitly. Redirected output is sequential,
 without cursor addressing. On a cursor-capable terminal, TextInput keeps the active answer on one
 editable line with the visible cursor at its editing position; instructions and
 completed exchanges remain in the transcript. Long answers scroll horizontally;
@@ -741,7 +741,7 @@ limit. The `/help` command is cleared instead of being run as an action.
 started with `start()`, updated by the application, and finalized with
 `finish(FeedbackOutcome.completed)` or another explicit outcome. A null total
 is indeterminate; `setTotal` reports recalculation. `dispose()` releases the
-presentation without asserting success. Feedback defaults to stderr and never
+presentation without asserting success. Feedback defaults to stdout and never
 reads input or controls the operation. Linear progress defaults to ten-percent
 milestones and a five-second intermediate interval; both are configurable.
 Static rich output is available with `PromptMode.rich` on capable outputs;
@@ -912,7 +912,7 @@ stable display order, then start presentation explicitly:
 
 ```dart
 final jobs = MultiSpinner(['build', 'tests']);
-jobs.start(); // stderr by default
+jobs.start(); // stdout by default
 jobs.update('build', TaskActivity.running, phase: 'compiling');
 jobs.finishTask('tests', FeedbackOutcome.failed, detail: 'assertion failed');
 jobs.finishTask('build', FeedbackOutcome.completed);
