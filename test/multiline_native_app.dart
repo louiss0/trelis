@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:trelis/trelis.dart';
 
 Future<void> main(List<String> args) async {
@@ -5,6 +7,7 @@ Future<void> main(List<String> args) async {
   final prompt = Multiline('Notes');
   final result = await prompt.prompt(
     mode: scenario == 'linear' ? PromptMode.linear : PromptMode.rich,
+    output: stderr,
   );
   print(switch (result) {
     Accepted<String>(:final value) =>

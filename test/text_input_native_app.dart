@@ -25,8 +25,9 @@ Future<void> main(List<String> args) async {
           ? PromptMode.rich
           : PromptMode.linear;
       final result = scenario.contains('password')
-          ? await Password('Synthetic password').prompt(mode: mode)
-          : await prompt.prompt(mode: mode);
+          ? await Password('Synthetic password')
+                .prompt(mode: mode, output: stderr)
+          : await prompt.prompt(mode: mode, output: stderr);
       // Never print the hidden answer, even for a synthetic native test.
       print(switch (result) {
         Accepted<String>(:final value) =>
@@ -46,20 +47,23 @@ Future<void> main(List<String> args) async {
         validate: (_) => throw StateError('validation'),
       );
       try {
-        await failing.prompt(mode: PromptMode.linear);
+        await failing.prompt(mode: PromptMode.linear, output: stderr);
       } on StateError {
         // A subsequent session must still be usable after validation throws.
       }
-      final result = await prompt.prompt(mode: PromptMode.linear);
+      final result = await prompt.prompt(
+        mode: PromptMode.linear,
+        output: stderr,
+      );
       print(result is Accepted<String> ? result.value : 'failed');
       return;
     }
     if (scenario == 'concurrent') {
-      final pending = prompt.prompt(mode: PromptMode.linear);
+      final pending = prompt.prompt(mode: PromptMode.linear, output: stderr);
       var outcome = 'overlap';
       try {
         await TextInput('Other')
-            .prompt(mode: PromptMode.linear)
+            .prompt(mode: PromptMode.linear, output: stderr)
             .timeout(const Duration(seconds: 1));
       } on StateError {
         outcome = 'busy';
@@ -140,7 +144,7 @@ Future<void> main(List<String> args) async {
           'dumb-auto' => PromptMode.automatic,
           _ => PromptMode.linear,
         },
-        output: scenario == 'stdout' ? stdout : null,
+        output: scenario == 'stdout' ? stdout : stderr,
       );
       results.add(switch (result) {
         Accepted<String>(:final value) => value,
