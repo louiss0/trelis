@@ -1,7 +1,7 @@
 name: trelis
 description: Accessible terminal prompts for Dart with rich and linear interaction, editable defaults and explicit cancellation, EOF and restoration outcomes.
-version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+version: 2.0.0
+repository: https://github.com/louiss0/trelis
 
 environment:
   sdk: ^3.13.2
