@@ -43,6 +43,7 @@ final class ColorInput {
       required: required,
       initialValue: this.initialValue,
       onChanged: _showPreview,
+      livePreview: (draft) => _preview(draft).rows.join('\n'),
       validate: (value) =>
           value.isEmpty && !required || _parseColor(value) != null ? null : 'Enter a valid sRGB color: hex, static name, or literal RGB/HSL. RGB channels must be 0-255 or 0-100%; HSL saturation and lightness 0-100%; alpha 0-1 or 0-100%. Use at most 12 digits per number; expressions and other color spaces are not supported.',
       instructions: instructions,
@@ -65,7 +66,37 @@ final class ColorInput {
   OutputProfile? _previewProfile;
   bool _active = false;
 
-  /// Presents one preview of the current draft.
+  /// The preview of the current draft, as the rows it is read as.
+  ///
+  /// The content is the same in both interaction modes: the parsed value with
+  /// its approximate rounded hex, or the reason no preview is available. Rich
+  /// interaction gives the rows to the editor, which rewrites them under the
+  /// editable row, so they replace the previous draft's preview instead of
+  /// piling up in the transcript.
+  ({List<String> rows, bool unavailable}) _preview(String text) {
+    final value = _parseColor(text);
+    if (value == null) {
+      return (
+        rows: [
+          text.isEmpty
+              ? 'Preview unavailable: no color entered.'
+              : 'Preview unavailable: draft is not a valid color.',
+        ],
+        unavailable: true,
+      );
+    }
+    String byte(double v) =>
+        (v * 255).round().toRadixString(16).padLeft(2, '0');
+    return (
+      rows: [
+        'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
+        'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
+      ],
+      unavailable: false,
+    );
+  }
+
+  /// Presents one preview of the current draft in a linear transcript.
   ///
   /// A preview is a state change rather than a stage, so it is written as the
   /// stage's compact event block instead of a new enclosure: a keystroke must
@@ -73,7 +104,6 @@ final class ColorInput {
   /// the prompt actually runs under, so the wrapped preview never claims more
   /// columns than the terminal offers.
   void _showPreview(String text) {
-    final value = _parseColor(text);
     final sink = _sink;
     if (sink == null) return;
     final previewProfile = _previewProfile;
@@ -84,31 +114,22 @@ final class ColorInput {
       background: colors.background,
       border: colors.border,
     );
-    if (value == null) {
-      preview.hint(
-        sink,
-        text.isEmpty
-            ? 'Preview unavailable: no color entered.'
-            : 'Preview unavailable: draft is not a valid color.',
-        foreground: colors.warning,
-      );
+    final report = _preview(text);
+    if (report.unavailable) {
+      // A preview that withdraws the previous interpretation is one compact
+      // warning hint rather than a body row.
+      preview.hint(sink, report.rows.single, foreground: colors.warning);
       return;
     }
-    String byte(double v) =>
-        (v * 255).round().toRadixString(16).padLeft(2, '0');
-    preview.write(
-      sink,
-      'Value: ${value.source}. sRGB: ${value.red}, ${value.green}, ${value.blue}. Alpha: ${value.alpha}.${value.hue == null ? '' : ' Hue: ${value.hue} degrees (modulo 360).'}',
-      foreground: colors.foreground,
-      compact: true,
-    );
-    preview.write(
-      sink,
-      'approximate rounded hex preview: #${byte(value.red)}${byte(value.green)}${byte(value.blue)}${byte(value.alpha)} (not the stored value).',
-      foreground: colors.foreground,
-      compact: true,
-      closes: true,
-    );
+    for (var row = 0; row < report.rows.length; row++) {
+      preview.write(
+        sink,
+        report.rows[row],
+        foreground: colors.foreground,
+        compact: true,
+        closes: row == report.rows.length - 1,
+      );
+    }
   }
 
   Future<PromptResult<ColorValue?>> prompt({

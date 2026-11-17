@@ -2300,6 +2300,7 @@ final class TextInput {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this._onChanged,
+    this._livePreview,
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -2325,7 +2326,22 @@ final class TextInput {
 
   /// Structural grammar used to frame the prompt.
   final PromptStructure structure;
+
+  /// Sequential report of the current draft, called once per edited keystroke.
+  ///
+  /// A component that reports its draft supplies this, and a linear entry calls
+  /// it so the report stays part of the transcript it already writes. Rich
+  /// interaction never uses it: appending a report per keystroke is exactly the
+  /// pile-up the rich renderer must not produce, so [_livePreview] on the
+  /// in-place row replaces it.
   final void Function(String)? _onChanged;
+
+  /// The live preview of the current draft, rendered under the editable row.
+  ///
+  /// The returned text may contain newlines; each row is rewritten in place as
+  /// the draft changes. Only rich interaction uses it, so a linear entry keeps
+  /// the exact sequential report it always wrote.
+  final String? Function(String draft)? _livePreview;
   bool _active = false;
   Future<PromptResult<String>> prompt({
     PromptSource? source,
@@ -2454,6 +2470,10 @@ final class TextInput {
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
     var value = initialValue;
+    // Rich interaction repaints the draft row in place, so a preview of the
+    // current draft belongs in that region. A linear entry has no such region
+    // and keeps its sequential per-keystroke report instead, byte for byte.
+    final rich = mode == PromptMode.rich;
     try {
       while (true) {
         final result = await _edit(
@@ -2469,7 +2489,8 @@ final class TextInput {
           maxLength: maxLength,
           required: required,
           supplementaryHelp: supplementaryHelp,
-          onChanged: _onChanged,
+          onChanged: rich ? null : _onChanged,
+          livePreview: rich ? _livePreview : null,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
           colors: colors,
@@ -2588,7 +2609,7 @@ Future<({String action, String value})> _edit(
   }
   var activeProfile = outputProfile;
 
-  /// Whether the live preview line is currently drawn below the editable row.
+  /// Whether a live preview is currently drawn below the editable row.
   ///
   /// The preview is live state rather than committed history: [display] draws it
   /// inside the region it rewrites, and anything that commits a line or ends
@@ -2631,18 +2652,18 @@ Future<({String action, String value})> _edit(
     );
   }
 
-  /// Erases the live preview line drawn below the editable row.
+  /// Erases the live preview drawn below the editable row.
   ///
   /// The preview is part of the region the rich renderer rewrites, so a write
   /// that commits history or ends the editor releases it first: only the draft
   /// row the reader already had stays behind. Sequential and private entries
-  /// never draw the line, so this is a no-op for them.
+  /// never draw the preview, so this is a no-op for them.
   void finishLivePreview() {
     if (!previewDrawn) return;
     previewDrawn = false;
-    // The caret is parked on the editable row, so the line below it is the
-    // only one to release; clearing to the end of the screen also removes the
-    // rows an overlong preview wrapped onto.
+    // The caret is parked on the editable row, so the rows below it are the
+    // only ones to release; clearing to the end of the screen also removes the
+    // rows a multi-row or overlong preview drew.
     void clear() => output.write('\x1b[s\n\r\x1b[J\x1b[u');
     final activeSession = session;
     if (activeSession == null) {
@@ -2652,7 +2673,7 @@ Future<({String action, String value})> _edit(
     }
   }
 
-  /// Ends the editor with [action], releasing the live preview line first.
+  /// Ends the editor with [action], releasing the live preview first.
   ({String action, String value}) leave(String action, [String value = '']) {
     finishLivePreview();
     return (action: action, value: value);
@@ -2845,20 +2866,27 @@ Future<({String action, String value})> _edit(
       if (preview == null && !previewDrawn) return;
       // A live preview is part of this region rather than a line appended
       // around it: it is drawn under the editable row, the same marker starts
-      // it, and the redraw clears the row it occupied, so a keystroke replaces
-      // the preview instead of adding another copy to the transcript. Clearing
-      // to the end of the screen also releases the rows a longer previous
-      // preview wrapped onto, and the caret returns to the editable row.
-      output.write('\x1b[s\n\r\x1b[2K');
-      if (preview != null) {
-        output.write(
-          _colorText(
-            '$livePrefix$preview',
-            colors.foreground,
-            colors.background,
-            outputProfile,
-          ),
-        );
+      // every row of it, and each row is cleared before it is rewritten, so a
+      // keystroke replaces the preview instead of adding another copy to the
+      // transcript. A preview may be several rows (the returned text is split
+      // on newlines), and clearing to the end of the screen after the last one
+      // releases the rows a longer previous preview drew — including the rows
+      // an overlong row wrapped onto — before the caret returns to the editable
+      // row.
+      output.write('\x1b[s');
+      final previewRows = preview?.split('\n') ?? const [''];
+      for (var row = 0; row < previewRows.length; row++) {
+        output.write('\n\r\x1b[2K');
+        if (preview != null) {
+          output.write(
+            _colorText(
+              '$livePrefix${previewRows[row]}',
+              colors.foreground,
+              colors.background,
+              outputProfile,
+            ),
+          );
+        }
       }
       output.write('\x1b[J\x1b[u');
       previewDrawn = preview != null;

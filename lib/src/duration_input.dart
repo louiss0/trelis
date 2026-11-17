@@ -129,6 +129,29 @@ final class DurationInput {
     );
   }
 
+  /// The interpretation of the current draft, and whether it is available.
+  ///
+  /// The content is the same in both interaction modes: the elapsed total in
+  /// microseconds, the unapplied calendar components with their sub-day elapsed
+  /// total, or the reason the draft has no interpretation. Rich interaction
+  /// rewrites the row under the editable row, so it replaces the previous
+  /// draft's interpretation instead of piling up in the transcript.
+  ({String text, bool unavailable}) _interpretation(String draft) {
+    final value = _parse(draft);
+    if (value == null) {
+      return (
+        text: 'Interpretation unavailable: enter a valid duration.',
+        unavailable: true,
+      );
+    }
+    return (
+      text: durationMode == DurationInputMode.elapsed
+          ? 'Elapsed interpretation: ${value.microseconds} microseconds.'
+          : 'Unapplied calendar components: ${value.components}; elapsed sub-day: ${value.microseconds} microseconds.',
+      unavailable: false,
+    );
+  }
+
   Future<PromptResult<DurationValue>> prompt({
     PromptSource? source,
     PromptMode? mode,
@@ -164,32 +187,21 @@ final class DurationInput {
       );
       void review(String draft) {
         if (sink == null) return;
-        final value = _parse(draft);
-        if (value == null) {
-          reviewSpine.hint(
-            sink,
-            'Interpretation unavailable: enter a valid duration.',
-            foreground: colors.warning,
-          );
-        } else if (durationMode == DurationInputMode.elapsed) {
-          reviewSpine.hint(
-            sink,
-            'Elapsed interpretation: ${value.microseconds} microseconds.',
-            foreground: colors.muted,
-          );
-        } else {
-          reviewSpine.hint(
-            sink,
-            'Unapplied calendar components: ${value.components}; elapsed sub-day: ${value.microseconds} microseconds.',
-            foreground: colors.muted,
-          );
-        }
+        final interpretation = _interpretation(draft);
+        reviewSpine.hint(
+          sink,
+          interpretation.text,
+          foreground: interpretation.unavailable
+              ? colors.warning
+              : colors.muted,
+        );
       }
 
       final result =
           await TextInput._(
             '$label ($cue).',
             onChanged: review,
+            livePreview: (draft) => _interpretation(draft).text,
             required: true,
             initialValue: initialValue ?? '',
             maxLength: 1024,
