@@ -1,6 +1,8 @@
 import 'dart:async';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/color_theme.dart';
+import 'package:trelis/src/feedback.dart';
+import 'package:trelis/src/text_input.dart';
 
 /// Plain-theme factory namespace.
 ///
