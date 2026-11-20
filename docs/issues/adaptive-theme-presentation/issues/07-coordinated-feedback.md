@@ -1,6 +1,6 @@
 # 07 Coordinate live feedback with prompts
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [06](06-automatic-cleanup.md)
 
