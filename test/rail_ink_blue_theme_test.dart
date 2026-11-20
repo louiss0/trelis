@@ -318,6 +318,24 @@ void main() {
         );
         expect(componentRole, contains('${fg(componentFg)}| Project name'));
         expect(componentRole, contains('${fg(appMuted)}| Left/Right move'));
+
+        final componentVariantRole = await renderText(
+          colors: colors,
+          appColors: ComponentColors.palette(_palette(appFg)),
+          component: ComponentColors(
+            lightRoles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(77, 88, 99),
+            ),
+            darkRoles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(99, 88, 77),
+            ),
+          ),
+        );
+        expect(
+          componentVariantRole,
+          contains('${fg(componentFg)}| Project name'),
+          reason: 'component variant roles win over shared roles',
+        );
       });
     }
 
