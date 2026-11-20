@@ -1,6 +1,6 @@
 # 03 Resolve interaction deterministically
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** None
 
