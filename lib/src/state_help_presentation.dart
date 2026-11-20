@@ -298,3 +298,321 @@ String renderStatus(
   };
   return '$symbol $label: ${DisplayText.from(message).value}';
 }
+
+/// The interaction direction a presentation must respect.
+enum PresentationMode { rich, linear, screenReader }
+
+/// Which component-safe help route applies to a prompt.
+enum ComponentRoute { standard, secret, keyCapture }
+
+/// How much opening guidance an application requested.
+enum InstructionVisibility { expanded, compact, hidden }
+
+/// The kind of help route advertised by a prompt.
+enum HelpRouteKind { shortcut, command, outsideCapture }
+
+/// A component-safe route to detailed help.
+final class HelpRoute {
+  const HelpRoute({
+    required this.kind,
+    required this.text,
+    required this.shortText,
+    this.gesture,
+  });
+
+  final HelpRouteKind kind;
+  final String text;
+  final String shortText;
+
+  /// The gesture reserved for help, or null when no gesture is consumed.
+  final String? gesture;
+}
+
+/// Returns the help route that is safe for [component] in [mode].
+///
+/// Key capture advertises a route outside the armed capture so a captured
+/// gesture is never reinterpreted as help. Secret entry keeps the same route
+/// but promises that its value stays hidden.
+HelpRoute helpRoute({
+  required PresentationMode mode,
+  ComponentRoute component = ComponentRoute.standard,
+}) {
+  if (component == ComponentRoute.keyCapture) {
+    return const HelpRoute(
+      kind: HelpRouteKind.outsideCapture,
+      text: 'Use /help after capture to open help.',
+      shortText: '/help after capture',
+    );
+  }
+  final hidden = component == ComponentRoute.secret
+      ? '; hidden values stay hidden'
+      : '';
+  if (mode == PresentationMode.rich) {
+    return HelpRoute(
+      kind: HelpRouteKind.shortcut,
+      text: 'Ctrl+T opens help$hidden.',
+      shortText: component == ComponentRoute.secret
+          ? 'Ctrl+T help; hidden'
+          : 'Ctrl+T help',
+      gesture: 'Ctrl+T',
+    );
+  }
+  return HelpRoute(
+    kind: HelpRouteKind.command,
+    text: '/help opens help$hidden.',
+    shortText: component == ComponentRoute.secret ? '/help; hidden' : '/help',
+  );
+}
+
+/// The mandatory compact primary-action and help hint.
+final class CompactHint {
+  const CompactHint({
+    required this.primaryAction,
+    required this.shortPrimaryAction,
+    required this.route,
+  });
+
+  final String primaryAction;
+  final String shortPrimaryAction;
+  final HelpRoute route;
+
+  String get text => '$primaryAction; ${route.text}';
+  String get shortText => '$shortPrimaryAction; ${route.shortText}';
+}
+
+CompactHint compactHint({
+  required PresentationMode mode,
+  required ComponentRoute component,
+  required String primaryAction,
+  required String shortPrimaryAction,
+}) => CompactHint(
+  primaryAction: primaryAction,
+  shortPrimaryAction: shortPrimaryAction,
+  route: helpRoute(mode: mode, component: component),
+);
+
+/// Where a compact hint is placed in a presentation.
+enum HintPlacement { richBottom, linearAfter, screenReaderBefore }
+
+/// One composed prompt presentation.
+///
+/// [lines] is the sequential record a screen reader or a transcript consumer
+/// sees. A rich presentation closes its active area with [footer]; a linear
+/// one appends the same footer after its content; a screen-reader presentation
+/// puts the essential text, including the help route, before the prompt.
+final class PromptPresentation {
+  const PromptPresentation({
+    required this.mode,
+    required this.placement,
+    required this.prompt,
+    required this.lines,
+    this.essentialBefore,
+    this.footer,
+  });
+
+  final PresentationMode mode;
+  final HintPlacement placement;
+  final String prompt;
+  final String? essentialBefore;
+  final String? footer;
+  final List<String> lines;
+}
+
+PromptPresentation composePromptPresentation({
+  required PresentationMode mode,
+  required String prompt,
+  required String essential,
+  required CompactHint hint,
+  InstructionVisibility instructions = InstructionVisibility.expanded,
+  List<String> optionalLines = const [],
+  List<String> decoration = const [],
+  int? availableRows,
+}) {
+  if (mode == PresentationMode.screenReader) {
+    final essentialLine = '$essential ${hint.text}';
+    return PromptPresentation(
+      mode: mode,
+      placement: HintPlacement.screenReaderBefore,
+      prompt: prompt,
+      essentialBefore: essentialLine,
+      lines: [essentialLine, prompt],
+    );
+  }
+  final placement = mode == PresentationMode.rich
+      ? HintPlacement.richBottom
+      : HintPlacement.linearAfter;
+  final optional = instructions == InstructionVisibility.expanded
+      ? List<String>.of(optionalLines)
+      : <String>[];
+  final ornaments = List<String>.of(decoration);
+  final compact = availableRows != null && availableRows <= 2;
+  final footer = compact ? hint.shortText : hint.text;
+  while (availableRows != null &&
+      optional.length + ornaments.length + 2 > availableRows) {
+    if (ornaments.isNotEmpty) {
+      ornaments.removeLast();
+    } else if (optional.isNotEmpty) {
+      optional.removeLast();
+    } else {
+      break;
+    }
+  }
+  return PromptPresentation(
+    mode: mode,
+    placement: placement,
+    prompt: prompt,
+    footer: footer,
+    lines: [prompt, ...optional, ...ornaments, footer],
+  );
+}
+
+/// A linear, reviewable record of one prompt and its answer.
+List<String> sequentialTranscript(
+  PromptPresentation presentation, {
+  String? response,
+}) => [...presentation.lines, ?response];
+
+/// Noninteractive feedback presentation.
+///
+/// [hint] exists only for feedback that offers a real user action.
+final class FeedbackPresentation {
+  const FeedbackPresentation({required this.lines, this.hint});
+
+  final List<String> lines;
+  final String? hint;
+}
+
+FeedbackPresentation composeFeedbackPresentation({
+  required List<String> lines,
+  String? actionHint,
+}) => FeedbackPresentation(
+  lines: List<String>.unmodifiable(lines),
+  hint: actionHint,
+);
+
+/// The immutable state detailed help must leave untouched.
+final class HelpStateSnapshot {
+  const HelpStateSnapshot({
+    this.draft,
+    this.caret,
+    this.focusedReference,
+    this.secret = false,
+  });
+
+  final String? draft;
+  final int? caret;
+  final int? focusedReference;
+  final bool secret;
+
+  String get displayDraft => switch (secret) {
+    true => 'hidden',
+    false => draft ?? '<empty>',
+  };
+
+  String get displayCaret => secret ? 'hidden' : '${caret ?? 0}';
+
+  String get displayFocus =>
+      focusedReference == null ? 'none' : '$focusedReference';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HelpStateSnapshot &&
+          other.draft == draft &&
+          other.caret == caret &&
+          other.focusedReference == focusedReference &&
+          other.secret == secret;
+
+  @override
+  int get hashCode => Object.hash(draft, caret, focusedReference, secret);
+}
+
+/// The component context detailed help describes.
+final class HelpContext {
+  const HelpContext({
+    required this.component,
+    required this.primaryAction,
+    required this.route,
+    this.draft,
+    this.caret,
+    this.focusedReference,
+    this.secret = false,
+    this.supplementary = const [],
+  });
+
+  final String component;
+  final String primaryAction;
+  final HelpRoute route;
+  final String? draft;
+  final int? caret;
+  final int? focusedReference;
+  final bool secret;
+  final List<String> supplementary;
+
+  HelpStateSnapshot get snapshot => HelpStateSnapshot(
+    draft: draft,
+    caret: caret,
+    focusedReference: focusedReference,
+    secret: secret,
+  );
+}
+
+/// The result of a request for detailed help.
+sealed class HelpOutcome {
+  const HelpOutcome(this.state);
+
+  final HelpStateSnapshot state;
+}
+
+final class HelpShown extends HelpOutcome {
+  const HelpShown(this.text, super.state);
+
+  final String text;
+}
+
+final class HelpUnavailable extends HelpOutcome {
+  const HelpUnavailable(this.reason, super.state);
+
+  final String reason;
+}
+
+final class HelpFailed extends HelpOutcome {
+  const HelpFailed(this.reason, super.state);
+
+  final String reason;
+}
+
+/// Opens detailed help without changing the draft, focus or caret.
+HelpOutcome presentDetailedHelp({
+  required HelpContext context,
+  required bool spaceAvailable,
+  String Function(HelpContext context)? render,
+}) {
+  final state = context.snapshot;
+  if (!spaceAvailable) {
+    return HelpUnavailable(
+      'Help space is unavailable; the active prompt is unchanged.',
+      state,
+    );
+  }
+  try {
+    return HelpShown((render ?? renderDetailedHelp)(context), state);
+  } catch (error) {
+    final detail = context.secret ? '' : ': $error';
+    return HelpFailed(
+      'Help could not be rendered$detail; the active prompt is unchanged.',
+      state,
+    );
+  }
+}
+
+String renderDetailedHelp(HelpContext context) {
+  final state = context.snapshot;
+  return [
+    'Help: ${context.component}. ${context.primaryAction}. '
+        '${context.route.text} '
+        'Draft: ${state.displayDraft}. Caret: ${state.displayCaret}. '
+        'Focus: ${state.displayFocus}.',
+    ...context.supplementary,
+  ].join('\n');
+}
