@@ -11,6 +11,7 @@ import 'package:path/path.dart' as path;
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
+import 'background_query.dart';
 import 'output_profile.dart';
 import 'color_theme.dart';
 import 'native_resize.dart';
@@ -571,6 +572,31 @@ final class TerminalSession {
   /// console selects a fresh stream for every prompt — the replaced reader is
   /// closed so it stops observing a stream this session no longer offers.
   Future<_Keys> _readerFor(Stream<String> input) => _readers.readerFor(input);
+
+  /// Runs one bounded background query over this session's own reader.
+  ///
+  /// This is an internal owner seam rather than invocation configuration: the
+  /// request goes through the shared writer and the reply through the shared
+  /// reader, so no second stdin subscription is created. A failed write or
+  /// unsupported transport is an unavailable observation, not a prompt error.
+  Future<BackgroundQueryResult> queryBackground({
+    Duration timeout = backgroundQueryTimeout,
+  }) async {
+    final terminal = _terminalIo;
+    if (_closed || terminal == null) {
+      return BackgroundQueryResult.unavailable;
+    }
+    try {
+      final keys = await _readerFor(terminal.input);
+      return await keys.queryBackground(
+        timeout: timeout,
+        writeRequest: () =>
+            _writer.write((output) => output.write(osc11BackgroundRequest)),
+      );
+    } catch (_) {
+      return BackgroundQueryResult.unavailable;
+    }
+  }
 
   /// Performs one serialized shared-output action and retires the session if
   /// its writer fails. Local registration and validation failures never take

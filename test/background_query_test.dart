@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:test/test.dart';
 import 'package:trelis/src/background_query.dart';
 import 'package:trelis/src/shared_terminal.dart';
+import 'package:trelis/trelis.dart';
 
 void main() {
   test(
@@ -104,6 +105,66 @@ void main() {
     },
   );
 
+  test(
+    'a session query uses its own reader and leaves input in order',
+    () async {
+      var listens = 0;
+      final input = StreamController<String>(onListen: () => listens++);
+      final output = _QuerySink();
+      final environment = TerminalEnvironment.scripted(
+        input: input.stream,
+        output: output,
+        profile: OutputProfile(
+          cursor: CapabilitySupport.supported,
+          colorDepth: ColorDepth.rgb,
+          geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+        ),
+      );
+
+      await TerminalSession.run(
+        (session) async {
+          final query = session.queryBackground();
+          await output.requested.future;
+          input.add('\x1b]11;rgb:ffff/ffff/ffff\x07');
+          input.add('A\r');
+          await input.close();
+
+          expect(await query, BackgroundQueryResult.light);
+          final answer = await TextInput('Name').prompt(session: session);
+          expect((answer as Accepted<String>).value, 'A');
+        },
+        terminal: environment,
+        mode: PromptMode.linear,
+      );
+
+      expect(listens, 1);
+      expect(output.text, contains(osc11BackgroundRequest));
+    },
+  );
+
+  test(
+    'a query write failure falls back without escaping the session',
+    () async {
+      final failure = StateError('cannot write query');
+      final environment = TerminalEnvironment.scripted(
+        input: const Stream<String>.empty(),
+        output: _ThrowingSink(failure),
+        profile: const OutputProfile(colorDepth: ColorDepth.rgb),
+      );
+
+      await TerminalSession.run(
+        (session) async {
+          expect(
+            await session.queryBackground(),
+            BackgroundQueryResult.unavailable,
+          );
+        },
+        terminal: environment,
+        mode: PromptMode.linear,
+      );
+    },
+  );
+
   test('an OSC reply with no query waiting is ordinary input', () async {
     final input = StreamController<String>();
     final coordinator = SharedReaderCoordinator();
@@ -126,4 +187,56 @@ Future<String> _drain(SharedTerminalReader reader) async {
     buffer.write(key);
   }
   return buffer.toString();
+}
+
+final class _QuerySink implements StringSink {
+  final _buffer = StringBuffer();
+  final requested = Completer<void>();
+
+  String get text => _buffer.toString();
+
+  @override
+  void write(Object? object) {
+    _buffer.write(object);
+    if (text.contains(osc11BackgroundRequest) && !requested.isCompleted) {
+      requested.complete();
+    }
+  }
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) {
+    for (final object in objects) {
+      write(object);
+      if (separator.isNotEmpty) write(separator);
+    }
+  }
+
+  @override
+  void writeCharCode(int charCode) => write(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) {
+    write(object);
+    write('\n');
+  }
+}
+
+final class _ThrowingSink implements StringSink {
+  _ThrowingSink(this.failure);
+
+  final Object failure;
+
+  @override
+  void write(Object? object) =>
+      Error.throwWithStackTrace(failure, StackTrace.empty);
+
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
+      write(objects.join(separator));
+
+  @override
+  void writeCharCode(int charCode) => write(String.fromCharCode(charCode));
+
+  @override
+  void writeln([Object? object = '']) => write(object);
 }
