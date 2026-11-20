@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:ffi';
 
 import 'package:test/test.dart';
 import 'package:trelis/src/hint_observations.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/theme_session.dart';
+import 'package:trelis/src/windows_reader_hint.dart';
 import 'package:trelis/trelis.dart';
 
 void main() {
@@ -221,6 +223,206 @@ void main() {
       contains('cannot be combined'),
     );
     expect(events, isEmpty);
+  });
+
+  test('the default-off Windows probe never calls native code', () async {
+    final events = <String>[];
+    var nativeCalls = 0;
+    final binding = WindowsReaderBinding(
+      call: (value) {
+        nativeCalls++;
+        value.value = 1;
+        return 1;
+      },
+    );
+    ResolvedInteraction? resolved;
+    final owner = ThemeSession(
+      environment: _environment(_RecordingSink(events), events),
+      hints: NativeHintObservations(
+        platform: HintPlatform.windows,
+        interactive: true,
+        localSessionAttested: true,
+        readerProbe: WindowsReaderProbe(
+          isWindows: () => true,
+          lookup: () => binding,
+        ).call,
+      ),
+      onResolved: (interaction) async => resolved = interaction,
+    );
+
+    final result = await owner.prompt((handle) async => Accepted('ok'));
+
+    expect(result, isA<Accepted<String>>());
+    expect(resolved!.screenReader, isFalse);
+    expect(nativeCalls, 0);
+  });
+
+  test(
+    'an enabled Windows hint respects locality and explicit settings',
+    () async {
+      final cases =
+          <
+            ({
+              String name,
+              Map<String, String?> environment,
+              InteractionPreferences preferences,
+              bool supportsRich,
+              bool expected,
+            })
+          >[
+            (
+              name: 'local positive selects linear reader presentation',
+              environment: const <String, String?>{},
+              preferences: const InteractionPreferences(),
+              supportsRich: false,
+              expected: true,
+            ),
+            (
+              name: 'tmux locality is ambiguous',
+              environment: const {'TMUX': '/tmp/tmux-1'},
+              preferences: const InteractionPreferences(),
+              supportsRich: false,
+              expected: false,
+            ),
+            (
+              name: 'SSH locality is remote',
+              environment: const {'SSH_CONNECTION': '10.0.0.1 1 10.0.0.2 22'},
+              preferences: const InteractionPreferences(),
+              supportsRich: false,
+              expected: false,
+            ),
+            (
+              name: 'explicit off wins',
+              environment: const <String, String>{},
+              preferences: const InteractionPreferences(
+                screenReader: ScreenReaderPreference.off,
+              ),
+              supportsRich: false,
+              expected: false,
+            ),
+            (
+              name: 'explicit rich is not overridden',
+              environment: const <String, String>{},
+              preferences: const InteractionPreferences(mode: PromptMode.rich),
+              supportsRich: true,
+              expected: false,
+            ),
+          ];
+
+      for (final entry in cases) {
+        final events = <String>[];
+        ResolvedInteraction? resolved;
+        final owner = ThemeSession(
+          environment: _environment(
+            _RecordingSink(events),
+            events,
+            environment: entry.environment,
+            supportsRich: entry.supportsRich,
+          ),
+          interaction: entry.preferences,
+          hints: NativeHintObservations(
+            platform: HintPlatform.windows,
+            interactive: true,
+            localSessionAttested: true,
+            readerProbe: WindowsReaderProbe(
+              enabled: true,
+              isWindows: () => true,
+              lookup: () => WindowsReaderBinding(
+                call: (value) {
+                  value.value = 1;
+                  return 1;
+                },
+              ),
+            ).call,
+          ),
+          onResolved: (interaction) async => resolved = interaction,
+        );
+
+        final result = await owner.prompt((handle) async => Accepted('ok'));
+
+        expect(result, isA<Accepted<String>>(), reason: entry.name);
+        expect(resolved!.screenReader, entry.expected, reason: entry.name);
+      }
+    },
+  );
+
+  test('a missing Windows binding does not block a prompt', () async {
+    final events = <String>[];
+    ResolvedInteraction? resolved;
+    final owner = ThemeSession(
+      environment: _environment(_RecordingSink(events), events),
+      hints: NativeHintObservations(
+        platform: HintPlatform.windows,
+        interactive: true,
+        localSessionAttested: true,
+        readerProbe: WindowsReaderProbe(
+          enabled: true,
+          isWindows: () => true,
+          lookup: () => null,
+        ).call,
+      ),
+      onResolved: (interaction) async => resolved = interaction,
+    );
+
+    final result = await owner.prompt((handle) async => Accepted('ok'));
+
+    expect(result, isA<Accepted<String>>());
+    expect(resolved!.screenReader, isFalse);
+  });
+
+  test('an enabled Windows binding re-observes after cleanup', () async {
+    final events = <String>[];
+    final output = _RecordingSink(events);
+    var nativeCalls = 0;
+    var nativeValue = 1;
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final observed = <ResolvedInteraction>[];
+    final owner = ThemeSession(
+      environment: _environment(output, events),
+      hints: NativeHintObservations(
+        platform: HintPlatform.windows,
+        interactive: true,
+        localSessionAttested: true,
+        readerProbe: WindowsReaderProbe(
+          enabled: true,
+          isWindows: () => true,
+          lookup: () => WindowsReaderBinding(
+            call: (value) {
+              nativeCalls++;
+              value.value = nativeValue;
+              return 1;
+            },
+          ),
+        ).call,
+      ),
+      onResolved: (interaction) async => observed.add(interaction),
+    );
+
+    final first = owner.prompt((handle) async {
+      output.write('first');
+      started.complete();
+      await release.future;
+      return Accepted('one');
+    });
+    await started.future;
+    await owner.feedback((handle) async {
+      output.write('feedback');
+      return null;
+    });
+
+    expect(nativeCalls, 1);
+    expect(observed.single.screenReader, isTrue);
+
+    release.complete();
+    await first;
+    expect(owner.resolvedInteraction, isNull);
+
+    nativeValue = 0;
+    await owner.prompt((handle) async => Accepted('two'));
+
+    expect(nativeCalls, 2);
+    expect(observed.last.screenReader, isFalse);
   });
 }
 
