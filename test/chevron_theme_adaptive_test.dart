@@ -576,6 +576,41 @@ void main() {
     },
   );
 
+  test(
+    'ASCII no-colour validation stays readable beside the compact hint',
+    () async {
+      final output = StringBuffer();
+      final theme = ChevronInternalPresentation(
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('ab\rc\r'),
+          output: output,
+          profile: _profile(ascii: true, depth: ColorDepth.none),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        colors: const ColorPreferences(background: BackgroundPreference.dark),
+      );
+
+      final result = await theme.textInput(
+        'Project name',
+        validate: (value) => value == 'abc' ? null : 'Enter abc',
+      );
+
+      expect((result as Accepted<String>).value, 'abc');
+      final text = output.toString();
+      expect(text, isNot(contains('\x1b[38;')));
+      expect(text, isNot(contains('\x1b[48;')));
+      expect(text, contains('Enter abc'));
+      final lines = _lines(text);
+      expect(lines.first, startsWith('> Project name'));
+      final hintStart = lines.indexWhere((line) => line.contains('-> '));
+      expect(hintStart, greaterThan(0));
+      expect(
+        lines.skip(hintStart).join('').replaceAll(RegExp(r'\s'), ''),
+        contains('Ctrl+T'),
+      );
+    },
+  );
+
   test('narrow ASCII Chevron keeps essentials without a frame', () async {
     final text = await renderMultiSelect(10);
     final lines = _lines(text);
