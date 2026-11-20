@@ -29,6 +29,7 @@ abstract final class ChevronTheme {
     validate: validate,
     maxLength: maxLength,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -50,6 +51,7 @@ abstract final class ChevronTheme {
     required: required,
     validate: validate,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -65,6 +67,7 @@ abstract final class ChevronTheme {
     label,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -80,6 +83,7 @@ abstract final class ChevronTheme {
     label,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -95,6 +99,7 @@ abstract final class ChevronTheme {
     label,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -116,6 +121,7 @@ abstract final class ChevronTheme {
     validate: validate,
     maxLength: maxLength,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -133,6 +139,7 @@ abstract final class ChevronTheme {
     choices,
     defaultValue: defaultValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -150,6 +157,7 @@ abstract final class ChevronTheme {
     choices,
     defaultValue: defaultValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -171,6 +179,7 @@ abstract final class ChevronTheme {
     min: min,
     max: max,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -196,6 +205,7 @@ abstract final class ChevronTheme {
     precision: precision,
     units: units,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -225,6 +235,7 @@ abstract final class ChevronTheme {
     precision: precision,
     units: units,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -244,6 +255,7 @@ abstract final class ChevronTheme {
     isCurrent: isCurrent,
     defaultValue: defaultValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -263,6 +275,7 @@ abstract final class ChevronTheme {
     seconds: seconds,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -282,6 +295,7 @@ abstract final class ChevronTheme {
     maxLength: maxLength,
     validate: validate,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -305,6 +319,7 @@ abstract final class ChevronTheme {
     validate: validate,
     maxLength: maxLength,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -324,6 +339,7 @@ abstract final class ChevronTheme {
     defaultValue: defaultValue,
     search: search,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -339,6 +355,7 @@ abstract final class ChevronTheme {
     label,
     choices,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -358,6 +375,7 @@ abstract final class ChevronTheme {
     defaultValue: defaultValue,
     search: search,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -377,6 +395,7 @@ abstract final class ChevronTheme {
     initialValue: initialValue,
     interpretation: interpretation,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -404,6 +423,7 @@ abstract final class ChevronTheme {
     precision: precision,
     required: required,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -421,6 +441,7 @@ abstract final class ChevronTheme {
     allowZero: allowZero,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -440,6 +461,7 @@ abstract final class ChevronTheme {
     scoped: scoped,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -455,6 +477,7 @@ abstract final class ChevronTheme {
     label,
     allowedSchemes: allowedSchemes,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -472,6 +495,7 @@ abstract final class ChevronTheme {
     smtpUtf8: smtpUtf8,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -489,6 +513,7 @@ abstract final class ChevronTheme {
     required: required,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -508,6 +533,7 @@ abstract final class ChevronTheme {
     initialValue: initialValue,
     preview: preview,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -525,6 +551,7 @@ abstract final class ChevronTheme {
     defaultValue: defaultValue,
     unavailable: unavailable,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -546,6 +573,7 @@ abstract final class ChevronTheme {
     allowNonexistent: allowNonexistent,
     target: target,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -561,6 +589,7 @@ abstract final class ChevronTheme {
     label,
     base: base,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -576,6 +605,7 @@ abstract final class ChevronTheme {
     label,
     base: base,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -591,6 +621,7 @@ abstract final class ChevronTheme {
     label,
     requireObservation: requireObservation,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -606,6 +637,7 @@ abstract final class ChevronTheme {
     label,
     requireObservation: requireObservation,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -629,6 +661,7 @@ abstract final class ChevronTheme {
     minimumMicroseconds: minimumMicroseconds,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -650,6 +683,7 @@ abstract final class ChevronTheme {
     digits: digits,
     initialValue: initialValue,
     structure: PromptStructure.chevron,
+
     colors: colors,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -678,6 +712,7 @@ abstract final class ChevronTheme {
     interval: interval,
     milestone: milestone,
     structure: PromptStructure.chevron,
+
     colors: colors,
   );
 
