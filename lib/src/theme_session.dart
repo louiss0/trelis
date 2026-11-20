@@ -93,12 +93,27 @@ typedef ThemeInteractionFactsProvider = FutureOr<InteractionFacts> Function(
 );
 
 final class _Participation {
-  const _Participation(this.period, this.handle);
+  _Participation(this.owner, this.period, this.handle, this.kind);
 
+  final ThemeSession owner;
   final _ThemePeriod period;
   final ThemeSessionHandle handle;
+  final ThemeOperationKind kind;
+  bool _released = false;
 
-  Future<void> release() => period.release();
+  /// Set when its runner has settled, even if cleanup is still awaited.
+  bool runnerFinished = false;
+
+  /// Ends this participation once, letting cleanup continue in the background.
+  Future<void> release() async {
+    if (_released) return;
+    _released = true;
+    try {
+      await period.release();
+    } finally {
+      owner._endParticipation(this);
+    }
+  }
 }
 
 /// The internal handle a component uses while it participates in a period.
@@ -136,29 +151,51 @@ final class _ThemePeriod {
 
   late final TerminalSession session;
   late final Future<void> done;
+  Object? cleanupError;
+  StackTrace? cleanupStackTrace;
   int _participants = 0;
-  bool _accepting = true;
+  bool _accepting = false;
 
+  /// Whether a new operation may join this period.
+  ///
+  /// A period is not accepting while it initializes or while its last
+  /// participant has released but cleanup is still running.
   bool get accepting => _accepting;
 
   void attach(TerminalSession value) => session = value;
 
   void publish() => owner._published = state;
 
-  _Participation participate() {
+  void beginAccepting() => _accepting = true;
+
+  void stopAccepting() => _accepting = false;
+
+  _Participation participate(ThemeOperationKind kind) {
     _participants++;
-    return _Participation(this, ThemeSessionHandle._(this));
+    return _Participation(owner, this, ThemeSessionHandle._(this), kind);
   }
 
+  /// Marks the period as idle immediately, before cleanup starts.
+  ///
+  /// The owner stops handing out this period as soon as its last participant
+  /// ends, so a new start waits for [_closing] instead of joining one that is
+  /// already releasing its resources.
   Future<void> release() async {
     _participants--;
     if (_participants <= 0) {
+      stopAccepting();
+      owner._periodIdle(this);
       if (!idle.isCompleted) idle.complete();
       await done;
     }
   }
 
-  void stopAccepting() => _accepting = false;
+  /// Ends a period that failed before it acquired a participant.
+  void abandon() {
+    stopAccepting();
+    owner._periodIdle(this);
+    if (!idle.isCompleted) idle.complete();
+  }
 }
 
 /// Owns one environment and its lazily acquired active period.
@@ -168,6 +205,7 @@ final class ThemeSession {
     this.interaction = const InteractionPreferences(),
     this.colors = const ColorPreferences(),
     this.onResolved,
+    this.onCleanupError,
     this.factsForPeriod,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
@@ -178,6 +216,10 @@ final class ThemeSession {
   final InteractionPreferences interaction;
   final ColorPreferences colors;
   final ThemeResolvedCallback? onResolved;
+
+  /// Observes a cleanup failure that did not replace a primary result.
+  final void Function(Object error, StackTrace stackTrace)? onCleanupError;
+
   final ThemeInteractionFactsProvider? factsForPeriod;
   final InteractionFacts? _fixedFacts;
   final ColorDetectionFacts? _fixedColorFacts;
@@ -185,9 +227,26 @@ final class ThemeSession {
   ThemeInteractionState? _published;
   _ThemePeriod? _active;
   Future<void>? _closing;
+  Future<void> _turn = Future<void>.value();
+  _Participation? _promptParticipation;
+  Object? _lastCleanupError;
+  StackTrace? _lastCleanupStackTrace;
+  final List<Object> _cleanupFailures = <Object>[];
+
+  /// Identifiable environments cannot run overlapping active periods.
+  static final Map<Object, _ThemePeriod> _identityOwners =
+      <Object, _ThemePeriod>{};
+  static Future<void> _identityTurn = Future<void>.value();
 
   /// The value published for the current active period, if one is running.
   ThemeInteractionState? get resolvedInteraction => _published;
+
+  /// Cleanup failures retained after a successful primary operation.
+  List<Object> get cleanupFailures =>
+      List<Object>.unmodifiable(_cleanupFailures);
+
+  Object? get lastCleanupError => _lastCleanupError;
+  StackTrace? get lastCleanupStackTrace => _lastCleanupStackTrace;
 
   /// Runs one prompt through the common first-operation path.
   Future<PromptResult<T>> prompt<T>(
@@ -202,7 +261,7 @@ final class ThemeSession {
         availability,
         cancellation,
       );
-      return await _finish(participation, runner);
+      return await _runParticipation(participation, runner);
     } on _InitializationUnavailable catch (error) {
       return Unavailable<T>(error.reason);
     } on _InitializationCancelled catch (_) {
@@ -223,13 +282,7 @@ final class ThemeSession {
         availability,
         cancellation,
       );
-      late final T result;
-      try {
-        result = await runner(participation.handle);
-      } finally {
-        await participation.release();
-      }
-      return result;
+      return await _runParticipation(participation, runner);
     } on _InitializationUnavailable catch (error) {
       throw ThemeSessionUnavailable(error.reason);
     } on _InitializationCancelled catch (_) {
@@ -237,17 +290,45 @@ final class ThemeSession {
     }
   }
 
-  Future<PromptResult<T>> _finish<T>(
+  /// Runs [runner], awaiting cleanup without erasing its primary outcome.
+  Future<T> _runParticipation<T>(
     _Participation participation,
-    Future<PromptResult<T>> Function(ThemeSessionHandle handle) runner,
+    FutureOr<T> Function(ThemeSessionHandle handle) runner,
   ) async {
-    late final PromptResult<T> result;
+    late final T result;
+    Object? primaryError;
+    StackTrace? primaryStackTrace;
     try {
       result = await runner(participation.handle);
-    } finally {
-      await participation.release();
+    } catch (error, stackTrace) {
+      primaryError = error;
+      primaryStackTrace = stackTrace;
+    }
+    participation.runnerFinished = true;
+    await _releaseAfter(participation, primaryError, primaryStackTrace);
+    if (primaryError != null) {
+      Error.throwWithStackTrace(primaryError, primaryStackTrace!);
     }
     return result;
+  }
+
+  /// A successful result survives cleanup failure; a primary failure keeps
+  /// both causes through [TerminalSessionCleanupException].
+  Future<void> _releaseAfter(
+    _Participation participation,
+    Object? primaryError,
+    StackTrace? primaryStackTrace,
+  ) async {
+    try {
+      await participation.release();
+    } catch (cleanupError, cleanupStackTrace) {
+      if (!identical(cleanupError, participation.period.cleanupError)) {
+        _recordCleanupFailure(cleanupError, cleanupStackTrace);
+      }
+      if (primaryError != null) {
+        throw TerminalSessionCleanupException(primaryError, cleanupError);
+      }
+    }
   }
 
   Future<_Participation> _enter(
@@ -255,19 +336,57 @@ final class ThemeSession {
     ThemeComponentAvailability availability,
     Future<void>? cancellation,
   ) async {
-    final current = _active;
-    if (current != null && current.accepting) {
-      if (!availability.allows(kind)) {
-        throw _InitializationUnavailable(availability.reason);
+    final turn = await _takeTurn();
+    try {
+      while (true) {
+        final runningPrompt = _promptParticipation;
+        if (kind == ThemeOperationKind.prompt &&
+            runningPrompt != null &&
+            !runningPrompt.runnerFinished) {
+          throw const _InitializationUnavailable(
+            'A prompt is already active for this theme.',
+          );
+        }
+        final current = _active;
+        if (current != null && current.accepting) {
+          if (!availability.allows(kind)) {
+            throw _InitializationUnavailable(availability.reason);
+          }
+          return _participate(current, kind);
+        }
+        final closing = _closing;
+        if (closing != null) {
+          await closing;
+          continue;
+        }
+        return _participate(
+          await _start(kind, availability, cancellation),
+          kind,
+        );
       }
-      return current.participate();
+    } finally {
+      turn.complete();
     }
-    final closing = _closing;
-    if (closing != null) await closing;
-    return await _start(kind, availability, cancellation);
   }
 
-  Future<_Participation> _start(
+  _Participation _participate(_ThemePeriod period, ThemeOperationKind kind) {
+    final participation = period.participate(kind);
+    if (kind == ThemeOperationKind.prompt) {
+      _promptParticipation = participation;
+    }
+    return participation;
+  }
+
+  /// Serializes period entry and cleanup waiting for one theme.
+  Future<Completer<void>> _takeTurn() async {
+    final previous = _turn;
+    final next = Completer<void>();
+    _turn = next.future;
+    await previous;
+    return next;
+  }
+
+  Future<_ThemePeriod> _start(
     ThemeOperationKind kind,
     ThemeComponentAvailability availability,
     Future<void>? cancellation,
@@ -303,6 +422,12 @@ final class ThemeSession {
       ),
       _resolveColors(),
     );
+    final identity = environment.ownershipIdentity;
+    if (identity != null && !await _claimIdentity(identity, period)) {
+      throw const _InitializationUnavailable(
+        'This terminal already has an active theme owner.',
+      );
+    }
     _active = period;
     final started = Completer<_ThemePeriod>();
     final closed = Completer<void>();
@@ -321,6 +446,7 @@ final class ThemeSession {
             }
             await _checkCancellation(cancellation);
             period.publish();
+            period.beginAccepting();
             started.complete(period);
             await period.idle.future;
           }, lease.restore);
@@ -335,14 +461,45 @@ final class ThemeSession {
     period.done = done;
     done.then(
       (_) => _finishPeriod(period, closed),
-      onError: (Object _, StackTrace _) => _finishPeriod(period, closed),
+      onError: (Object error, StackTrace stackTrace) {
+        period.cleanupError = error;
+        period.cleanupStackTrace = stackTrace;
+        _recordCleanupFailure(error, stackTrace);
+        _finishPeriod(period, closed);
+      },
     );
     try {
       await started.future;
-      return period.participate();
-    } catch (_) {
+      return period;
+    } catch (error, stackTrace) {
+      period.abandon();
       await closed.future;
-      rethrow;
+      final cleanup = period.cleanupError;
+      if (cleanup != null && !identical(cleanup, error)) {
+        final primary = error is TerminalRestorationException
+            ? error.operationError
+            : error;
+        final secondary = error is TerminalRestorationException
+            ? error.restorationError
+            : cleanup;
+        throw TerminalSessionCleanupException(primary, secondary);
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  /// Claims an identifiable terminal for one period across theme instances.
+  Future<bool> _claimIdentity(Object identity, _ThemePeriod period) async {
+    final previous = _identityTurn;
+    final next = Completer<void>();
+    _identityTurn = next.future;
+    await previous;
+    try {
+      if (_identityOwners.containsKey(identity)) return false;
+      _identityOwners[identity] = period;
+      return true;
+    } finally {
+      next.complete();
     }
   }
 
@@ -418,11 +575,39 @@ final class ThemeSession {
     interactive: environment.supportsRich,
   );
 
+  /// Stops handing out a period as soon as its last participant leaves.
+  void _periodIdle(_ThemePeriod period) {
+    if (identical(_active, period)) _active = null;
+  }
+
+  void _endParticipation(_Participation participation) {
+    if (identical(_promptParticipation, participation)) {
+      _promptParticipation = null;
+    }
+  }
+
+  void _recordCleanupFailure(Object error, StackTrace stackTrace) {
+    _cleanupFailures.add(error);
+    _lastCleanupError = error;
+    _lastCleanupStackTrace = stackTrace;
+    final callback = onCleanupError;
+    if (callback == null) return;
+    try {
+      callback(error, stackTrace);
+    } catch (_) {
+      // A diagnostics callback must not change the cleanup outcome.
+    }
+  }
+
   void _finishPeriod(_ThemePeriod period, Completer<void> closed) {
     period.stopAccepting();
     if (identical(_published, period.state)) _published = null;
     if (identical(_active, period)) _active = null;
     if (identical(_closing, closed.future)) _closing = null;
+    final identity = environment.ownershipIdentity;
+    if (identity != null && identical(_identityOwners[identity], period)) {
+      _identityOwners.remove(identity);
+    }
     if (!closed.isCompleted) closed.complete();
   }
 }
