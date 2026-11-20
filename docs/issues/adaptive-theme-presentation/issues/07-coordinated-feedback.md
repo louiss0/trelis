@@ -1,6 +1,6 @@
 # 07 Coordinate live feedback with prompts
 
-Status: claimed
+Status: resolved
 
 **Blocked by:** [06](06-automatic-cleanup.md)
 
