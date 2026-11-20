@@ -3353,32 +3353,28 @@ Stream<String> _posixInput() {
 }
 
 OutputProfile _nativeOutputProfile(Stdout output, bool supportsRich) {
-  OutputGeometry geometry = const OutputGeometry.automatic();
+  final term = Platform.environment['TERM'] ?? '';
+  int? columns;
+  int? rows;
   if (output.hasTerminal) {
     try {
-      final columns = output.terminalColumns;
-      final rows = output.terminalLines;
-      if (columns > 0 && rows > 0) {
-        geometry = OutputGeometry.fixed(columns: columns, rows: rows);
-      }
+      columns = output.terminalColumns;
+      rows = output.terminalLines;
     } on FileSystemException {
       // Capability probing is fallible; geometry remains unknown.
     } on UnsupportedError {
       // Capability probing is fallible; geometry remains unknown.
     }
   }
-  final term = Platform.environment['TERM'] ?? '';
-  return OutputProfile(
-    cursor: supportsRich
-        ? CapabilitySupport.supported
-        : CapabilitySupport.unsupported,
-    alternateScreen:
-        supportsRich &&
-            (Platform.isWindows ||
-                RegExp(r'^(xterm|screen|tmux|rxvt)(-|$)').hasMatch(term))
-        ? CapabilitySupport.supported
-        : CapabilitySupport.unsupported,
-    geometry: geometry,
+  return TerminalEnvironment.nativeProfile(
+    hasTerminal: output.hasTerminal,
+    supportsRich: supportsRich,
+    term: term,
+    columns: columns,
+    rows: rows,
+    colorDisabled:
+        !output.hasTerminal ||
+        Platform.environment['NO_COLOR']?.isNotEmpty == true,
   );
 }
 

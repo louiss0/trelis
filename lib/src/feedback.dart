@@ -27,9 +27,24 @@ OutputProfile _outputProfile({TerminalIo? terminal}) {
   final t = terminal;
   if (t is TerminalIoOutputProfile) {
     final profile = (t as TerminalIoOutputProfile).outputProfile;
-    return profile;
+    return t?.environment['NO_COLOR']?.isNotEmpty == true
+        ? profile.copyWith(colorDepth: ColorDepth.none)
+        : profile;
   }
-  return const OutputProfile(colorDepth: ColorDepth.rgb);
+  if (t == null) {
+    // Direct `output:` calls keep their existing explicit-colour behavior;
+    // NO_COLOR remains a hard restriction at this final output boundary.
+    return Platform.environment['NO_COLOR']?.isNotEmpty == true
+        ? const OutputProfile(colorDepth: ColorDepth.none)
+        : const OutputProfile(colorDepth: ColorDepth.rgb);
+  }
+  final output = t.output;
+  if (t.environment['NO_COLOR']?.isNotEmpty == true) {
+    return const OutputProfile(colorDepth: ColorDepth.none);
+  }
+  return output is Stdout && output.hasTerminal
+      ? const OutputProfile(colorDepth: ColorDepth.rgb)
+      : const OutputProfile();
 }
 
 StringSink _selectedOutput({StringSink? output, TerminalIo? terminal}) {
