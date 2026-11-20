@@ -12,7 +12,13 @@ import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/prompt_structure.dart';
 import 'package:trelis/src/terminal_io.dart';
 import 'package:trelis/src/text_input.dart'
-    show Choice, InstructionDisplay, PromptResult, Select, TextInput;
+    show
+        Choice,
+        InstructionDisplay,
+        MultiSelect,
+        PromptResult,
+        Select,
+        TextInput;
 import 'package:trelis/src/theme_session.dart';
 
 /// One authored RGB triple.
@@ -141,6 +147,28 @@ final class ChevronInternalPresentation {
       label,
       choices,
       defaultValue: defaultValue,
+      structure: PromptStructure.chevron,
+      colors: _componentPalette(handle, colors),
+      instructions: instructions,
+    ).prompt(session: handle.session);
+  });
+
+  /// A real Chevron multi-selection, with separate default and draft markers.
+  Future<PromptResult<List<T>>> multiSelect<T>(
+    String label,
+    List<Choice<T>> choices, {
+    List<T> defaultValues = const [],
+    int min = 0,
+    int? max,
+    ComponentColors colors = const ComponentColors(),
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+  }) => _owner.prompt((handle) {
+    return MultiSelect<T>(
+      label,
+      choices,
+      defaultValues: defaultValues,
+      min: min,
+      max: max,
       structure: PromptStructure.chevron,
       colors: _componentPalette(handle, colors),
       instructions: instructions,

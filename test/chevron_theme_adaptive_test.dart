@@ -511,6 +511,93 @@ void main() {
     expect(text, isNot(_foreground((red: 117, green: 118, blue: 119))));
   });
 
+  Future<String> renderMultiSelect(int columns) async {
+    final output = StringBuffer();
+    final theme = ChevronInternalPresentation(
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('\r'),
+        output: output,
+        profile: _profile(
+          ascii: true,
+          depth: ColorDepth.none,
+          columns: columns,
+        ),
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+      colors: const ColorPreferences(background: BackgroundPreference.dark),
+    );
+    await theme.multiSelect<String>(
+      'Features',
+      [
+        Choice('starter', 'Starter'),
+        Choice('library', 'Library'),
+        Choice('locked', 'Locked', disabledReason: 'locked by policy'),
+      ],
+      defaultValues: const ['library'],
+    );
+    return output.toString();
+  }
+
+  test(
+    'ASCII no-colour Chevron keeps independent markers and a hint',
+    () async {
+      final text = await renderMultiSelect(40);
+      final lines = _lines(text);
+
+      expect(text, isNot(contains('\x1b[38;')));
+      expect(text, isNot(contains('\x1b[48;')));
+      expect(lines.first, startsWith('> Features'));
+      expect(text, isNot(contains('\u276f')));
+      expect(text, isNot(contains('\u21b3')));
+
+      final focused = lines
+          .where((line) => line.contains('[focused]'))
+          .toList();
+      final defaulted = lines
+          .where((line) => line.contains('[default]'))
+          .toList();
+      expect(focused, hasLength(1));
+      expect(defaulted, hasLength(1));
+      expect(focused.single, contains('[unchecked]'));
+      expect(focused.single, isNot(contains('[default]')));
+      expect(defaulted.single, contains('[checked]'));
+      expect(defaulted.single, isNot(contains('[focused]')));
+      expect(text, contains('[unavailable: locked by policy]'));
+
+      final hint = lines.indexWhere((line) => line.contains('Space toggles'));
+      expect(hint, greaterThan(lines.indexOf(defaulted.single)));
+      expect(lines[hint], startsWith('  -> '));
+      final hintText = lines.skip(hint).join(' ');
+      expect(hintText, contains('Ctrl+T'));
+      expect(hintText.replaceAll(RegExp(r'\s'), ''), contains('Entersubmits'));
+      for (final line in lines) {
+        expect(line.length, lessThanOrEqualTo(40), reason: line);
+      }
+    },
+  );
+
+  test('narrow ASCII Chevron keeps essentials without a frame', () async {
+    final text = await renderMultiSelect(10);
+    final lines = _lines(text);
+
+    expect(text, isNot(contains('+===')));
+    expect(text, isNot(contains('\u2550')));
+    final joined = lines.join('').replaceAll(RegExp(r'\s'), '');
+    for (final essential in [
+      'Features',
+      'Starter',
+      'Library',
+      '[unchecked]',
+      '[checked]',
+      '[focused]',
+      '[default]',
+      'Ctrl+T',
+    ]) {
+      expect(joined, contains(essential), reason: essential);
+    }
+    expect(text, isNot(contains('\x1b[2K')));
+  });
+
   test('the pre-cutover Chevron factory keeps its public palette', () async {
     final output = StringBuffer();
     final result = await ChevronTheme.textInput('Name').prompt(
