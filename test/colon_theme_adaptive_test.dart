@@ -371,6 +371,133 @@ void main() {
     );
   });
 
+  Future<String> renderMultiSelect(int columns) async {
+    final output = StringBuffer();
+    final theme = ColonInternalPresentation(
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('\r'),
+        output: output,
+        profile: _profile(
+          ascii: true,
+          depth: ColorDepth.none,
+          columns: columns,
+        ),
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+      colors: const ColorPreferences(background: BackgroundPreference.dark),
+    );
+    await theme.multiSelect<String>(
+      'Features',
+      [
+        Choice('starter', 'Starter'),
+        Choice('library', 'Library'),
+        Choice('locked', 'Locked', disabledReason: 'locked by policy'),
+      ],
+      defaultValues: const ['library'],
+    );
+    return output.toString();
+  }
+
+  test(
+    'ASCII no-colour Colon keeps independent markers and a typed hint',
+    () async {
+      final text = await renderMultiSelect(40);
+      final lines = _lines(text);
+
+      expect(text, isNot(contains('\x1b[38;')));
+      expect(text, isNot(contains('\x1b[48;')));
+      expect(lines.first, startsWith('ask:'));
+      expect(lines.first, contains('Features'));
+
+      final focused = lines
+          .where((line) => line.contains('[focused]'))
+          .toList();
+      final defaulted = lines
+          .where((line) => line.contains('[default]'))
+          .toList();
+      expect(focused, hasLength(1));
+      expect(defaulted, hasLength(1));
+      expect(focused.single, contains('[unchecked]'));
+      expect(focused.single, isNot(contains('[default]')));
+      expect(defaulted.single, contains('[checked]'));
+      expect(defaulted.single, isNot(contains('[focused]')));
+      expect(text, contains('[unavailable: locked by policy]'));
+
+      final hint = lines.indexWhere((line) => line.startsWith('hint:'));
+      expect(hint, greaterThan(lines.indexOf(defaulted.single)));
+      final hintText = lines.skip(hint).join(' ');
+      expect(hintText, contains('Ctrl+T'));
+      expect(hintText.replaceAll(RegExp(r'\s'), ''), contains('Entersubmits'));
+      expect(
+        text,
+        contains('[checked]'),
+        reason: 'a checked choice keeps a readable, non-colour status label',
+      );
+      for (final line in lines) {
+        expect(line.length, lessThanOrEqualTo(40), reason: line);
+      }
+    },
+  );
+
+  test('narrow ASCII Colon keeps essentials inside the columns', () async {
+    final text = await renderMultiSelect(10);
+    final lines = _lines(text);
+
+    expect(text, isNot(contains('\x1b[38;')));
+    expect(text, isNot(contains('\x1b[48;')));
+    final joined = lines.join('').replaceAll(RegExp(r'\s'), '');
+    for (final essential in [
+      'Features',
+      'Starter',
+      'Library',
+      '[unchecked]',
+      '[checked]',
+      '[focused]',
+      '[default]',
+      'Ctrl+T',
+    ]) {
+      expect(joined, contains(essential), reason: essential);
+    }
+    // Atomic markers may be wider than ten columns; they must stay whole and
+    // distinct rather than being clipped or replaced by another indicator.
+    expect(text, isNot(contains('\x1b[2K')));
+    expect(text, contains('[unavailable: locked by policy]'));
+  });
+
+  test(
+    'ASCII no-colour validation is a typed warning beside the compact hint',
+    () async {
+      final output = StringBuffer();
+      final theme = ColonInternalPresentation(
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('ab\rc\r'),
+          output: output,
+          profile: _profile(ascii: true, depth: ColorDepth.none),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        colors: const ColorPreferences(background: BackgroundPreference.dark),
+      );
+
+      final result = await theme.textInput(
+        'Project name',
+        validate: (value) => value == 'abc' ? null : 'Name must be abc.',
+      );
+
+      expect((result as Accepted<String>).value, 'abc');
+      final text = output.toString();
+      expect(text, isNot(contains('\x1b[38;')));
+      expect(text, isNot(contains('\x1b[48;')));
+      final lines = _lines(text);
+      expect(
+        lines.where((line) => line == 'warning:Name must be abc.'),
+        isNotEmpty,
+        reason: 'the notice keeps a readable typed status label',
+      );
+      expect(lines.first, startsWith('ask:'));
+      expect(lines.where((line) => line.startsWith('hint:')), isNotEmpty);
+    },
+  );
+
   test('authored normal-text pairs meet the reference contrast target', () {
     for (final reference in [
       (
