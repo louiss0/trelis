@@ -566,9 +566,8 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
   _terminalActive = true;
   try {
     if (terminal != null) {
-      final lease = terminal.acquire();
-      return await _restoreAfter(
-        () => run(
+      return await SharedTerminalLease.run(terminal, () async {
+        return run(
           ScriptedInput(
             terminal.input,
             terminal.output,
@@ -579,9 +578,8 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           ),
           selected,
           invocationProfile: outputProfile,
-        ),
-        lease.restore,
-      );
+        );
+      });
     }
     return await _terminal<List<KeyGesture>>(
       selected,

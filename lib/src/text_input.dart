@@ -16,6 +16,7 @@ import 'color_theme.dart';
 import 'native_resize.dart';
 import 'presentation.dart';
 import 'prompt_structure.dart';
+import 'shared_terminal.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
 import 'uts46.dart';
@@ -1048,14 +1049,15 @@ final class TerminalSession {
         );
       }
       if (_terminalIo != null) {
-        final lease = _terminalIo.acquire();
-        final input = _terminalIo.input;
         // A session-owned reader lets retirement end an idle prompt and keeps
         // buffered input across sequential prompts, exactly as it does for a
         // scripted source. An adapter that selects a fresh stream per prompt
-        // gets a reader for that stream instead of a stale one.
-        return await _restoreAfter(
-          () async => runner(
+        // gets a reader for that stream instead of a stale one. The stream is
+        // selected only after acquisition, which is when the lease becomes
+        // authoritative for this invocation.
+        return await SharedTerminalLease.run(_terminalIo, () async {
+          final input = _terminalIo.input;
+          return await runner(
             ScriptedInput(
               input,
               _SessionOutputSink(this),
@@ -1069,9 +1071,8 @@ final class TerminalSession {
             outputProfile: _outputProfile,
             keys: await _readerFor(input),
             session: this,
-          ),
-          lease.restore,
-        );
+          );
+        });
       }
       if (_output is! Stdout) {
         throw StateError(
@@ -2160,20 +2161,7 @@ bool _terminalActive = false;
 Future<T> _restoreAfter<T>(
   Future<T> Function() operation,
   void Function() restore,
-) async {
-  try {
-    final result = await operation();
-    restore();
-    return result;
-  } catch (operationError, operationStackTrace) {
-    try {
-      restore();
-    } catch (restorationError) {
-      throw TerminalRestorationException(operationError, restorationError);
-    }
-    Error.throwWithStackTrace(operationError, operationStackTrace);
-  }
-}
+) => SharedTerminalLease.restoreAfter(operation, restore);
 
 /// Repaints one transcript-style rich prompt when the selected output resizes.
 ///
@@ -2386,9 +2374,8 @@ final class TextInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -2400,9 +2387,8 @@ final class TextInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -3850,9 +3836,8 @@ final class Password {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -3864,9 +3849,8 @@ final class Password {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -4173,9 +4157,8 @@ abstract class _BooleanPrompt {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -4187,9 +4170,8 @@ abstract class _BooleanPrompt {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<bool>(
             selected,
@@ -4504,9 +4486,8 @@ final class Multiline {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -4516,9 +4497,8 @@ final class Multiline {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -5378,9 +5358,8 @@ abstract class _SingleChoice<T> {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -5392,9 +5371,8 @@ abstract class _SingleChoice<T> {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<T>(
             selected,
@@ -5762,9 +5740,8 @@ final class MultiSelect<T> {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -5776,9 +5753,8 @@ final class MultiSelect<T> {
                 ),
                 selectedMode,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<List<T>>(
             selectedMode,
@@ -6292,9 +6268,8 @@ final class TimeInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -6306,9 +6281,8 @@ final class TimeInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<({int hour, int minute, int? second})>(
             selected,
@@ -6781,9 +6755,8 @@ final class TagInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _runTags(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _runTags(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -6793,9 +6766,8 @@ final class TagInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<List<String>>(
             selected,

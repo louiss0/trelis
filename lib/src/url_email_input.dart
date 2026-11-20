@@ -132,9 +132,8 @@ final class URLInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -146,9 +145,8 @@ final class URLInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,

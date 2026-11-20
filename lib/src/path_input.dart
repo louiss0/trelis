@@ -98,9 +98,8 @@ final class PathInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -112,9 +111,8 @@ final class PathInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,

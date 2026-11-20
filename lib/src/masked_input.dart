@@ -305,9 +305,8 @@ final class MaskedInput {
       _terminalActive = true;
       try {
         if (terminal != null) {
-          final lease = terminal.acquire();
-          return await _restoreAfter(
-            () => _run(
+          return await SharedTerminalLease.run(terminal, () async {
+            return _run(
               ScriptedInput(
                 terminal.input,
                 terminal.output,
@@ -319,9 +318,8 @@ final class MaskedInput {
               ),
               selected,
               outputProfile: outputProfile,
-            ),
-            lease.restore,
-          );
+            );
+          });
         }
         return await _terminal<MaskedValue>(
           selected,

@@ -125,9 +125,8 @@ final class TreeSelect<T> {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -139,9 +138,8 @@ final class TreeSelect<T> {
                 ),
                 selectedMode,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<T>(
             selectedMode,
@@ -743,9 +741,8 @@ final class SortableSelect<T> {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -757,9 +754,8 @@ final class SortableSelect<T> {
                 ),
                 selectedMode,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<List<T>>(
             selectedMode,
