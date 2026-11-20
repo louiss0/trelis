@@ -368,6 +368,138 @@ void main() {
       expect(text, contains('[status] Upload: completed'));
     },
   );
+
+  test(
+    'prompt-first work publishes once before a joined feedback participant',
+    () async {
+      final events = <String>[];
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      final facts = Completer<InteractionFacts>();
+      var detections = 0;
+      var callbacks = 0;
+      final owner = ThemeSession(
+        environment: _environment(output, events, input: input.stream),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        factsForPeriod: (_) async {
+          detections++;
+          return facts.future;
+        },
+        onResolved: (_) async {
+          callbacks++;
+          events.add('callback:$callbacks');
+        },
+      );
+
+      final promptStarted = Completer<void>();
+      final releasePrompt = Completer<void>();
+      final prompt = owner.prompt((handle) async {
+        promptStarted.complete();
+        await releasePrompt.future;
+        return await TextInput('Name').prompt(session: handle.session);
+      });
+      await _pump();
+      expect(output.toString(), isEmpty);
+      expect(events, isEmpty);
+
+      facts.complete(const InteractionFacts());
+      await promptStarted.future;
+
+      late final Spinner index;
+      final feedback = await owner.startFeedback((handle) {
+        index = Spinner('Index')..start(session: handle.session);
+      }, stop: () => index.dispose());
+      expect(detections, 1);
+      expect(callbacks, 1);
+      expect(events, contains('callback:1'));
+      expect(owner.resolvedInteraction, isNotNull);
+
+      input.add('Ada\r');
+      releasePrompt.complete();
+      expect((await prompt as Accepted<String>).value, 'Ada');
+      await input.close();
+      await feedback.finish(() => index.finish(FeedbackOutcome.completed));
+      expect(events.last, 'restore:1');
+      expect(owner.resolvedInteraction, isNull);
+      expect(output.toString(), contains('Name'));
+      expect(output.toString(), contains('Index: completed'));
+    },
+  );
+
+  test('caller-owned input stays open after coordinated cleanup', () async {
+    var cancellations = 0;
+    final callerInput = StreamController<String>(
+      onCancel: () => cancellations++,
+    );
+    callerInput.add('Ada\r');
+    final events = <String>[];
+    final owner = ThemeSession(
+      environment: _environment(
+        StringBuffer(),
+        events,
+        input: callerInput.stream,
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+    );
+
+    late final Spinner index;
+    final feedback = await owner.startFeedback((handle) {
+      index = Spinner('Index')..start(session: handle.session);
+    }, stop: () => index.dispose());
+    final answer = await owner.prompt(
+      (handle) => TextInput('Name').prompt(session: handle.session),
+    );
+    await feedback.finish();
+
+    expect((answer as Accepted<String>).value, 'Ada');
+    expect(callerInput.isClosed, isFalse);
+    expect(cancellations, greaterThan(0));
+    await callerInput.close();
+  });
+
+  test('a failed detection source falls back for feedback output', () async {
+    final events = <String>[];
+    final output = StringBuffer();
+    final owner = ThemeSession(
+      environment: _environment(output, events),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+      factsForPeriod: (_) => throw StateError('observation failed'),
+      onResolved: (_) async => events.add('callback'),
+    );
+
+    await owner.presentFeedback(Text('Fallback'));
+
+    expect(output.toString(), contains('Fallback'));
+    expect(events, ['acquire:1', 'callback', 'restore:1']);
+  });
+
+  test('explicit rich feedback fails clearly on a non-rich output', () async {
+    final events = <String>[];
+    final output = StringBuffer();
+    final owner = ThemeSession(
+      environment: _environment(output, events),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+      onResolved: (_) async => events.add('callback'),
+    );
+
+    await expectLater(
+      owner.presentFeedback(Text('unreachable')),
+      throwsA(
+        isA<ThemeSessionUnavailable>().having(
+          (error) => error.reason,
+          'reason',
+          contains('unavailable on the selected output'),
+        ),
+      ),
+    );
+    await expectLater(
+      owner.startFeedback((_) {}, stop: () {}),
+      throwsA(isA<ThemeSessionUnavailable>()),
+    );
+
+    expect(events, isEmpty);
+    expect(output.toString(), isEmpty);
+  });
 }
 
 OutputProfile _richProfile({required int rows, bool alternateScreen = false}) =>
