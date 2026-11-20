@@ -1,6 +1,6 @@
 # 35 Bind the Windows screen-reader hint behind a gate
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [34](34-hints-locality.md)
 
