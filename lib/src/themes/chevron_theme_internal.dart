@@ -6,7 +6,14 @@
 /// calls.
 library;
 
+import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/color_theme.dart';
+import 'package:trelis/src/interaction_resolution.dart';
+import 'package:trelis/src/prompt_structure.dart';
+import 'package:trelis/src/terminal_io.dart';
+import 'package:trelis/src/text_input.dart'
+    show Choice, InstructionDisplay, PromptResult, Select, TextInput;
+import 'package:trelis/src/theme_session.dart';
 
 /// One authored RGB triple.
 typedef ChevronRgb = ({int red, int green, int blue});
@@ -78,4 +85,90 @@ final class ChevronPaletteDefaults {
 
   static TerminalColor _rgb(ChevronRgb value) =>
       TerminalColor.rgb(value.red, value.green, value.blue);
+}
+
+/// Drives real Chevron components through the internal theme owner.
+final class ChevronInternalPresentation {
+  ChevronInternalPresentation({
+    required TerminalEnvironment io,
+    ColorPreferences colors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ColorDetectionFacts? colorFacts,
+  }) : _owner = ThemeSession(
+         environment: io,
+         colors: colors,
+         interaction: interaction,
+         onResolved: onResolved,
+         colorFacts: colorFacts,
+         lightDefault: ChevronPaletteDefaults.light,
+         darkDefault: ChevronPaletteDefaults.dark,
+       );
+
+  final ThemeSession _owner;
+
+  /// A real Chevron text input, with the Chevron heading and resolved palette.
+  Future<PromptResult<String>> textInput(
+    String label, {
+    String initialValue = '',
+    bool required = false,
+    String? Function(String)? validate,
+    int? maxLength,
+    ComponentColors colors = const ComponentColors(),
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+  }) => _owner.prompt((handle) {
+    return TextInput(
+      label,
+      initialValue: initialValue,
+      required: required,
+      validate: validate,
+      maxLength: maxLength,
+      structure: PromptStructure.chevron,
+      colors: _componentPalette(handle, colors),
+      instructions: instructions,
+    ).prompt(session: handle.session);
+  });
+
+  /// A real Chevron single-choice component under the Chevron heading.
+  Future<PromptResult<T>> select<T>(
+    String label,
+    List<Choice<T>> choices, {
+    T? defaultValue,
+    ComponentColors colors = const ComponentColors(),
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+  }) => _owner.prompt((handle) {
+    return Select<T>(
+      label,
+      choices,
+      defaultValue: defaultValue,
+      structure: PromptStructure.chevron,
+      colors: _componentPalette(handle, colors),
+      instructions: instructions,
+    ).prompt(session: handle.session);
+  });
+
+  /// Layers one component's override over the period's resolved palette.
+  ///
+  /// Background and I/O stay owned by the period; a component cannot select a
+  /// variant or change the environment through this seam.
+  ColorTheme _componentPalette(
+    ThemeSessionHandle handle,
+    ComponentColors component,
+  ) {
+    final period = handle.colors;
+    final background = switch (period.background) {
+      BackgroundVariant.light => BackgroundPreference.light,
+      BackgroundVariant.dark => BackgroundPreference.dark,
+    };
+    return resolveColors(
+      facts: ColorDetectionFacts(
+        outputProfile: period.outputProfile,
+        noColor: handle.environment.environment['NO_COLOR'],
+      ),
+      lightDefault: period.palette,
+      darkDefault: period.palette,
+      preferences: ColorPreferences(background: background),
+      component: component,
+    ).palette;
+  }
 }
