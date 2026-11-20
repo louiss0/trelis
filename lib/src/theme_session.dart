@@ -9,6 +9,7 @@ library;
 
 import 'dart:async';
 
+import 'background_query.dart';
 import 'color_resolution.dart';
 import 'color_theme.dart';
 import 'interaction_resolution.dart';
@@ -146,7 +147,8 @@ final class _ThemePeriod {
   final ThemeSession owner;
   final ResolvedInteraction interaction;
   final ThemeInteractionState state;
-  final ResolvedColors colors;
+  // Set once from resolver facts before the period publishes its value.
+  ResolvedColors colors;
   final Completer<void> idle = Completer<void>();
 
   late final TerminalSession session;
@@ -163,6 +165,8 @@ final class _ThemePeriod {
   bool get accepting => _accepting;
 
   void attach(TerminalSession value) => session = value;
+
+  void setColors(ResolvedColors value) => colors = value;
 
   void publish() => owner._published = state;
 
@@ -413,6 +417,13 @@ final class ThemeSession {
       throw _InitializationUnavailable(availability.reason);
     }
 
+    final colorFacts = _fixedColorFacts ?? _defaultColorFacts;
+    final initialColors = resolveColors(
+      facts: colorFacts,
+      lightDefault: ColorThemes.terminalDefault,
+      darkDefault: ColorThemes.terminalDefault,
+      preferences: colors,
+    );
     final period = _ThemePeriod(
       this,
       resolved,
@@ -420,7 +431,7 @@ final class ThemeSession {
         mode: resolved.mode,
         screenReader: resolved.screenReader,
       ),
-      _resolveColors(),
+      initialColors,
     );
     final identity = environment.ownershipIdentity;
     if (identity != null && !await _claimIdentity(identity, period)) {
@@ -438,6 +449,24 @@ final class ThemeSession {
         try {
           final lease = environment.acquire();
           await SharedTerminalLease.restoreAfter(() async {
+            var facts = colorFacts;
+            if (_mayQueryBackground(initialColors)) {
+              final observation = await _race(
+                () => session.queryBackground(),
+                cancellation,
+              );
+              if (observation != BackgroundQueryResult.unavailable) {
+                facts = _withQueriedBackground(colorFacts, observation);
+              }
+            }
+            period.setColors(
+              resolveColors(
+                facts: facts,
+                lightDefault: ColorThemes.terminalDefault,
+                darkDefault: ColorThemes.terminalDefault,
+                preferences: colors,
+              ),
+            );
             final callback = onResolved;
             if (callback != null) {
               await _race<void>(() async {
@@ -558,12 +587,33 @@ final class ThemeSession {
     if (cancelled) throw const _InitializationCancelled();
   }
 
-  ResolvedColors _resolveColors() => resolveColors(
-    facts: _fixedColorFacts ?? _defaultColorFacts,
-    lightDefault: ColorThemes.terminalDefault,
-    darkDefault: ColorThemes.terminalDefault,
-    preferences: colors,
-  );
+  /// Whether one bounded query is allowed in this active period.
+  ///
+  /// The resolver already applies explicit choice, query disablement,
+  /// `NO_COLOR` and colour depth. The remaining facts ensure the selected
+  /// output is an interactive terminal rather than a redirected sink.
+  bool _mayQueryBackground(ResolvedColors initial) =>
+      initial.shouldQueryBackground &&
+      environment.environment['NO_COLOR']?.isNotEmpty != true &&
+      environment.supportsRich &&
+      environment.profile.supportsRichInteraction;
+
+  ColorDetectionFacts _withQueriedBackground(
+    ColorDetectionFacts base,
+    BackgroundQueryResult result,
+  ) {
+    final observation = switch (result) {
+      BackgroundQueryResult.light => BackgroundObservation.light,
+      BackgroundQueryResult.dark => BackgroundObservation.dark,
+      BackgroundQueryResult.unavailable => null,
+    };
+    return ColorDetectionFacts(
+      outputProfile: base.outputProfile,
+      noColor: base.noColor,
+      passiveBackground: base.passiveBackground,
+      queriedBackground: observation,
+    );
+  }
 
   ColorDetectionFacts get _defaultColorFacts => ColorDetectionFacts(
     outputProfile: environment.profile,

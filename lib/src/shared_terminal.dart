@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'background_query.dart';
 import 'terminal_io.dart';
 
 /// Internal terminal-ownership seam for theme-managed presentation.
@@ -51,12 +52,20 @@ final class SharedTerminalLease {
   }
 }
 
+final class _BackgroundWait {
+  _BackgroundWait(this.completer, this.timer);
+
+  final Completer<BackgroundQueryResult> completer;
+  final Timer timer;
+}
+
 final class SharedTerminalReader {
   final _controller = StreamController<String>();
   late final StreamSubscription<String> _subscription;
   late final StreamIterator<String> _iterator;
   bool Function(String)? onKey;
   Object? _failure;
+  _BackgroundWait? _backgroundWait;
   void _emit(String key) {
     if (!(onKey?.call(key) ?? false)) _controller.add(key);
   }
@@ -80,6 +89,7 @@ final class SharedTerminalReader {
           onError: _controller.addError,
           onDone: () {
             _timer?.cancel();
+            _finishBackground(null);
             if (flushEscapeOnEnd && _buffer == '\x1b') {
               _emit('\x1b');
               _buffer = '';
@@ -88,9 +98,73 @@ final class SharedTerminalReader {
           },
         );
   }
+
+  /// Sends one background query through this reader and waits for its reply.
+  ///
+  /// A second caller joins the pending query instead of writing another
+  /// request. The reply is consumed here; unrelated bytes keep their order.
+  Future<BackgroundQueryResult> queryBackground({
+    required void Function() writeRequest,
+    Duration timeout = backgroundQueryTimeout,
+  }) {
+    final waiting = _backgroundWait;
+    if (waiting != null) return waiting.completer.future;
+    if (_closed || _controller.isClosed) {
+      return Future.value(BackgroundQueryResult.unavailable);
+    }
+    final completer = Completer<BackgroundQueryResult>();
+    final timer = Timer(timeout, () => _finishBackground(null));
+    _backgroundWait = _BackgroundWait(completer, timer);
+    try {
+      writeRequest();
+    } catch (error, stackTrace) {
+      _backgroundWait = null;
+      timer.cancel();
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+    return completer.future;
+  }
+
+  void _finishBackground(BackgroundQueryResult? result) {
+    final waiting = _backgroundWait;
+    if (waiting == null) return;
+    _backgroundWait = null;
+    waiting.timer.cancel();
+    if (result == null) {
+      // A partial reply is input, never a lost keystroke, when the bound ends.
+      final held = _buffer;
+      _buffer = '';
+      _emitRaw(held);
+    }
+    if (!waiting.completer.isCompleted) {
+      waiting.completer.complete(result ?? BackgroundQueryResult.unavailable);
+    }
+  }
+
+  void _emitRaw(String raw) {
+    for (final rune in raw.runes) {
+      _emit(String.fromCharCode(rune));
+    }
+  }
+
   void _parse() {
     _timer?.cancel();
     while (_buffer.isNotEmpty) {
+      if (_backgroundWait != null && _buffer.startsWith('\x1b]')) {
+        final end = oscTerminatorEnd(_buffer);
+        if (end != null) {
+          final raw = _buffer.substring(0, end);
+          _buffer = _buffer.substring(end);
+          final result = parseOsc11BackgroundResponse(raw);
+          if (result == null) {
+            _emitRaw(raw);
+          } else {
+            _finishBackground(result);
+          }
+          continue;
+        }
+        if (isOsc11BackgroundPrefix(_buffer)) return;
+      }
       if (_discardPaste) {
         final end = _buffer.indexOf('\x1b[201~');
         if (end < 0) {
@@ -181,6 +255,12 @@ final class SharedTerminalReader {
     if (_closed) return;
     _closed = true;
     _timer?.cancel();
+    final waiting = _backgroundWait;
+    _backgroundWait = null;
+    waiting?.timer.cancel();
+    if (waiting != null && !waiting.completer.isCompleted) {
+      waiting.completer.complete(BackgroundQueryResult.unavailable);
+    }
     await _subscription.cancel();
     await _iterator.cancel();
   }
