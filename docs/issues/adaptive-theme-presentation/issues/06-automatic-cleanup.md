@@ -1,6 +1,6 @@
 # 06 Automatically clean up active work
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [05](05-theme-owned-session.md)
 
