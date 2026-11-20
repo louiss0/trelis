@@ -11,11 +11,25 @@ import 'text_input.dart' show PromptMode;
 /// Whether screen-reader presentation is automatic, requested, or declined.
 enum ScreenReaderPreference { automatic, on, off }
 
+/// An injected observation about screen-reader use, never a request.
+///
+/// Only [positive] can select automatic screen-reader presentation. Negative,
+/// failed, and unknown observations do not veto another positive hint.
+enum ScreenReaderObservation { positive, negative, failed, unknown }
+
+/// The conservatively classified locality of the terminal session.
+///
+/// Only [local], together with an interactive session, makes a native reader
+/// observation eligible. Remote, ambiguous, and unknown sessions are treated
+/// as if no native hint were available.
+enum TerminalLocality { local, remote, ambiguous, unknown }
+
 /// Immutable application interaction configuration for a theme.
 final class InteractionPreferences {
   const InteractionPreferences({
     this.mode = PromptMode.automatic,
     this.screenReader = ScreenReaderPreference.automatic,
+    this.applicationHint = ScreenReaderObservation.unknown,
   });
 
   /// The requested rich, linear, or automatic interaction direction.
@@ -23,6 +37,9 @@ final class InteractionPreferences {
 
   /// The screen-reader presentation request.
   final ScreenReaderPreference screenReader;
+
+  /// An optional application reader hint; only a positive value has an effect.
+  final ScreenReaderObservation applicationHint;
 }
 
 /// An outcome of resolving interaction; only [ResolvedInteraction] is runnable.
@@ -56,12 +73,40 @@ final class InteractionConflict extends InteractionResolution {
   final String reason;
 }
 
+/// No runnable interaction exists, as reported by integration preflight.
+final class InteractionUnavailable extends InteractionResolution {
+  const InteractionUnavailable(this.reason) : super._();
+
+  /// A human-readable explanation of the unavailable interaction.
+  final String reason;
+}
+
 /// Immutable injected facts used by the internal resolver.
 final class InteractionFacts {
-  const InteractionFacts({this.output = const OutputProfile()});
+  const InteractionFacts({
+    this.output = const OutputProfile(),
+    this.nativeHint = ScreenReaderObservation.unknown,
+    this.locality = TerminalLocality.unknown,
+    this.interactive = false,
+    this.interactionAvailable = true,
+  });
 
   /// Capabilities already resolved for the selected output.
   final OutputProfile output;
+
+  /// A native reader observation, eligible only under conservative locality.
+  final ScreenReaderObservation nativeHint;
+
+  /// The classified locality of the terminal session.
+  final TerminalLocality locality;
+
+  /// Whether the session is interactive; required for a native hint.
+  final bool interactive;
+
+  /// The injected result of integration's component availability preflight.
+  ///
+  /// This resolver never checks component or terminal availability itself.
+  final bool interactionAvailable;
 }
 
 /// Resolves [preferences] against injected [facts] without side effects.
@@ -88,7 +133,17 @@ final class _InteractionResolver {
       );
     }
 
-    final screenReader = _preferences.screenReader == ScreenReaderPreference.on;
+    if (!_facts.interactionAvailable) {
+      return const InteractionUnavailable(
+        'No runnable interaction is available on the selected output.',
+      );
+    }
+
+    final screenReader =
+        _preferences.screenReader == ScreenReaderPreference.on ||
+        (_preferences.screenReader == ScreenReaderPreference.automatic &&
+            !explicitRich &&
+            _affirmativeHint);
     final mode = screenReader
         ? PromptMode.linear
         : switch (_preferences.mode) {
@@ -100,5 +155,16 @@ final class _InteractionResolver {
                   : PromptMode.linear,
           };
     return ResolvedInteraction(mode: mode, screenReader: screenReader);
+  }
+
+  /// An affirmative application hint always counts; a native hint counts only
+  /// in an interactive session classified as local.
+  bool get _affirmativeHint {
+    if (_preferences.applicationHint == ScreenReaderObservation.positive) {
+      return true;
+    }
+    return _facts.nativeHint == ScreenReaderObservation.positive &&
+        _facts.interactive &&
+        _facts.locality == TerminalLocality.local;
   }
 }
