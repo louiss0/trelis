@@ -138,6 +138,55 @@ void main() {
       expect(input.isClosed, isTrue);
     },
   );
+
+  test('redirected native output declares no unsuitable capabilities', () {
+    final profile = TerminalEnvironment.nativeProfile(
+      hasTerminal: false,
+      supportsRich: true,
+      term: 'xterm-256color',
+      columns: 120,
+      rows: 40,
+    );
+
+    expect(profile.cursor, CapabilitySupport.unsupported);
+    expect(profile.alternateScreen, CapabilitySupport.unsupported);
+    expect(profile.geometry.isAutomatic, isTrue);
+    expect(profile.colorDepth, ColorDepth.none);
+  });
+
+  test('feedback does not invent a colour profile for unprofiled output', () {
+    final colors = ColorTheme(
+      foreground: TerminalColor.rgb(220, 20, 40),
+      background: const TerminalColor.terminalDefault(),
+      muted: const TerminalColor.terminalDefault(),
+      accent: const TerminalColor.terminalDefault(),
+      selectionForeground: const TerminalColor.terminalDefault(),
+      selectionBackground: const TerminalColor.terminalDefault(),
+      success: const TerminalColor.terminalDefault(),
+      warning: const TerminalColor.terminalDefault(),
+      error: const TerminalColor.terminalDefault(),
+      border: const TerminalColor.terminalDefault(),
+    );
+    final declaredOutput = StringBuffer();
+    final undeclaredOutput = StringBuffer();
+
+    Text('Ready', colors: colors).present(
+      terminal: TerminalEnvironment.scripted(
+        input: const Stream<String>.empty(),
+        output: declaredOutput,
+        profile: const OutputProfile(colorDepth: ColorDepth.rgb),
+      ),
+    );
+    Text('Ready', colors: colors).present(
+      terminal: FailingTerminalIo(
+        input: const Stream<String>.empty(),
+        output: undeclaredOutput,
+      ),
+    );
+
+    expect(declaredOutput.toString(), contains('\x1b['));
+    expect(undeclaredOutput.toString(), 'Ready\n');
+  });
 }
 
 final class FailingTerminalIo implements TerminalIo {

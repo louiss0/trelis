@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'output_profile.dart';
 
@@ -76,6 +77,103 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
     this.closeInput,
   }) : _supportsRich = supportsRich,
        _acquire = acquire;
+
+  /// Declares the conservative profile for observed native-output facts.
+  ///
+  /// A redirected or otherwise non-interactive output does not gain cursor,
+  /// geometry, alternate-screen or colour capability from a caller's rich
+  /// hint. Geometry and terminal-style observations are hints; they never
+  /// enlarge an output that reports itself as redirected.
+  static OutputProfile nativeProfile({
+    required bool hasTerminal,
+    required bool supportsRich,
+    String term = '',
+    int? columns,
+    int? rows,
+    bool colorDisabled = false,
+  }) {
+    final capable = hasTerminal && term != 'dumb';
+    final rich = capable && supportsRich;
+    final usableGeometry =
+        hasTerminal &&
+        columns != null &&
+        columns > 0 &&
+        rows != null &&
+        rows > 0;
+    return OutputProfile(
+      cursor: rich
+          ? CapabilitySupport.supported
+          : CapabilitySupport.unsupported,
+      alternateScreen:
+          rich &&
+              (Platform.isWindows ||
+                  RegExp(r'^(xterm|screen|tmux|rxvt)(-|$)').hasMatch(term))
+          ? CapabilitySupport.supported
+          : CapabilitySupport.unsupported,
+      geometry: usableGeometry
+          ? OutputGeometry.fixed(columns: columns!, rows: rows!)
+          : const OutputGeometry.automatic(),
+      colorDepth: capable && !colorDisabled
+          ? ColorDepth.automatic
+          : ColorDepth.none,
+    );
+  }
+
+  /// Binds an observed native selected output and its acquisition callback.
+  ///
+  /// Acquisition belongs to the shared terminal seam; this environment records
+  /// its lease without creating a second native reader. The selected [output]
+  /// is the default identity because it is a stable object for one process.
+  factory TerminalEnvironment.native({
+    required Stream<String> input,
+    required Stdout output,
+    required TerminalLease Function() acquire,
+    Object? ownershipIdentity,
+    void Function()? closeInput,
+    Map<String, String?>? environment,
+    OutputProfile? profile,
+    String? term,
+    bool? supportsRich,
+  }) {
+    final observations = environment ?? Platform.environment;
+    final selectedTerm = term ?? observations['TERM'] ?? '';
+    int? columns;
+    int? rows;
+    if (output.hasTerminal) {
+      try {
+        columns = output.terminalColumns;
+        rows = output.terminalLines;
+      } on FileSystemException {
+        // Capability probing is fallible; geometry remains unknown.
+      } on UnsupportedError {
+        // Capability probing is fallible; geometry remains unknown.
+      }
+    }
+    final selectedProfile =
+        profile ??
+        nativeProfile(
+          hasTerminal: output.hasTerminal,
+          supportsRich:
+              supportsRich ?? (output.hasTerminal && selectedTerm != 'dumb'),
+          term: selectedTerm,
+          columns: columns,
+          rows: rows,
+          colorDisabled:
+              !output.hasTerminal ||
+              observations['NO_COLOR']?.isNotEmpty == true,
+        );
+    return TerminalEnvironment._(
+      input: input,
+      output: output,
+      profile: selectedProfile,
+      ownershipIdentity: ownershipIdentity ?? output,
+      environment: observations,
+      supportsRich:
+          supportsRich ?? selectedProfile.cursor == CapabilitySupport.supported,
+      acquire: acquire,
+      closeInput: closeInput,
+    );
+  }
 
   /// Adapts a native or custom [adapter] without changing its public contract.
   ///
