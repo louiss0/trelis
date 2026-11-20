@@ -402,6 +402,34 @@ void main() {
       expect(events.last, 'restore');
     },
   );
+
+  test(
+    'a real prompt and feedback both render through the owned session',
+    () async {
+      final output = StringBuffer();
+      final environment = TerminalEnvironment.scripted(
+        input: Stream.value('Ada\r'),
+        output: output,
+        profile: const OutputProfile(glyphs: GlyphSet.ascii),
+      );
+      final owner = ThemeSession(
+        environment: environment,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      );
+
+      final answer = await owner.prompt(
+        (handle) => TextInput('Name').prompt(session: handle.session),
+      );
+      await owner.feedback((handle) async {
+        Text('Ready').present(session: handle.session);
+      });
+
+      expect((answer as Accepted<String>).value, 'Ada');
+      expect(output.toString(), contains('Name'));
+      expect(output.toString(), contains('Ready'));
+      expect(owner.resolvedInteraction, isNull);
+    },
+  );
 }
 
 final class _RecordingSink implements StringSink {
