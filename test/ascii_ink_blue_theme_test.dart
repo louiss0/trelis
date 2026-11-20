@@ -233,6 +233,243 @@ void main() {
       },
     );
   });
+
+  group('palette precedence and restrictions', () {
+    for (final background in BackgroundPreference.values) {
+      if (background == BackgroundPreference.automatic) continue;
+      test('app and component palette layers for ${background.name}', () async {
+        final colors = ColorPreferences(background: background);
+        final themeFg = background == BackgroundPreference.light
+            ? [47, 53, 66]
+            : [236, 232, 222];
+        final appFg = background == BackgroundPreference.light
+            ? [11, 22, 33]
+            : [33, 22, 11];
+        const appMuted = [120, 121, 122];
+        final componentFg = background == BackgroundPreference.light
+            ? [77, 88, 99]
+            : [99, 88, 77];
+        final variantFg = background == BackgroundPreference.light
+            ? [44, 55, 66]
+            : [66, 55, 44];
+
+        final themeDefault = await renderText(colors: colors);
+        expect(themeDefault, contains('${fg(themeFg)}? PROJECT NAME'));
+
+        final appPalette = await renderText(
+          colors: colors,
+          appColors: ComponentColors.palette(_palette(appFg, appMuted)),
+        );
+        expect(appPalette, contains('${fg(appFg)}? PROJECT NAME'));
+        expect(appPalette, contains('${fg(appMuted)}  -- Left/Right move'));
+        expect(appPalette, isNot(contains(fg(themeFg))));
+
+        final appRole = await renderText(
+          colors: colors,
+          appColors: ComponentColors(
+            roles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(appFg[0], appFg[1], appFg[2]),
+            ),
+          ),
+        );
+        expect(appRole, contains('${fg(appFg)}? PROJECT NAME'));
+        final inheritedMuted = background == BackgroundPreference.light
+            ? [90, 96, 112]
+            : [180, 184, 197];
+        expect(appRole, contains('${fg(inheritedMuted)}  -- Left/Right move'));
+
+        final appVariantRole = await renderText(
+          colors: colors,
+          appColors: ComponentColors(
+            lightRoles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(44, 55, 66),
+            ),
+            darkRoles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(66, 55, 44),
+            ),
+          ),
+        );
+        expect(appVariantRole, contains('${fg(variantFg)}? PROJECT NAME'));
+
+        final componentPalette = await renderText(
+          colors: colors,
+          appColors: ComponentColors(
+            roles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(appFg[0], appFg[1], appFg[2]),
+            ),
+          ),
+          component: ComponentColors.palette(_palette(componentFg)),
+        );
+        expect(componentPalette, contains('${fg(componentFg)}? PROJECT NAME'));
+        expect(componentPalette, isNot(contains(fg(appFg))));
+        expect(componentPalette, isNot(contains(fg(appMuted))));
+
+        final componentRole = await renderText(
+          colors: colors,
+          appColors: ComponentColors.palette(_palette(appFg, appMuted)),
+          component: ComponentColors(
+            roles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(
+                componentFg[0],
+                componentFg[1],
+                componentFg[2],
+              ),
+            ),
+          ),
+        );
+        expect(componentRole, contains('${fg(componentFg)}? PROJECT NAME'));
+        expect(componentRole, contains('${fg(appMuted)}  -- Left/Right move'));
+
+        final componentVariantRole = await renderText(
+          colors: colors,
+          appColors: ComponentColors.palette(_palette(appFg)),
+          component: ComponentColors(
+            lightRoles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(77, 88, 99),
+            ),
+            darkRoles: ColorRoleOverrides(
+              foreground: TerminalColor.rgb(99, 88, 77),
+            ),
+          ),
+        );
+        expect(
+          componentVariantRole,
+          contains('${fg(componentFg)}? PROJECT NAME'),
+          reason: 'component variant roles win over shared roles',
+        );
+      });
+    }
+
+    test(
+      'component colours cannot change background or output capability',
+      () async {
+        final darkWithLightOverride = await renderText(
+          colors: const ColorPreferences(background: BackgroundPreference.dark),
+          component: ComponentColors(
+            lightPalette: _palette([11, 22, 33]),
+            darkPalette: _palette([44, 55, 66]),
+          ),
+        );
+        expect(
+          darkWithLightOverride,
+          contains('${fg([44, 55, 66])}? PROJECT NAME'),
+        );
+        expect(darkWithLightOverride, isNot(contains(fg([11, 22, 33]))));
+
+        final noDepth = await renderText(
+          profile: _profile(depth: ColorDepth.none),
+          component: ComponentColors.palette(_palette([11, 22, 33])),
+        );
+        expect(noDepth, contains('? PROJECT NAME'));
+        expect(noDepth, isNot(contains('\x1b[38;')));
+      },
+    );
+
+    test(
+      'terminalDefault at app and component scope suppresses colour',
+      () async {
+        final appDefault = await renderText(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+          appColors: ComponentColors.palette(ColorThemes.terminalDefault),
+        );
+        final componentDefault = await renderText(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+          appColors: ComponentColors.palette(_palette([11, 22, 33])),
+          component: ComponentColors.palette(ColorThemes.terminalDefault),
+        );
+        final explicitColourWithNoColor = await renderText(
+          environment: const {'NO_COLOR': '1'},
+          component: ComponentColors.palette(_palette([200, 10, 20])),
+        );
+
+        for (final text in [
+          appDefault,
+          componentDefault,
+          explicitColourWithNoColor,
+        ]) {
+          expect(text, contains('? PROJECT NAME'));
+          expect(text, isNot(contains('\x1b[38;')));
+          expect(text, isNot(contains('\x1b[48;')));
+        }
+      },
+    );
+
+    test('monochrome and reduced depth degrade authored colours', () async {
+      final monochrome = await renderText(
+        profile: _profile(depth: ColorDepth.none),
+      );
+      expect(monochrome, contains('? PROJECT NAME'));
+      expect(monochrome, isNot(contains('\x1b[38;')));
+
+      final indexed = await renderText(
+        profile: _profile(depth: ColorDepth.indexed256),
+      );
+      expect(indexed, contains(RegExp(r'\x1b\[38;5;')));
+      expect(indexed, isNot(contains('\x1b[38;2;')));
+
+      final basic = await renderText(
+        profile: _profile(depth: ColorDepth.ansi16),
+      );
+      expect(basic, contains(RegExp(r'\x1b\[3[0-7];49m')));
+      expect(basic, isNot(contains('\x1b[38;2;')));
+    });
+
+    test('non-empty NO_COLOR wins over every explicit colour', () async {
+      final output = StringBuffer();
+      final theme = asciiTheme(
+        output,
+        'Ada\r',
+        environment: const {'NO_COLOR': '1'},
+        colors: const ColorPreferences(
+          background: BackgroundPreference.light,
+          colors: ComponentColors.palette(ColorThemes.terminalDefault),
+        ),
+      );
+      final result = await theme.textInput(
+        'Project name',
+        colors: ComponentColors.palette(_palette([250, 10, 20])),
+      );
+
+      expect((result as Accepted<String>).value, 'Ada');
+      expect(output.toString(), contains('? PROJECT NAME'));
+      expect(output.toString(), isNot(contains('\x1b[38;')));
+      expect(output.toString(), isNot(contains('\x1b[48;')));
+    });
+
+    test(
+      'ascii and no-colour choice output keeps every state readable',
+      () async {
+        final output = StringBuffer();
+        final theme = asciiTheme(
+          output,
+          '1\r',
+          environment: const {'NO_COLOR': '1'},
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+        final result = await theme.select<String>('Deploy target', [
+          Choice('staging', 'Staging here'),
+          Choice('production', 'Production', disabledReason: 'locked for demo'),
+        ], defaultValue: 'staging');
+
+        expect((result as Accepted<String>).value, 'staging');
+        final text = stripAnsi(output.toString());
+        expect(text, contains('? DEPLOY TARGET SELECT:'));
+        expect(text, contains('[focused] [default]'));
+        expect(text, contains('[unavailable: locked for demo]'));
+        expect(text, contains('-- '));
+        expect(text, contains('/help'));
+        expect(text, contains('Accepted: Staging here.'));
+        expect(output.toString(), isNot(contains('\x1b[38;')));
+        expect(output.toString(), isNot(contains('\x1b[48;')));
+      },
+    );
+  });
 }
 
 OutputProfile _profile({
