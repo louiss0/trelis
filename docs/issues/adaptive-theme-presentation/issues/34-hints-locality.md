@@ -1,6 +1,6 @@
 # 34 Observe native hints and conservative locality
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [03](03-interaction-resolution.md), [05](05-theme-owned-session.md)
 
