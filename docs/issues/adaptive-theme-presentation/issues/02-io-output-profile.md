@@ -1,6 +1,6 @@
 # 02 Associate I/O with the selected output
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** None
 
