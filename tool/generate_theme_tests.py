@@ -1,4 +1,5 @@
 import re
+import subprocess
 import sys
 
 theme = sys.argv[1]
@@ -105,4 +106,9 @@ for suffix in ['factories', 'acceptance_matrix']:
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(result)
 
+    subprocess.run(
+        ['dart', 'format', out_path],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
     print(f'generated {out_path}')
