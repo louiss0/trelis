@@ -1,6 +1,6 @@
 # 04 Resolve colour preferences and overrides
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** None
 
