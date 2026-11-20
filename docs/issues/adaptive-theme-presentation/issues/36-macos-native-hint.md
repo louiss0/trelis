@@ -1,6 +1,6 @@
 # 36 Bind the macOS VoiceOver hint behind a gate
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [34](34-hints-locality.md)
 
