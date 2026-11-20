@@ -457,7 +457,12 @@ final class TerminalSession {
     this._userPreference,
     this._applicationPreference,
     this._outputProfile,
-  );
+  ) {
+    _writer = SharedOutputCoordinator(
+      _output,
+      onFailure: _closeAfterSharedWriterFailure,
+    );
+  }
 
   final StringSink _output;
   final ScriptedInput? _source;
@@ -509,8 +514,7 @@ final class TerminalSession {
   bool _modalHelp = false;
   bool _modalUsesAlternateScreen = false;
   bool _closed = false;
-  Object? _sharedWriterFailure;
-  StackTrace? _sharedWriterFailureStackTrace;
+  late final SharedOutputCoordinator _writer;
 
   bool get _feedbackRich {
     final selected =
@@ -540,8 +544,6 @@ final class TerminalSession {
   /// screen claim, and restores any prompt lease that was acquired.
   void _closeAfterSharedWriterFailure(Object error, StackTrace stackTrace) {
     if (_closed) return;
-    _sharedWriterFailure = error;
-    _sharedWriterFailureStackTrace = stackTrace;
     _closed = true;
     _modalHelp = false;
     _modalUsesAlternateScreen = false;
@@ -573,22 +575,7 @@ final class TerminalSession {
   /// Performs one serialized shared-output action and retires the session if
   /// its writer fails. Local registration and validation failures never take
   /// this path, so unrelated regions remain usable.
-  void _writeShared(void Function() action) {
-    if (_closed) {
-      final failure = _sharedWriterFailure;
-      final failureStackTrace = _sharedWriterFailureStackTrace;
-      if (failure != null && failureStackTrace != null) {
-        Error.throwWithStackTrace(failure, failureStackTrace);
-      }
-      return;
-    }
-    try {
-      action();
-    } catch (error, stackTrace) {
-      _closeAfterSharedWriterFailure(error, stackTrace);
-      Error.throwWithStackTrace(error, stackTrace);
-    }
-  }
+  void _writeShared(void Function() action) => _writer.write((_) => action());
 
   /// Registers one feedback region with this session's serialized writer.
   /// Feedback components call this when they are started with `session:`.
@@ -958,6 +945,7 @@ final class TerminalSession {
     } catch (error, stackTrace) {
       recordFailure(error, stackTrace);
     }
+    _writer.close();
     _closed = true;
     _promptRepaint = null;
     _promptGeometry = null;

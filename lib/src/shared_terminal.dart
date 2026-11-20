@@ -249,3 +249,44 @@ final class SharedReaderCoordinator {
     await reader?.close();
   }
 }
+
+/// Serializes writes to one selected output for all active participants.
+///
+/// A failed write retires the coordinator, records the original error and
+/// invokes [onFailure] once so an owner can stop readers and feedback regions.
+/// Later writes replay the recorded error rather than touching a dead sink.
+final class SharedOutputCoordinator {
+  SharedOutputCoordinator(this.output, {this.onFailure});
+
+  final StringSink output;
+  final void Function(Object error, StackTrace stackTrace)? onFailure;
+
+  Object? _failure;
+  StackTrace? _failureStackTrace;
+  bool _closed = false;
+
+  /// The first writer failure, retained for programmatic handling.
+  Object? get failure => _failure;
+
+  /// Performs one write while the coordinator is open.
+  void write(void Function(StringSink output) action) {
+    final failure = _failure;
+    if (failure != null) {
+      Error.throwWithStackTrace(failure, _failureStackTrace!);
+    }
+    if (_closed) return;
+    try {
+      action(output);
+    } catch (error, stackTrace) {
+      _failure = error;
+      _failureStackTrace = stackTrace;
+      onFailure?.call(error, stackTrace);
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  /// Stops writes without inventing a failure.
+  void close() {
+    _closed = true;
+  }
+}
