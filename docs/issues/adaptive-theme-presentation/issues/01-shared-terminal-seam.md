@@ -1,6 +1,6 @@
 # 01 Preserve the shared terminal seam
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** None
 
