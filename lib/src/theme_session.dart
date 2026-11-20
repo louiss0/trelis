@@ -437,6 +437,7 @@ final class ThemeSession {
   /// output is an interactive terminal rather than a redirected sink.
   bool _mayQueryBackground(ResolvedColors initial) =>
       initial.shouldQueryBackground &&
+      environment.environment['NO_COLOR']?.isNotEmpty != true &&
       environment.supportsRich &&
       environment.profile.supportsRichInteraction;
 
