@@ -11,7 +11,7 @@ import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/prompt_structure.dart';
 import 'package:trelis/src/terminal_io.dart';
 import 'package:trelis/src/text_input.dart'
-    show InstructionDisplay, PromptResult, TextInput;
+    show Choice, InstructionDisplay, PromptResult, Select, TextInput;
 import 'package:trelis/src/theme_session.dart';
 
 /// One authored RGB triple.
@@ -122,6 +122,24 @@ final class DoubleInternalPresentation {
       required: required,
       validate: validate,
       maxLength: maxLength,
+      structure: PromptStructure.double,
+      colors: _componentPalette(handle, colors),
+      instructions: instructions,
+    ).prompt(session: handle.session);
+  });
+
+  /// A real Double single-choice component, framed by the Double enclosure.
+  Future<PromptResult<T>> select<T>(
+    String label,
+    List<Choice<T>> choices, {
+    T? defaultValue,
+    ComponentColors colors = const ComponentColors(),
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+  }) => _owner.prompt((handle) {
+    return Select<T>(
+      label,
+      choices,
+      defaultValue: defaultValue,
       structure: PromptStructure.double,
       colors: _componentPalette(handle, colors),
       instructions: instructions,
