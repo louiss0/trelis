@@ -1,6 +1,6 @@
 # 08 Build an internal end-to-end text input tracer
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [04](04-colour-resolution.md), [06](06-automatic-cleanup.md), [07](07-coordinated-feedback.md)
 
