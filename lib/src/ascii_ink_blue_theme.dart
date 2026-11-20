@@ -107,6 +107,37 @@ final class AsciiInkBlueTheme {
     ).prompt(session: handle.session);
   });
 
+  Future<PromptResult<List<T>>> multiSelect<T>(
+    String label,
+    List<Choice<T>> choices, {
+    ComponentColors colors = const ComponentColors(),
+    List<T> defaultValues = const [],
+    int min = 0,
+    int? max,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) => _owner.prompt((handle) {
+    final palette = _componentPalette(handle, colors).palette;
+    _presentEssential(
+      handle,
+      label: label,
+      essential: '$label selection.',
+      route: ComponentRoute.standard,
+      primaryAction: 'Space toggles, Enter submits',
+      shortPrimaryAction: 'Enter',
+    );
+    return AsciiTheme.multiSelect<T>(
+      label,
+      choices,
+      defaultValues: defaultValues,
+      min: min,
+      max: max,
+      colors: palette,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
+    ).prompt(session: handle.session);
+  });
+
   /// Reuses the period's resolved background and ownership while layering the
   /// component override over the effective app palette.
   ResolvedColors _componentPalette(

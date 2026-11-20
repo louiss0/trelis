@@ -237,6 +237,36 @@ void main() {
   });
 
   group('palette precedence and restrictions', () {
+    test(
+      'multi-selection markers stay independent of focus and default',
+      () async {
+        final output = StringBuffer();
+        final theme = asciiTheme(
+          output,
+          '2\r/done\r',
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+        final result = await theme.multiSelect<String>(
+          'Choose features',
+          [Choice('starter', 'Starter'), Choice('library', 'Library')],
+          defaultValues: const ['starter'],
+        );
+
+        expect((result as Accepted<List<String>>).value, [
+          'starter',
+          'library',
+        ]);
+        final text = stripAnsi(output.toString());
+        expect(text, contains('? CHOOSE FEATURES'));
+        expect(text, contains('1. Starter [checked] [default]'));
+        expect(text, contains('2. Library [unchecked]'));
+        expect(text, contains('/help'));
+        expect(output.toString(), isNot(contains('\x1b[48;2')));
+      },
+    );
+
     for (final background in BackgroundPreference.values) {
       if (background == BackgroundPreference.automatic) continue;
       test('app and component palette layers for ${background.name}', () async {
