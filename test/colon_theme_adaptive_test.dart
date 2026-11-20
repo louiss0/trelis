@@ -91,6 +91,60 @@ void main() {
     }
   });
 
+  test('Colon selection keeps typed labels and compact help under the dark heading', () async {
+    final output = StringBuffer();
+    final theme = ColonInternalPresentation(
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('\r'),
+        output: output,
+        profile: _profile(),
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+      colors: const ColorPreferences(background: BackgroundPreference.dark),
+    );
+
+    final result = await theme.select<String>('Features', [
+      Choice('starter', 'Starter'),
+      Choice('library', 'Library'),
+    ], defaultValue: 'library');
+
+    expect((result as Accepted<String>).value, 'library');
+    final text = output.toString();
+    expect(
+      text,
+      contains(
+        _foreground(ColonPaletteDefaults.darkRgb[ColonPaletteRole.foreground]!),
+      ),
+    );
+    expect(
+      text,
+      isNot(
+        contains(
+          _foreground(
+            ColonPaletteDefaults.lightRgb[ColonPaletteRole.foreground]!,
+          ),
+        ),
+      ),
+    );
+
+    final lines = _lines(text);
+    expect(lines.first, startsWith('ask:'));
+    expect(lines.first, contains('Features'));
+    final starter = lines.indexWhere((line) => line.contains('Starter'));
+    final library = lines.indexWhere((line) => line.contains('Library'));
+    final help = lines.indexWhere(
+      (line) => line.startsWith('hint:') && line.contains('Ctrl+T'),
+    );
+    expect(starter, greaterThan(0));
+    expect(library, greaterThan(starter));
+    expect(help, greaterThan(library));
+    expect(
+      lines.where((line) => line.startsWith('result:')),
+      isNotEmpty,
+      reason: 'the reported outcome keeps its typed diagnostic label',
+    );
+  });
+
   test(
     'Colon text input renders the authored light palette and typed labels',
     () async {
