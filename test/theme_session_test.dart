@@ -29,6 +29,136 @@ void main() {
       expect(owner.resolvedInteraction, isNull);
     },
   );
+
+  test(
+    'feedback-first initialization acquires and resolves before output',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final environment = _recordingEnvironment(output, events);
+      final owner = ThemeSession(
+        environment: environment,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async => events.add('callback'),
+      );
+
+      final seen = await owner.feedback((handle) async {
+        expect(owner.resolvedInteraction?.mode, PromptMode.linear);
+        output.write('feedback');
+        return 'started';
+      });
+
+      expect(seen, 'started');
+      expect(events, ['acquire', 'callback', 'write:feedback', 'restore']);
+      expect(owner.resolvedInteraction, isNull);
+    },
+  );
+
+  test('a theme-wide conflict prevents prompt and feedback output', () async {
+    final events = <String>[];
+    final output = _RecordingSink(events);
+    final owner = ThemeSession(
+      environment: _recordingEnvironment(output, events),
+      interaction: const InteractionPreferences(
+        mode: PromptMode.rich,
+        screenReader: ScreenReaderPreference.on,
+      ),
+      onResolved: (_) async => events.add('callback'),
+    );
+
+    final result = await owner.prompt((_) async => Accepted('unreachable'));
+
+    expect(result, isA<Unavailable<String>>());
+    expect(
+      (result as Unavailable<String>).reason,
+      contains('cannot be combined'),
+    );
+    await expectLater(
+      owner.feedback((_) async => 'unreachable'),
+      throwsA(
+        isA<ThemeSessionUnavailable>().having(
+          (error) => error.reason,
+          'reason',
+          contains('cannot be combined'),
+        ),
+      ),
+    );
+    expect(events, isEmpty);
+    expect(owner.resolvedInteraction, isNull);
+  });
+
+  test(
+    'unavailable explicit rich keeps output empty and skips the callback',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        onResolved: (_) async => events.add('callback'),
+      );
+
+      final result = await owner.prompt((_) async => Accepted('unreachable'));
+
+      expect(result, isA<Unavailable<String>>());
+      expect(
+        (result as Unavailable<String>).reason,
+        contains('unavailable on the selected output'),
+      );
+      await expectLater(
+        owner.feedback((_) async => 'unreachable'),
+        throwsA(
+          isA<ThemeSessionUnavailable>().having(
+            (error) => error.reason,
+            'reason',
+            contains('unavailable on the selected output'),
+          ),
+        ),
+      );
+      expect(events, isEmpty);
+    },
+  );
+
+  test(
+    'a component availability failure is checked before publication',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async => events.add('callback'),
+      );
+      const unavailable = ThemeComponentAvailability(
+        prompt: false,
+        feedback: false,
+        reason: 'component cannot render here',
+      );
+
+      final result = await owner.prompt(
+        (_) async => Accepted('unreachable'),
+        availability: unavailable,
+      );
+
+      expect(result, isA<Unavailable<String>>());
+      expect(
+        (result as Unavailable<String>).reason,
+        'component cannot render here',
+      );
+      await expectLater(
+        owner.feedback((_) async => 'unreachable', availability: unavailable),
+        throwsA(
+          isA<ThemeSessionUnavailable>().having(
+            (error) => error.reason,
+            'reason',
+            'component cannot render here',
+          ),
+        ),
+      );
+      expect(events, isEmpty);
+      expect(owner.resolvedInteraction, isNull);
+    },
+  );
 }
 
 final class _RecordingSink implements StringSink {

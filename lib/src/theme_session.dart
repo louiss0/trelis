@@ -198,6 +198,32 @@ final class ThemeSession {
     }
   }
 
+  /// Runs one feedback operation through the common first-operation path.
+  Future<T> feedback<T>(
+    FutureOr<T> Function(ThemeSessionHandle handle) runner, {
+    ThemeComponentAvailability availability =
+        const ThemeComponentAvailability(),
+  }) async {
+    try {
+      final participation = await _enter(
+        ThemeOperationKind.feedback,
+        availability,
+        null,
+      );
+      late final T result;
+      try {
+        result = await runner(participation.handle);
+      } finally {
+        await participation.release();
+      }
+      return result;
+    } on _InitializationUnavailable catch (error) {
+      throw ThemeSessionUnavailable(error.reason);
+    } on _InitializationCancelled catch (_) {
+      throw const ThemeSessionCancelled();
+    }
+  }
+
   Future<PromptResult<T>> _finish<T>(
     _Participation participation,
     Future<PromptResult<T>> Function(ThemeSessionHandle handle) runner,
