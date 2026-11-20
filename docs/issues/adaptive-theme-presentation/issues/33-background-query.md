@@ -1,6 +1,6 @@
 # 33 Route bounded background queries through the owned reader
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-io-output-profile.md), [04](04-colour-resolution.md), [05](05-theme-owned-session.md)
 
