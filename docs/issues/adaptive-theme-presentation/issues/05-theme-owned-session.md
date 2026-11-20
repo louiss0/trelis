@@ -1,6 +1,6 @@
 # 05 Establish the theme-owned session seam
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [01](01-shared-terminal-seam.md), [02](02-io-output-profile.md), [03](03-interaction-resolution.md)
 
