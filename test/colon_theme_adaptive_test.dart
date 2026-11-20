@@ -498,6 +498,37 @@ void main() {
     },
   );
 
+  test('the pre-cutover Colon factory keeps its public palette', () async {
+    final input = ColonTheme.textInput('Name');
+    expect(input.structure, PromptStructure.colon);
+    expect(input.colors, ColorThemes.terminalDefault);
+
+    final output = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(
+        Stream.value('Ada\r'),
+        output,
+        outputProfile: _profile(),
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<String>).value, 'Ada');
+    expect(output.toString(), isNot(contains('\x1b[38;')));
+    expect(output.toString(), contains('ask:'));
+
+    final explicit = StringBuffer();
+    await ColonTheme.textInput('Name', colors: ColorThemes.signal).prompt(
+      source: ScriptedInput(
+        Stream.value('Ada\r'),
+        explicit,
+        outputProfile: _profile(),
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(explicit.toString(), contains('\x1b[38;2;230;232;244;'));
+    expect(explicit.toString(), contains('ask:'));
+  });
+
   test('authored normal-text pairs meet the reference contrast target', () {
     for (final reference in [
       (
@@ -590,6 +621,37 @@ void main() {
       lines.where((line) => line.startsWith('result:')),
       isNotEmpty,
       reason: 'the reported outcome keeps its typed diagnostic label',
+    );
+  });
+
+  test('linear Colon choice keeps typed state and result labels', () async {
+    final output = StringBuffer();
+    final theme = ColonInternalPresentation(
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('2\r'),
+        output: output,
+        profile: _profile(),
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+      colors: const ColorPreferences(background: BackgroundPreference.dark),
+    );
+
+    final result = await theme.select<String>('Features', [
+      Choice('starter', 'Starter'),
+      Choice('library', 'Library'),
+    ]);
+
+    expect((result as Accepted<String>).value, 'library');
+    final lines = _lines(output.toString());
+    expect(
+      lines.where((line) => line.startsWith('state:')),
+      isNotEmpty,
+      reason: 'state rows keep their typed diagnostic label',
+    );
+    expect(
+      lines.where((line) => line.startsWith('result:')),
+      isNotEmpty,
+      reason: 'the outcome keeps its typed diagnostic label',
     );
   });
 
