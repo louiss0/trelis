@@ -11,7 +11,7 @@ import 'dart:async';
 import 'color_resolution.dart';
 import 'interaction_resolution.dart';
 import 'terminal_io.dart';
-import 'text_input.dart' show PromptResult, TextInput;
+import 'text_input.dart' show Password, PromptResult, TextInput;
 import 'theme_session.dart';
 
 final class ThemeTextInputTracer {
@@ -19,6 +19,11 @@ final class ThemeTextInputTracer {
     this.label, {
     required TerminalEnvironment io,
     this.initialValue = '',
+    this.required = false,
+    this.validate,
+    this.maxLength,
+    this.secret = false,
+    this.mask = false,
     this.colors = const ComponentColors(),
     ColorPreferences themeColors = const ColorPreferences(),
     InteractionPreferences interaction = const InteractionPreferences(),
@@ -34,14 +39,36 @@ final class ThemeTextInputTracer {
 
   final String label;
   final String initialValue;
+  final bool required;
+  final String? Function(String)? validate;
+  final int? maxLength;
+  final bool secret;
+  final bool mask;
   final ComponentColors colors;
   final ThemeSession _owner;
 
+  /// Restoration failures retained after a successful primary operation.
+  List<Object> get cleanupFailures => _owner.cleanupFailures;
+
   Future<PromptResult<String>> prompt() => _owner.prompt((handle) {
+    final palette = _componentPalette(handle).palette;
+    if (secret) {
+      return Password(
+        label,
+        initialValue: initialValue,
+        required: required,
+        validate: validate,
+        mask: mask,
+        colors: palette,
+      ).prompt(session: handle.session);
+    }
     return TextInput(
       label,
       initialValue: initialValue,
-      colors: _componentPalette(handle).palette,
+      required: required,
+      validate: validate,
+      maxLength: maxLength,
+      colors: palette,
     ).prompt(session: handle.session);
   });
 
