@@ -137,6 +137,102 @@ void main() {
       }
     });
   });
+
+  group('real choice component', () {
+    test('an ascii selection keeps focus, default and restriction markers '
+        'independent', () async {
+      final output = StringBuffer();
+      final theme = asciiTheme(
+        output,
+        '1\r',
+        colors: const ColorPreferences(background: BackgroundPreference.light),
+      );
+      final result = await theme.select<String>('Deploy target', [
+        Choice('staging', 'Staging here'),
+        Choice('production', 'Production', disabledReason: 'locked for demo'),
+      ], defaultValue: 'staging');
+
+      expect((result as Accepted<String>).value, 'staging');
+      final text = output.toString();
+      expect(text, contains('${fg([47, 53, 66])}? DEPLOY TARGET'));
+      expect(
+        text,
+        contains('${fg([30, 78, 140])}  1. Staging here [focused] [default]'),
+      );
+      expect(text, contains('[unavailable: locked for demo]'));
+      expect(text, contains('/help'));
+      expect(text, contains('${fg([35, 107, 74])}  Accepted: Staging here.'));
+      expect(text, isNot(contains('\x1b[48;2')));
+    });
+
+    test('unicode capability never replaces the ascii question mark or '
+        'compact help placement', () async {
+      final output = StringBuffer();
+      final theme = asciiTheme(
+        output,
+        '1\r',
+        profile: _profile(glyphs: GlyphSet.unicode),
+        colors: const ColorPreferences(background: BackgroundPreference.dark),
+      );
+      await theme.select<String>('Deploy target', [
+        Choice('staging', 'Staging here'),
+        Choice('production', 'Production'),
+      ], defaultValue: 'staging');
+
+      final lines = stripAnsi(output.toString()).split('\n');
+      expect(lines.first, startsWith('? DEPLOY TARGET'));
+      expect(
+        lines.any((line) => line.contains('1. Staging here [focused]')),
+        isTrue,
+        reason: 'the choices follow the question',
+      );
+      expect(
+        lines.any((line) => line.contains('-- ')),
+        isTrue,
+        reason: 'compact help follows the content',
+      );
+      expect(
+        lines.indexWhere((line) => line.contains('/help')),
+        greaterThan(lines.indexWhere((line) => line.contains('Staging here'))),
+        reason: 'help is placed after the choices',
+      );
+      expect(lines.join('\n'), isNot(contains('❯')));
+    });
+
+    test(
+      'a narrow choice keeps readable markers and help inside its width',
+      () async {
+        final output = StringBuffer();
+        final theme = asciiTheme(
+          output,
+          '1\r',
+          profile: _profile(columns: 44),
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+        await theme.select<String>('Deploy target', [
+          Choice('staging', 'Staging with a deliberately long label'),
+          Choice('production', 'Production', disabledReason: 'locked'),
+        ], defaultValue: 'staging');
+
+        final text = stripAnsi(output.toString());
+        expect(text, contains('[focused] [default]'));
+        expect(text, contains('[unavailable: locked]'));
+        expect(text, contains('/help'));
+        expect(text, contains('Accepted:'));
+        for (final line in text.split('\n')) {
+          if (line.trim().isEmpty) continue;
+          expect(
+            TextDisplayMap(line).cellWidth,
+            lessThanOrEqualTo(44),
+            reason: 'narrow line "$line" must not clip',
+          );
+        }
+        expect(output.toString(), isNot(contains('\x1b[48;2')));
+      },
+    );
+  });
 }
 
 OutputProfile _profile({
