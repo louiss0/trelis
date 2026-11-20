@@ -261,12 +261,20 @@ final class ThemeSession {
     this.hints,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
+    this.lightDefault = ColorThemes.terminalDefault,
+    this.darkDefault = ColorThemes.terminalDefault,
   }) : _fixedFacts = facts,
        _fixedColorFacts = colorFacts;
 
   final TerminalEnvironment environment;
   final InteractionPreferences interaction;
   final ColorPreferences colors;
+
+  /// The authored light and dark defaults of the structural theme using this
+  /// owner. They are selected by colour resolution before component overrides.
+  final ColorTheme lightDefault;
+  final ColorTheme darkDefault;
+
   final ThemeResolvedCallback? onResolved;
 
   /// Observes a cleanup failure that did not replace a primary result.
@@ -544,8 +552,8 @@ final class ThemeSession {
     final colorFacts = _fixedColorFacts ?? _defaultColorFacts;
     final initialColors = resolveColors(
       facts: colorFacts,
-      lightDefault: ColorThemes.terminalDefault,
-      darkDefault: ColorThemes.terminalDefault,
+      lightDefault: lightDefault,
+      darkDefault: darkDefault,
       preferences: colors,
     );
     final period = _ThemePeriod(
@@ -586,8 +594,8 @@ final class ThemeSession {
             period.setColors(
               resolveColors(
                 facts: facts,
-                lightDefault: ColorThemes.terminalDefault,
-                darkDefault: ColorThemes.terminalDefault,
+                lightDefault: lightDefault,
+                darkDefault: darkDefault,
                 preferences: colors,
               ),
             );
