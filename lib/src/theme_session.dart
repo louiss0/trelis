@@ -12,6 +12,7 @@ import 'dart:async';
 import 'background_query.dart';
 import 'color_resolution.dart';
 import 'color_theme.dart';
+import 'hint_observations.dart';
 import 'interaction_resolution.dart';
 import 'shared_terminal.dart';
 import 'terminal_io.dart';
@@ -211,6 +212,7 @@ final class ThemeSession {
     this.onResolved,
     this.onCleanupError,
     this.factsForPeriod,
+    this.hints,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
   }) : _fixedFacts = facts,
@@ -225,6 +227,12 @@ final class ThemeSession {
   final void Function(Object error, StackTrace stackTrace)? onCleanupError;
 
   final ThemeInteractionFactsProvider? factsForPeriod;
+
+  /// Injectable hint observations collected once for each active period.
+  ///
+  /// An explicit [factsForPeriod] source takes precedence; fixed facts remain
+  /// available for deterministic tests that need no observations.
+  final NativeHintObservations? hints;
   final InteractionFacts? _fixedFacts;
   final ColorDetectionFacts? _fixedColorFacts;
 
@@ -395,6 +403,16 @@ final class ThemeSession {
     ThemeComponentAvailability availability,
     Future<void>? cancellation,
   ) async {
+    // Conflicts are immutable preference errors, so no observation period
+    // starts for them.
+    final early = resolveInteraction(
+      preferences: interaction,
+      facts: const InteractionFacts(interactionAvailable: false),
+    );
+    if (early is InteractionConflict) {
+      throw _InitializationUnavailable(early.reason);
+    }
+
     final facts = await _facts(cancellation);
     final resolution = resolveInteraction(
       preferences: interaction,
@@ -535,10 +553,20 @@ final class ThemeSession {
   Future<InteractionFacts> _facts(Future<void>? cancellation) async {
     try {
       final provider = factsForPeriod;
-      if (provider == null) {
-        return _fixedFacts ?? _defaultFacts;
+      if (provider != null) {
+        return await _race(() => provider(environment), cancellation);
       }
-      return await _race(() => provider(environment), cancellation);
+      final hintSource = hints;
+      if (hintSource != null) {
+        return await _race(
+          () => hintSource.facts(
+            output: environment.profile,
+            environment: environment.environment,
+          ),
+          cancellation,
+        );
+      }
+      return _fixedFacts ?? _defaultFacts;
     } on _InitializationCancelled {
       rethrow;
     } catch (_) {
