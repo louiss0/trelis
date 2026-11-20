@@ -10,8 +10,16 @@ import 'dart:async';
 
 import 'color_resolution.dart';
 import 'interaction_resolution.dart';
+import 'presentation.dart' show DisplayText;
+import 'state_help_presentation.dart'
+    show
+        ComponentRoute,
+        PresentationMode,
+        compactHint,
+        composePromptPresentation;
 import 'terminal_io.dart';
-import 'text_input.dart' show Password, PromptResult, TextInput;
+import 'text_input.dart'
+    show InstructionDisplay, Password, PromptMode, PromptResult, TextInput;
 import 'theme_session.dart';
 
 final class ThemeTextInputTracer {
@@ -24,6 +32,7 @@ final class ThemeTextInputTracer {
     this.maxLength,
     this.secret = false,
     this.mask = false,
+    this.instructions = InstructionDisplay.themeDefault,
     this.colors = const ComponentColors(),
     ColorPreferences themeColors = const ColorPreferences(),
     InteractionPreferences interaction = const InteractionPreferences(),
@@ -44,6 +53,7 @@ final class ThemeTextInputTracer {
   final int? maxLength;
   final bool secret;
   final bool mask;
+  final InstructionDisplay instructions;
   final ComponentColors colors;
   final ThemeSession _owner;
 
@@ -52,6 +62,25 @@ final class ThemeTextInputTracer {
 
   Future<PromptResult<String>> prompt() => _owner.prompt((handle) {
     final palette = _componentPalette(handle).palette;
+    final mode = handle.interaction.screenReader
+        ? PresentationMode.screenReader
+        : handle.interaction.mode == PromptMode.rich
+        ? PresentationMode.rich
+        : PresentationMode.linear;
+    if (mode == PresentationMode.screenReader) {
+      final presentation = composePromptPresentation(
+        mode: mode,
+        prompt: DisplayText.from(label).value,
+        essential: DisplayText.from('$label entry.').value,
+        hint: compactHint(
+          mode: mode,
+          component: secret ? ComponentRoute.secret : ComponentRoute.standard,
+          primaryAction: 'Enter submits',
+          shortPrimaryAction: 'Enter',
+        ),
+      );
+      handle.session.presentText(presentation.essentialBefore!);
+    }
     if (secret) {
       return Password(
         label,
@@ -59,6 +88,7 @@ final class ThemeTextInputTracer {
         required: required,
         validate: validate,
         mask: mask,
+        instructions: instructions,
         colors: palette,
       ).prompt(session: handle.session);
     }
@@ -68,6 +98,7 @@ final class ThemeTextInputTracer {
       required: required,
       validate: validate,
       maxLength: maxLength,
+      instructions: instructions,
       colors: palette,
     ).prompt(session: handle.session);
   });

@@ -54,6 +54,12 @@ temporary help screen. Redirected, incapable or unrecognized outputs retain
 help text in the transcript instead. Typed `/help` and Password action help
 remain transcript responses, not temporary screens.
 
+The compact primary-action/help hint is protected content. An
+`InstructionDisplay.hidden` policy suppresses optional editing guidance only;
+`Enter submits` and the route to full help remain visible in every interactive
+prompt. Hidden-entry components keep Ctrl+T as that route because a typed
+`/help` line is answer data there.
+
 Redirected stdin is never consumed implicitly. Supply a literal value with
 `source: SuppliedAnswer(value)`, or explicitly opt into a stream with
 `ScriptedInput(stream, sink, supportsRich: false)`. `TextInput.prompt` also
