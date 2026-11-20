@@ -259,6 +259,8 @@ final class ThemeSession {
     this.onCleanupError,
     this.factsForPeriod,
     this.hints,
+    this.lightDefault = ColorThemes.terminalDefault,
+    this.darkDefault = ColorThemes.terminalDefault,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
   }) : _fixedFacts = facts,
@@ -267,6 +269,14 @@ final class ThemeSession {
   final TerminalEnvironment environment;
   final InteractionPreferences interaction;
   final ColorPreferences colors;
+
+  /// The structural theme's authored defaults for each background variant.
+  ///
+  /// They are selected by [resolveColors] before application and component
+  /// layers, so a theme can supply adaptive defaults without changing the
+  /// public palette override contract.
+  final ColorTheme lightDefault;
+  final ColorTheme darkDefault;
   final ThemeResolvedCallback? onResolved;
 
   /// Observes a cleanup failure that did not replace a primary result.
@@ -544,8 +554,8 @@ final class ThemeSession {
     final colorFacts = _fixedColorFacts ?? _defaultColorFacts;
     final initialColors = resolveColors(
       facts: colorFacts,
-      lightDefault: ColorThemes.terminalDefault,
-      darkDefault: ColorThemes.terminalDefault,
+      lightDefault: lightDefault,
+      darkDefault: darkDefault,
       preferences: colors,
     );
     final period = _ThemePeriod(
@@ -586,8 +596,8 @@ final class ThemeSession {
             period.setColors(
               resolveColors(
                 facts: facts,
-                lightDefault: ColorThemes.terminalDefault,
-                darkDefault: ColorThemes.terminalDefault,
+                lightDefault: lightDefault,
+                darkDefault: darkDefault,
                 preferences: colors,
               ),
             );

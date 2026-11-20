@@ -1,0 +1,32 @@
+{
+  "referenceBackgrounds": {
+    "light": "#FAF8F3",
+    "dark": "#191C26"
+  },
+  "palettes": {
+    "light": {
+      "foreground": "#2F3542",
+      "background": "terminalDefault",
+      "muted": "#5A6070",
+      "accent": "#1E4E8C",
+      "selectionForeground": "#FFFFFF",
+      "selectionBackground": "#1E4E8C",
+      "success": "#236B4A",
+      "warning": "#8A5A00",
+      "error": "#A3293B",
+      "border": "#666D7C"
+    },
+    "dark": {
+      "foreground": "#ECE8DE",
+      "background": "terminalDefault",
+      "muted": "#B4B8C5",
+      "accent": "#8CB8FF",
+      "selectionForeground": "#10141C",
+      "selectionBackground": "#8CB8FF",
+      "success": "#7DD4A8",
+      "warning": "#E8B45C",
+      "error": "#FF8C98",
+      "border": "#8D93A6"
+    }
+  }
+}
