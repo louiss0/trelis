@@ -49,6 +49,169 @@ abstract interface class TerminalIoOutputProfile {
   OutputProfile get outputProfile;
 }
 
+/// An internal binding of input, one selected output, that output's declared
+/// profile, acquisition and a stable ownership identity when one is available.
+///
+/// This is a theme-owner seam, not invocation-level prompt configuration: the
+/// future public API passes one environment to a theme instance. Callers of
+/// the current component API can still pass it as a [TerminalIo] adapter until
+/// the coordinated cutover. A null [ownershipIdentity] means the environment
+/// cannot identify the shared terminal; two such wrappers may overlap
+/// unnoticed.
+///
+/// Externally supplied streams stay open by default. Supplying [closeInput]
+/// transfers ownership: the environment then closes it at most once when the
+/// acquired lease is restored or acquisition fails. Cancelling the reader's
+/// subscription can still invoke the caller stream's own cancellation behavior;
+/// that is distinct from the environment closing the stream.
+final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
+  TerminalEnvironment._({
+    required this.input,
+    required this.output,
+    required this.profile,
+    required this.ownershipIdentity,
+    this.environment = const <String, String?>{},
+    bool? supportsRich,
+    required TerminalLease Function() acquire,
+    this.closeInput,
+  }) : _supportsRich = supportsRich,
+       _acquire = acquire;
+
+  /// Adapts a native or custom [adapter] without changing its public contract.
+  ///
+  /// A [profile] override is the explicit seam for scripted declarations; an
+  /// adapter without a declared profile remains automatic. An explicit
+  /// [ownershipIdentity] overrides one the adapter exposes.
+  factory TerminalEnvironment.custom({
+    required TerminalIo adapter,
+    OutputProfile? profile,
+    Object? ownershipIdentity,
+    Map<String, String?>? environment,
+    bool? supportsRich,
+    void Function()? closeInput,
+  }) => TerminalEnvironment._(
+    input: adapter.input,
+    output: adapter.output,
+    profile:
+        profile ??
+        (adapter is TerminalIoOutputProfile
+            ? (adapter as TerminalIoOutputProfile).outputProfile
+            : const OutputProfile()),
+    ownershipIdentity:
+        ownershipIdentity ??
+        (adapter is TerminalOwnershipIdentity
+            ? (adapter as TerminalOwnershipIdentity).ownershipIdentity
+            : null),
+    environment: environment ?? adapter.environment,
+    supportsRich: supportsRich ?? adapter.supportsRich,
+    acquire: adapter.acquire,
+    closeInput: closeInput,
+  );
+
+  /// Binds scripted or explicitly declared I/O without native acquisition.
+  factory TerminalEnvironment.scripted({
+    required Stream<String> input,
+    required StringSink output,
+    OutputProfile profile = const OutputProfile(),
+    Object? ownershipIdentity,
+    Map<String, String?> environment = const <String, String?>{},
+    bool? supportsRich,
+    void Function()? closeInput,
+  }) => TerminalEnvironment._(
+    input: input,
+    output: output,
+    profile: profile,
+    ownershipIdentity: ownershipIdentity,
+    environment: environment,
+    supportsRich: supportsRich,
+    acquire: () => TerminalLease(null),
+    closeInput: closeInput,
+  );
+
+  @override
+  final Stream<String> input;
+
+  @override
+  final StringSink output;
+
+  /// The declared capabilities of [output].
+  final OutputProfile profile;
+
+  @override
+  OutputProfile get outputProfile => profile;
+
+  /// A stable identity for coordination, or null when unavailable.
+  ///
+  /// Callers that wrap the same resource should supply the same value. Distinct
+  /// wrappers without a shared identity cannot be proven to refer to one
+  /// physical terminal.
+  final Object? ownershipIdentity;
+
+  @override
+  final Map<String, String?> environment;
+
+  final bool? _supportsRich;
+
+  @override
+  bool get supportsRich =>
+      _supportsRich ?? profile.cursor == CapabilitySupport.supported;
+
+  /// Closes an externally supplied stream only when ownership was transferred.
+  final void Function()? closeInput;
+
+  final TerminalLease Function() _acquire;
+  bool _inputClosed = false;
+
+  void _closeInputOnce() {
+    if (_inputClosed) return;
+    _inputClosed = true;
+    closeInput?.call();
+  }
+
+  @override
+  TerminalLease acquire() {
+    late final TerminalLease delegate;
+    try {
+      delegate = _acquire();
+    } catch (error, stackTrace) {
+      try {
+        _closeInputOnce();
+      } catch (_) {
+        // The acquisition failure remains the primary error.
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+    return TerminalLease(() {
+      Object? failure;
+      StackTrace? failureStackTrace;
+      try {
+        delegate.restore();
+      } catch (error, stackTrace) {
+        failure = error;
+        failureStackTrace = stackTrace;
+      }
+      try {
+        _closeInputOnce();
+      } catch (error, stackTrace) {
+        failure ??= error;
+        failureStackTrace ??= stackTrace;
+      }
+      if (failure != null) {
+        Error.throwWithStackTrace(failure, failureStackTrace!);
+      }
+    });
+  }
+}
+
+/// Optional stable identity for a terminal adapter.
+///
+/// Adapters that wrap the same physical terminal should expose the same value.
+/// An adapter that cannot make that guarantee should not implement this
+/// interface; distinct unidentifiable wrappers may overlap undetected.
+abstract interface class TerminalOwnershipIdentity {
+  Object? get ownershipIdentity;
+}
+
 /// Optional live geometry observation for a selected terminal output.
 ///
 /// Notifications are only hints: callers must read dimensions again and ignore
