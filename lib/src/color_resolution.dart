@@ -1,4 +1,5 @@
 import 'color_theme.dart';
+import 'output_profile.dart';
 
 /// The application's choice of terminal background for colour selection.
 enum BackgroundPreference { automatic, light, dark }
@@ -33,7 +34,18 @@ BackgroundObservation parseBackgroundObservation(String? fact) =>
 
 /// Immutable facts supplied to colour resolution by its caller.
 final class ColorDetectionFacts {
-  const ColorDetectionFacts({this.passiveBackground, this.queriedBackground});
+  const ColorDetectionFacts({
+    this.outputProfile = const OutputProfile(),
+    this.noColor,
+    this.passiveBackground,
+    this.queriedBackground,
+  });
+
+  /// The already-resolved output capabilities for the selected output.
+  final OutputProfile outputProfile;
+
+  /// The injected `NO_COLOR` environment value, never read from the process.
+  final String? noColor;
 
   /// A passive hint about the terminal background.
   final BackgroundObservation? passiveBackground;
@@ -135,11 +147,15 @@ final class ComponentColors {
 final class ColorPreferences {
   const ColorPreferences({
     this.background = BackgroundPreference.automatic,
+    this.allowBackgroundQuery = true,
     this.colors = const ComponentColors(),
   });
 
   /// Explicit background choice, or automatic selection from injected facts.
   final BackgroundPreference background;
+
+  /// Whether the theme may request a bounded background query later.
+  final bool allowBackgroundQuery;
 
   /// The application-level palette replacement and role overrides.
   final ComponentColors colors;
@@ -147,10 +163,24 @@ final class ColorPreferences {
 
 /// The resolved palette decision for one theme and component.
 final class ResolvedColors {
-  const ResolvedColors._({required this.background, required this.palette});
+  const ResolvedColors._({
+    required this.background,
+    required this.palette,
+    required this.outputProfile,
+    required this.shouldQueryBackground,
+  });
 
   final BackgroundVariant background;
   final ColorTheme palette;
+
+  /// The selected output facts with `NO_COLOR` and unknown depth applied.
+  final OutputProfile outputProfile;
+
+  /// Whether a caller may attempt a background query.
+  ///
+  /// This is resolver-level eligibility only: it does not query a terminal,
+  /// own a session, or cache an attempt across active periods.
+  final bool shouldQueryBackground;
 }
 
 /// Resolves colours from injected facts only.
@@ -165,6 +195,15 @@ ResolvedColors resolveColors({
   ColorPreferences preferences = const ColorPreferences(),
   ComponentColors? component,
 }) {
+  final restricted = facts.noColor?.isNotEmpty == true;
+  final declaredDepth = facts.outputProfile.colorDepth;
+  final effectiveDepth = restricted || declaredDepth == ColorDepth.automatic
+      ? ColorDepth.none
+      : declaredDepth;
+  final effectiveProfile = effectiveDepth == declaredDepth
+      ? facts.outputProfile
+      : facts.outputProfile.copyWith(colorDepth: effectiveDepth);
+
   final background = switch (preferences.background) {
     BackgroundPreference.light => BackgroundVariant.light,
     BackgroundPreference.dark => BackgroundVariant.dark,
@@ -201,5 +240,17 @@ ResolvedColors resolveColors({
     palette = componentVariantRoles.apply(palette);
   }
 
-  return ResolvedColors._(background: background, palette: palette);
+  final mayQuery =
+      preferences.background == BackgroundPreference.automatic &&
+      preferences.allowBackgroundQuery &&
+      !restricted &&
+      effectiveDepth != ColorDepth.none &&
+      facts.queriedBackground == null;
+
+  return ResolvedColors._(
+    background: background,
+    palette: palette,
+    outputProfile: effectiveProfile,
+    shouldQueryBackground: mayQuery,
+  );
 }

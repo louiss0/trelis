@@ -259,4 +259,146 @@ void main() {
       },
     );
   });
+
+  group('colour output boundary', () {
+    final rgbProfile = OutputProfile(colorDepth: ColorDepth.rgb);
+    final outputAppPalette = ColorThemes.terminalDefault.copyWith(
+      foreground: TerminalColor.indexed(100),
+    );
+    final explicitPalette = ColorThemes.terminalDefault.copyWith(
+      foreground: TerminalColor.rgb(200, 10, 20),
+      background: TerminalColor.rgb(0, 0, 0),
+    );
+
+    test('non-empty NO_COLOR wins over every explicit colour override', () {
+      final result = resolveTestColors(
+        preferences: ColorPreferences(
+          background: BackgroundPreference.light,
+          colors: ComponentColors.palette(outputAppPalette),
+        ),
+        component: ComponentColors(
+          palette: explicitPalette,
+          roles: ColorRoleOverrides(accent: TerminalColor.indexed(77)),
+        ),
+        facts: ColorDetectionFacts(
+          outputProfile: rgbProfile,
+          noColor: '1',
+          queriedBackground: BackgroundObservation.light,
+        ),
+      );
+
+      expect(result.background, BackgroundVariant.light);
+      expect(result.palette.foreground, TerminalColor.rgb(200, 10, 20));
+      expect(result.palette.accent, TerminalColor.indexed(77));
+      expect(result.outputProfile.colorDepth, ColorDepth.none);
+      expect(result.outputProfile.cursor, rgbProfile.cursor);
+      expect(result.shouldQueryBackground, isFalse);
+      expect(
+        terminalStyledText(
+          'ready',
+          foreground: result.palette.foreground,
+          background: result.palette.background,
+          depth: result.outputProfile.colorDepth,
+        ),
+        'ready',
+      );
+    });
+
+    test(
+      'empty NO_COLOR, no colour capability and omitted palette are separate',
+      () {
+        final emptyNoColor = resolveTestColors(
+          facts: ColorDetectionFacts(outputProfile: rgbProfile, noColor: ''),
+        );
+        final declaredNone = resolveTestColors(
+          facts: const ColorDetectionFacts(
+            outputProfile: OutputProfile(colorDepth: ColorDepth.none),
+          ),
+        );
+        final automaticDepth = resolveTestColors(
+          facts: const ColorDetectionFacts(
+            outputProfile: OutputProfile(colorDepth: ColorDepth.automatic),
+          ),
+        );
+
+        expect(emptyNoColor.outputProfile.colorDepth, ColorDepth.rgb);
+        expect(declaredNone.outputProfile.colorDepth, ColorDepth.none);
+        expect(automaticDepth.outputProfile.colorDepth, ColorDepth.none);
+        expect(emptyNoColor.palette.foreground, TerminalColor.rgb(30, 32, 38));
+        expect(declaredNone.palette.foreground, TerminalColor.rgb(30, 32, 38));
+      },
+    );
+
+    test(
+      'query permission needs automatic background, colour and no restriction',
+      () {
+        ColorDetectionFacts facts({BackgroundObservation? queriedBackground}) =>
+            ColorDetectionFacts(
+              outputProfile: rgbProfile,
+              queriedBackground: queriedBackground,
+            );
+
+        expect(resolveTestColors(facts: facts()).shouldQueryBackground, isTrue);
+        expect(
+          resolveTestColors(
+            preferences: const ColorPreferences(
+              background: BackgroundPreference.dark,
+            ),
+            facts: facts(),
+          ).shouldQueryBackground,
+          isFalse,
+        );
+        expect(
+          resolveTestColors(
+            preferences: const ColorPreferences(allowBackgroundQuery: false),
+            facts: facts(),
+          ).shouldQueryBackground,
+          isFalse,
+        );
+        expect(
+          resolveTestColors(
+            facts: ColorDetectionFacts(outputProfile: rgbProfile, noColor: '0'),
+          ).shouldQueryBackground,
+          isFalse,
+        );
+        expect(
+          resolveTestColors(
+            facts: facts(queriedBackground: BackgroundObservation.malformed),
+          ).shouldQueryBackground,
+          isFalse,
+        );
+        expect(
+          resolveTestColors(
+            facts: const ColorDetectionFacts(
+              outputProfile: OutputProfile(colorDepth: ColorDepth.none),
+            ),
+          ).shouldQueryBackground,
+          isFalse,
+        );
+      },
+    );
+
+    test('resolved output depth degrades colour requests predictably', () {
+      String styled(ColorDepth depth) {
+        final resolved = resolveTestColors(
+          component: ComponentColors.palette(explicitPalette),
+          facts: ColorDetectionFacts(
+            outputProfile: OutputProfile(colorDepth: depth),
+          ),
+        );
+        return terminalStyledText(
+          'X',
+          foreground: resolved.palette.foreground,
+          background: resolved.palette.background,
+          depth: resolved.outputProfile.colorDepth,
+        );
+      }
+
+      expect(styled(ColorDepth.rgb), '\x1b[38;2;200;10;20;48;2;0;0;0mX\x1b[0m');
+      expect(styled(ColorDepth.indexed256), '\x1b[38;5;124;48;5;16mX\x1b[0m');
+      expect(styled(ColorDepth.ansi16), '\x1b[34;40mX\x1b[0m');
+      expect(styled(ColorDepth.none), 'X');
+      expect(styled(ColorDepth.automatic), 'X');
+    });
+  });
 }
