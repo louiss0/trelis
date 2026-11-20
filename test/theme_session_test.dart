@@ -159,6 +159,107 @@ void main() {
       expect(owner.resolvedInteraction, isNull);
     },
   );
+
+  test(
+    'the callback runs once per period and internal delegation stays inside',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      var callbacks = 0;
+      final started = Completer<void>();
+      final release = Completer<void>();
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async {
+          callbacks++;
+          events.add('callback');
+        },
+      );
+
+      final first = owner.prompt((handle) async {
+        output.write('first');
+        final nested = await handle.delegate((_) async {
+          output.write('nested');
+          return 'nested';
+        });
+        expect(nested, 'nested');
+        started.complete();
+        await release.future;
+        return Accepted('one');
+      });
+      await started.future;
+
+      await owner.feedback((handle) async {
+        output.write('feedback');
+        return null;
+      });
+      expect(callbacks, 1);
+      expect(events, [
+        'acquire',
+        'callback',
+        'write:first',
+        'write:nested',
+        'write:feedback',
+      ]);
+
+      release.complete();
+      await first;
+      expect(events.last, 'restore');
+      expect(owner.resolvedInteraction, isNull);
+
+      await owner.prompt((handle) async {
+        output.write('later');
+        return Accepted('two');
+      });
+      expect(callbacks, 2);
+    },
+  );
+
+  test(
+    'a callback failure restores resources and permits a later attempt',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final failure = StateError('callback refused');
+      var callbacks = 0;
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async {
+          callbacks++;
+          events.add('callback');
+          if (callbacks == 1) throw failure;
+        },
+      );
+
+      await expectLater(
+        owner.prompt((handle) async {
+          output.write('unreachable');
+          return Accepted('no');
+        }),
+        throwsA(same(failure)),
+      );
+      expect(events, ['acquire', 'callback', 'restore']);
+      expect(owner.resolvedInteraction, isNull);
+
+      final result = await owner.prompt((handle) async {
+        output.write('again');
+        return Accepted('yes');
+      });
+      expect((result as Accepted<String>).value, 'yes');
+      expect(callbacks, 2);
+      expect(events, [
+        'acquire',
+        'callback',
+        'restore',
+        'acquire',
+        'callback',
+        'write:again',
+        'restore',
+      ]);
+    },
+  );
 }
 
 final class _RecordingSink implements StringSink {

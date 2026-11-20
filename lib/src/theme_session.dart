@@ -242,8 +242,6 @@ final class ThemeSession {
     ThemeComponentAvailability availability,
     Future<void>? cancellation,
   ) async {
-    final closing = _closing;
-    if (closing != null) await closing;
     final current = _active;
     if (current != null && current.accepting) {
       if (!availability.allows(kind)) {
@@ -251,6 +249,8 @@ final class ThemeSession {
       }
       return current.participate();
     }
+    final closing = _closing;
+    if (closing != null) await closing;
     return await _start(kind, availability, cancellation);
   }
 
