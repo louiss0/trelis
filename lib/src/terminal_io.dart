@@ -72,11 +72,10 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
     required this.profile,
     required this.ownershipIdentity,
     this.environment = const <String, String?>{},
-    bool? supportsRich,
-    required TerminalLease Function() acquire,
+    this._supportsRich,
+    required this._acquire,
     this.closeInput,
-  }) : _supportsRich = supportsRich,
-       _acquire = acquire;
+  });
 
   /// Declares the conservative profile for observed native-output facts.
   ///
@@ -111,7 +110,7 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
           ? CapabilitySupport.supported
           : CapabilitySupport.unsupported,
       geometry: usableGeometry
-          ? OutputGeometry.fixed(columns: columns!, rows: rows!)
+          ? OutputGeometry.fixed(columns: columns, rows: rows)
           : const OutputGeometry.automatic(),
       colorDepth: capable && !colorDisabled
           ? ColorDepth.automatic

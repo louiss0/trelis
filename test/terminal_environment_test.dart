@@ -154,6 +154,71 @@ void main() {
     expect(profile.colorDepth, ColorDepth.none);
   });
 
+  test(
+    'an explicit scripted profile override changes rich capability',
+    () async {
+      final output = StringBuffer();
+      final base = TerminalEnvironment.scripted(
+        input: Stream.value('Ada\r'),
+        output: output,
+        profile: const OutputProfile(cursor: CapabilitySupport.unsupported),
+      );
+      final overridden = TerminalEnvironment.custom(
+        adapter: base,
+        profile: OutputProfile(
+          cursor: CapabilitySupport.supported,
+          geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+        ),
+      );
+
+      final result = await TextInput('Name')
+          .prompt(terminal: overridden, mode: PromptMode.rich);
+
+      expect((result as Accepted<String>).value, 'Ada');
+      expect(output.toString(), contains('\x1b[2K'));
+      expect(base.profile.cursor, CapabilitySupport.unsupported);
+    },
+  );
+
+  test('a redirected native profile makes rich output unavailable', () async {
+    final output = StringBuffer();
+    final environment = TerminalEnvironment.scripted(
+      input: Stream.value('Ada\r'),
+      output: output,
+      profile: TerminalEnvironment.nativeProfile(
+        hasTerminal: false,
+        supportsRich: true,
+      ),
+    );
+
+    final result = await TextInput('Name')
+        .prompt(terminal: environment, mode: PromptMode.rich);
+
+    expect(result, isA<Unavailable<String>>());
+    expect(output.toString(), isEmpty);
+  });
+
+  test('an identified adapter shares a stable ownership identity', () {
+    final shared = Object();
+    final adapter = FailingTerminalIo(
+      input: const Stream<String>.empty(),
+      output: StringBuffer(),
+      ownershipIdentity: shared,
+    );
+    final first = TerminalEnvironment.custom(adapter: adapter);
+    final second = TerminalEnvironment.custom(adapter: adapter);
+
+    expect(first.ownershipIdentity, same(shared));
+    expect(second.ownershipIdentity, same(shared));
+    expect(
+      TerminalEnvironment.custom(
+        adapter: adapter,
+        ownershipIdentity: 'override',
+      ).ownershipIdentity,
+      'override',
+    );
+  });
+
   test('feedback does not invent a colour profile for unprofiled output', () {
     final colors = ColorTheme(
       foreground: TerminalColor.rgb(220, 20, 40),
@@ -187,14 +252,43 @@ void main() {
     expect(declaredOutput.toString(), contains('\x1b['));
     expect(undeclaredOutput.toString(), 'Ready\n');
   });
+
+  test('a declared colour profile cannot override NO_COLOR', () {
+    final output = StringBuffer();
+    Text(
+      'Ready',
+      colors: ColorTheme(
+        foreground: TerminalColor.rgb(220, 20, 40),
+        background: const TerminalColor.terminalDefault(),
+        muted: const TerminalColor.terminalDefault(),
+        accent: const TerminalColor.terminalDefault(),
+        selectionForeground: const TerminalColor.terminalDefault(),
+        selectionBackground: const TerminalColor.terminalDefault(),
+        success: const TerminalColor.terminalDefault(),
+        warning: const TerminalColor.terminalDefault(),
+        error: const TerminalColor.terminalDefault(),
+        border: const TerminalColor.terminalDefault(),
+      ),
+    ).present(
+      terminal: TerminalEnvironment.scripted(
+        input: const Stream<String>.empty(),
+        output: output,
+        profile: const OutputProfile(colorDepth: ColorDepth.rgb),
+        environment: const {'NO_COLOR': '1'},
+      ),
+    );
+
+    expect(output.toString(), 'Ready\n');
+  });
 }
 
-final class FailingTerminalIo implements TerminalIo {
+final class FailingTerminalIo implements TerminalIo, TerminalOwnershipIdentity {
   FailingTerminalIo({
     required this.input,
     required this.output,
     this.acquireError,
     this.restoreError,
+    this.ownershipIdentity,
   });
 
   @override
@@ -208,6 +302,9 @@ final class FailingTerminalIo implements TerminalIo {
 
   @override
   Map<String, String?> get environment => const {};
+
+  @override
+  final Object? ownershipIdentity;
 
   final Object? acquireError;
   final Object? restoreError;
