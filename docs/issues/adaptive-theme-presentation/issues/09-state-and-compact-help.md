@@ -1,6 +1,6 @@
 # 09 Compose state indicators and compact help
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [08](08-text-input-tracer.md)
 
