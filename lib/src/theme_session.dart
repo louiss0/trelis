@@ -474,15 +474,15 @@ final class ThemeSession {
     } catch (error, stackTrace) {
       period.abandon();
       await closed.future;
+      if (error is TerminalRestorationException) {
+        throw TerminalSessionCleanupException(
+          error.operationError,
+          error.restorationError,
+        );
+      }
       final cleanup = period.cleanupError;
       if (cleanup != null && !identical(cleanup, error)) {
-        final primary = error is TerminalRestorationException
-            ? error.operationError
-            : error;
-        final secondary = error is TerminalRestorationException
-            ? error.restorationError
-            : cleanup;
-        throw TerminalSessionCleanupException(primary, secondary);
+        throw TerminalSessionCleanupException(error, cleanup);
       }
       Error.throwWithStackTrace(error, stackTrace);
     }

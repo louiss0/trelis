@@ -62,6 +62,222 @@ void main() {
       );
     },
   );
+
+  test(
+    'only one external prompt runs while internal delegation stays local',
+    () async {
+      final events = <String>[];
+      var callbacks = 0;
+      final started = Completer<void>();
+      final release = Completer<void>();
+      final owner = ThemeSession(
+        environment: _environment(
+          _RecordingTerminal(
+            const Stream<String>.empty(),
+            StringBuffer(),
+            events,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async {
+          callbacks++;
+          events.add('callback:$callbacks');
+        },
+      );
+
+      final first = owner.prompt((handle) async {
+        events.add('first');
+        final nested = await handle.delegate((_) async {
+          events.add('nested');
+          return 'delegated';
+        });
+        expect(nested, 'delegated');
+        started.complete();
+        await release.future;
+        return Accepted('one');
+      });
+      await started.future;
+
+      final rejected = await owner.prompt((_) async {
+        events.add('second');
+        return Accepted('two');
+      });
+      expect(rejected, isA<Unavailable<String>>());
+      expect(
+        (rejected as Unavailable<String>).reason,
+        contains('already active'),
+      );
+      expect(events, [
+        'acquire:1',
+        'callback:1',
+        'first',
+        'nested',
+      ], reason: 'the rejected prompt must not acquire or start a new period');
+      expect(callbacks, 1);
+
+      release.complete();
+      expect((await first as Accepted<String>).value, 'one');
+      final later = await owner.prompt((_) async {
+        events.add('later');
+        return Accepted('three');
+      });
+      expect((later as Accepted<String>).value, 'three');
+      expect(callbacks, 2);
+    },
+  );
+
+  test(
+    'identifiable themes reject overlap and permit sequential reuse',
+    () async {
+      final identity = Object();
+      final events = <String>[];
+      final release = Completer<void>();
+      ThemeSession owner(Object? identity) => ThemeSession(
+        environment: _environment(
+          _RecordingTerminal(
+            const Stream<String>.empty(),
+            StringBuffer(),
+            events,
+          ),
+          ownershipIdentity: identity,
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      );
+      final first = owner(identity);
+      final overlapping = owner(identity);
+      // Distinct wrappers without an identity cannot be proven to share a
+      // physical terminal, so they are not rejected by this seam.
+      final unidentifiable = owner(null);
+
+      final active = first.prompt((_) async {
+        await release.future;
+        return Accepted('first');
+      });
+      await _waitUntil(() => events.contains('acquire:1'));
+
+      final rejected = await overlapping.prompt((_) async {
+        events.add('overlap');
+        return Accepted('overlap');
+      });
+      expect(rejected, isA<Unavailable<String>>());
+      expect(
+        (rejected as Unavailable<String>).reason,
+        contains('active theme owner'),
+      );
+      expect(unidentifiable.resolvedInteraction, isNull);
+      expect(events, isNot(contains('overlap')));
+
+      release.complete();
+      expect((await active as Accepted<String>).value, 'first');
+      final later = await overlapping.prompt((_) async {
+        events.add('later');
+        return Accepted('later');
+      });
+      expect((later as Accepted<String>).value, 'later');
+    },
+  );
+
+  test(
+    'a primary failure and a restoration failure are both observable',
+    () async {
+      const canary = 'CANARY-primary-and-cleanup';
+      final primary = StateError('primary failed: $canary');
+      final cleanup = StateError('restore failed: $canary');
+      final owner = ThemeSession(
+        environment: _environment(
+          _FailingTerminal(
+            const Stream<String>.empty(),
+            StringBuffer(),
+            restoreError: cleanup,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      );
+
+      final failure = await owner
+          .prompt<String>((_) async => throw primary)
+          .then<Object?>(
+            (value) => value,
+            onError: (Object error, StackTrace _) => error,
+          );
+
+      expect(
+        failure,
+        isA<TerminalSessionCleanupException>()
+            .having((error) => error.operationError, 'primary', same(primary))
+            .having((error) => error.cleanupError, 'cleanup', same(cleanup)),
+      );
+      expect(
+        failure.toString(),
+        isNot(contains(canary)),
+        reason: 'failure text must not expose application data',
+      );
+    },
+  );
+
+  test(
+    'a committed answer survives cleanup failure and reports it once',
+    () async {
+      final cleanup = StateError('restore failed');
+      final observed = <Object>[];
+      final owner = ThemeSession(
+        environment: _environment(
+          _FailingTerminal(
+            const Stream<String>.empty(),
+            StringBuffer(),
+            restoreError: cleanup,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onCleanupError: (error, _) => observed.add(error),
+      );
+
+      final result = await owner.prompt((_) async => Accepted('answer'));
+
+      expect((result as Accepted<String>).value, 'answer');
+      expect(owner.lastCleanupError, same(cleanup));
+      expect(owner.cleanupFailures, [same(cleanup)]);
+      expect(observed, [same(cleanup)]);
+    },
+  );
+
+  test(
+    'a callback failure keeps both causes when restoration also fails',
+    () async {
+      final primary = StateError('callback refused');
+      final cleanup = StateError('restore failed');
+      var callbacks = 0;
+      final owner = ThemeSession(
+        environment: _environment(
+          _FailingTerminal(
+            const Stream<String>.empty(),
+            StringBuffer(),
+            restoreError: cleanup,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async {
+          callbacks++;
+          throw primary;
+        },
+      );
+
+      final failure = await owner
+          .prompt((_) async => Accepted('unreachable'))
+          .then<Object?>(
+            (value) => value,
+            onError: (Object error, StackTrace _) => error,
+          );
+
+      expect(callbacks, 1);
+      expect(
+        failure,
+        isA<TerminalSessionCleanupException>()
+            .having((error) => error.operationError, 'primary', same(primary))
+            .having((error) => error.cleanupError, 'cleanup', same(cleanup)),
+      );
+    },
+  );
 }
 
 Future<void> _pump([int rounds = 4]) async {
@@ -78,11 +294,14 @@ Future<void> _waitUntil(bool Function() predicate) async {
   fail('condition was not met before the test deadline');
 }
 
-TerminalEnvironment _environment(TerminalIo terminal) =>
-    TerminalEnvironment.custom(
-      adapter: terminal,
-      profile: const OutputProfile(glyphs: GlyphSet.ascii),
-    );
+TerminalEnvironment _environment(
+  TerminalIo terminal, {
+  Object? ownershipIdentity,
+}) => TerminalEnvironment.custom(
+  adapter: terminal,
+  profile: const OutputProfile(glyphs: GlyphSet.ascii),
+  ownershipIdentity: ownershipIdentity,
+);
 
 /// A stream that answers one prompt per subscription and can delay listener
 /// cancellation to hold a period in cleanup.
@@ -186,4 +405,25 @@ final class _RecordingTerminal implements TerminalIo {
     events.add('acquire:$number');
     return TerminalLease(() => events.add('restore:$number'));
   }
+}
+
+final class _FailingTerminal implements TerminalIo {
+  _FailingTerminal(this.input, this.output, {this.restoreError});
+
+  @override
+  final Stream<String> input;
+  @override
+  final StringSink output;
+  final Object? restoreError;
+
+  @override
+  bool get supportsRich => false;
+
+  @override
+  Map<String, String?> get environment => const <String, String?>{};
+
+  @override
+  TerminalLease acquire() => TerminalLease(() {
+    if (restoreError != null) throw restoreError!;
+  });
 }
