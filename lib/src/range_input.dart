@@ -159,9 +159,8 @@ final class Slider {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -173,9 +172,8 @@ final class Slider {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -606,9 +604,8 @@ final class RangeSlider {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -620,9 +617,8 @@ final class RangeSlider {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<(String, String)>(
             selected,

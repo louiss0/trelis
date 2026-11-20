@@ -16,6 +16,7 @@ import 'color_theme.dart';
 import 'native_resize.dart';
 import 'presentation.dart';
 import 'prompt_structure.dart';
+import 'shared_terminal.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
 import 'uts46.dart';
@@ -41,6 +42,9 @@ part 'key_capture.dart';
 part 'duration_input.dart';
 part 'date_input.dart';
 part 'range_input.dart';
+
+/// Internal name retained by component parts for the shared reader type.
+typedef _Keys = SharedTerminalReader;
 
 sealed class PromptResult<T> {}
 
@@ -453,7 +457,12 @@ final class TerminalSession {
     this._userPreference,
     this._applicationPreference,
     this._outputProfile,
-  );
+  ) {
+    _writer = SharedOutputCoordinator(
+      _output,
+      onFailure: _closeAfterSharedWriterFailure,
+    );
+  }
 
   final StringSink _output;
   final ScriptedInput? _source;
@@ -462,8 +471,7 @@ final class TerminalSession {
   final PromptMode? _userPreference;
   final PromptMode? _applicationPreference;
   final OutputProfile? _outputProfile;
-  _Keys? _keys;
-  Stream<String>? _keysInput;
+  final SharedReaderCoordinator _readers = SharedReaderCoordinator();
   final List<TerminalSessionFeedbackRegion> _feedback = [];
   final Map<int, int> _liveGenerations = {};
 
@@ -506,8 +514,7 @@ final class TerminalSession {
   bool _modalHelp = false;
   bool _modalUsesAlternateScreen = false;
   bool _closed = false;
-  Object? _sharedWriterFailure;
-  StackTrace? _sharedWriterFailureStackTrace;
+  late final SharedOutputCoordinator _writer;
 
   bool get _feedbackRich {
     final selected =
@@ -537,8 +544,6 @@ final class TerminalSession {
   /// screen claim, and restores any prompt lease that was acquired.
   void _closeAfterSharedWriterFailure(Object error, StackTrace stackTrace) {
     if (_closed) return;
-    _sharedWriterFailure = error;
-    _sharedWriterFailureStackTrace = stackTrace;
     _closed = true;
     _modalHelp = false;
     _modalUsesAlternateScreen = false;
@@ -555,55 +560,22 @@ final class TerminalSession {
     // The active prompt cannot be answered through a retired session, so it
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
-    _keys?.fail(error, stackTrace);
+    _readers.retire(error, stackTrace);
   }
 
   /// Returns the session-owned reader for [input].
   ///
-  /// A session keeps one reader per selected input stream, so buffered input,
-  /// open escape sequences and paste provenance survive sequential prompts
-  /// without resubscribing. When the selected input changes — the real console
-  /// selects a fresh stream for every prompt — the reader that retirement can
-  /// fail has to follow it, and the replaced reader is closed so it stops
-  /// observing a stream this session no longer offers.
-  Future<_Keys> _readerFor(Stream<String> input) async {
-    final current = _keys;
-    if (current != null && identical(_keysInput, input)) return current;
-    _keys = null;
-    _keysInput = null;
-    await current?.close();
-    final keys = _Keys(input.transform(utf8.encoder));
-    _keys = keys;
-    _keysInput = input;
-    final failure = _sharedWriterFailure;
-    final failureStackTrace = _sharedWriterFailureStackTrace;
-    if (_closed && failure != null && failureStackTrace != null) {
-      // Retirement happened while the previous reader was being closed. The
-      // new reader must still end rather than park a prompt on a dead session.
-      keys.fail(failure, failureStackTrace);
-    }
-    return keys;
-  }
+  /// The coordinator keeps one reader per selected input stream, so buffered
+  /// input, open escape sequences and paste provenance survive sequential
+  /// prompts without resubscribing. When the selected input changes — the real
+  /// console selects a fresh stream for every prompt — the replaced reader is
+  /// closed so it stops observing a stream this session no longer offers.
+  Future<_Keys> _readerFor(Stream<String> input) => _readers.readerFor(input);
 
   /// Performs one serialized shared-output action and retires the session if
   /// its writer fails. Local registration and validation failures never take
   /// this path, so unrelated regions remain usable.
-  void _writeShared(void Function() action) {
-    if (_closed) {
-      final failure = _sharedWriterFailure;
-      final failureStackTrace = _sharedWriterFailureStackTrace;
-      if (failure != null && failureStackTrace != null) {
-        Error.throwWithStackTrace(failure, failureStackTrace);
-      }
-      return;
-    }
-    try {
-      action();
-    } catch (error, stackTrace) {
-      _closeAfterSharedWriterFailure(error, stackTrace);
-      Error.throwWithStackTrace(error, stackTrace);
-    }
-  }
+  void _writeShared(void Function() action) => _writer.write((_) => action());
 
   /// Registers one feedback region with this session's serialized writer.
   /// Feedback components call this when they are started with `session:`.
@@ -973,6 +945,7 @@ final class TerminalSession {
     } catch (error, stackTrace) {
       recordFailure(error, stackTrace);
     }
+    _writer.close();
     _closed = true;
     _promptRepaint = null;
     _promptGeometry = null;
@@ -985,12 +958,9 @@ final class TerminalSession {
     _deferredFeedback.clear();
     _deferredNotices.clear();
     try {
-      await _keys?.close();
+      await _readers.close();
     } catch (error, stackTrace) {
       recordFailure(error, stackTrace);
-    } finally {
-      _keys = null;
-      _keysInput = null;
     }
     if (cleanupError != null) {
       Error.throwWithStackTrace(cleanupError!, cleanupStackTrace!);
@@ -1048,14 +1018,15 @@ final class TerminalSession {
         );
       }
       if (_terminalIo != null) {
-        final lease = _terminalIo.acquire();
-        final input = _terminalIo.input;
         // A session-owned reader lets retirement end an idle prompt and keeps
         // buffered input across sequential prompts, exactly as it does for a
         // scripted source. An adapter that selects a fresh stream per prompt
-        // gets a reader for that stream instead of a stale one.
-        return await _restoreAfter(
-          () async => runner(
+        // gets a reader for that stream instead of a stale one. The stream is
+        // selected only after acquisition, which is when the lease becomes
+        // authoritative for this invocation.
+        return await SharedTerminalLease.run(_terminalIo, () async {
+          final input = _terminalIo.input;
+          return await runner(
             ScriptedInput(
               input,
               _SessionOutputSink(this),
@@ -1069,9 +1040,8 @@ final class TerminalSession {
             outputProfile: _outputProfile,
             keys: await _readerFor(input),
             session: this,
-          ),
-          lease.restore,
-        );
+          );
+        });
       }
       if (_output is! Stdout) {
         throw StateError(
@@ -1120,10 +1090,7 @@ final class TerminalSession {
         session: this,
       );
     } finally {
-      if (identical(_keys, keys)) {
-        _keys = null;
-        _keysInput = null;
-      }
+      _readers.release(keys);
       await keys.close();
     }
   }
@@ -2160,20 +2127,7 @@ bool _terminalActive = false;
 Future<T> _restoreAfter<T>(
   Future<T> Function() operation,
   void Function() restore,
-) async {
-  try {
-    final result = await operation();
-    restore();
-    return result;
-  } catch (operationError, operationStackTrace) {
-    try {
-      restore();
-    } catch (restorationError) {
-      throw TerminalRestorationException(operationError, restorationError);
-    }
-    Error.throwWithStackTrace(operationError, operationStackTrace);
-  }
-}
+) => SharedTerminalLease.restoreAfter(operation, restore);
 
 /// Repaints one transcript-style rich prompt when the selected output resizes.
 ///
@@ -2386,9 +2340,8 @@ final class TextInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -2400,9 +2353,8 @@ final class TextInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -2468,7 +2420,8 @@ final class TextInput {
       TextInputPresentationEventKind.opened,
       text: label,
     );
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     // Rich interaction repaints the draft row in place, so a preview of the
     // current draft belongs in that region. A linear entry has no such region
@@ -3199,138 +3152,6 @@ Future<({String action, String value})> _edit(
   }
 }
 
-class _Keys {
-  final _controller = StreamController<String>();
-  late final StreamSubscription<String> _subscription;
-  late final StreamIterator<String> _iterator;
-  bool Function(String)? onKey;
-  Object? _failure;
-  void _emit(String key) {
-    if (!(onKey?.call(key) ?? false)) _controller.add(key);
-  }
-
-  String _buffer = '';
-  bool _discardPaste = false;
-  bool _afterCarriageReturn = false;
-  Timer? _timer;
-  _Keys(Stream<List<int>> source, {bool flushEscapeOnEnd = false}) {
-    _iterator = StreamIterator(_controller.stream);
-    _subscription = source
-        .transform(utf8.decoder)
-        .listen(
-          (data) {
-            _buffer += data;
-            _parse();
-          },
-          onError: _controller.addError,
-          onDone: () {
-            _timer?.cancel();
-            if (flushEscapeOnEnd && _buffer == '\x1b') {
-              _emit('\x1b');
-              _buffer = '';
-            }
-            _controller.close();
-          },
-        );
-  }
-  void _parse() {
-    _timer?.cancel();
-    while (_buffer.isNotEmpty) {
-      if (_discardPaste) {
-        final end = _buffer.indexOf('\x1b[201~');
-        if (end < 0) {
-          if (_buffer.length > 5) {
-            _buffer = _buffer.substring(_buffer.length - 5);
-          }
-          return;
-        }
-        _buffer = _buffer.substring(end + 6);
-        _discardPaste = false;
-        _emit('\x1b[999~');
-        continue;
-      }
-      if (_buffer.startsWith('\x1b[200~')) {
-        final end = _buffer.indexOf('\x1b[201~', 6);
-        if (end >= 0) {
-          _emit(end - 6 > 4096 ? '\x1b[999~' : _buffer.substring(0, end + 6));
-          _buffer = _buffer.substring(end + 6);
-          continue;
-        }
-        if (_buffer.length > 4107) {
-          _discardPaste = true;
-          _buffer = _buffer.substring(_buffer.length - 5);
-        }
-        return;
-      }
-      if (_buffer.startsWith('\x1b')) {
-        final match = RegExp(r'^\x1b(?:\[[0-9;]*[A-Za-z~]|O[A-Za-z])')
-            .firstMatch(_buffer);
-        if (match != null) {
-          final s = match.group(0)!;
-          _emit(
-            s.startsWith('\x1bO') && 'ABCDHF'.contains(s[2])
-                ? '\x1b[${s[2]}'
-                : s,
-          );
-          _buffer = _buffer.substring(s.length);
-          continue;
-        }
-        if (_buffer == '\x1b' ||
-            _buffer == '\x1bO' ||
-            _buffer.startsWith('\x1b[')) {
-          _timer = Timer(const Duration(milliseconds: 80), () {
-            _emit('\x1b');
-            _buffer = _buffer.substring(1);
-            _parse();
-          });
-          return;
-        }
-      }
-      final rune = _buffer.runes.first;
-      final s = String.fromCharCode(rune);
-      _emit(s);
-      _buffer = _buffer.substring(s.length);
-    }
-  }
-
-  Future<String?> next() async {
-    while (await _iterator.moveNext()) {
-      final key = _iterator.current;
-      if (_afterCarriageReturn && key == '\n') {
-        _afterCarriageReturn = false;
-        continue;
-      }
-      _afterCarriageReturn = key == '\r';
-      return key;
-    }
-    return null;
-  }
-
-  /// Ends the pending prompt iteration with [error].
-  ///
-  /// Resize notifications and other detached work cannot return a value to the
-  /// awaiting prompt, so a failure they observe is delivered through the key
-  /// stream. The prompt then ends with the original failure instead of waiting
-  /// for input that can no longer be answered safely. Only the first failure is
-  /// delivered: a detached repaint and its session can observe the same writer
-  /// failure, and the reader must not receive it twice.
-  void fail(Object error, StackTrace stackTrace) {
-    if (_failure != null || _closed || _controller.isClosed) return;
-    _failure = error;
-    _controller.addError(error, stackTrace);
-  }
-
-  bool _closed = false;
-
-  Future<void> close() async {
-    if (_closed) return;
-    _closed = true;
-    _timer?.cancel();
-    await _subscription.cancel();
-    await _iterator.cancel();
-  }
-}
-
 class _Console {
   final _dll = DynamicLibrary.open('kernel32.dll');
   late final int Function(int) getHandle = _dll
@@ -3850,9 +3671,8 @@ final class Password {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -3864,9 +3684,8 @@ final class Password {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -3965,7 +3784,8 @@ final class Password {
         closes: true,
       );
     }
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     var value = initialValue;
     try {
       while (true) {
@@ -4173,9 +3993,8 @@ abstract class _BooleanPrompt {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -4187,9 +4006,8 @@ abstract class _BooleanPrompt {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<bool>(
             selected,
@@ -4310,7 +4128,8 @@ abstract class _BooleanPrompt {
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.muted,
     );
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(renderDraft);
     try {
       if (mode == PromptMode.linear) {
@@ -4504,9 +4323,8 @@ final class Multiline {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -4516,9 +4334,8 @@ final class Multiline {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<String>(
             selected,
@@ -4587,7 +4404,8 @@ final class Multiline {
       parts: _openingParts(linear: mode == PromptMode.linear),
       foreground: colors.foreground,
     );
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     if (mode == PromptMode.linear) {
       final lines = initialValue.isEmpty
           ? <String>[]
@@ -5378,9 +5196,8 @@ abstract class _SingleChoice<T> {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -5392,9 +5209,8 @@ abstract class _SingleChoice<T> {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<T>(
             selected,
@@ -5535,7 +5351,8 @@ abstract class _SingleChoice<T> {
     }
 
     show();
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     session?._setPromptRepaint(show);
     try {
       if (mode == PromptMode.linear) {
@@ -5762,9 +5579,8 @@ final class MultiSelect<T> {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -5776,9 +5592,8 @@ final class MultiSelect<T> {
                 ),
                 selectedMode,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<List<T>>(
             selectedMode,
@@ -5861,7 +5676,8 @@ final class MultiSelect<T> {
       event: event,
     );
 
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     final selected = <int>{
       for (var i = 0; i < choices.length; i++)
         if (defaultValues.contains(choices[i].value)) i,
@@ -6292,9 +6108,8 @@ final class TimeInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _run(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _run(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -6306,9 +6121,8 @@ final class TimeInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<({int hour, int minute, int? second})>(
             selected,
@@ -6389,7 +6203,8 @@ final class TimeInput {
           : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.foreground,
     );
-    final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     try {
       if (mode == PromptMode.linear) {
         while (true) {
@@ -6781,9 +6596,8 @@ final class TagInput {
         _terminalActive = true;
         try {
           if (terminal != null) {
-            final lease = terminal.acquire();
-            return await _restoreAfter(
-              () => _runTags(
+            return await SharedTerminalLease.run(terminal, () async {
+              return _runTags(
                 ScriptedInput(
                   terminal.input,
                   terminal.output,
@@ -6793,9 +6607,8 @@ final class TagInput {
                 ),
                 selected,
                 outputProfile: outputProfile,
-              ),
-              lease.restore,
-            );
+              );
+            });
           }
           return await _terminal<List<String>>(
             selected,
@@ -6856,7 +6669,8 @@ final class TagInput {
           ? PromptMode.rich
           : PromptMode.linear;
     }
-    final inputKeys = keys ?? _Keys(input.input.transform(utf8.encoder));
+    final inputKeys =
+        keys ?? SharedTerminalReader(input.input.transform(utf8.encoder));
     final tags = <String>[];
     var draft = '';
     var selectingRemoval = false;
