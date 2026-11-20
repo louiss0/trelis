@@ -33,4 +33,97 @@ void main() {
       await coordinator.close();
     },
   );
+
+  test(
+    'malformed and late replies remain input around one valid reply',
+    () async {
+      final input = StreamController<String>();
+      final coordinator = SharedReaderCoordinator();
+      final reader = await coordinator.readerFor(input.stream);
+      const malformed = '\x1b]11;rgb:zzzz/ffff/ffff\x07';
+      const late = '\x1b]11;rgb:ffff/ffff/ffff\x07';
+      const unsolicited = '\x1b]12;rgb:ffff/ffff/ffff\x07';
+
+      final pending = reader.queryBackground(writeRequest: () {});
+      input.add(malformed);
+      input.add('\x1b]11;rgb:0000/0000/0000\x07');
+      input.add(late);
+      input.add(unsolicited);
+      await input.close();
+
+      expect(await pending, BackgroundQueryResult.dark);
+      expect(await _drain(reader), malformed + late + unsolicited);
+      await coordinator.close();
+    },
+  );
+
+  test(
+    'a partial reply waits for completion while other bytes keep order',
+    () async {
+      final input = StreamController<String>();
+      final coordinator = SharedReaderCoordinator();
+      final reader = await coordinator.readerFor(input.stream);
+      const paste = '\x1b[200~X\tY\x1b[201~';
+
+      final pending = reader.queryBackground(writeRequest: () {});
+      input.add('\x1b]11;rgb:ffff/ff');
+      input.add('ff/ffff\x07');
+      input.add('A');
+      input.add(paste);
+      input.add('B\r');
+      await input.close();
+
+      expect(await pending, BackgroundQueryResult.light);
+      expect(await _drain(reader), 'A${paste}B\r');
+      await coordinator.close();
+    },
+  );
+
+  test(
+    'the fixed bound falls back and preserves a partial and late reply',
+    () async {
+      final input = StreamController<String>();
+      final coordinator = SharedReaderCoordinator();
+      final reader = await coordinator.readerFor(input.stream);
+      const partial = '\x1b]11;rgb:ffff/ff';
+      const late = '\x1b]11;rgb:0000/0000/0000\x07';
+      final watch = Stopwatch()..start();
+
+      final pending = reader.queryBackground(writeRequest: () {});
+      input.add(partial);
+
+      expect(await pending, BackgroundQueryResult.unavailable);
+      expect(
+        watch.elapsedMilliseconds,
+        inInclusiveRange(backgroundQueryTimeout.inMilliseconds - 20, 1000),
+      );
+      input.add(late);
+      await input.close();
+      expect(await _drain(reader), partial + late);
+      await coordinator.close();
+    },
+  );
+
+  test('an OSC reply with no query waiting is ordinary input', () async {
+    final input = StreamController<String>();
+    final coordinator = SharedReaderCoordinator();
+    final reader = await coordinator.readerFor(input.stream);
+    const response = '\x1b]11;rgb:0000/0000/0000\x07';
+
+    input.add(response);
+    input.add('A');
+    await input.close();
+
+    expect(await _drain(reader), '${response}A');
+    await coordinator.close();
+  });
+}
+
+Future<String> _drain(SharedTerminalReader reader) async {
+  final buffer = StringBuffer();
+  String? key;
+  while ((key = await reader.next()) != null) {
+    buffer.write(key);
+  }
+  return buffer.toString();
 }
