@@ -489,8 +489,8 @@ void main() {
               );
               expect(
                 text,
-                isNot(_containsPhrase('Enter submits;')),
-                reason: '${fixture.name} hidden guidance',
+                _containsPhrase('Enter submits;'),
+                reason: '${fixture.name} keeps the primary action',
               );
             case InstructionDisplay.compact:
               expect(

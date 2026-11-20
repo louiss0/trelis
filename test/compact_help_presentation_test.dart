@@ -198,7 +198,7 @@ void main() {
         spaceAvailable: true,
       );
 
-      expect(route.text, contains('/help'));
+      expect(route.text, contains('Ctrl+T opens help'));
       expect(route.text, contains('hidden values stay hidden'));
       final text = (outcome as HelpShown).text;
       expect(text, isNot(contains(canary)));

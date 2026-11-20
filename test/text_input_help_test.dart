@@ -54,7 +54,7 @@ void main() {
     );
     expect(hidden.toString(), contains('Name (Required).'));
     expect(hidden.toString(), contains('Ctrl+T opens help.'));
-    expect(hidden.toString(), isNot(contains('Enter submits')));
+    expect(hidden.toString(), contains('Enter submits; Ctrl+T opens help.'));
   });
 
   test(

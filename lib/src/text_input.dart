@@ -1981,7 +1981,9 @@ String _textInputGuidance({
     InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
     InstructionDisplay.expanded =>
       'Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits. $route Escape cancels; Ctrl+C interrupts.',
-    InstructionDisplay.hidden => route,
+    // Hidden instructions suppress optional editing guidance only. The
+    // primary action and help route are protected content and stay visible.
+    InstructionDisplay.hidden => 'Enter submits; $route',
     InstructionDisplay.themeDefault => throw StateError(
       'Instructions resolved above.',
     ),

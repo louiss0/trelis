@@ -344,23 +344,28 @@ HelpRoute helpRoute({
       shortText: '/help after capture',
     );
   }
-  final hidden = component == ComponentRoute.secret
-      ? '; hidden values stay hidden'
-      : '';
+  // Hidden entry treats a typed `/help` line as answer data, so its route is
+  // the non-command shortcut in both rich and linear presentation.
+  if (component == ComponentRoute.secret) {
+    return const HelpRoute(
+      kind: HelpRouteKind.shortcut,
+      text: 'Ctrl+T opens help; hidden values stay hidden.',
+      shortText: 'Ctrl+T help; hidden',
+      gesture: 'Ctrl+T',
+    );
+  }
   if (mode == PresentationMode.rich) {
     return HelpRoute(
       kind: HelpRouteKind.shortcut,
-      text: 'Ctrl+T opens help$hidden.',
-      shortText: component == ComponentRoute.secret
-          ? 'Ctrl+T help; hidden'
-          : 'Ctrl+T help',
+      text: 'Ctrl+T opens help.',
+      shortText: 'Ctrl+T help',
       gesture: 'Ctrl+T',
     );
   }
   return HelpRoute(
     kind: HelpRouteKind.command,
-    text: '/help opens help$hidden.',
-    shortText: component == ComponentRoute.secret ? '/help; hidden' : '/help',
+    text: '/help opens help.',
+    shortText: '/help',
   );
 }
 
