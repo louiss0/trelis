@@ -12,6 +12,7 @@ import 'dart:async';
 import 'background_query.dart';
 import 'color_resolution.dart';
 import 'color_theme.dart';
+import 'feedback.dart' show Text;
 import 'hint_observations.dart';
 import 'interaction_resolution.dart';
 import 'shared_terminal.dart';
@@ -278,6 +279,33 @@ final class ThemeSession {
       return Unavailable<T>(error.reason);
     } on _InitializationCancelled catch (_) {
       return Cancelled<T>();
+    }
+  }
+
+  /// Presents one informational feedback line through an owned session.
+  ///
+  /// The period is acquired and resolved before [feedback] renders, and is
+  /// released once its write settles. This is the internal one-shot seam for
+  /// theme-created feedback; it does not add a public call signature.
+  Future<void> presentFeedback(
+    Text feedback, {
+    ThemeComponentAvailability availability =
+        const ThemeComponentAvailability(),
+    Future<void>? cancellation,
+  }) async {
+    try {
+      final participation = await _enter(
+        ThemeOperationKind.feedback,
+        availability,
+        cancellation,
+      );
+      await _runParticipation(participation, (handle) {
+        feedback.present(session: handle.session);
+      });
+    } on _InitializationUnavailable catch (error) {
+      throw ThemeSessionUnavailable(error.reason);
+    } on _InitializationCancelled catch (_) {
+      throw const ThemeSessionCancelled();
     }
   }
 
