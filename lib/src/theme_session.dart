@@ -12,6 +12,7 @@ import 'dart:async';
 import 'background_query.dart';
 import 'color_resolution.dart';
 import 'color_theme.dart';
+import 'feedback.dart' show Text;
 import 'hint_observations.dart';
 import 'interaction_resolution.dart';
 import 'shared_terminal.dart';
@@ -114,6 +115,51 @@ final class _Participation {
       await period.release();
     } finally {
       owner._endParticipation(this);
+    }
+  }
+}
+
+/// One live feedback participant in an active period.
+///
+/// The participant is independent of the prompt and stays active until it is
+/// finished. Finishing runs the component's own end action and its stop
+/// action, retires the region, and releases this participant; cleanup only
+/// happens once the prompt and every feedback participant have left.
+final class ThemeFeedbackHandle {
+  ThemeFeedbackHandle._(this._owner, this._participation, this._stop);
+
+  final ThemeSession _owner;
+  final _Participation _participation;
+  final FutureOr<void> Function() _stop;
+  bool _finished = false;
+
+  /// The handle created when this participant entered the period.
+  ThemeSessionHandle get handle => _participation.handle;
+
+  /// The session-owned terminal used by the feedback component.
+  TerminalSession get session => handle.session;
+
+  /// Ends this participant once, preserving [end]'s primary failure.
+  Future<void> finish([FutureOr<void> Function()? end]) async {
+    if (_finished) return;
+    _finished = true;
+    Object? primary;
+    StackTrace? primaryStackTrace;
+
+    Future<void> capture(FutureOr<void> Function() action) async {
+      try {
+        await action();
+      } catch (error, stackTrace) {
+        primary ??= error;
+        primaryStackTrace ??= stackTrace;
+      }
+    }
+
+    if (end != null) await capture(end);
+    await capture(_stop);
+    await _owner._releaseAfter(_participation, primary, primaryStackTrace);
+    if (primary != null) {
+      Error.throwWithStackTrace(primary!, primaryStackTrace!);
     }
   }
 }
@@ -278,6 +324,66 @@ final class ThemeSession {
       return Unavailable<T>(error.reason);
     } on _InitializationCancelled catch (_) {
       return Cancelled<T>();
+    }
+  }
+
+  /// Presents one informational feedback line through an owned session.
+  ///
+  /// The period is acquired and resolved before [feedback] renders, and is
+  /// released once its write settles. This is the internal one-shot seam for
+  /// theme-created feedback; it does not add a public call signature.
+  Future<void> presentFeedback(
+    Text feedback, {
+    ThemeComponentAvailability availability =
+        const ThemeComponentAvailability(),
+    Future<void>? cancellation,
+  }) async {
+    try {
+      final participation = await _enter(
+        ThemeOperationKind.feedback,
+        availability,
+        cancellation,
+      );
+      await _runParticipation(participation, (handle) {
+        feedback.present(session: handle.session);
+      });
+    } on _InitializationUnavailable catch (error) {
+      throw ThemeSessionUnavailable(error.reason);
+    } on _InitializationCancelled catch (_) {
+      throw const ThemeSessionCancelled();
+    }
+  }
+
+  /// Starts live feedback that participates in the current active period.
+  ///
+  /// Initialization completes before [start] can emit output. The returned
+  /// handle must be finished when the component stops, completes or fails; its
+  /// [ThemeFeedbackHandle.finish] also invokes [stop] so producers and their
+  /// timers cannot outlive the participant.
+  Future<ThemeFeedbackHandle> startFeedback(
+    FutureOr<void> Function(ThemeSessionHandle handle) start, {
+    required FutureOr<void> Function() stop,
+    ThemeComponentAvailability availability =
+        const ThemeComponentAvailability(),
+    Future<void>? cancellation,
+  }) async {
+    try {
+      final participation = await _enter(
+        ThemeOperationKind.feedback,
+        availability,
+        cancellation,
+      );
+      try {
+        await start(participation.handle);
+      } catch (error, stackTrace) {
+        await _releaseAfter(participation, error, stackTrace);
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+      return ThemeFeedbackHandle._(this, participation, stop);
+    } on _InitializationUnavailable catch (error) {
+      throw ThemeSessionUnavailable(error.reason);
+    } on _InitializationCancelled catch (_) {
+      throw const ThemeSessionCancelled();
     }
   }
 
