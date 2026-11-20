@@ -29,6 +29,70 @@ void main() {
     expect(events, ['acquire:1', 'callback', 'restore:1']);
     expect(owner.resolvedInteraction, isNull);
   });
+
+  test(
+    'multiple live feedback instances share one prompt period and cleanup',
+    () async {
+      final events = <String>[];
+      final output = StringBuffer();
+      final input = StreamController<String>();
+      var facts = 0;
+      var callbacks = 0;
+      final owner = ThemeSession(
+        environment: _environment(output, events, input: input.stream),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        factsForPeriod: (_) async {
+          facts++;
+          return const InteractionFacts();
+        },
+        onResolved: (_) async {
+          callbacks++;
+          events.add('callback:$callbacks');
+        },
+      );
+
+      late final Spinner index;
+      final first = await owner.startFeedback((handle) {
+        index = Spinner('Index')..start(session: handle.session);
+      }, stop: () => index.dispose());
+      late final Progress upload;
+      final second = await owner.startFeedback((handle) {
+        upload = Progress('Upload', total: 2)..start(session: handle.session);
+      }, stop: () => upload.dispose());
+
+      final promptStarted = Completer<void>();
+      final prompt = owner.prompt((handle) async {
+        promptStarted.complete();
+        return await TextInput('Name').prompt(session: handle.session);
+      });
+      await promptStarted.future;
+      input.add('Ada\r');
+      await input.close();
+
+      await first.finish(() => index.finish(FeedbackOutcome.completed));
+      expect(events, isNot(contains('restore:1')));
+      expect(owner.resolvedInteraction, isNotNull);
+      await second.finish(() => upload.finish(FeedbackOutcome.failed));
+      expect(events, contains('restore:1'));
+      expect(owner.resolvedInteraction, isNull);
+
+      expect((await prompt as Accepted<String>).value, 'Ada');
+      expect(events.where((event) => event.startsWith('acquire')), [
+        'acquire:1',
+        'acquire:2',
+      ], reason: 'the period and the prompt each acquire a lease');
+      expect(events.last, 'restore:1');
+      expect(facts, 1);
+      expect(callbacks, 1);
+      expect(output.toString(), contains('Index: completed'));
+      expect(output.toString(), contains('Upload: failed'));
+
+      await owner.presentFeedback(Text('Later'));
+      expect(facts, 2);
+      expect(callbacks, 2);
+      expect(events.last, 'restore:3');
+    },
+  );
 }
 
 Future<void> _pump([int rounds = 4]) async {
@@ -40,12 +104,13 @@ Future<void> _pump([int rounds = 4]) async {
 TerminalEnvironment _environment(
   StringSink output,
   List<String> events, {
+  Stream<String>? input,
   Object? ownershipIdentity,
   Object? restoreError,
   OutputProfile profile = const OutputProfile(glyphs: GlyphSet.ascii),
 }) => TerminalEnvironment.custom(
   adapter: _RecordingTerminal(
-    const Stream<String>.empty(),
+    input ?? const Stream<String>.empty(),
     output,
     events,
     restoreError: restoreError,
