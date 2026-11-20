@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:test/test.dart';
+import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/theme_session.dart';
 import 'package:trelis/trelis.dart';
@@ -260,6 +261,147 @@ void main() {
       ]);
     },
   );
+
+  test('acquisition failure never renders or calls the callback', () async {
+    final events = <String>[];
+    final output = _RecordingSink(events);
+    final failure = StateError('cannot acquire');
+    var callbacks = 0;
+    final owner = ThemeSession(
+      environment: _recordingEnvironment(output, events, acquireError: failure),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+      onResolved: (_) async {
+        callbacks++;
+      },
+    );
+
+    await expectLater(
+      owner.prompt((_) async => Accepted('unreachable')),
+      throwsA(same(failure)),
+    );
+    await expectLater(
+      owner.feedback((_) async => 'unreachable'),
+      throwsA(same(failure)),
+    );
+
+    expect(events, ['acquire', 'acquire']);
+    expect(callbacks, 0);
+    expect(owner.resolvedInteraction, isNull);
+  });
+
+  test(
+    'cancellation during initialization publishes nothing and keeps no lease',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final facts = Completer<InteractionFacts>();
+      final cancel = Completer<void>();
+      var callbacks = 0;
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        factsForPeriod: (_) => facts.future,
+        onResolved: (_) async {
+          callbacks++;
+        },
+      );
+
+      final pending = owner.prompt((handle) async {
+        output.write('unreachable');
+        return Accepted('no');
+      }, cancellation: cancel.future);
+      await Future<void>.delayed(Duration.zero);
+      cancel.complete();
+
+      expect(await pending, isA<Cancelled<String>>());
+      expect(callbacks, 0);
+      expect(events, isEmpty);
+      expect(owner.resolvedInteraction, isNull);
+      facts.complete(const InteractionFacts());
+    },
+  );
+
+  test(
+    'a failed facts provider falls back before acquiring resources',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        factsForPeriod: (_) => throw StateError('hint source failed'),
+        onResolved: (_) async => events.add('callback'),
+      );
+
+      final result = await owner.prompt((handle) async {
+        expect(owner.resolvedInteraction?.mode, PromptMode.linear);
+        expect(owner.resolvedInteraction?.screenReader, isFalse);
+        output.write('fallback');
+        return Accepted('ok');
+      });
+
+      expect((result as Accepted<String>).value, 'ok');
+      expect(events, ['acquire', 'callback', 'write:fallback', 'restore']);
+    },
+  );
+
+  test(
+    'injected positive facts publish linear screen-reader interaction',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final owner = ThemeSession(
+        environment: _recordingEnvironment(output, events),
+        interaction: const InteractionPreferences(
+          applicationHint: ScreenReaderObservation.positive,
+        ),
+        factsForPeriod: (_) => const InteractionFacts(
+          nativeHint: ScreenReaderObservation.positive,
+          locality: TerminalLocality.local,
+          interactive: true,
+        ),
+        onResolved: (interaction) async {
+          expect(interaction.mode, PromptMode.linear);
+          expect(interaction.screenReader, isTrue);
+          events.add('callback');
+        },
+      );
+
+      await owner.feedback((handle) async {
+        expect(owner.resolvedInteraction?.screenReader, isTrue);
+        output.write('linear');
+        return null;
+      });
+
+      expect(events, ['acquire', 'callback', 'write:linear', 'restore']);
+    },
+  );
+
+  test(
+    'the handle publishes color decisions from the shared resolver',
+    () async {
+      final events = <String>[];
+      final output = _RecordingSink(events);
+      final environment = _recordingEnvironment(
+        output,
+        events,
+        environment: const {'NO_COLOR': '1'},
+      );
+      final owner = ThemeSession(
+        environment: environment,
+        colors: const ColorPreferences(background: BackgroundPreference.light),
+      );
+
+      await owner.prompt((handle) async {
+        expect(handle.colors.background, BackgroundVariant.light);
+        expect(handle.colors.outputProfile.colorDepth, ColorDepth.none);
+        output.write('colored');
+        return Accepted('ok');
+      });
+
+      expect(events, contains('write:colored'));
+      expect(events.last, 'restore');
+    },
+  );
 }
 
 final class _RecordingSink implements StringSink {
@@ -289,21 +431,31 @@ final class _RecordingSink implements StringSink {
 }
 
 final class _RecordingTerminal implements TerminalIo {
-  _RecordingTerminal(this.input, this.output, this.events);
+  _RecordingTerminal(
+    this.input,
+    this.output,
+    this.events,
+    this.acquireError,
+    this.environment,
+  );
 
   @override
   final Stream<String> input;
   @override
   final StringSink output;
   final List<String> events;
+  final Object? acquireError;
+  @override
+  final Map<String, String?> environment;
   @override
   bool get supportsRich => false;
-  @override
-  Map<String, String?> get environment => const <String, String?>{};
 
   @override
   TerminalLease acquire() {
     events.add('acquire');
+    if (acquireError != null) {
+      Error.throwWithStackTrace(acquireError!, StackTrace.empty);
+    }
     return TerminalLease(() => events.add('restore'));
   }
 }
@@ -312,11 +464,15 @@ TerminalEnvironment _recordingEnvironment(
   StringSink output,
   List<String> events, {
   Stream<String>? input,
+  Object? acquireError,
+  Map<String, String?> environment = const <String, String?>{},
 }) => TerminalEnvironment.custom(
   adapter: _RecordingTerminal(
     input ?? const Stream<String>.empty(),
     output,
     events,
+    acquireError,
+    environment,
   ),
   profile: const OutputProfile(glyphs: GlyphSet.ascii),
 );

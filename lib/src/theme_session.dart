@@ -9,6 +9,8 @@ library;
 
 import 'dart:async';
 
+import 'color_resolution.dart';
+import 'color_theme.dart';
 import 'interaction_resolution.dart';
 import 'shared_terminal.dart';
 import 'terminal_io.dart';
@@ -114,6 +116,9 @@ final class ThemeSessionHandle {
   /// The environment selected for this theme.
   TerminalEnvironment get environment => _period.owner.environment;
 
+  /// The color decision resolved from injected facts for this period.
+  ResolvedColors get colors => _period.colors;
+
   /// Runs internal delegation without opening another active prompt.
   Future<T> delegate<T>(
     FutureOr<T> Function(ThemeSessionHandle handle) operation,
@@ -121,11 +126,12 @@ final class ThemeSessionHandle {
 }
 
 final class _ThemePeriod {
-  _ThemePeriod(this.owner, this.interaction, this.state);
+  _ThemePeriod(this.owner, this.interaction, this.state, this.colors);
 
   final ThemeSession owner;
   final ResolvedInteraction interaction;
   final ThemeInteractionState state;
+  final ResolvedColors colors;
   final Completer<void> idle = Completer<void>();
 
   late final TerminalSession session;
@@ -160,16 +166,21 @@ final class ThemeSession {
   ThemeSession({
     required this.environment,
     this.interaction = const InteractionPreferences(),
+    this.colors = const ColorPreferences(),
     this.onResolved,
     this.factsForPeriod,
     InteractionFacts? facts,
-  }) : _fixedFacts = facts;
+    ColorDetectionFacts? colorFacts,
+  }) : _fixedFacts = facts,
+       _fixedColorFacts = colorFacts;
 
   final TerminalEnvironment environment;
   final InteractionPreferences interaction;
+  final ColorPreferences colors;
   final ThemeResolvedCallback? onResolved;
   final ThemeInteractionFactsProvider? factsForPeriod;
   final InteractionFacts? _fixedFacts;
+  final ColorDetectionFacts? _fixedColorFacts;
 
   ThemeInteractionState? _published;
   _ThemePeriod? _active;
@@ -183,12 +194,13 @@ final class ThemeSession {
     Future<PromptResult<T>> Function(ThemeSessionHandle handle) runner, {
     ThemeComponentAvailability availability =
         const ThemeComponentAvailability(),
+    Future<void>? cancellation,
   }) async {
     try {
       final participation = await _enter(
         ThemeOperationKind.prompt,
         availability,
-        null,
+        cancellation,
       );
       return await _finish(participation, runner);
     } on _InitializationUnavailable catch (error) {
@@ -203,12 +215,13 @@ final class ThemeSession {
     FutureOr<T> Function(ThemeSessionHandle handle) runner, {
     ThemeComponentAvailability availability =
         const ThemeComponentAvailability(),
+    Future<void>? cancellation,
   }) async {
     try {
       final participation = await _enter(
         ThemeOperationKind.feedback,
         availability,
-        null,
+        cancellation,
       );
       late final T result;
       try {
@@ -288,6 +301,7 @@ final class ThemeSession {
         mode: resolved.mode,
         screenReader: resolved.screenReader,
       ),
+      _resolveColors(),
     );
     _active = period;
     final started = Completer<_ThemePeriod>();
@@ -296,12 +310,16 @@ final class ThemeSession {
     final done = TerminalSession.run(
       (session) async {
         period.attach(session);
-        final lease = environment.acquire();
         try {
+          final lease = environment.acquire();
           await SharedTerminalLease.restoreAfter(() async {
-            if (onResolved != null) {
-              await onResolved!(resolved);
+            final callback = onResolved;
+            if (callback != null) {
+              await _race<void>(() async {
+                await callback(resolved);
+              }, cancellation);
             }
+            await _checkCancellation(cancellation);
             period.publish();
             started.complete(period);
             await period.idle.future;
@@ -329,12 +347,71 @@ final class ThemeSession {
   }
 
   Future<InteractionFacts> _facts(Future<void>? cancellation) async {
-    final provider = factsForPeriod;
-    if (provider == null) {
-      return _fixedFacts ?? _defaultFacts;
+    try {
+      final provider = factsForPeriod;
+      if (provider == null) {
+        return _fixedFacts ?? _defaultFacts;
+      }
+      return await _race(() => provider(environment), cancellation);
+    } on _InitializationCancelled {
+      rethrow;
+    } catch (_) {
+      // A failed observation source is unknown, never an interaction failure.
+      return _defaultFacts;
     }
-    return await provider(environment);
   }
+
+  /// Runs [action], letting a cancellation win without publishing its value.
+  Future<T> _race<T>(
+    FutureOr<T> Function() action,
+    Future<void>? cancellation,
+  ) async {
+    final computation = Future<T>.value(action());
+    if (cancellation == null) return await computation;
+    final cancelled = Completer<T>();
+    final registration = cancellation.then(
+      (_) {
+        if (!cancelled.isCompleted) {
+          cancelled.completeError(const _InitializationCancelled());
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!cancelled.isCompleted) {
+          cancelled.completeError(error, stackTrace);
+        }
+      },
+    );
+    try {
+      return await Future.any<T>([computation, cancelled.future]);
+    } finally {
+      registration.ignore();
+    }
+  }
+
+  /// Checks whether cancellation arrived while an earlier step was running.
+  Future<void> _checkCancellation(Future<void>? cancellation) async {
+    if (cancellation == null) return;
+    var cancelled = false;
+    final registration = cancellation.then(
+      (_) => cancelled = true,
+      onError: (Object _, StackTrace _) => cancelled = true,
+    );
+    await Future<void>.delayed(Duration.zero);
+    registration.ignore();
+    if (cancelled) throw const _InitializationCancelled();
+  }
+
+  ResolvedColors _resolveColors() => resolveColors(
+    facts: _fixedColorFacts ?? _defaultColorFacts,
+    lightDefault: ColorThemes.terminalDefault,
+    darkDefault: ColorThemes.terminalDefault,
+    preferences: colors,
+  );
+
+  ColorDetectionFacts get _defaultColorFacts => ColorDetectionFacts(
+    outputProfile: environment.profile,
+    noColor: environment.environment['NO_COLOR'],
+  );
 
   InteractionFacts get _defaultFacts => InteractionFacts(
     output: environment.profile,
