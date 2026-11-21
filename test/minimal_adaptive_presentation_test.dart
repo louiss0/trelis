@@ -225,6 +225,93 @@ void main() {
       );
     }
   });
+
+  group('Minimal choices through the internal seam', () {
+    test(
+      'a real light choice keeps the conversational rows and markers',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+
+        expect(text, contains('\x1b[38;2;54;43;34;49mPick tools'));
+        expect(text, contains('\x1b[38;2;126;72;20;49m1. Starter'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, contains('Unavailable: needs owner role.'));
+        final plain = _renderedPromptText(text);
+        expect(plain.indexOf('Pick tools'), lessThan(plain.indexOf('Starter')));
+        expect(
+          plain.indexOf('Starter'),
+          lessThan(plain.indexOf('Ctrl+T help')),
+        );
+        for (final enclosure in ['┌', '┐', '└', '┘', '╭', '╮', '╰', '╯']) {
+          expect(text, isNot(contains(enclosure)));
+        }
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
+
+    test(
+      'a real dark choice renders sepia focus, checked, default and reasons',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(background: BackgroundPreference.dark),
+        );
+
+        expect(text, contains('\x1b[38;2;244;236;224;49mPick tools'));
+        expect(text, contains('\x1b[38;2;214;158;97;49m1. Starter'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, contains('[unavailable: needs owner role]'));
+        expect(
+          text,
+          contains('\x1b[38;2;238;188;112;49mUnavailable: needs owner role.'),
+        );
+        expect(_renderedPromptText(text), contains('Ctrl+T help'));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+      },
+    );
+  });
+}
+
+/// Strips style and repaint control so wrapped output can be inspected as
+/// the sequential text a reader would receive, without adding line breaks
+/// inside a wrapped word.
+String _renderedPromptText(String text) => text
+    .replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), '')
+    .replaceAll('\r', '')
+    .replaceAll('\n', '');
+
+Future<String> _renderChoice({
+  ColorPreferences colors = const ColorPreferences(),
+  ComponentColors component = const ComponentColors(),
+  Map<String, String?> environment = const <String, String>{},
+  OutputProfile? profile,
+}) async {
+  final output = StringBuffer();
+  final tracer = MinimalPresentationTracer(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(' \r'),
+      output: output,
+      profile: profile ?? _richProfile,
+      environment: environment,
+    ),
+    colors: colors,
+    componentColors: component,
+    interaction: const InteractionPreferences(mode: PromptMode.rich),
+  );
+  final result = await tracer.multiSelect<String>(
+    'Pick tools',
+    [
+      Choice('a', 'Starter', disabledReason: 'needs owner role'),
+      Choice('b', 'Library'),
+    ],
+    defaultValues: const ['b'],
+  );
+  expect(result, isA<Accepted<List<String>>>());
+  return output.toString();
 }
 
 final _richProfile = OutputProfile(
