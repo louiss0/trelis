@@ -1,6 +1,6 @@
 # 32 Coordinate the breaking public API cutover
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [10](10-rail-ink-blue.md), [11](11-ascii-ink-blue.md), [12](12-double-ink-blue.md), [13](13-chevron-ink-blue.md), [14](14-colon-ink-blue.md), [15](15-box-rust.md), [16](16-bracket-rust.md), [17](17-block-rust.md), [18](18-branch-plum.md), [19](19-round-plum.md), [20](20-line-plum.md), [21](21-minimal-sepia.md), [22](22-plain-sepia.md), [23](23-form-sepia.md), [24](24-ledger-sepia.md), [25](25-text-secret-multiline.md), [26](26-boolean-and-basic-choices.md), [27](27-tree-search-order.md), [28](28-formatted-values.md), [29](29-filesystem-network.md), [30](30-key-capture.md), [31](31-feedback-components.md)
 
