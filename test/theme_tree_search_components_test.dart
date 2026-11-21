@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:test/test.dart';
+import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/theme_tree_search_components.dart';
@@ -135,6 +136,34 @@ ThemeSearchPrompt<String> _search(
   search: search,
   kind: kind,
 );
+
+final class _AnswersPerListen extends Stream<String> {
+  _AnswersPerListen(this._answers);
+
+  final List<String> _answers;
+  var _next = 0;
+
+  @override
+  StreamSubscription<String> listen(
+    void Function(String event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => Stream<String>.value(_answers[_next++]).listen(
+    onData,
+    onError: onError,
+    onDone: onDone,
+    cancelOnError: cancelOnError,
+  );
+}
+
+Future<void> _waitUntil(bool Function() predicate) async {
+  for (var turn = 0; turn < 200; turn++) {
+    if (predicate()) return;
+    await Future<void>.delayed(Duration.zero);
+  }
+  throw StateError('Fixture did not settle.');
+}
 
 void main() {
   test(
@@ -352,6 +381,182 @@ void main() {
       expect(text, contains('Order, ordering of 3 choices.'));
       expect(
         text.indexOf('Order, ordering'),
+        lessThan(text.indexOf('Order SortableSelect')),
+      );
+    },
+  );
+
+  test('all five themed families keep terminal outcomes distinct', () async {
+    final linear = const InteractionPreferences(mode: PromptMode.linear);
+    final cases = <({String name, Future<Object> Function(String) run})>[
+      (
+        name: 'tree',
+        run: (input) =>
+            _tree(input, StringBuffer(), interaction: linear).prompt(),
+      ),
+      (
+        name: 'order',
+        run: (input) =>
+            _order(input, StringBuffer(), interaction: linear).prompt(),
+      ),
+      (
+        name: 'autocomplete',
+        run: (input) =>
+            _autocomplete(input, StringBuffer(), interaction: linear).prompt(),
+      ),
+      (
+        name: 'search',
+        run: (input) =>
+            _search(input, StringBuffer(), interaction: linear).prompt(),
+      ),
+      (
+        name: 'command',
+        run: (input) => _search(
+          input,
+          StringBuffer(),
+          interaction: linear,
+          kind: ThemeSearchComponent.commandPalette,
+        ).prompt(),
+      ),
+    ];
+    for (final component in cases) {
+      expect(
+        await component.run('/cancel\r'),
+        isA<Cancelled>(),
+        reason: '${component.name} cancel',
+      );
+      expect(
+        await component.run('\x03'),
+        isA<Interrupted>(),
+        reason: '${component.name} interrupt',
+      );
+      expect(
+        await component.run(''),
+        isA<InputEnded>(),
+        reason: '${component.name} EOF',
+      );
+      final unavailableOutput = StringBuffer();
+      final unavailable = switch (component.name) {
+        'tree' => _tree(
+          '\r',
+          unavailableOutput,
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+          profile: const OutputProfile(glyphs: GlyphSet.ascii),
+        ).prompt(),
+        'order' => _order(
+          '\r',
+          unavailableOutput,
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+          profile: const OutputProfile(glyphs: GlyphSet.ascii),
+        ).prompt(),
+        'autocomplete' => _autocomplete(
+          '\r',
+          unavailableOutput,
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+          profile: const OutputProfile(glyphs: GlyphSet.ascii),
+        ).prompt(),
+        _ => _search(
+          '\r',
+          unavailableOutput,
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+          profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          kind: component.name == 'command'
+              ? ThemeSearchComponent.commandPalette
+              : ThemeSearchComponent.search,
+        ).prompt(),
+      };
+      expect(
+        await unavailable,
+        isA<Unavailable>(),
+        reason: '${component.name} rich availability',
+      );
+      expect(unavailableOutput.toString(), isEmpty);
+    }
+  });
+
+  test(
+    'themed prompts reuse initial state and reject concurrent prompts',
+    () async {
+      var resolutions = 0;
+      final reused = ThemeOrderPrompt<String>(
+        'Order',
+        _choices(),
+        io: TerminalEnvironment.scripted(
+          input: _AnswersPerListen(['/done\r', '/cancel\r']),
+          output: StringBuffer(),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async => resolutions++,
+      );
+      expect((await reused.prompt() as Accepted<List<String>>).value, [
+        'a',
+        'b',
+        'anchor',
+      ]);
+      expect(await reused.prompt(), isA<Cancelled<List<String>>>());
+      expect(resolutions, 2);
+
+      final input = StreamController<String>();
+      final output = StringBuffer();
+      var concurrentResolutions = 0;
+      final concurrent = ThemeOrderPrompt<String>(
+        'Order',
+        _choices(),
+        io: TerminalEnvironment.scripted(input: input.stream, output: output),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        onResolved: (_) async => concurrentResolutions++,
+      );
+      final pending = concurrent.prompt();
+      await _waitUntil(
+        () => output.toString().contains('Order SortableSelect'),
+      );
+      expect(await concurrent.prompt(), isA<Unavailable<List<String>>>());
+      expect(concurrentResolutions, 1);
+      input.add('/done\r');
+      await input.close();
+      expect(await pending, isA<Accepted<List<String>>>());
+    },
+  );
+
+  test(
+    'themed component colors and feedback share one active period',
+    () async {
+      final output = StringBuffer();
+      final palette = ColorThemes.terminalDefault.copyWith(
+        foreground: TerminalColor.rgb(9, 8, 7),
+        background: TerminalColor.rgb(1, 2, 3),
+      );
+      var resolutions = 0;
+      final prompt = ThemeOrderPrompt<String>(
+        'Order',
+        _choices(),
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('/done\r'),
+          output: output,
+          profile: const OutputProfile(
+            glyphs: GlyphSet.ascii,
+            colorDepth: ColorDepth.rgb,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        colors: ComponentColors.palette(palette),
+        onResolved: (_) async => resolutions++,
+      );
+      final feedback = await prompt.startFeedback(
+        (handle) => handle.session.presentText('[status] working'),
+        stop: () {},
+      );
+      expect((await prompt.prompt() as Accepted<List<String>>).value, [
+        'a',
+        'b',
+        'anchor',
+      ]);
+      await feedback.finish();
+      expect(resolutions, 1);
+      final text = output.toString();
+      expect(text, contains('\x1b[38;2;9;8;7;48;2;1;2;3m'));
+      expect(
+        text.indexOf('[status] working'),
         lessThan(text.indexOf('Order SortableSelect')),
       );
     },
