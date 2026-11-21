@@ -221,6 +221,29 @@ final class ThemeSessionHandle {
   ) async => await operation(this);
 }
 
+/// Reuses the period's resolved background and output profile while layering
+/// one component's colour override over the palette already chosen by the
+/// owner. Detection decisions are never repeated by a component.
+extension ThemeSessionColorLayering on ThemeSessionHandle {
+  ResolvedColors componentColors(ComponentColors component) {
+    final period = colors;
+    final background = switch (period.background) {
+      BackgroundVariant.light => BackgroundPreference.light,
+      BackgroundVariant.dark => BackgroundPreference.dark,
+    };
+    return resolveColors(
+      facts: ColorDetectionFacts(
+        outputProfile: period.outputProfile,
+        noColor: environment.environment['NO_COLOR'],
+      ),
+      lightDefault: period.palette,
+      darkDefault: period.palette,
+      preferences: ColorPreferences(background: background),
+      component: component,
+    );
+  }
+}
+
 final class _ThemePeriod {
   _ThemePeriod(this.owner, this.interaction, this.state, this.colors);
 
