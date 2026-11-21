@@ -1,6 +1,6 @@
 # 31 Migrate feedback components
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [07](07-coordinated-feedback.md), [09](09-state-and-compact-help.md)
 
