@@ -1,0 +1,158 @@
+/// Internal adaptive presentation seam for the Branch structural theme.
+///
+/// This library is deliberately absent from the public export barrel. It lets
+/// the Branch family exercise its authored defaults through real components
+/// before the coordinated public cutover; it is not a stable public API.
+library;
+
+import 'package:trelis/src/choice_tracer.dart';
+import 'package:trelis/src/color_resolution.dart';
+import 'package:trelis/src/color_theme.dart';
+import 'package:trelis/src/interaction_resolution.dart';
+import 'package:trelis/src/prompt_structure.dart';
+import 'package:trelis/src/terminal_io.dart';
+import 'package:trelis/src/text_input.dart'
+    show Choice, InstructionDisplay, PromptResult;
+import 'package:trelis/src/text_input_tracer.dart';
+import 'package:trelis/src/theme_session.dart'
+    show ThemeInteractionFactsProvider, ThemeResolvedCallback;
+
+/// The authored Branch defaults and the reference surfaces they were designed
+/// against.
+abstract final class BranchPresentation {
+  /// Atelier Sepia warm ink with a deep plum primary accent.
+  ///
+  /// The terminal surface is not painted: [ColorTheme.background] stays
+  /// terminal-native, and [referenceBackground] is only the documented RGB
+  /// surface used for the authored-pair contrast target.
+  static final lightDefault = ColorTheme(
+    foreground: TerminalColor.rgb(55, 45, 40),
+    background: TerminalColor.terminalDefault(),
+    muted: TerminalColor.rgb(98, 83, 77),
+    accent: TerminalColor.rgb(125, 43, 96),
+    selectionForeground: TerminalColor.rgb(255, 251, 246),
+    selectionBackground: TerminalColor.rgb(125, 43, 96),
+    success: TerminalColor.rgb(34, 103, 65),
+    warning: TerminalColor.rgb(126, 74, 14),
+    error: TerminalColor.rgb(157, 39, 50),
+    border: TerminalColor.rgb(112, 92, 84),
+  );
+
+  /// Warm ink on a dark plum-tinted neutral with a bright plum accent.
+  static final darkDefault = ColorTheme(
+    foreground: TerminalColor.rgb(238, 232, 235),
+    background: TerminalColor.terminalDefault(),
+    muted: TerminalColor.rgb(177, 165, 173),
+    accent: TerminalColor.rgb(216, 150, 205),
+    selectionForeground: TerminalColor.rgb(27, 24, 29),
+    selectionBackground: TerminalColor.rgb(216, 150, 205),
+    success: TerminalColor.rgb(150, 214, 172),
+    warning: TerminalColor.rgb(240, 190, 120),
+    error: TerminalColor.rgb(255, 145, 155),
+    border: TerminalColor.rgb(145, 126, 140),
+  );
+
+  /// The authored reference surface for [background], not a surface request.
+  static TerminalColor referenceBackground(BackgroundVariant background) =>
+      switch (background) {
+        BackgroundVariant.light => TerminalColor.rgb(246, 241, 232),
+        BackgroundVariant.dark => TerminalColor.rgb(27, 24, 29),
+      };
+
+  /// The authored defaults bundled for the internal theme owner.
+  static final defaults = ThemePaletteDefaults(
+    light: lightDefault,
+    dark: darkDefault,
+  );
+
+  /// Branch's title/continuation-line grammar.
+  static const structure = PromptStructure.branch;
+}
+
+/// Creates real Branch components that resolve their colours through the
+/// internal theme owner.
+///
+/// [colors] and [componentColors] keep the application and component override
+/// layers separate; neither can change the environment or background query.
+final class BranchPresentationTracer {
+  BranchPresentationTracer({
+    required this.io,
+    this.colors = const ColorPreferences(),
+    this.componentColors = const ComponentColors(),
+    this.interaction = const InteractionPreferences(),
+    this.instructions = InstructionDisplay.themeDefault,
+    this.onResolved,
+    this.factsForPeriod,
+  });
+
+  final TerminalEnvironment io;
+  final ColorPreferences colors;
+  final ComponentColors componentColors;
+  final InteractionPreferences interaction;
+  final InstructionDisplay instructions;
+  final ThemeResolvedCallback? onResolved;
+  final ThemeInteractionFactsProvider? factsForPeriod;
+
+  /// Renders a real Branch text input in the owner's resolved palette.
+  ThemeChoiceTracer<Object?> get _choices => ThemeChoiceTracer<Object?>(
+    '',
+    const [],
+    io: io,
+    colors: componentColors,
+    themeColors: colors,
+    interaction: interaction,
+    structure: BranchPresentation.structure,
+    instructions: instructions,
+    palettes: BranchPresentation.defaults,
+    onResolved: onResolved,
+    factsForPeriod: factsForPeriod,
+  );
+
+  /// Renders a real Branch single-choice component.
+  Future<PromptResult<T>> select<T>(
+    String label,
+    List<Choice<T>> choices, {
+    T? defaultValue,
+  }) => _choices.select<T>(label, choices, defaultValue: defaultValue);
+
+  /// Renders a real Branch multi-choice component.
+  Future<PromptResult<List<T>>> multiSelect<T>(
+    String label,
+    List<Choice<T>> choices, {
+    List<T> defaultValues = const [],
+    int min = 0,
+    int? max,
+  }) => _choices.multiSelect<T>(
+    label,
+    choices,
+    defaultValues: defaultValues,
+    min: min,
+    max: max,
+  );
+
+  Future<PromptResult<String>> textInput(
+    String label, {
+    String initialValue = '',
+    bool required = false,
+    String? Function(String)? validate,
+    int? maxLength,
+  }) {
+    final tracer = ThemeTextInputTracer(
+      label,
+      io: io,
+      initialValue: initialValue,
+      required: required,
+      validate: validate,
+      maxLength: maxLength,
+      instructions: instructions,
+      colors: componentColors,
+      themeColors: colors,
+      interaction: interaction,
+      palettes: BranchPresentation.defaults,
+      structure: BranchPresentation.structure,
+      onResolved: onResolved,
+      factsForPeriod: factsForPeriod,
+    );
+    return tracer.prompt();
+  }
+}

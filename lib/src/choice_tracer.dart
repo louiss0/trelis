@@ -1,14 +1,16 @@
-/// Internal end-to-end tracer for one theme-owned choice prompt.
+/// Internal end-to-end tracer for theme-owned choice prompts.
 ///
-/// It renders a real [MultiSelect] through [ThemeSession] so structural themes
-/// can be exercised with their authored adaptive defaults and fixed structure
-/// before the coordinated public cutover. It is deliberately absent from the
-/// public export barrel.
+/// It renders real [MultiSelect] and [Select] components through [ThemeSession]
+/// so structural themes can be exercised with their authored adaptive defaults
+/// and fixed structure before the coordinated public cutover. It is
+/// deliberately absent from the public export barrel.
 library;
 
 import 'dart:async';
 
 import 'color_resolution.dart';
+import 'color_theme.dart';
+import 'component_color_application.dart' show applyComponentColors;
 import 'interaction_resolution.dart';
 import 'presentation.dart' show DisplayText;
 import 'prompt_structure.dart' show PromptStructure;
@@ -20,7 +22,13 @@ import 'state_help_presentation.dart'
         composePromptPresentation;
 import 'terminal_io.dart';
 import 'text_input.dart'
-    show Choice, InstructionDisplay, MultiSelect, PromptMode, PromptResult;
+    show
+        Choice,
+        InstructionDisplay,
+        MultiSelect,
+        PromptMode,
+        PromptResult,
+        Select;
 import 'theme_session.dart';
 
 final class ThemeChoiceTracer<T> {
@@ -62,8 +70,9 @@ final class ThemeChoiceTracer<T> {
   /// Restoration failures retained after a successful primary operation.
   List<Object> get cleanupFailures => _owner.cleanupFailures;
 
+  /// Renders the configured multi-choice prompt in the resolved palette.
   Future<PromptResult<List<T>>> prompt() => _owner.prompt((handle) {
-    final palette = _componentPalette(handle).palette;
+    final palette = applyComponentColors(handle, colors).palette;
     final mode = handle.interaction.screenReader
         ? PresentationMode.screenReader
         : handle.interaction.mode == PromptMode.rich
@@ -95,28 +104,55 @@ final class ThemeChoiceTracer<T> {
     ).prompt(session: handle.session);
   });
 
+  /// Renders a real single-choice component with the supplied configuration.
+  Future<PromptResult<R>> select<R>(
+    String label,
+    List<Choice<R>> choices, {
+    R? defaultValue,
+  }) => _prompt(
+    (handle, palette) => Select<R>(
+      label,
+      choices,
+      defaultValue: defaultValue,
+      structure: structure,
+      instructions: instructions,
+      colors: palette,
+    ).prompt(session: handle.session),
+  );
+
+  /// Renders a real multi-choice component with the supplied configuration.
+  Future<PromptResult<List<R>>> multiSelect<R>(
+    String label,
+    List<Choice<R>> choices, {
+    List<R> defaultValues = const [],
+    int min = 0,
+    int? max,
+  }) => _prompt(
+    (handle, palette) => MultiSelect<R>(
+      label,
+      choices,
+      defaultValues: defaultValues,
+      min: min,
+      max: max,
+      structure: structure,
+      instructions: instructions,
+      colors: palette,
+    ).prompt(session: handle.session),
+  );
+
+  Future<PromptResult<R>> _prompt<R>(
+    Future<PromptResult<R>> Function(
+      ThemeSessionHandle handle,
+      ColorTheme palette,
+    )
+    build,
+  ) => _owner.prompt(
+    (handle) => build(handle, applyComponentColors(handle, colors).palette),
+  );
+
   /// Starts live feedback that shares this tracer's active period.
   Future<ThemeFeedbackHandle> startFeedback(
     FutureOr<void> Function(ThemeSessionHandle handle) start, {
     required FutureOr<void> Function() stop,
   }) => _owner.startFeedback(start, stop: stop);
-
-  /// Layers the component override over the palette the period resolved.
-  ResolvedColors _componentPalette(ThemeSessionHandle handle) {
-    final period = handle.colors;
-    final background = switch (period.background) {
-      BackgroundVariant.light => BackgroundPreference.light,
-      BackgroundVariant.dark => BackgroundPreference.dark,
-    };
-    return resolveColors(
-      facts: ColorDetectionFacts(
-        outputProfile: period.outputProfile,
-        noColor: handle.environment.environment['NO_COLOR'],
-      ),
-      lightDefault: period.palette,
-      darkDefault: period.palette,
-      preferences: ColorPreferences(background: background),
-      component: colors,
-    );
-  }
 }
