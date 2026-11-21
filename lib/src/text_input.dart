@@ -5074,6 +5074,7 @@ final class _ChoiceRow {
       if (disabledReason != null) disabledReason!,
       if (lockedReason != null) lockedReason!,
       if (childrenUnavailableReason != null) childrenUnavailableReason!,
+      if (selectable == false) 'not selectable',
       if (!current) 'no longer available',
     ].join('; ');
     final showReference = presentation?.showReference ?? true;
