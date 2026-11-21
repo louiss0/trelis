@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 Future<void> main(List<String> args) async {
   Text('literal\x1b[31m', kind: TextKind.warning).present();

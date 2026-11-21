@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
 /// Smoke tests for the exported surface: every component must be constructible

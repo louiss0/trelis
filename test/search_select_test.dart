@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 // The typed query/results projection is an internal presentation contract, not
 // part of the public authoring surface: read it through its narrow seam.
 import 'package:trelis/src/presentation.dart';

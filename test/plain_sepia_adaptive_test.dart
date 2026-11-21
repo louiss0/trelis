@@ -7,7 +7,7 @@ import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/themes/plain_adaptive_presentation.dart';
 import 'package:trelis/src/themes/plain_sepia_palettes.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Reads a request back through the public SGR rendering, so the test does not
 /// depend on the private colour subclasses.

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:test/test.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/theme_session.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 void main() {
   test('one-shot feedback waits for asynchronous detection before its first output', () async {

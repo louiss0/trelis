@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 Future<void> main(List<String> args) async {
   final mode = args[0] == 'linear' ? PromptMode.linear : PromptMode.rich;

@@ -7,7 +7,7 @@ import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/structural_theme_palettes.dart';
 import 'package:trelis/src/text_input_tracer.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Internal-seam evidence for the Box adaptive defaults.
 ///

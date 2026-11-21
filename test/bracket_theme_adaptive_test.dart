@@ -7,7 +7,7 @@ import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart'
     show StateGlyphs, Status, renderStatus;
 import 'package:trelis/src/themes/bracket_theme_internal.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 double _relativeLuminance(BracketRgb rgb) {
   double channel(int value) {

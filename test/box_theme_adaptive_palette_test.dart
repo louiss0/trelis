@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/structural_theme_palettes.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Palette evidence for the Box structural theme.
 ///

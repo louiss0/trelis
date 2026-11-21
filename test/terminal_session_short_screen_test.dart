@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
 OutputProfile _profile(int rows) => OutputProfile(

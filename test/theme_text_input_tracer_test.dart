@@ -5,7 +5,7 @@ import 'package:trelis/src/background_query.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/text_input_tracer.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 void main() {
   test('rich text input renders its resolved component palette to the selected output', () async {

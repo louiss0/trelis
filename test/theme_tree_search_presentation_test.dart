@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:test/test.dart';
 import 'package:trelis/src/state_help_presentation.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 final _unicodeProfile = OutputProfile(
   cursor: CapabilitySupport.supported,

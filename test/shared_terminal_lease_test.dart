@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:trelis/src/shared_terminal.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
 void main() {
