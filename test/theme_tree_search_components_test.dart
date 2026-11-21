@@ -216,6 +216,53 @@ void main() {
     },
   );
 
+  test(
+    'themed search and command prompts present rich and screen-reader results',
+    () async {
+      final richSearchOutput = StringBuffer();
+      final richSearch = await _search(
+        '\r\x1b[B\r',
+        richSearchOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        profile: _richProfile,
+      ).prompt();
+      expect((richSearch as Accepted<String>).value, 'c');
+      expect(richSearchOutput.toString(), contains('Fruit SearchSelect:'));
+      expect(richSearchOutput.toString(), contains('→'));
+
+      final richCommandOutput = StringBuffer();
+      final richCommand = await _search(
+        '\r\x1b[B\r',
+        richCommandOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        profile: _richProfile,
+        kind: ThemeSearchComponent.commandPalette,
+      ).prompt();
+      expect((richCommand as Accepted<String>).value, 'open');
+      expect(
+        richCommandOutput.toString(),
+        contains('Commands CommandPalette:'),
+      );
+      expect(richCommandOutput.toString(), contains('→'));
+
+      final readerOutput = StringBuffer();
+      final reader = await _search(
+        '/cancel\r',
+        readerOutput,
+        interaction: const InteractionPreferences(
+          mode: PromptMode.linear,
+          screenReader: ScreenReaderPreference.on,
+        ),
+        kind: ThemeSearchComponent.commandPalette,
+      ).prompt();
+      expect(reader, isA<Cancelled<String>>());
+      expect(
+        readerOutput.toString(),
+        contains('Commands, command selection of 2 choices.'),
+      );
+    },
+  );
+
   test('themed async search rejects failures and recovers without losing the query', () async {
     final requests = PendingRequests<List<Choice<String>>>();
     final input = StreamController<String>();
