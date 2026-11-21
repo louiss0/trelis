@@ -5,7 +5,7 @@ import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/ledger_adaptive_theme.dart';
 import 'package:trelis/src/state_help_presentation.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Authored normal-text pairs and their declared reference backgrounds.
 ///

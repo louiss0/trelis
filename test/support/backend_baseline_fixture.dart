@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Deterministic adapter for a public scripted prompt seam.
 final class PromptFixture {

@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 Future<void> main() async {
   final accepted = await CronInput(

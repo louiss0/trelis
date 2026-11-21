@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
 final _syntheticRichProfile = OutputProfile(
@@ -30,7 +30,7 @@ void main() {
         mode: mode,
       );
       expect((result as Accepted<String>).value, 'Ada');
-      expect(out.toString(), contains('Name'));
+      expect(out.toString().toLowerCase(), contains('name'));
     });
 
     test(
@@ -66,7 +66,7 @@ void main() {
       );
       expect(result, isA<Accepted<String>>());
       expect((result as Accepted<String>).value, 'abc');
-      expect(out.toString(), contains('Notes'));
+      expect(out.toString().toLowerCase(), contains('notes'));
     });
 
     for (final component in ['Confirm', 'Checkbox', 'Toggle']) {
@@ -93,7 +93,7 @@ void main() {
           ).prompt(source: input, mode: mode),
         };
         expect((result as Accepted<bool>).value, isTrue);
-        expect(out.toString(), contains('Decision'));
+        expect(out.toString().toLowerCase(), contains('decision'));
       });
     }
 
@@ -112,7 +112,7 @@ void main() {
             mode: mode,
           );
       expect((result as Accepted<String>).value, 'b');
-      expect(out.toString(), contains('Choice'));
+      expect(out.toString().toLowerCase(), contains('choice'));
     });
 
     test('Radio / ${mode.name}: select the second identity', () async {

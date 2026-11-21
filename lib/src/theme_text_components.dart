@@ -35,6 +35,7 @@ final class ThemeTextPrompt {
     required this.label,
     required this.kind,
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.initialValue = '',
     this.required = false,
     this.validate,
@@ -49,19 +50,22 @@ final class ThemeTextPrompt {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : _owner = ThemeSession(
-         environment: io,
-         colors: themeColors,
-         interaction: interaction,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+  }) : _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             colors: themeColors,
+             interaction: interaction,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   /// A single-line text answer.
   factory ThemeTextPrompt.text(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String initialValue = '',
     bool required = false,
     String? Function(String)? validate,
@@ -79,6 +83,7 @@ final class ThemeTextPrompt {
     label: label,
     kind: ThemeTextComponentKind.text,
     io: io,
+    session: session,
     initialValue: initialValue,
     required: required,
     validate: validate,
@@ -98,6 +103,7 @@ final class ThemeTextPrompt {
   factory ThemeTextPrompt.secret(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String initialValue = '',
     bool mask = false,
     bool required = false,
@@ -115,6 +121,7 @@ final class ThemeTextPrompt {
     label: label,
     kind: ThemeTextComponentKind.secret,
     io: io,
+    session: session,
     initialValue: initialValue,
     mask: mask,
     required: required,
@@ -134,6 +141,7 @@ final class ThemeTextPrompt {
   factory ThemeTextPrompt.multiline(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String initialValue = '',
     bool required = false,
     String? Function(String)? validate,
@@ -151,6 +159,7 @@ final class ThemeTextPrompt {
     label: label,
     kind: ThemeTextComponentKind.multiline,
     io: io,
+    session: session,
     initialValue: initialValue,
     required: required,
     validate: validate,

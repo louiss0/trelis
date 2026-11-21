@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
 /// A rich, cursor-capable profile: 40 columns so the stage and its guidance

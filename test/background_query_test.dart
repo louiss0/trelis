@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:test/test.dart';
 import 'package:trelis/src/background_query.dart';
 import 'package:trelis/src/shared_terminal.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 void main() {
   test(

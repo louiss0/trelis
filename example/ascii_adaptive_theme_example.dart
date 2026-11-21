@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:trelis/src/ascii_ink_blue_theme.dart';
-import 'package:trelis/src/color_resolution.dart';
-import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/trelis.dart';
 
 /// Demonstrates Ascii's internal adaptive defaults and an explicit override.

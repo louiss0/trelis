@@ -8,8 +8,6 @@
 import 'dart:async';
 
 import 'package:trelis/src/block_theme_presentation.dart';
-import 'package:trelis/src/color_resolution.dart';
-import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/trelis.dart';
 
 final _profile = OutputProfile(

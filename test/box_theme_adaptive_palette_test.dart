@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/structural_theme_palettes.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Palette evidence for the Box structural theme.
 ///
@@ -415,24 +415,24 @@ void main() {
       },
     );
 
-    test('regenerating theme sources cannot adopt the adaptive defaults', () {
-      final template = File('lib/src/themes/plain_theme.dart')
-          .readAsStringSync();
-      final generated = File('lib/src/themes/box_theme.dart')
-          .readAsStringSync();
-      final atlas = File('lib/src/color_theme_palettes.g.dart')
-          .readAsStringSync();
-      for (final source in [template, generated]) {
-        expect(
-          RegExp(r'ColorTheme colors = ColorThemes.terminalDefault')
-              .allMatches(source),
-          hasLength(38),
-        );
-        expect(source, isNot(contains('StructuralThemePalettes')));
-      }
-      expect(atlas, contains('static const terminalDefault'));
-      expect(atlas, isNot(contains('BoxThemeDefault')));
-    });
+    test(
+      'generated theme instances adopt their authored adaptive defaults',
+      () {
+        final template = File('lib/src/themes/plain_theme.dart')
+            .readAsStringSync();
+        final generated = File('lib/src/themes/box_theme.dart')
+            .readAsStringSync();
+        final atlas = File('lib/src/color_theme_palettes.g.dart')
+            .readAsStringSync();
+        expect(template, contains('extends StructuralTheme'));
+        expect(generated, contains('extends StructuralTheme'));
+        expect(generated, contains('PromptStructure.box'));
+        expect(generated, contains('StructuralThemePalettes.box.defaults'));
+        expect(generated, isNot(contains('static TextInput textInput')));
+        expect(atlas, contains('static const terminalDefault'));
+        expect(atlas, isNot(contains('BoxThemeDefault')));
+      },
+    );
   });
 }
 

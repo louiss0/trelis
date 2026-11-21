@@ -4,7 +4,7 @@ import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart' show ComponentColors;
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/theme_formatted_components.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 void main() {
   group('theme-owned formatted values', () {

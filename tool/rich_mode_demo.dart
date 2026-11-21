@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Simulates a rich-capable terminal and prints the raw output with escape
 /// sequences made visible, so the in-place redraw (`\r\x1b[2K`) is obvious.

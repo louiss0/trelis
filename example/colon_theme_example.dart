@@ -1,7 +1,5 @@
 import 'dart:io';
 
-import 'package:trelis/src/color_resolution.dart';
-import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/themes/colon_theme_internal.dart';
 import 'package:trelis/trelis.dart';
 

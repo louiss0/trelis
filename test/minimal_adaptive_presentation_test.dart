@@ -5,7 +5,7 @@ import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/themes/minimal_presentation.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Independent authored values for the Minimal adaptive defaults.
 ///

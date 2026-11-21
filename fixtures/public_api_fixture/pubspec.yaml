@@ -1,0 +1,10 @@
+name: trelis_public_api_fixture
+description: External-package check of the unstable theme-instance public API.
+publish_to: none
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  trelis:
+    path: ../..

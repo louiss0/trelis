@@ -41,6 +41,7 @@ final class ThemeKeyCapturePrompt<T> {
     required this.label,
     required this.kind,
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.requireObservation = false,
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
@@ -51,18 +52,21 @@ final class ThemeKeyCapturePrompt<T> {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
   }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
-       _owner = ThemeSession(
-         environment: io,
-         colors: themeColors,
-         interaction: interaction,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-       );
+       _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             colors: themeColors,
+             interaction: interaction,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+           );
 
   /// Captures one logical gesture.
   static ThemeKeyCapturePrompt<KeyGesture> keypress(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool requireObservation = false,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
@@ -76,6 +80,7 @@ final class ThemeKeyCapturePrompt<T> {
     label: label,
     kind: ThemeKeyCaptureKind.keypress,
     io: io,
+    session: session,
     requireObservation: requireObservation,
     colors: colors,
     structure: structure,
@@ -91,6 +96,7 @@ final class ThemeKeyCapturePrompt<T> {
   static ThemeKeyCapturePrompt<List<KeyGesture>> keyChordInput(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool requireObservation = false,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
@@ -104,6 +110,7 @@ final class ThemeKeyCapturePrompt<T> {
     label: label,
     kind: ThemeKeyCaptureKind.keyChordInput,
     io: io,
+    session: session,
     requireObservation: requireObservation,
     colors: colors,
     structure: structure,

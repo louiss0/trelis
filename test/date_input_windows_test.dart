@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
 void main() {

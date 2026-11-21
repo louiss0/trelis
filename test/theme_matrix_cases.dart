@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// One public component's real render/task path for a structural theme.
 ///

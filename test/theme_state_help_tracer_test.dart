@@ -5,7 +5,7 @@ import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/text_input_tracer.dart';
 import 'package:trelis/src/theme_session.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 void main() {
   group('traced compact help', () {

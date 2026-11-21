@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ffi';
 
 import 'package:test/test.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 import 'package:trelis/src/hint_observations.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/macos_voiceover_hint.dart';

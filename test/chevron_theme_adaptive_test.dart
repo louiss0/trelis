@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/themes/chevron_theme_internal.dart';
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 double _relativeLuminance(ChevronRgb rgb) {
   double channel(int value) {

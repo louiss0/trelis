@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Explicit ASCII/no-colour profile for the visible fallback scenario.
 final asciiOutputProfile = OutputProfile(

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 // In stale mode, type a then b: the a response is released after ab.
 Future<List<Choice<String>>> Function(String) controlledSearch(
