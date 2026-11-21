@@ -2468,6 +2468,7 @@ final class TextInput {
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           maxLength: maxLength,
+          exemptCommandsFromLimit: mode == PromptMode.linear,
           required: required,
           supplementaryHelp: supplementaryHelp,
           onChanged: rich ? null : _onChanged,
@@ -2552,6 +2553,7 @@ Future<({String action, String value})> _edit(
   bool clearHelpCommand = false,
   bool allowCommandPrefixes = false,
   int? maxLength,
+  bool exemptCommandsFromLimit = false,
   bool required = false,
   List<String> supplementaryHelp = const [],
   String? helpText,
@@ -2696,9 +2698,15 @@ Future<({String action, String value})> _edit(
     final candidate = chars.take(pos).join() + data + chars.skip(pos).join();
     final count = candidate.characters.length - (synthetic >= 0 ? 1 : 0);
     final limit = isPaste ? (pasteMaxLength ?? maxLength) : maxLength;
+    // Advertised whole-line commands are controls, not answer data. They stay
+    // typeable even when the submitted value has a smaller length limit;
+    // identified paste never earns this exemption, and the limit is enforced
+    // again on the value that is actually submitted.
     final commandPrefix =
         !isPaste &&
-        (extraCommands.isNotEmpty || allowCommandPrefixes) &&
+        (exemptCommandsFromLimit ||
+            extraCommands.isNotEmpty ||
+            allowCommandPrefixes) &&
         ({'/help', '/cancel', ...extraCommands}).any(
           (command) =>
               command.startsWith(candidate) ||
@@ -3098,6 +3106,13 @@ Future<({String action, String value})> _edit(
                   }).contains(text.substring(1)))) {
             text = text.substring(1);
           }
+        }
+        if (maxLength != null && text.characters.length > maxLength) {
+          notice(
+            'Value rejected: character limit is $maxLength graphemes.',
+            event: StageEvent.warning,
+          );
+          continue;
         }
         onSubmit?.call(literal);
         transcript?._event(
@@ -4283,7 +4298,7 @@ final class Multiline {
     title:
         '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
     guidance: linear
-        ? 'Enter a line; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        ? 'Enter adds a line; /done accepts. /list, /edit, /insert, /remove, /help and /cancel are exact commands; /help opens help. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
   );
 
