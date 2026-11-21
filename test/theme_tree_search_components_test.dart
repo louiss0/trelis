@@ -6,6 +6,8 @@ import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/theme_tree_search_components.dart';
 import 'package:trelis/trelis.dart';
 
+import 'support/async_search_fixture.dart';
+
 final _richProfile = OutputProfile(
   cursor: CapabilitySupport.supported,
   glyphs: GlyphSet.unicode,
@@ -104,7 +106,114 @@ ThemeAutocompletePrompt _autocomplete(
   instructions: InstructionDisplay.hidden,
 );
 
+List<Choice<String>> _searchChoices() => [
+  Choice('a', 'Apple', disabledReason: 'offline'),
+  Choice('b', 'Banana'),
+  Choice('c', 'Cherry'),
+];
+
+ThemeSearchPrompt<String> _search(
+  String input,
+  StringSink output, {
+  InteractionPreferences interaction = const InteractionPreferences(),
+  OutputProfile profile = const OutputProfile(),
+  FutureOr<List<Choice<String>>> Function(String)? search,
+  ThemeSearchComponent kind = ThemeSearchComponent.search,
+}) => ThemeSearchPrompt<String>(
+  kind == ThemeSearchComponent.search ? 'Fruit' : 'Commands',
+  kind == ThemeSearchComponent.search
+      ? _searchChoices()
+      : [Choice('save', 'Save'), Choice('open', 'Open')],
+  io: TerminalEnvironment.scripted(
+    input: Stream.value(input),
+    output: output,
+    profile: profile,
+    supportsRich: profile.supportsRichInteraction,
+  ),
+  interaction: interaction,
+  instructions: InstructionDisplay.hidden,
+  search: search,
+  kind: kind,
+);
+
 void main() {
+  test(
+    'themed search and command prompts keep identities, hints and help',
+    () async {
+      final searchOutput = StringBuffer();
+      final cancelled = await _search(
+        '\r1\r/cancel\r',
+        searchOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      ).prompt();
+      expect(cancelled, isA<Cancelled<String>>());
+      final searchText = searchOutput.toString();
+      expect(searchText, contains('[!'));
+      expect(searchText, contains('offline'));
+      expect(searchText, contains('Enter a query'));
+      expect(searchText, contains('/help'));
+
+      final commandOutput = StringBuffer();
+      final command = await _search(
+        '/help\rSave\r1\r',
+        commandOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        kind: ThemeSearchComponent.commandPalette,
+      ).prompt();
+      expect((command as Accepted<String>).value, 'save');
+      expect(
+        commandOutput.toString(),
+        contains(
+          'A reference identifies a command; accepting it does not run it.',
+        ),
+      );
+
+      final readerOutput = StringBuffer();
+      final reader = await _search(
+        '/cancel\r',
+        readerOutput,
+        interaction: const InteractionPreferences(
+          mode: PromptMode.linear,
+          screenReader: ScreenReaderPreference.on,
+        ),
+      ).prompt();
+      expect(reader, isA<Cancelled<String>>());
+      final text = readerOutput.toString();
+      expect(text, contains('Fruit, search selection of 3 choices.'));
+      expect(
+        text.indexOf('Fruit, search selection'),
+        lessThan(text.indexOf('Fruit.')),
+      );
+    },
+  );
+
+  test('themed async search rejects failures and recovers without losing the query', () async {
+    final requests = PendingRequests<List<Choice<String>>>();
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final prompt = ThemeSearchPrompt<String>.search(
+      'Fruit',
+      [Choice('a', 'Apple')],
+      io: TerminalEnvironment.scripted(input: input.stream, output: output),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+      search: requests.record,
+    ).prompt();
+
+    input.add('ap\r');
+    await settleUntil(() => requests.requested('ap'));
+    expect(output.toString(), contains('Searching.'));
+    requests.fail('ap', StateError('offline'));
+    await settleUntil(() => output.toString().contains('Search unavailable'));
+
+    input.add('/search\r\x7f\x7fx\r');
+    await settleUntil(() => requests.requested('x'));
+    requests.complete('x', [Choice('a', 'Apple')]);
+    await settleUntil(() => output.toString().contains('1 results for "x"'));
+    input.add('1\r');
+    expect((await prompt as Accepted<String>).value, 'a');
+    await input.close();
+  });
+
   test(
     'themed autocomplete keeps response-local candidates and essential help',
     () async {

@@ -33,8 +33,10 @@ import 'text_input.dart'
     show
         Autocomplete,
         Choice,
+        CommandPalette,
         InstructionDisplay,
         PromptResult,
+        SearchSelect,
         SortableSelect,
         TreeSelect,
         TreeNode;
@@ -358,6 +360,210 @@ final class ThemeAutocompletePrompt {
         shortPrimaryAction: short,
       ),
     ).essentialBefore!;
+  }
+}
+
+/// Which real search component a [ThemeSearchPrompt] delegates to.
+enum ThemeSearchComponent { search, commandPalette }
+
+/// ThemeSession-backed SearchSelect and CommandPalette prompts.
+final class ThemeSearchPrompt<T> {
+  ThemeSearchPrompt(
+    this.label,
+    List<Choice<T>> choices, {
+    required TerminalEnvironment io,
+    this.kind = ThemeSearchComponent.search,
+    this.search,
+    this.defaultValue,
+    T? selectedValue,
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+    this.colors = const ComponentColors(),
+    this.structure = PromptStructure.plain,
+    StateGlyphs glyphs = StateGlyphs.unicode,
+    ColorPreferences themeColors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ThemeInteractionFactsProvider? factsForPeriod,
+    NativeHintObservations? hints,
+  }) : choices = List.unmodifiable(choices),
+       _config = ChoicePresentationConfig(
+         glyphs: glyphs,
+         selectedReference: _referenceOf(choices, selectedValue),
+         restrictions: {
+           for (var i = 0; i < choices.length; i++)
+             if (choices[i].disabledReason != null)
+               i + 1: ChoiceRestriction.unavailable,
+         },
+       ),
+       _owner = ThemeSession(
+         environment: io,
+         interaction: interaction,
+         colors: themeColors,
+         onResolved: onResolved,
+         factsForPeriod: factsForPeriod,
+         hints: hints,
+       );
+
+  factory ThemeSearchPrompt.search(
+    String label,
+    List<Choice<T>> choices, {
+    required TerminalEnvironment io,
+    FutureOr<List<Choice<T>>> Function(String)? search,
+    T? defaultValue,
+    T? selectedValue,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    ComponentColors colors = const ComponentColors(),
+    PromptStructure structure = PromptStructure.plain,
+    StateGlyphs glyphs = StateGlyphs.unicode,
+    ColorPreferences themeColors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ThemeInteractionFactsProvider? factsForPeriod,
+    NativeHintObservations? hints,
+  }) => ThemeSearchPrompt<T>(
+    label,
+    choices,
+    io: io,
+    kind: ThemeSearchComponent.search,
+    search: search,
+    defaultValue: defaultValue,
+    selectedValue: selectedValue,
+    instructions: instructions,
+    supplementaryHelp: supplementaryHelp,
+    colors: colors,
+    structure: structure,
+    glyphs: glyphs,
+    themeColors: themeColors,
+    interaction: interaction,
+    onResolved: onResolved,
+    factsForPeriod: factsForPeriod,
+    hints: hints,
+  );
+
+  factory ThemeSearchPrompt.commandPalette(
+    String label,
+    List<Choice<T>> commands, {
+    required TerminalEnvironment io,
+    FutureOr<List<Choice<T>>> Function(String)? search,
+    T? defaultValue,
+    T? selectedValue,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    ComponentColors colors = const ComponentColors(),
+    PromptStructure structure = PromptStructure.plain,
+    StateGlyphs glyphs = StateGlyphs.unicode,
+    ColorPreferences themeColors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ThemeInteractionFactsProvider? factsForPeriod,
+    NativeHintObservations? hints,
+  }) => ThemeSearchPrompt<T>(
+    label,
+    commands,
+    io: io,
+    kind: ThemeSearchComponent.commandPalette,
+    search: search,
+    defaultValue: defaultValue,
+    selectedValue: selectedValue,
+    instructions: instructions,
+    supplementaryHelp: supplementaryHelp,
+    colors: colors,
+    structure: structure,
+    glyphs: glyphs,
+    themeColors: themeColors,
+    interaction: interaction,
+    onResolved: onResolved,
+    factsForPeriod: factsForPeriod,
+    hints: hints,
+  );
+
+  final String label;
+  final List<Choice<T>> choices;
+  final ThemeSearchComponent kind;
+
+  /// Optional asynchronous search. Results must reuse [choices] identities.
+  final FutureOr<List<Choice<T>>> Function(String)? search;
+  final T? defaultValue;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ComponentColors colors;
+  final PromptStructure structure;
+  final ChoicePresentationConfig _config;
+  final ThemeSession _owner;
+
+  /// Restoration failures retained after a successful primary operation.
+  List<Object> get cleanupFailures => _owner.cleanupFailures;
+
+  Future<PromptResult<T>> prompt() => _owner.prompt((handle) {
+    final mode = handle.presentationMode;
+    if (mode == PresentationMode.screenReader) {
+      handle.session.presentText(_essential(mode));
+    }
+    final palette = handle.componentColors(colors).palette;
+    final presentation = _outputConfig(handle, _config);
+    return switch (kind) {
+      ThemeSearchComponent.search => SearchSelect<T>(
+        label,
+        choices,
+        search: search,
+        defaultValue: defaultValue,
+        instructions: instructions,
+        supplementaryHelp: supplementaryHelp,
+        colors: palette,
+        structure: structure,
+        presentation: presentation,
+      ).prompt(session: handle.session),
+      ThemeSearchComponent.commandPalette => CommandPalette<T>(
+        label,
+        choices,
+        search: search,
+        defaultValue: defaultValue,
+        instructions: instructions,
+        supplementaryHelp: supplementaryHelp,
+        colors: palette,
+        structure: structure,
+        presentation: presentation,
+      ).prompt(session: handle.session),
+    };
+  });
+
+  /// Starts live feedback sharing this prompt's active period.
+  Future<ThemeFeedbackHandle> startFeedback(
+    FutureOr<void> Function(ThemeSessionHandle handle) start, {
+    required FutureOr<void> Function() stop,
+  }) => _owner.startFeedback(start, stop: stop);
+
+  String _essential(PresentationMode mode) {
+    final kindName = switch (kind) {
+      ThemeSearchComponent.search => 'search selection',
+      ThemeSearchComponent.commandPalette => 'command selection',
+    };
+    final (primary, short) = switch (mode) {
+      PresentationMode.rich => (
+        'Type a query; Enter opens results and accepts a focused choice',
+        'Type; Enter',
+      ),
+      _ => ('Enter a query; then a result reference', 'Query; reference'),
+    };
+    return composePromptPresentation(
+      mode: mode,
+      prompt: label,
+      essential: '$label, $kindName of ${choices.length} choices.',
+      hint: compactHint(
+        mode: mode,
+        component: ComponentRoute.standard,
+        primaryAction: primary,
+        shortPrimaryAction: short,
+      ),
+    ).essentialBefore!;
+  }
+
+  static int? _referenceOf<T>(List<Choice<T>> choices, T? selected) {
+    if (selected == null) return null;
+    final index = choices.indexWhere((choice) => choice.value == selected);
+    return index < 0 ? null : index + 1;
   }
 }
 

@@ -281,7 +281,11 @@ final class SearchSelect<T> {
       instructions,
       hidden: (
         title: '${safe(label)}.',
-        guidance: '${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
+        // Hidden instructions omit optional detail, never the primary action
+        // or the route to detailed help.
+        guidance: mode == PromptMode.linear
+            ? 'Enter a query, then a result reference. /help for help.'
+            : 'Type a query; Enter opens results. Ctrl+T help.',
       ),
       compact: (
         title: '${safe(label)}.',
