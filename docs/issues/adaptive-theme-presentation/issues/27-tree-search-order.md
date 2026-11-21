@@ -1,6 +1,6 @@
 # 27 Migrate tree, search and ordering prompts
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [26](26-boolean-and-basic-choices.md)
 
