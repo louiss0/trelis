@@ -69,6 +69,57 @@ void main() {
     expect(_rows(collapsed).first, startsWith('▸'));
   });
 
+  test('order rows keep position, movement and locked reasons apart', () async {
+    final output = StringBuffer();
+    final result =
+        await SortableSelect<String>(
+          'Order',
+          [
+            Choice('a', 'Alpha'),
+            Choice('b', 'Beta'),
+            Choice('anchor', 'Anchor', disabledReason: 'protected'),
+          ],
+          presentation: const ChoicePresentationConfig(
+            glyphs: StateGlyphs.ascii,
+            restrictions: {3: ChoiceRestriction.locked},
+          ),
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value(' \x1b[B\r\r'),
+            output,
+            outputProfile: _asciiProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+
+    expect((result as Accepted<List<String>>).value, ['b', 'a', 'anchor']);
+    final text = output.toString();
+    expect(text, contains('Position 1 of 3'));
+    expect(text, contains('Position 3 of 3'));
+    expect(text, contains('(moving)'));
+    expect(text, contains('[L]'));
+    expect(text, contains('protected'));
+
+    final helpOutput = StringBuffer();
+    await SortableSelect<String>(
+      'Order',
+      [
+        Choice('a', 'Alpha'),
+        Choice('b', 'Beta'),
+        Choice('anchor', 'Anchor', disabledReason: 'protected'),
+      ],
+      presentation: const ChoicePresentationConfig(
+        restrictions: {3: ChoiceRestriction.locked},
+      ),
+    ).prompt(
+      source: ScriptedInput(Stream.value('/help\r/cancel\r'), helpOutput),
+      mode: PromptMode.linear,
+    );
+    expect(helpOutput.toString(), contains('Help: Ordering the list.'));
+    expect(helpOutput.toString(), contains('Ordering 3 identities.'));
+    expect(helpOutput.toString(), contains('protected'));
+  });
+
   test('tree disclosure uses the portable ASCII pair', () async {
     final expanded = await _renderTree(
       glyphs: StateGlyphs.ascii,

@@ -683,6 +683,7 @@ final class SortableSelect<T> {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
        supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -700,6 +701,9 @@ final class SortableSelect<T> {
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+
+  /// Theme-owned state vocabulary, or null for the legacy textual markers.
+  final ChoicePresentationConfig? presentation;
   final List<String> supplementaryHelp;
   bool _active = false;
 
@@ -882,6 +886,7 @@ final class SortableSelect<T> {
           focused: focused,
           lockedReason: choice.disabledReason,
           moving: moving && focused,
+          presentation: presentation,
         ),
         width: _textInputWidth(effectiveProfile),
         foreground: focused ? colors.accent : colors.foreground,
