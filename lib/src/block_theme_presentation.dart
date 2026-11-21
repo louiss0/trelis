@@ -25,7 +25,6 @@ import 'text_input.dart'
         Choice,
         InstructionDisplay,
         MultiSelect,
-        PromptMode,
         PromptResult,
         TextInput;
 import 'theme_session.dart';

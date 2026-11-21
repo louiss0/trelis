@@ -10,6 +10,24 @@ for suffix in ['factories', 'acceptance_matrix']:
 
     result = source.replace('PlainTheme', name)
     result = result.replace('plain_theme', f'{theme}_theme')
+    # Structural grammars may change the label's case, so generated
+    # acceptance checks stay case-insensitive like the checked-in matrices.
+    result = result.replace(
+        "expect(out.toString(), contains('Name'));",
+        "expect(out.toString().toLowerCase(), contains('name'));",
+    )
+    result = result.replace(
+        "expect(out.toString(), contains('Notes'));",
+        "expect(out.toString().toLowerCase(), contains('notes'));",
+    )
+    result = result.replace(
+        "expect(out.toString(), contains('Decision'));",
+        "expect(out.toString().toLowerCase(), contains('decision'));",
+    )
+    result = result.replace(
+        "expect(out.toString(), contains('Choice'));",
+        "expect(out.toString().toLowerCase(), contains('choice'));",
+    )
     result = result.replace('PlainTheme component lifecycles', f'{name} component lifecycles')
     result = result.replace('PlainTheme typed factories', f'{name} typed factories')
 

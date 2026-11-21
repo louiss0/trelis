@@ -1,4 +1,5 @@
 import re
+import subprocess
 import sys
 
 with open('lib/src/themes/plain_theme.dart', 'r', encoding='utf-8') as f:
@@ -7,6 +8,15 @@ with open('lib/src/themes/plain_theme.dart', 'r', encoding='utf-8') as f:
 structure = sys.argv[1]
 name = structure.capitalize() + 'Theme'
 result = source.replace('PlainTheme', name)
+# The generated namespace refers to PromptStructure even though the plain
+# template does not. Every checked-in namespace carries the import; generate
+# it so regeneration does not silently remove a required dependency.
+if "import 'package:trelis/src/prompt_structure.dart';" not in result:
+    result = result.replace(
+        "import 'package:trelis/src/feedback.dart';\n",
+        "import 'package:trelis/src/feedback.dart';\n"
+        "import 'package:trelis/src/prompt_structure.dart';\n",
+    )
 result = result.replace(
     'Plain-theme factory namespace.',
     f'{structure.capitalize()}-theme factory namespace.\n///\n/// Components created through these factories are configured with [PromptStructure.{structure}].',
@@ -28,5 +38,8 @@ result = re.sub(
 out_path = f'lib/src/themes/{structure}_theme.dart'
 with open(out_path, 'w', encoding='utf-8') as f:
     f.write(result)
+
+# Keep generated output in the repository's canonical Dart format.
+subprocess.run(['dart', 'format', out_path], check=True, stdout=subprocess.DEVNULL)
 
 print(f'generated {out_path}')
