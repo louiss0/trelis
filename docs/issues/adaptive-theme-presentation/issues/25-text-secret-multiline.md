@@ -51,7 +51,8 @@ that exemption. Linear multiline guidance now states that `/help` opens help
 and that `/done` accepts. No public constructor, factory, prompt signature or
 export was changed.
 
-Validation on this branch before the final integration merge:
+Validation after merging `integration/adaptive-theme-presentation` (merge
+reported `Already up to date.`):
 
 - `dart test test/theme_text_components_test.dart -r compact` — 19 passed.
 - Focused regression set (`text_input`, `password`, `multiline`,
