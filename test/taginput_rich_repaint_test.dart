@@ -104,7 +104,7 @@ void main() {
     expect(
       out.toString(),
       'Tags: kebab-case tags. Enter adds; Ctrl+X discards the draft. '
-      '/done finishes.\n'
+      '/done finishes. /help opens help.\n'
       'Current text: \n'
       'Cursor position: 0 of 0 graphemes.\n'
       'Current text: a\n'

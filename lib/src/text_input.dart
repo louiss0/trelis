@@ -6646,7 +6646,8 @@ final class TagInput {
   ({String title, String guidance}) _openingParts({required bool linear}) => (
     title: '$label: $_styleName tags.',
     guidance:
-        'Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'}',
+        'Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'} '
+        '${linear ? '/help opens help.' : 'Ctrl+T opens help.'}',
   );
 
   /// Current-stage help for this tag collection.
