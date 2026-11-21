@@ -5,6 +5,7 @@
 /// this is the pre-cutover internal seam, not a stable public API.
 library;
 
+import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/color_theme.dart';
 
 /// The documented light reference surface: warm sepia paper.
@@ -16,6 +17,21 @@ const (int, int, int) plainLightReferenceRgb = (244, 236, 216);
 
 /// The documented dark reference surface: warm Atelier ink.
 const (int, int, int) plainDarkReferenceRgb = (27, 26, 24);
+
+/// Resolves Plain's adaptive defaults through the shared colour resolver.
+///
+/// This is a pure decision: it reads only [facts] and never queries a terminal.
+ResolvedColors resolvePlainColors({
+  ColorDetectionFacts facts = const ColorDetectionFacts(),
+  ColorPreferences preferences = const ColorPreferences(),
+  ComponentColors? component,
+}) => resolveColors(
+  facts: facts,
+  lightDefault: PlainSepiaPalettes.light,
+  darkDefault: PlainSepiaPalettes.dark,
+  preferences: preferences,
+  component: component,
+);
 
 /// The adaptive default palettes for Plain.
 final class PlainSepiaPalettes {
