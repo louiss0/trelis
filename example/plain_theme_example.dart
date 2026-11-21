@@ -1,8 +1,13 @@
 import 'package:trelis/trelis.dart';
 
-/// Demonstrates PlainTheme factories and named/custom colour themes.
+/// Demonstrates the pre-cutover PlainTheme factories and named palettes.
 ///
 /// Run: dart example/plain_theme_example.dart
+///
+/// The named palettes below are example choices, not Plain's defaults. Plain's
+/// adaptive light/dark defaults and a separate explicit override are shown in
+/// the internal pre-cutover example `plain_adaptive_example.dart`; the public
+/// theme-instance cutover belongs to ticket 32.
 ///
 /// The factories only configure components; [prompt], [present] or [start] are
 /// called separately with the desired session/output configuration.
