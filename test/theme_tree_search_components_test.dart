@@ -386,6 +386,122 @@ void main() {
     },
   );
 
+  test(
+    'themed help preserves the query and the short-limit command routes',
+    () async {
+      final helpOutput = StringBuffer();
+      final helped = await _autocomplete(
+        'A\r/help\r/edit\r\r/submit\r',
+        helpOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      ).prompt();
+      expect((helped as Accepted<String>).value, 'A');
+      final helpText = helpOutput.toString();
+      expect(helpText, contains('Help: Autocomplete results.'));
+      expect(
+        helpText.lastIndexOf('Current text: A'),
+        greaterThan(helpText.indexOf('Help: Autocomplete results.')),
+      );
+
+      final shortOutput = StringBuffer();
+      final short = await ThemeAutocompletePrompt(
+        'Name',
+        suggestions: (_) => ['Ada'],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('/help\r/cancel\r'),
+          output: shortOutput,
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        maxLength: 2,
+        instructions: InstructionDisplay.hidden,
+      ).prompt();
+      expect(short, isA<Cancelled<String>>());
+      expect(shortOutput.toString(), contains('Help: Autocomplete query.'));
+      expect(shortOutput.toString(), contains('/help'));
+    },
+  );
+
+  test(
+    'themed search keeps escaped or pasted command-shaped text as data',
+    () async {
+      final escapedOutput = StringBuffer();
+      final escaped = await ThemeAutocompletePrompt(
+        'Name',
+        suggestions: (_) => const [],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('\\/help\r/submit\r'),
+          output: escapedOutput,
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        maxLength: 8,
+      ).prompt();
+      expect((escaped as Accepted<String>).value, '/help');
+
+      final pasteOutput = StringBuffer();
+      final pasted = await ThemeAutocompletePrompt(
+        'Name',
+        suggestions: (_) => const [],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('\x1b[200~\\/help\x1b[201~\r/submit\r'),
+          output: pasteOutput,
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        maxLength: 8,
+      ).prompt();
+      expect(pasted, isA<Accepted<String>>());
+      expect(pasteOutput.toString(), isNot(contains('Unrecognized command')));
+
+      final multilineOutput = StringBuffer();
+      final multiline = await ThemeAutocompletePrompt(
+        'Name',
+        suggestions: (_) => const [],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('\x1b[200~first\nsecond\x1b[201~\r/cancel\r'),
+          output: multilineOutput,
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        maxLength: 20,
+      ).prompt();
+      expect(multiline, isA<Cancelled<String>>());
+      expect(multilineOutput.toString(), contains('Paste rejected'));
+    },
+  );
+
+  test('a stale themed search cannot overwrite the current query or write after cancel', () async {
+    final requests = PendingRequests<List<Choice<String>>>();
+    final input = StreamController<String>();
+    final output = StringBuffer();
+    final prompt = ThemeSearchPrompt<String>.search(
+      'Fruit',
+      [Choice('a', 'Apple'), Choice('b', 'Banana')],
+      io: TerminalEnvironment.scripted(input: input.stream, output: output),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+      search: requests.record,
+    ).prompt();
+
+    input.add('a\r');
+    await settleUntil(() => requests.requested('a'));
+    input.add('/search\r\x7fb\r');
+    await settleUntil(() => requests.requested('b'));
+    requests.complete('a', [Choice('b', 'Banana')]);
+    await settle();
+    final staleText = output.toString();
+    expect(staleText, contains('results for "b"'));
+    expect(
+      staleText.lastIndexOf('results for "b"'),
+      greaterThan(staleText.lastIndexOf('results for "a"')),
+      reason: 'a stale response must not repaint the newer query',
+    );
+
+    input.add('/cancel\r');
+    expect(await prompt, isA<Cancelled<String>>());
+    final beforeLate = output.toString();
+    requests.complete('b', [Choice('a', 'Apple')]);
+    await settle();
+    expect(output.toString(), beforeLate);
+    await input.close();
+  });
+
   test('ASCII narrow no-color tree keeps states readable and restrictions focusable', () async {
     final narrow = OutputProfile(
       cursor: CapabilitySupport.supported,
