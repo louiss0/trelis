@@ -10,7 +10,14 @@ import '../color_theme.dart';
 import '../interaction_resolution.dart';
 import '../prompt_structure.dart';
 import '../terminal_io.dart';
-import '../text_input.dart' show InstructionDisplay, PromptResult, TextInput;
+import '../text_input.dart'
+    show
+        Choice,
+        InstructionDisplay,
+        MultiSelect,
+        PromptResult,
+        Select,
+        TextInput;
 import '../theme_session.dart'
     show
         ThemeInteractionFactsProvider,
@@ -166,6 +173,42 @@ final class LinePresentationTracer {
       required: required,
       validate: validate,
       maxLength: maxLength,
+      instructions: instructions,
+      colors: _componentPalette(handle),
+      structure: LinePresentation.structure,
+    ).prompt(session: handle.session);
+  });
+
+  /// Renders a real Line single-choice component.
+  Future<PromptResult<T>> select<T>(
+    String label,
+    List<Choice<T>> choices, {
+    T? defaultValue,
+  }) => _owner.prompt((handle) {
+    return Select<T>(
+      label,
+      choices,
+      defaultValue: defaultValue,
+      instructions: instructions,
+      colors: _componentPalette(handle),
+      structure: LinePresentation.structure,
+    ).prompt(session: handle.session);
+  });
+
+  /// Renders a real Line multi-choice component.
+  Future<PromptResult<List<T>>> multiSelect<T>(
+    String label,
+    List<Choice<T>> choices, {
+    List<T> defaultValues = const [],
+    int min = 0,
+    int? max,
+  }) => _owner.prompt((handle) {
+    return MultiSelect<T>(
+      label,
+      choices,
+      defaultValues: defaultValues,
+      min: min,
+      max: max,
       instructions: instructions,
       colors: _componentPalette(handle),
       structure: LinePresentation.structure,

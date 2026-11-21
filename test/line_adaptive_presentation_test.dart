@@ -217,6 +217,85 @@ void main() {
       });
     }
   });
+
+  group('Line choices through the internal seam', () {
+    test(
+      'a real light choice keeps the rule beneath the title and markers',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+
+        expect(text, contains('\x1b[38;2;101;82;76;49m────'));
+        expect(text, contains('\x1b[38;2;52;40;36;49mPick tools'));
+        expect(text, contains('\x1b[38;2;112;34;88;49m  1. Starter'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, contains('Unavailable: needs owner role.'));
+        expect(text.indexOf('Pick tools'), lessThan(text.indexOf('──')));
+        expect(text.indexOf('──'), lessThan(text.indexOf('Starter')));
+        expect(text.indexOf('──'), lessThan(text.indexOf('Ctrl+T help')));
+        for (final enclosure in ['╭', '╮', '╰', '╯']) {
+          expect(text, isNot(contains(enclosure)));
+        }
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
+
+    test(
+      'a real dark choice renders plum focus, checked, default and reasons',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(background: BackgroundPreference.dark),
+        );
+
+        expect(text, contains('\x1b[38;2;151;132;146;49m────'));
+        expect(text, contains('\x1b[38;2;242;234;238;49mPick tools'));
+        expect(text, contains('\x1b[38;2;214;139;196;49m  1. Starter'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, contains('[unavailable: needs owner role]'));
+        expect(
+          text,
+          contains('\x1b[38;2;238;186;116;49m  Unavailable: needs owner role.'),
+        );
+        expect(text, contains('Ctrl+T help'));
+        expect(text.indexOf('Ctrl+T help'), greaterThan(text.indexOf('──')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+      },
+    );
+  });
+}
+
+Future<String> _renderChoice({
+  ColorPreferences colors = const ColorPreferences(),
+  ComponentColors component = const ComponentColors(),
+  Map<String, String?> environment = const <String, String>{},
+  OutputProfile? profile,
+}) async {
+  final output = StringBuffer();
+  final tracer = LinePresentationTracer(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(' \r'),
+      output: output,
+      profile: profile ?? _richProfile,
+      environment: environment,
+    ),
+    colors: colors,
+    componentColors: component,
+    interaction: const InteractionPreferences(mode: PromptMode.rich),
+  );
+  final result = await tracer.multiSelect<String>(
+    'Pick tools',
+    [
+      Choice('a', 'Starter', disabledReason: 'needs owner role'),
+      Choice('b', 'Library'),
+    ],
+    defaultValues: const ['b'],
+  );
+  expect(result, isA<Accepted<List<String>>>());
+  return output.toString();
 }
 
 final _richProfile = OutputProfile(
