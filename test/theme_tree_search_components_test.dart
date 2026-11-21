@@ -15,12 +15,6 @@ final _richProfile = OutputProfile(
   geometry: OutputGeometry.fixed(columns: 200, rows: 20),
 );
 
-final _asciiProfile = OutputProfile(
-  cursor: CapabilitySupport.supported,
-  glyphs: GlyphSet.ascii,
-  geometry: OutputGeometry.fixed(columns: 80, rows: 15),
-);
-
 List<TreeNode<String>> _nodes() => [
   TreeNode(
     'branch',

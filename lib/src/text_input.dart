@@ -5071,9 +5071,9 @@ final class _ChoiceRow {
     // expansion is disclosure, an order row's position and movement are part
     // of its label, and every reason a row cannot be accepted stays readable.
     final reason = [
-      if (disabledReason != null) disabledReason!,
-      if (lockedReason != null) lockedReason!,
-      if (childrenUnavailableReason != null) childrenUnavailableReason!,
+      ?disabledReason,
+      ?lockedReason,
+      ?childrenUnavailableReason,
       if (selectable == false) 'not selectable',
       if (!current) 'no longer available',
     ].join('; ');
