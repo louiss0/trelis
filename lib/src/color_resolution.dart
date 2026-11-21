@@ -161,6 +161,23 @@ final class ColorPreferences {
   final ComponentColors colors;
 }
 
+/// The adaptive light/dark defaults owned by one structural theme.
+///
+/// The resolver receives these instead of choosing a family itself. Omission
+/// keeps the terminal-native behaviour of the pre-cutover public factories.
+final class ThemePaletteDefaults {
+  const ThemePaletteDefaults({required this.light, required this.dark});
+
+  final ColorTheme light;
+  final ColorTheme dark;
+
+  /// The pre-cutover default: neither variant forces a colour.
+  static const terminalNative = ThemePaletteDefaults(
+    light: ColorThemes.terminalDefault,
+    dark: ColorThemes.terminalDefault,
+  );
+}
+
 /// The resolved palette decision for one theme and component.
 final class ResolvedColors {
   const ResolvedColors._({

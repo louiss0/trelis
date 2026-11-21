@@ -11,7 +11,6 @@ import 'dart:async';
 
 import 'background_query.dart';
 import 'color_resolution.dart';
-import 'color_theme.dart';
 import 'feedback.dart' show Text;
 import 'hint_observations.dart';
 import 'interaction_resolution.dart';
@@ -261,12 +260,17 @@ final class ThemeSession {
     this.hints,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
+    this.palettes = ThemePaletteDefaults.terminalNative,
   }) : _fixedFacts = facts,
        _fixedColorFacts = colorFacts;
 
   final TerminalEnvironment environment;
   final InteractionPreferences interaction;
   final ColorPreferences colors;
+
+  /// The selected structural theme's adaptive defaults.
+  final ThemePaletteDefaults palettes;
+
   final ThemeResolvedCallback? onResolved;
 
   /// Observes a cleanup failure that did not replace a primary result.
@@ -544,8 +548,8 @@ final class ThemeSession {
     final colorFacts = _fixedColorFacts ?? _defaultColorFacts;
     final initialColors = resolveColors(
       facts: colorFacts,
-      lightDefault: ColorThemes.terminalDefault,
-      darkDefault: ColorThemes.terminalDefault,
+      lightDefault: palettes.light,
+      darkDefault: palettes.dark,
       preferences: colors,
     );
     final period = _ThemePeriod(
@@ -586,8 +590,8 @@ final class ThemeSession {
             period.setColors(
               resolveColors(
                 facts: facts,
-                lightDefault: ColorThemes.terminalDefault,
-                darkDefault: ColorThemes.terminalDefault,
+                lightDefault: palettes.light,
+                darkDefault: palettes.dark,
                 preferences: colors,
               ),
             );
