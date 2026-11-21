@@ -357,8 +357,136 @@ void main() {
         expect(text, isNot(contains('38;2;$defaultAccent;')));
       });
     }
+
+    test(
+      'explicit terminalDefault at app and component scope emits no colour',
+      () async {
+        final appPlain = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.terminalDefault),
+          ),
+        );
+        final componentPlain = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          component: const ComponentColors.palette(ColorThemes.terminalDefault),
+        );
+
+        for (final text in [appPlain, componentPlain]) {
+          expect(text, contains('╭─'));
+          expect(text, contains('Pick tools'));
+          expect(text, isNot(contains('\x1b[38;2;')));
+          expect(text, isNot(contains('\x1b[48;2;')));
+        }
+      },
+    );
+
+    test(
+      'non-empty NO_COLOR is the final restriction against explicit colours',
+      () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          component: ComponentColors.palette(ColorThemes.signal),
+          environment: const {'NO_COLOR': '1'},
+        );
+
+        expect(text, contains('╭─'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b]11')));
+      },
+    );
+
+    test('a component override cannot redirect background detection', () async {
+      final text = await _renderChoice(
+        colors: const ColorPreferences(background: BackgroundPreference.light),
+        component: ComponentColors(
+          darkPalette: ColorThemes.terminalDefault.copyWith(
+            foreground: TerminalColor.rgb(201, 202, 203),
+          ),
+        ),
+      );
+
+      expect(text, contains('\x1b[38;2;58;46;42;49m│ Pick tools'));
+      expect(text, isNot(contains('38;2;201;202;203;')));
+    });
+
+    test(
+      'output depth degrades rgb requests without painting a surface',
+      () async {
+        final text = await _renderChoice(
+          profile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.indexed256,
+            geometry: OutputGeometry.fixed(columns: 70, rows: 20),
+            glyphs: GlyphSet.unicode,
+          ),
+        );
+
+        expect(text, contains('╭─'));
+        expect(text, contains('38;5;'));
+        expect(text, isNot(contains('38;2;')));
+        expect(text, isNot(contains('\x1b[48;5;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
+
+    test(
+      'ASCII no-colour narrow output keeps markers and compact help',
+      () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          profile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.none,
+            geometry: OutputGeometry.fixed(columns: 30, rows: 12),
+            glyphs: GlyphSet.ascii,
+          ),
+        );
+
+        expect(text, contains('.'));
+        expect(text, contains("'"));
+        expect(text, contains('Pick tools'));
+        expect(text, contains('1. Starter [unchecked]'));
+        expect(text, contains('[focused]'));
+        expect(text, contains('needs owner role'));
+        expect(text, contains('[checked]'));
+        expect(text, contains('[default]'));
+        expect(text, contains('[unavailable: needs owner role]'));
+        // Narrow output wraps the status label across lines; it never
+        // truncates essential text to fit the nominal column count.
+        expect(text, contains('Unavailable: needs owner rol'));
+        expect(text, contains('Ctrl+T help'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+        expect(text, isNot(contains('\x1b[2J')));
+
+        final visible = _visibleLines(text);
+        expect(visible, isNotEmpty);
+        for (final line in visible) {
+          expect(line, isNot(contains('…')));
+          expect(line, isNot(contains('...')));
+        }
+      },
+    );
   });
 }
+
+List<String> _visibleLines(String text) => [
+  for (final line in text.replaceAll('\r', '').split('\n'))
+    if (line.isNotEmpty) line.replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), ''),
+];
 
 Future<String> _renderChoice({
   ColorPreferences colors = const ColorPreferences(),
