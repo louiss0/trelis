@@ -1,4 +1,4 @@
-import 'package:trelis/src/testing/compat_api.dart';
+import 'package:trelis/trelis.dart';
 
 /// Simulates a rich-capable terminal and prints the raw output with escape
 /// sequences made visible, so the in-place redraw (`\r\x1b[2K`) is obvious.
@@ -9,16 +9,16 @@ Future<void> main() async {
     geometry: OutputGeometry.fixed(columns: 40, rows: 10),
     glyphs: GlyphSet.ascii,
   );
-  final source = ScriptedInput(
-    Stream.fromIterable(['d', 'e', 'm', 'o', '\r']),
-    out,
-    supportsRich: true,
-    outputProfile: profile,
+  final theme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.fromIterable(['d', 'e', 'm', 'o', '\r']),
+      output: out,
+      profile: profile,
+      supportsRich: true,
+    ),
+    interaction: const InteractionPreferences(mode: PromptMode.rich),
   );
-  final result = await RailTheme.textInput(
-    'Project name',
-    required: true,
-  ).prompt(source: source, mode: PromptMode.rich);
+  final result = await theme.textInput('Project name', required: true).prompt();
   final escaped = out
       .toString()
       .replaceAll('\r', r'\r')

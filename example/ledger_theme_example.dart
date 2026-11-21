@@ -1,60 +1,52 @@
 // ignore_for_file: avoid_print
 
-import 'dart:async';
-
-import 'package:trelis/src/ledger_adaptive_theme.dart';
 import 'package:trelis/trelis.dart';
 
-/// Demonstrates Ledger's adaptive sepia defaults and a separate explicit
-/// colour override at the internal cutover seam.
+/// Demonstrates Ledger's adaptive theme-instance defaults and a separate
+/// whole-palette component override through the public API.
 ///
-/// Run: dart example/ledger_theme_example.dart
-///
-/// The public static [LedgerTheme] factories remain the supported pre-cutover
-/// API. The adaptive defaults are exercised here through the internal theme
-/// seam so examples do not accidentally present the old atlas palettes as
-/// defaults. Construction is output-free; prompts need a scripted environment
-/// or a terminal owner.
-void main() {
-  final io = TerminalEnvironment.scripted(
-    input: const Stream<String>.empty(),
-    output: StringBuffer(),
-  );
+/// Run: dart run example/ledger_theme_example.dart
 
-  // Adaptive defaults: omission resolves to Ledger's authored warm-ink pair.
-  // An unknown background falls back to dark; a passive hint can select light.
-  final ledger = LedgerAdaptiveTheme(io: io);
-  final unknown = resolveLedgerColors(facts: const ColorDetectionFacts());
-  final light = resolveLedgerColors(
-    facts: const ColorDetectionFacts(
-      passiveBackground: BackgroundObservation.light,
+Future<void> _show(
+  String title, {
+  required ColorPreferences colors,
+  ComponentColors component = const ComponentColors(),
+}) async {
+  final output = StringBuffer();
+  final theme = LedgerTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value('Ada\r'),
+      output: output,
+      profile: const OutputProfile(colorDepth: ColorDepth.rgb),
     ),
-  );
-  print(
-    'Ledger defaults (${unknown.background.name} fallback): '
-    '${unknown.palette.accent == LedgerAdaptivePalettes.dark.accent ? 'dark sepia' : 'unexpected'}',
-  );
-  print(
-    'Ledger defaults (${light.background.name} hint): '
-    '${light.palette.accent == LedgerAdaptivePalettes.light.accent ? 'light sepia' : 'unexpected'}',
+    interaction: const InteractionPreferences(mode: PromptMode.linear),
+    colors: colors,
   );
 
-  // A separate application choice: replace the whole component palette rather
-  // than redefining Ledger's defaults.
+  final result = await theme
+      .textInput('Project name', colors: component)
+      .prompt();
+  print('$title: ${result.runtimeType}');
+  print('rendered: ${output.toString().split('\n').first}');
+}
+
+Future<void> main() async {
+  await _show(
+    'Light default',
+    colors: const ColorPreferences(background: BackgroundPreference.light),
+  );
+  await _show(
+    'Dark default',
+    colors: const ColorPreferences(background: BackgroundPreference.dark),
+  );
+
   final explicit = ColorThemes.terminalDefault.copyWith(
     foreground: TerminalColor.rgb(40, 45, 50),
     accent: TerminalColor.rgb(32, 92, 197),
   );
-  final overridden = LedgerAdaptiveTheme(
-    io: io,
+  await _show(
+    'Explicit component palette',
+    colors: const ColorPreferences(background: BackgroundPreference.dark),
     component: ComponentColors.palette(explicit),
-  );
-  print(
-    'Explicit component override accent: '
-    '${overridden.component.palette!.accent == explicit.accent ? 'override applied' : 'unexpected'}',
-  );
-  print(
-    'Configured prompts through the internal seam: '
-    '${ledger.component.palette == null ? 'theme defaults' : 'override'}',
   );
 }

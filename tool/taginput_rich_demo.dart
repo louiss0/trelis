@@ -1,4 +1,4 @@
-import 'package:trelis/src/testing/compat_api.dart';
+import 'package:trelis/trelis.dart';
 
 /// Runs a rich-mode TagInput, types a tag, and prints the raw output with
 /// escape sequences visible.
@@ -9,14 +9,16 @@ Future<void> main() async {
     geometry: OutputGeometry.fixed(columns: 40, rows: 12),
     glyphs: GlyphSet.ascii,
   );
-  final source = ScriptedInput(
-    Stream.fromIterable(['a', 'b', '\r']),
-    out,
-    supportsRich: true,
-    outputProfile: profile,
+  final theme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.fromIterable(['a', 'b', '\r']),
+      output: out,
+      profile: profile,
+      supportsRich: true,
+    ),
+    interaction: const InteractionPreferences(mode: PromptMode.rich),
   );
-  final result = await RailTheme.tagInput('Tags')
-      .prompt(source: source, mode: PromptMode.rich);
+  final result = await theme.tagInput('Tags').prompt();
   final escaped = out
       .toString()
       .replaceAll('\r', r'\r')

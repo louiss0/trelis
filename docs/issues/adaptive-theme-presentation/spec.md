@@ -1,8 +1,9 @@
 # Adaptive themes and accessible component presentation
 
-Status: ready-for-agent
+Status: implemented-unstable
 Labels: ready-for-agent
-Implementation: not started
+Implementation: complete for agent-resolvable tickets; interaction and colour
+release gates and native/human evidence remain open
 
 ## Purpose and authority
 

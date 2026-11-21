@@ -7,7 +7,6 @@
 
 import 'dart:async';
 
-import 'package:trelis/src/block_theme_presentation.dart';
 import 'package:trelis/trelis.dart';
 
 final _profile = OutputProfile(
@@ -21,7 +20,7 @@ Future<void> _show(
   ComponentColors component = const ComponentColors(),
 }) async {
   final output = StringBuffer();
-  final theme = BlockThemePresentation(
+  final theme = BlockTheme(
     io: TerminalEnvironment.scripted(
       input: Stream.value('Ada\r'),
       output: output,
@@ -31,7 +30,9 @@ Future<void> _show(
     colors: ColorPreferences(background: background),
   );
 
-  final result = await theme.textInput('Project name', colors: component);
+  final result = await theme
+      .textInput('Project name', colors: component)
+      .prompt();
   print('$title: $result');
   print(output.toString().replaceAll('\x1b', r'\e'));
 }

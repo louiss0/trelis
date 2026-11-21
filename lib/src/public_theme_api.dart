@@ -9,22 +9,23 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'color_resolution.dart'
     show ColorPreferences, ComponentColors, ThemePaletteDefaults;
-import 'feedback.dart' show FeedbackClock, FeedbackOutcome, TextKind;
+import 'feedback.dart'
+    show
+        FeedbackClock,
+        FeedbackOutcome,
+        MultiSpinner,
+        Progress,
+        Spinner,
+        TaskActivity,
+        TextKind;
 import 'hint_observations.dart' show NativeHintObservations;
 import 'interaction_resolution.dart' show InteractionPreferences;
 import 'prompt_structure.dart' show PromptStructure;
 import 'state_help_presentation.dart' show SingleSelectionStyle;
-import 'terminal_io.dart'
-    show
-        TerminalEnvironment,
-        TerminalIo,
-        TerminalLease,
-        TerminalOwnershipIdentity;
+import 'terminal_io.dart' show TerminalEnvironment;
 import 'text_input.dart'
     show
         Choice,
@@ -61,7 +62,8 @@ import 'theme_feedback_tracer.dart'
 import 'theme_filesystem_components.dart' show ThemeFilesystemPrompt;
 import 'theme_formatted_components.dart' show ThemeFormattedPrompt;
 import 'theme_key_capture_components.dart' show ThemeKeyCapturePrompt;
-import 'theme_session.dart' show ThemeResolvedCallback, ThemeSession;
+import 'theme_session.dart'
+    show ThemeInteractionState, ThemeResolvedCallback, ThemeSession;
 import 'theme_text_components.dart' show ThemeTextPrompt;
 import 'theme_tree_search_components.dart'
     show
@@ -98,24 +100,24 @@ final class ThemeFeedback {
 }
 
 /// A live feedback participant started by a theme.
-final class ThemeLiveFeedback {
+final class ThemeLiveFeedback<C extends ThemeLiveFeedbackControl> {
   const ThemeLiveFeedback._(this._start, {required this.structure});
 
-  final Future<ThemeLiveFeedbackControl> Function() _start;
+  final Future<C> Function() _start;
   final PromptStructure structure;
 
   /// Starts presentation and joins the theme's current active period.
-  Future<ThemeLiveFeedbackControl> start() => _start();
+  Future<C> start() => _start();
 }
 
 /// Explicit completion or cancellation of live feedback.
 ///
 /// There is no public theme close: finishing the last participant restores
 /// the terminal automatically.
-final class ThemeLiveFeedbackControl {
+sealed class ThemeLiveFeedbackControl {
   ThemeLiveFeedbackControl._(this._control);
 
-  final ThemeFeedbackControl<dynamic> _control;
+  final ThemeFeedbackControl<Object> _control;
 
   /// Ends feedback with an explicit outcome.
   Future<void> finish(FeedbackOutcome outcome, {String? detail}) =>
@@ -125,69 +127,61 @@ final class ThemeLiveFeedbackControl {
   Future<void> stop() => _control.stop();
 }
 
-/// A minimal default native environment.
-///
-/// Applications that need precise native input handling should supply a
-/// [TerminalEnvironment] explicitly. This default provides a best-effort
-/// stdin/stdout binding without claiming native terminal qualification.
-final class _NativeThemeAdapter
-    implements TerminalIo, TerminalOwnershipIdentity {
-  late final Stream<String> _input = stdin.transform(utf8.decoder);
+/// Updates a running progress indicator without exposing its lifecycle.
+final class ThemeProgressControl extends ThemeLiveFeedbackControl {
+  // ignore: use_super_parameters
+  ThemeProgressControl._(ThemeFeedbackControl<Progress> control)
+    : _progress = control.component,
+      super._(control);
 
-  @override
-  Stream<String> get input => _input;
+  final Progress _progress;
 
-  @override
-  StringSink get output => stdout;
+  /// Reports the completed work count.
+  void update(int completed) => _progress.update(completed);
 
-  @override
-  bool get supportsRich => stdout.hasTerminal;
+  /// Reports a meaningful phase immediately.
+  void phase(String description) => _progress.phase(description);
 
-  @override
-  Map<String, String?> get environment => Platform.environment;
-
-  @override
-  Object get ownershipIdentity => stdout;
-
-  @override
-  TerminalLease acquire() {
-    bool? echo;
-    bool? line;
-    try {
-      echo = stdin.echoMode;
-      stdin.echoMode = false;
-    } catch (_) {
-      echo = null;
-    }
-    try {
-      line = stdin.lineMode;
-      stdin.lineMode = false;
-    } catch (_) {
-      line = null;
-    }
-    return TerminalLease(() {
-      if (line != null) {
-        try {
-          stdin.lineMode = line;
-        } catch (_) {}
-      }
-      if (echo != null) {
-        try {
-          stdin.echoMode = echo;
-        } catch (_) {}
-      }
-    });
-  }
+  /// Replaces the work estimate; null makes it indeterminate.
+  void setTotal(int? total, {int completed = 0}) =>
+      _progress.setTotal(total, completed: completed);
 }
 
-final TerminalEnvironment _defaultThemeEnvironment = TerminalEnvironment.custom(
-  adapter: _NativeThemeAdapter(),
-  profile: TerminalEnvironment.nativeProfile(
-    hasTerminal: stdout.hasTerminal,
-    supportsRich: stdout.hasTerminal,
-    term: Platform.environment['TERM'] ?? '',
-  ),
-);
+/// Updates a running spinner without exposing its lifecycle.
+final class ThemeSpinnerControl extends ThemeLiveFeedbackControl {
+  // ignore: use_super_parameters
+  ThemeSpinnerControl._(ThemeFeedbackControl<Spinner> control)
+    : _spinner = control.component,
+      super._(control);
+
+  final Spinner _spinner;
+
+  /// Reports a meaningful change in activity.
+  void update(String state) => _spinner.update(state);
+}
+
+/// Updates a running group of named tasks.
+final class ThemeMultiSpinnerControl extends ThemeLiveFeedbackControl {
+  // ignore: use_super_parameters
+  ThemeMultiSpinnerControl._(ThemeFeedbackControl<MultiSpinner> control)
+    : _group = control.component,
+      super._(control);
+
+  final MultiSpinner _group;
+
+  /// Reports a change for one task.
+  void update(String task, TaskActivity activity, {String? phase}) =>
+      _group.update(task, activity, phase: phase);
+
+  /// Ends one task. Call [finish] or [stop] to release the group itself.
+  void finishTask(String task, FeedbackOutcome outcome, {String? detail}) =>
+      _group.finishTask(task, outcome, detail: detail);
+}
+
+/// The default environment is built by the terminal seam so native geometry,
+/// colour facts and acquisition stay out of the public theme surface.
+final TerminalEnvironment _defaultThemeEnvironment =
+    TerminalEnvironment.nativeThemeDefault();
 
 /// Shared behavior of the 15 structural theme instances.
 ///
@@ -233,6 +227,10 @@ abstract class StructuralTheme {
   /// Injectable native/application hint observations.
   final NativeHintObservations? hints;
 
+  /// The published interaction for the current period, or null until the
+  /// resolution callback succeeds and again after cleanup.
+  ThemeInteractionState? get resolvedInteraction => _owner.resolvedInteraction;
+
   /// Cleanup failures observed after a successful primary operation.
   List<Object> get cleanupFailures => _owner.cleanupFailures;
 
@@ -242,12 +240,9 @@ abstract class StructuralTheme {
   ThemeFeedback _feedback(Future<void> Function() present) =>
       ThemeFeedback._(present, structure: structure);
 
-  ThemeLiveFeedback _live(
-    Future<ThemeFeedbackControl<dynamic>> Function() start,
-  ) => ThemeLiveFeedback._(
-    () async => ThemeLiveFeedbackControl._(await start()),
-    structure: structure,
-  );
+  ThemeLiveFeedback<C> _live<C extends ThemeLiveFeedbackControl>(
+    Future<C> Function() start,
+  ) => ThemeLiveFeedback._(start, structure: structure);
 
   // Text, secret and multiline.
 
@@ -390,6 +385,7 @@ abstract class StructuralTheme {
       ThemeChoiceOption<T>(
         choice.value,
         choice.label,
+        lockedReason: choice.lockedReason,
         unavailableReason: choice.disabledReason,
       ),
   ];
@@ -1067,7 +1063,7 @@ abstract class StructuralTheme {
     return _feedback(() => feedback.text(content, kind: kind));
   }
 
-  ThemeLiveFeedback progress(
+  ThemeLiveFeedback<ThemeProgressControl> progress(
     String label, {
     int? total,
     Duration interval = const Duration(seconds: 5),
@@ -1081,17 +1077,19 @@ abstract class StructuralTheme {
       colors: colors,
     );
     return _live(() async {
-      return feedback.progress(
-        label,
-        total: total,
-        interval: interval,
-        milestone: milestone,
-        clock: clock,
+      return ThemeProgressControl._(
+        await feedback.progress(
+          label,
+          total: total,
+          interval: interval,
+          milestone: milestone,
+          clock: clock,
+        ),
       );
     });
   }
 
-  ThemeLiveFeedback spinner(
+  ThemeLiveFeedback<ThemeSpinnerControl> spinner(
     String label, {
     ComponentColors colors = const ComponentColors(),
   }) {
@@ -1101,11 +1099,11 @@ abstract class StructuralTheme {
       colors: colors,
     );
     return _live(() async {
-      return feedback.spinner(label);
+      return ThemeSpinnerControl._(await feedback.spinner(label));
     });
   }
 
-  ThemeLiveFeedback multiSpinner(
+  ThemeLiveFeedback<ThemeMultiSpinnerControl> multiSpinner(
     Iterable<String> tasks, {
     Duration interval = const Duration(seconds: 5),
     FeedbackClock? clock,
@@ -1117,7 +1115,9 @@ abstract class StructuralTheme {
       colors: colors,
     );
     return _live(() async {
-      return feedback.multiSpinner(tasks, interval: interval, clock: clock);
+      return ThemeMultiSpinnerControl._(
+        await feedback.multiSpinner(tasks, interval: interval, clock: clock),
+      );
     });
   }
 }

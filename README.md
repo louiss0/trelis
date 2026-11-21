@@ -17,14 +17,16 @@ See [the migration guide](docs/adaptive-theme-public-api-migration.md) for the
 breaking changes from static factories, direct constructors, invocation-level
 configuration and supplied answers. The detailed component sections below
 document the older construction seam retained for internal component tests;
-they are not the current public authoring API. The examples under `example/`
-use the public instances except for explicitly named internal adaptive
-previews.
+their snippets import the internal compatibility barrel and are **not** public
+authoring examples. Current scripts under `example/` and `tool/` use public
+theme instances; only the GUI evidence fixture remains on the internal session
+seam because it verifies that legacy rendering path.
 
 ## TextInput
 
 ```dart
-import 'package:trelis/trelis.dart';
+// Internal compatibility seam for legacy component tests only.
+import 'package:trelis/src/testing/compat_api.dart';
 
 final result = await TextInput(
   'Name',

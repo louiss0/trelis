@@ -6,6 +6,15 @@ colour release gates have not passed, and native/screen-reader evidence is
 still missing. Treat the signatures as a reviewable cutover, not as an
 accessibility or long-term compatibility guarantee.
 
+BREAKING CHANGE: static theme component factories, public direct component
+constructors, invocation-level I/O/session/mode/presentation configuration,
+`SuppliedAnswer` and `SuppliedTags` are no longer part of the public API.
+Callers must construct a theme instance and call its instance methods; the
+remaining sections describe the migration and its supported alternatives.
+The GUI evidence fixture intentionally keeps using the internal compatibility
+session seam to verify the legacy rendering path; it is not public usage and
+is not a second supported API.
+
 ## Before and after
 
 ```dart

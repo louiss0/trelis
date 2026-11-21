@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:trelis/src/ascii_ink_blue_theme.dart';
 import 'package:trelis/trelis.dart';
 
-/// Demonstrates Ascii's internal adaptive defaults and an explicit override.
-///
-/// This imports an internal, unstable seam on purpose: the public component
-/// cutover is a later ticket. `AsciiTheme` static factories remain the public
-/// API here. The example uses scripted I/O so it runs without a terminal.
+/// Demonstrates Ascii's adaptive theme-instance defaults and an explicit
+/// component override through the public API. Scripted I/O keeps the example
+/// runnable without a terminal.
 ///
 /// Run: dart run example/ascii_adaptive_theme_example.dart
 Future<void> main() async {
@@ -21,7 +18,7 @@ Future<void> main() async {
   const lightColors = ColorPreferences(background: BackgroundPreference.light);
 
   final adaptiveOutput = StringBuffer();
-  final adaptive = AsciiInkBlueTheme(
+  final adaptive = AsciiTheme(
     io: TerminalEnvironment.scripted(
       input: Stream.value('Ada\r'),
       output: adaptiveOutput,
@@ -30,11 +27,11 @@ Future<void> main() async {
     interaction: interaction,
     colors: lightColors,
   );
-  final adaptiveResult = await adaptive.textInput('Project name');
+  final adaptiveResult = await adaptive.textInput('Project name').prompt();
   final adaptiveText = adaptiveOutput.toString();
 
   final overrideOutput = StringBuffer();
-  final explicit = AsciiInkBlueTheme(
+  final explicit = AsciiTheme(
     io: TerminalEnvironment.scripted(
       input: Stream.value('Ada\r'),
       output: overrideOutput,
@@ -43,15 +40,17 @@ Future<void> main() async {
     interaction: interaction,
     colors: const ColorPreferences(background: BackgroundPreference.dark),
   );
-  final overrideResult = await explicit.textInput(
-    'Project name',
-    colors: ComponentColors.palette(ColorThemes.terminalDefault),
-  );
+  final overrideResult = await explicit
+      .textInput(
+        'Project name',
+        colors: ComponentColors.palette(ColorThemes.terminalDefault),
+      )
+      .prompt();
   final overrideText = overrideOutput.toString();
 
   stderr.writeln('Adaptive light answer: ${adaptiveResult.runtimeType}');
   stderr.writeln(
-    'Reference background: ${AsciiAdaptivePalettes.lightReferenceHex} '
+    'Reference background: #FAF8F3 '
     '(documentation only, never painted)',
   );
   stderr.writeln(

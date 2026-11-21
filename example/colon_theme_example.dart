@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:trelis/src/themes/colon_theme_internal.dart';
 import 'package:trelis/trelis.dart';
 
 /// Demonstrates Colon's adaptive defaults and a separate explicit override.
@@ -16,7 +15,7 @@ Future<void> _show({
   ComponentColors component = const ComponentColors(),
 }) async {
   stdout.writeln('\n$title');
-  final theme = ColonInternalPresentation(
+  final theme = ColonTheme(
     io: TerminalEnvironment.scripted(
       input: Stream.value('Ada\r'),
       output: stdout,
@@ -30,7 +29,9 @@ Future<void> _show({
     interaction: const InteractionPreferences(mode: PromptMode.rich),
     colors: colors,
   );
-  final result = await theme.textInput('Project name', colors: component);
+  final result = await theme
+      .textInput('Project name', colors: component)
+      .prompt();
   stdout.writeln(
     result is Accepted<String>
         ? 'Accepted: ${result.value}'

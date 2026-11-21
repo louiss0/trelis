@@ -1,4 +1,4 @@
-import 'package:trelis/src/testing/compat_api.dart';
+import 'package:trelis/trelis.dart';
 
 /// Runs a rich-mode Select with two down-arrow navigations and prints the raw
 /// output with escape sequences visible, to show whether the choice list
@@ -10,16 +10,19 @@ Future<void> main() async {
     geometry: OutputGeometry.fixed(columns: 40, rows: 12),
     glyphs: GlyphSet.ascii,
   );
-  final source = ScriptedInput(
-    Stream.fromIterable(['\x1b[B', '\x1b[B', '\r']),
-    out,
-    supportsRich: true,
-    outputProfile: profile,
+  final theme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.fromIterable(['\x1b[B', '\x1b[B', '\r']),
+      output: out,
+      profile: profile,
+      supportsRich: true,
+    ),
+    interaction: const InteractionPreferences(mode: PromptMode.rich),
   );
-  final result = await RailTheme.select<String>('Deploy target', [
+  final result = await theme.select<String>('Deploy target', [
     Choice('staging', 'Staging'),
     Choice('production', 'Production'),
-  ]).prompt(source: source, mode: PromptMode.rich);
+  ]).prompt();
   final escaped = out
       .toString()
       .replaceAll('\r', r'\r')
