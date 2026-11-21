@@ -386,6 +386,68 @@ void main() {
     },
   );
 
+  test('ASCII narrow no-color tree keeps states readable and restrictions focusable', () async {
+    final narrow = OutputProfile(
+      cursor: CapabilitySupport.supported,
+      glyphs: GlyphSet.ascii,
+      geometry: OutputGeometry.fixed(columns: 24, rows: 8),
+    );
+    final output = StringBuffer();
+    final prompt = ThemeTreeSelectPrompt<String>(
+      'Pick',
+      [
+        TreeNode(
+          'branch',
+          'A branch that wraps across the narrow layout',
+          children: [TreeNode('child', 'Nested child leaf')],
+          selectable: true,
+        ),
+        TreeNode('blocked', 'Blocked', disabledReason: 'offline'),
+        TreeNode(
+          'locked',
+          'Locked branch',
+          children: [TreeNode('leaf', 'Leaf')],
+          selectable: false,
+        ),
+      ],
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('\x1b[B\r\x1b[B\r\x03'),
+        output: output,
+        profile: narrow,
+        environment: {'NO_COLOR': '1'},
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+      glyphs: StateGlyphs.ascii,
+    );
+    expect(await prompt.prompt(), isA<Interrupted<String>>());
+    final text = output.toString();
+    expect(text, contains('v'));
+    expect(text, contains('>'));
+    expect(text, contains('[!]'));
+    expect(text, contains('offline'));
+    expect(text, contains('[L]'));
+    expect(text, contains('not selectable'));
+    expect(text, isNot(contains('▾')));
+    expect(text, isNot(contains('→')));
+    expect(
+      text,
+      isNot(matches(RegExp(r'\x1b\[[0-9;]*m'))),
+      reason: 'NO_COLOR forbids SGR styling',
+    );
+    final rows = text
+        .split('\n')
+        .where((line) => RegExp(r'\d+\.\s').hasMatch(line))
+        .toList();
+    expect(rows, isNotEmpty);
+    for (final row in rows) {
+      expect(
+        row.length,
+        lessThanOrEqualTo(24),
+        reason: 'row exceeds the declared width: $row',
+      );
+    }
+  });
+
   test('all five themed families keep terminal outcomes distinct', () async {
     final linear = const InteractionPreferences(mode: PromptMode.linear);
     final cases = <({String name, Future<Object> Function(String) run})>[
