@@ -262,6 +262,101 @@ void main() {
         expect(text, isNot(contains('\x1b[?1049h')));
       },
     );
+
+    for (final variant in BackgroundVariant.values) {
+      final isLight = variant == BackgroundVariant.light;
+      final preference = isLight
+          ? BackgroundPreference.light
+          : BackgroundPreference.dark;
+      final defaultAccent = isLight ? '119;39;94' : '222;146;202';
+      final defaultForeground = isLight ? '58;46;42' : '240;232;236';
+
+      test(
+        '$variant app whole-palette replacement reaches the output',
+        () async {
+          final replacement = ColorThemes.terminalDefault.copyWith(
+            foreground: TerminalColor.rgb(11, 22, 33),
+            accent: TerminalColor.rgb(44, 55, 66),
+          );
+          final text = await _renderChoice(
+            colors: ColorPreferences(
+              background: preference,
+              colors: ComponentColors.palette(replacement),
+            ),
+          );
+
+          expect(text, contains('\x1b[38;2;11;22;33;49m│ Pick tools'));
+          expect(text, contains('\x1b[38;2;44;55;66;49m│ 1. Starter'));
+          expect(text, isNot(contains('38;2;$defaultForeground;')));
+          expect(text, isNot(contains('38;2;$defaultAccent;')));
+        },
+      );
+
+      test('$variant app variant roles win over shared app roles', () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: preference,
+            colors: ComponentColors(
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(70, 71, 72)),
+              lightRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(80, 81, 82),
+              ),
+              darkRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(90, 91, 92),
+              ),
+            ),
+          ),
+        );
+
+        final expected = isLight ? '80;81;82' : '90;91;92';
+        expect(text, contains('\x1b[38;2;$expected;49m│ 1. Starter'));
+        expect(text, isNot(contains('38;2;70;71;72;')));
+        expect(text, isNot(contains('38;2;$defaultAccent;')));
+      });
+
+      test('$variant component palette discards the app layers', () async {
+        final app = ColorThemes.terminalDefault.copyWith(
+          foreground: TerminalColor.rgb(11, 22, 33),
+          accent: TerminalColor.rgb(44, 55, 66),
+        );
+        final component = ColorThemes.terminalDefault.copyWith(
+          foreground: TerminalColor.rgb(99, 88, 77),
+          accent: TerminalColor.rgb(66, 55, 44),
+        );
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: preference,
+            colors: ComponentColors(
+              palette: app,
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(12, 13, 14)),
+            ),
+          ),
+          component: ComponentColors.palette(component),
+        );
+
+        expect(text, contains('\x1b[38;2;99;88;77;49m│ Pick tools'));
+        expect(text, contains('\x1b[38;2;66;55;44;49m│ 1. Starter'));
+        for (final obsolete in ['11;22;33', '44;55;66', '12;13;14']) {
+          expect(text, isNot(contains('38;2;$obsolete;')));
+        }
+      });
+
+      test('$variant component variant roles override shared roles', () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(background: preference),
+          component: ComponentColors(
+            roles: ColorRoleOverrides(accent: TerminalColor.rgb(3, 3, 3)),
+            lightRoles: ColorRoleOverrides(accent: TerminalColor.rgb(4, 4, 4)),
+            darkRoles: ColorRoleOverrides(accent: TerminalColor.rgb(5, 5, 5)),
+          ),
+        );
+
+        final expected = isLight ? '4;4;4' : '5;5;5';
+        expect(text, contains('\x1b[38;2;$expected;49m│ 1. Starter'));
+        expect(text, isNot(contains('38;2;3;3;3;')));
+        expect(text, isNot(contains('38;2;$defaultAccent;')));
+      });
+    }
   });
 }
 
