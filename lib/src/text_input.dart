@@ -17,6 +17,12 @@ import 'color_theme.dart';
 import 'native_resize.dart';
 import 'presentation.dart';
 import 'prompt_structure.dart';
+import 'state_help_presentation.dart'
+    show
+        ChoicePresentation,
+        ChoicePresentationConfig,
+        ChoiceRestriction,
+        renderChoiceRow;
 import 'shared_terminal.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -4163,7 +4169,7 @@ abstract class _BooleanPrompt {
     spine.hint(
       out,
       mode == PromptMode.linear
-          ? r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.'
+          ? r'Enter yes/y or no/n, or an empty line for the displayed default. /help opens help. /cancel cancels. Both are exact commands. Quote commands with a backslash and double a leading backslash. Identified paste is literal.'
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.muted,
     );
@@ -4982,7 +4988,14 @@ final class _ChoiceRow {
     this.lockedReason,
     this.moving = false,
     this.current = true,
+    this.presentation,
   });
+
+  /// Theme-wide state vocabulary, or null for the legacy textual markers.
+  ///
+  /// The real components keep their existing calls and output until a theme
+  /// supplies this configuration through its own component factory.
+  final ChoicePresentationConfig? presentation;
 
   /// The stable choice reference displayed for this row, independent of order.
   final int reference;
@@ -5047,6 +5060,42 @@ final class _ChoiceRow {
   String get text =>
       '$reference. ${radio ? '( ) ' : ''}$label'
       '${markers.map((marker) => ' $marker').join()}';
+
+  /// The same row expressed with the theme's composable state vocabulary.
+  ///
+  /// Focus, selection, the default and a restriction occupy separate aligned
+  /// positions, so a locked or unavailable row stays readable without colour.
+  ChoicePresentation get themedRow => ChoicePresentation(
+    label: '$reference. $label',
+    focused: focused,
+    checked: checked,
+    selected: checked == null
+        ? presentation?.selectedReference == reference
+        : null,
+    isDefault: isDefault,
+    style: presentation?.style ?? const ChoicePresentationConfig().style,
+    restriction:
+        presentation?.restrictionFor(
+          reference,
+          reason: disabledReason ?? lockedReason,
+        ) ??
+        ChoiceRestriction.none,
+    reason: disabledReason ?? lockedReason,
+  );
+
+  /// Display-safe row text for the configured vocabulary.
+  String get themedText {
+    final config = presentation;
+    if (config == null) return DisplayText.from(text).value;
+    return renderChoiceRow(themedRow, glyphs: config.glyphs);
+  }
+
+  /// Marker clusters a wrapped themed row must keep intact.
+  List<String> get themedAtomicText {
+    final config = presentation;
+    if (config == null) return markers;
+    return themedRow.markers(glyphs: config.glyphs).atomicParts;
+  }
 }
 
 /// Writes one shared choice row within the declared width.
@@ -5076,9 +5125,9 @@ void _writeChoiceRow(
     // loses the structure the heading keeps.
     spine.write(
       output,
-      DisplayText.from(row.text).value,
+      row.themedText,
       foreground: foreground,
-      atomicText: row.markers,
+      atomicText: row.themedAtomicText,
     );
     return;
   }
@@ -5092,9 +5141,9 @@ void _writeChoiceRow(
     opens: opens,
     closes: closes,
     lines: _wrapText(
-      DisplayText.from(row.text).value,
+      row.themedText,
       available,
-      atomicText: row.markers,
+      atomicText: row.themedAtomicText,
     ),
   );
   var drawn = 0;
@@ -5118,6 +5167,7 @@ final class Select<T> extends _SingleChoice<T> {
     super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
+    super.presentation,
   }) : super(radio: false);
 }
 
@@ -5130,6 +5180,7 @@ final class Radio<T> extends _SingleChoice<T> {
     super.structure = PromptStructure.plain,
     super.instructions = InstructionDisplay.themeDefault,
     super.supplementaryHelp = const [],
+    super.presentation,
   }) : super(radio: true);
 }
 
@@ -5142,6 +5193,7 @@ abstract class _SingleChoice<T> {
     required this.colors,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
        supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -5162,6 +5214,7 @@ abstract class _SingleChoice<T> {
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+  final ChoicePresentationConfig? presentation;
   final List<String> supplementaryHelp;
   bool _active = false;
 
@@ -5328,7 +5381,7 @@ abstract class _SingleChoice<T> {
     const pageSize = 10;
     final hint = mode == PromptMode.rich
         ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
-        : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+        : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. /help opens help. /cancel cancels. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
     var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
@@ -5370,6 +5423,7 @@ abstract class _SingleChoice<T> {
             focused: i == focus,
             isDefault: defaultValue != null && c.value == defaultValue,
             disabledReason: c.disabledReason,
+            presentation: presentation,
           ),
           width: width,
           foreground: i == focus ? colors.accent : colors.foreground,
@@ -5516,14 +5570,17 @@ final class MultiSelect<T> {
     this.label,
     List<Choice<T>> choices, {
     List<T> defaultValues = const [],
+    List<T>? initialSelection,
     this.min = 0,
     this.max,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : choices = List.unmodifiable(choices),
        defaultValues = List.unmodifiable(defaultValues),
+       _initialSelection = List.unmodifiable(initialSelection ?? defaultValues),
        supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
       throw ArgumentError.value(label, 'label');
@@ -5536,20 +5593,33 @@ final class MultiSelect<T> {
     }
     if (defaultValues.toSet().length != defaultValues.length ||
         defaultValues.any(
-          (v) => !choices.any((c) => c.value == v && c.disabledReason == null),
+          (v) => !choices.any(
+            (c) =>
+                c.value == v &&
+                (presentation != null || c.disabledReason == null),
+          ),
         ) ||
         (max != null && defaultValues.length > max!)) {
       throw ArgumentError('Invalid default choices.');
+    }
+    if (_initialSelection.toSet().length != _initialSelection.length ||
+        _initialSelection.any(
+          (v) => !choices.any((c) => c.value == v && c.disabledReason == null),
+        ) ||
+        (max != null && _initialSelection.length > max!)) {
+      throw ArgumentError('Invalid initial selection.');
     }
   }
   final String label;
   final List<Choice<T>> choices;
   final List<T> defaultValues;
+  final List<T> _initialSelection;
   final int min;
   final int? max;
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+  final ChoicePresentationConfig? presentation;
   final List<String> supplementaryHelp;
   bool _active = false;
 
@@ -5719,7 +5789,7 @@ final class MultiSelect<T> {
         keys ?? SharedTerminalReader(scripted.input.transform(utf8.encoder));
     final selected = <int>{
       for (var i = 0; i < choices.length; i++)
-        if (defaultValues.contains(choices[i].value)) i,
+        if (_initialSelection.contains(choices[i].value)) i,
     };
     var filter = '';
     var focus = 0;
@@ -5730,7 +5800,7 @@ final class MultiSelect<T> {
         if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
     ];
     final hint = mode == PromptMode.linear
-        ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. /help opens help. /cancel cancels. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
     var hintShown = false;
     void show() {
@@ -5776,6 +5846,7 @@ final class MultiSelect<T> {
             focused: focused,
             isDefault: defaultValues.contains(c.value),
             disabledReason: c.disabledReason,
+            presentation: presentation,
           ),
           width: width,
           foreground: focused ? colors.accent : colors.foreground,

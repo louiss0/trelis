@@ -99,10 +99,44 @@ final class ChoiceMarkers {
   /// The readable explanation, or null when the row has no restriction.
   final String? reason;
 
+  /// The marker clusters a layout must keep together when wrapping a row.
+  List<String> get atomicParts => [
+    disclosure,
+    selection,
+    focus,
+    defaultMarker,
+    restriction,
+  ].where((part) => part.trim().isNotEmpty).toList();
+
   /// The fixed-width marker prefix used by [renderChoiceRow].
   String get prefix =>
       '$disclosure ${selection.padRight(3)} $focus $defaultMarker '
       '${restriction.padRight(3)} ';
+}
+
+/// Theme-wide presentation choices for the choice component families.
+///
+/// The style and glyph repertoire are fixed by the theme, never by a prompt
+/// invocation. [selectedReference] records an actual draft selection (it is
+/// not implied by [ChoicePresentation.isDefault] or by focus), and
+/// [restrictions] maps a 1-based displayed reference to the reason category a
+/// row must show.
+final class ChoicePresentationConfig {
+  const ChoicePresentationConfig({
+    this.glyphs = StateGlyphs.unicode,
+    this.style = SingleSelectionStyle.circles,
+    this.selectedReference,
+    this.restrictions = const <int, ChoiceRestriction>{},
+  });
+
+  final StateGlyphs glyphs;
+  final SingleSelectionStyle style;
+  final int? selectedReference;
+  final Map<int, ChoiceRestriction> restrictions;
+
+  ChoiceRestriction restrictionFor(int reference, {String? reason}) =>
+      restrictions[reference] ??
+      (reason == null ? ChoiceRestriction.none : ChoiceRestriction.unavailable);
 }
 
 /// One display-safe choice row.
