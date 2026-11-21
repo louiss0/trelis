@@ -4154,7 +4154,7 @@ abstract class _BooleanPrompt {
     spine.hint(
       out,
       mode == PromptMode.linear
-          ? r'Enter yes/y or no/n, or an empty line for the displayed default. /help opens help and /cancel cancels; both are exact commands. Quote commands with a backslash and double a leading backslash. Identified paste is literal.'
+          ? r'Enter yes/y or no/n, or an empty line for the displayed default. /help opens help. /cancel cancels. Both are exact commands. Quote commands with a backslash and double a leading backslash. Identified paste is literal.'
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.muted,
     );

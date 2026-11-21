@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:test/test.dart';
+import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/theme_choice_components.dart';
@@ -381,7 +382,7 @@ void main() {
         expect((await prompt.prompt() as Accepted<String>).value, 'a');
         final text = output.toString();
         expect(text, contains('Pick, selection of 2 choices.'));
-        expect(text, contains('Up or Down moves focus; Enter accepts'));
+        expect(text, contains('Enter a choice number to accept'));
         expect(text, contains('/help opens help.'));
         expect(
           text.indexOf('Pick, selection of 2 choices.'),
@@ -441,7 +442,441 @@ void main() {
       },
     );
   });
+
+  group('themed multi-selection family', () {
+    test(
+      'checked, unchecked, focus, default and restrictions stay independent',
+      () async {
+        final output = StringBuffer();
+        final prompt = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true, isDefault: true),
+            ThemeChoiceOption('b', 'Beta', selected: true),
+            ThemeChoiceOption('c', 'Gamma', lockedReason: 'needs owner role'),
+            ThemeChoiceOption('d', 'Delta', unavailableReason: 'offline'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('/done\r'),
+            output: output,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          instructions: InstructionDisplay.hidden,
+        );
+
+        expect((await prompt.prompt() as Accepted<List<String>>).value, [
+          'a',
+          'b',
+        ]);
+        final text = output.toString();
+        expect(
+          text,
+          contains('x'),
+          reason: 'checked rows have their own marker',
+        );
+        expect(
+          text,
+          contains('-'),
+          reason: 'unchecked rows have their own marker',
+        );
+        expect(
+          text,
+          contains('D'),
+          reason: 'the default position is independent',
+        );
+        expect(text, contains('[L]'));
+        expect(text, contains('needs owner role'));
+        expect(text, contains('[!'));
+        expect(text, contains('offline'));
+        expect(text, contains('/help opens help.'));
+      },
+    );
+
+    test(
+      'narrow no-color linear output keeps validation and readable states',
+      () async {
+        final output = StringBuffer();
+        final prompt = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true),
+            ThemeChoiceOption('b', 'Beta'),
+            ThemeChoiceOption('c', 'Charlie', unavailableReason: 'offline'),
+            ThemeChoiceOption('d', 'Delta'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('/done\r2\r3\r4\r/done\r'),
+            output: output,
+            profile: OutputProfile(
+              glyphs: GlyphSet.ascii,
+              colorDepth: ColorDepth.rgb,
+              geometry: OutputGeometry.fixed(columns: 28, rows: 8),
+            ),
+            environment: const {'NO_COLOR': '1'},
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          min: 2,
+          max: 2,
+          instructions: InstructionDisplay.hidden,
+        );
+
+        expect((await prompt.prompt() as Accepted<List<String>>).value, [
+          'a',
+          'b',
+        ]);
+        final text = output.toString();
+        final flat = text.replaceAll('\n', '');
+        expect(text, isNot(contains('\x1b[')));
+        expect(text.split('\n').every((line) => line.length <= 28), isTrue);
+        expect(flat, contains('Minimum 2 selections required.'));
+        expect(flat, contains('Unavailable: offline.'));
+        expect(flat, contains('Maximum 2 selections.'));
+        expect(flat, contains('/help opens help.'));
+      },
+    );
+
+    test('unicode rows keep distinct glyphs under NO_COLOR', () async {
+      final output = StringBuffer();
+      final prompt = ThemeMultiSelectPrompt<String>(
+        'Features',
+        [
+          ThemeChoiceOption('a', 'Alpha', selected: true),
+          ThemeChoiceOption('b', 'Beta', lockedReason: 'needs owner role'),
+        ],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('/done\r'),
+          output: output,
+          profile: OutputProfile(
+            glyphs: GlyphSet.unicode,
+            colorDepth: ColorDepth.rgb,
+            geometry: OutputGeometry.fixed(columns: 28, rows: 8),
+          ),
+          environment: const {'NO_COLOR': '1'},
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      );
+
+      expect((await prompt.prompt() as Accepted<List<String>>).value, ['a']);
+      final text = output.toString();
+      expect(text, isNot(contains('\x1b[')));
+      expect(text, contains('✓'));
+      expect(text, contains('○'));
+      expect(text, contains('[L]'));
+      expect(text.replaceAll('\n', ''), contains('needs owner role'));
+    });
+
+    test(
+      'a screen-reader multi-selection announces its own controls first',
+      () async {
+        final output = StringBuffer();
+        final prompt = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [ThemeChoiceOption('a', 'Alpha'), ThemeChoiceOption('b', 'Beta')],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('1\r/done\r'),
+            output: output,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(
+            mode: PromptMode.linear,
+            screenReader: ScreenReaderPreference.on,
+          ),
+        );
+
+        expect((await prompt.prompt() as Accepted<List<String>>).value, ['a']);
+        final text = output.toString();
+        expect(text, contains('Features, multiple selection of 2 choices.'));
+        expect(text, contains('Enter a number to toggle; /done submits'));
+        expect(text, contains('/help opens help.'));
+        expect(
+          text.indexOf('Features, multiple selection of 2 choices.'),
+          lessThan(text.indexOf('Features MultiSelect')),
+        );
+      },
+    );
+
+    test(
+      'multi-selection outcomes, reuse and concurrent invocations',
+      () async {
+        expect(
+          await _multi('/cancel\r').prompt(),
+          isA<Cancelled<List<String>>>(),
+        );
+        expect(await _multi('\x03').prompt(), isA<Interrupted<List<String>>>());
+        expect(await _multi('').prompt(), isA<InputEnded<List<String>>>());
+        final output = StringBuffer();
+        final probe = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [ThemeChoiceOption('a', 'Alpha')],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('1\r/done\r'),
+            output: output,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+        );
+        expect(await probe.prompt(), isA<Unavailable<List<String>>>());
+        expect(output.toString(), isEmpty);
+
+        var resolutions = 0;
+        final reused = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true),
+            ThemeChoiceOption('b', 'Beta'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: _AnswersPerListen(['2\r/done\r', '/done\r']),
+            output: StringBuffer(),
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          onResolved: (_) async => resolutions++,
+        );
+        expect((await reused.prompt() as Accepted<List<String>>).value, [
+          'a',
+          'b',
+        ]);
+        expect((await reused.prompt() as Accepted<List<String>>).value, ['a']);
+        expect(resolutions, 2);
+
+        final input = StreamController<String>();
+        final sharedOutput = StringBuffer();
+        var sharedResolutions = 0;
+        final shared = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [ThemeChoiceOption('a', 'Alpha', selected: true)],
+          io: TerminalEnvironment.scripted(
+            input: input.stream,
+            output: sharedOutput,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          onResolved: (_) async => sharedResolutions++,
+        );
+        final pending = shared.prompt();
+        await _waitUntil(
+          () => sharedOutput.toString().contains('Features MultiSelect'),
+        );
+        expect(await shared.prompt(), isA<Unavailable<List<String>>>());
+        expect(sharedResolutions, 1);
+        input.add('/done\r');
+        await input.close();
+        expect(await pending, isA<Accepted<List<String>>>());
+      },
+    );
+
+    test('component colors and live feedback share the owner period', () async {
+      final output = StringBuffer();
+      final palette = ColorThemes.terminalDefault.copyWith(
+        foreground: TerminalColor.rgb(9, 8, 7),
+        background: TerminalColor.rgb(1, 2, 3),
+      );
+      var resolutions = 0;
+      final prompt = ThemeMultiSelectPrompt<String>(
+        'Features',
+        [
+          ThemeChoiceOption('a', 'Alpha', selected: true),
+          ThemeChoiceOption('b', 'Beta'),
+        ],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('/done\r'),
+          output: output,
+          profile: const OutputProfile(
+            glyphs: GlyphSet.ascii,
+            colorDepth: ColorDepth.rgb,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+        colors: ComponentColors.palette(palette),
+        onResolved: (_) async => resolutions++,
+      );
+
+      final feedback = await prompt.startFeedback(
+        (handle) => handle.session.presentText('[status] working'),
+        stop: () {},
+      );
+      expect((await prompt.prompt() as Accepted<List<String>>).value, ['a']);
+      await feedback.finish();
+
+      expect(resolutions, 1);
+      final text = output.toString();
+      expect(text, contains('\x1b[38;2;9;8;7;48;2;1;2;3m'));
+      expect(
+        text.indexOf('[status] working'),
+        lessThan(text.indexOf('Features MultiSelect')),
+      );
+    });
+    test(
+      'locked choices refuse acceptance in both linear and rich modes',
+      () async {
+        final selectOutput = StringBuffer();
+        final select = ThemeSingleChoicePrompt<String>.select(
+          'Pick',
+          [
+            ThemeChoiceOption('a', 'Alpha', lockedReason: 'needs owner role'),
+            ThemeChoiceOption('b', 'Beta'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('1\r\x7f2\r'),
+            output: selectOutput,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+        );
+        expect((await select.prompt() as Accepted<String>).value, 'b');
+        expect(
+          selectOutput.toString(),
+          contains(
+            'Unavailable: needs owner role. Choose an enabled reference.',
+          ),
+        );
+
+        final multiOutput = StringBuffer();
+        final multi = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true),
+            ThemeChoiceOption('b', 'Beta', lockedReason: 'needs owner role'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('\x1b[B \r'),
+            output: multiOutput,
+            profile: _richProfile,
+            supportsRich: true,
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+        );
+        expect((await multi.prompt() as Accepted<List<String>>).value, ['a']);
+        expect(
+          multiOutput.toString(),
+          contains('Unavailable: needs owner role.'),
+        );
+      },
+    );
+  });
+
+  group('narrow and pasted input across the choice families', () {
+    test(
+      'each family keeps a usable hint and intact lines at 24 columns',
+      () async {
+        final outputs = <StringBuffer>[];
+        final narrow = OutputProfile(
+          glyphs: GlyphSet.ascii,
+          colorDepth: ColorDepth.rgb,
+          geometry: OutputGeometry.fixed(columns: 24, rows: 8),
+        );
+        StringBuffer output() {
+          final buffer = StringBuffer();
+          outputs.add(buffer);
+          return buffer;
+        }
+
+        final boolean = ThemeBooleanPrompt.confirm(
+          'Ready?',
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('y\r'),
+            output: output(),
+            profile: narrow,
+            environment: const {'NO_COLOR': '1'},
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+        );
+        final select = ThemeSingleChoicePrompt<String>.select(
+          'Pick',
+          [
+            ThemeChoiceOption('a', 'Alpha'),
+            ThemeChoiceOption('b', 'Beta', selected: true),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('2\r'),
+            output: output(),
+            profile: narrow,
+            environment: const {'NO_COLOR': '1'},
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          selectionStyle: SingleSelectionStyle.triangles,
+        );
+        final multi = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true),
+            ThemeChoiceOption('b', 'Beta'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('2\r/done\r'),
+            output: output(),
+            profile: narrow,
+            environment: const {'NO_COLOR': '1'},
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+        );
+
+        expect((await boolean.prompt() as Accepted<bool>).value, isTrue);
+        expect((await select.prompt() as Accepted<String>).value, 'b');
+        expect((await multi.prompt() as Accepted<List<String>>).value, [
+          'a',
+          'b',
+        ]);
+        for (final buffer in outputs) {
+          final text = buffer.toString();
+          expect(text, isNot(contains('\x1b[')));
+          expect(text.split('\n').every((line) => line.length <= 24), isTrue);
+          expect(text.replaceAll('\n', ''), contains('/help opens help.'));
+        }
+        expect(outputs[1].toString(), contains('<^>'));
+        expect(outputs[1].toString(), contains('< >'));
+        expect(outputs[2].toString(), contains('x'));
+        expect(outputs[2].toString(), contains('-'));
+      },
+    );
+
+    test(
+      'identified paste stays literal answer data in linear choice editors',
+      () async {
+        final selectOutput = StringBuffer();
+        final select = ThemeSingleChoicePrompt<String>.select(
+          'Pick',
+          [ThemeChoiceOption('a', 'Alpha'), ThemeChoiceOption('b', 'Beta')],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('\x1b[200~2\x1b[201~\r'),
+            output: selectOutput,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+        );
+        expect((await select.prompt() as Accepted<String>).value, 'b');
+
+        final multiOutput = StringBuffer();
+        final multi = ThemeMultiSelectPrompt<String>(
+          'Features',
+          [ThemeChoiceOption('a', 'Alpha'), ThemeChoiceOption('b', 'Beta')],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('\x1b[200~1\x1b[201~\r/done\r'),
+            output: multiOutput,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+        );
+        expect((await multi.prompt() as Accepted<List<String>>).value, ['a']);
+        expect(multiOutput.toString(), isNot(contains('Unrecognized command')));
+      },
+    );
+  });
 }
+
+ThemeMultiSelectPrompt<String> _multi(String input) =>
+    ThemeMultiSelectPrompt<String>(
+      'Features',
+      [ThemeChoiceOption('a', 'Alpha')],
+      io: TerminalEnvironment.scripted(
+        input: Stream.value(input),
+        output: StringBuffer(),
+        profile: const OutputProfile(glyphs: GlyphSet.ascii),
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+    );
 
 ThemeSingleChoicePrompt<String> _single(
   ThemeSingleChoiceComponent kind,

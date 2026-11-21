@@ -460,6 +460,13 @@ final class ThemeSingleChoicePrompt<T> {
       ThemeSingleChoiceComponent.select => 'selection',
       ThemeSingleChoiceComponent.radio => 'radio selection',
     };
+    final (primary, short) = switch (mode) {
+      PresentationMode.rich => (
+        'Up or Down moves focus; Enter accepts',
+        'Arrows; Enter',
+      ),
+      _ => ('Enter a choice number to accept', 'Number; Enter'),
+    };
     return composePromptPresentation(
       mode: mode,
       prompt: label,
@@ -467,8 +474,8 @@ final class ThemeSingleChoicePrompt<T> {
       hint: compactHint(
         mode: mode,
         component: ComponentRoute.standard,
-        primaryAction: 'Up or Down moves focus; Enter accepts',
-        shortPrimaryAction: 'Arrows; Enter',
+        primaryAction: primary,
+        shortPrimaryAction: short,
       ),
     ).essentialBefore!;
   }
@@ -585,17 +592,23 @@ final class ThemeMultiSelectPrompt<T> {
     required FutureOr<void> Function() stop,
   }) => _owner.startFeedback(start, stop: stop);
 
-  String _essential(PresentationMode mode) => composePromptPresentation(
-    mode: mode,
-    prompt: label,
-    essential: '$label, multiple selection of $_optionCount choices.',
-    hint: compactHint(
+  String _essential(PresentationMode mode) {
+    final (primary, short) = switch (mode) {
+      PresentationMode.rich => ('Space toggles; Enter submits', 'Space; Enter'),
+      _ => ('Enter a number to toggle; /done submits', 'Number; /done'),
+    };
+    return composePromptPresentation(
       mode: mode,
-      component: ComponentRoute.standard,
-      primaryAction: 'Space toggles; Enter submits',
-      shortPrimaryAction: 'Space; Enter',
-    ),
-  ).essentialBefore!;
+      prompt: label,
+      essential: '$label, multiple selection of $_optionCount choices.',
+      hint: compactHint(
+        mode: mode,
+        component: ComponentRoute.standard,
+        primaryAction: primary,
+        shortPrimaryAction: short,
+      ),
+    ).essentialBefore!;
+  }
 }
 
 ThemeSession _newOwner({
