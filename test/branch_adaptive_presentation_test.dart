@@ -206,6 +206,23 @@ void main() {
 
   group('Branch choices through the internal seam', () {
     test(
+      'a real light choice uses the authored sepia and plum roles',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+
+        expect(text, contains('\x1b[38;2;55;45;40;49m├ Pick tools'));
+        expect(text, contains('\x1b[38;2;125;43;96;49m│ 1. Starter'));
+        expect(text, contains('\x1b[38;2;98;83;77;49m└ '));
+        expect(text, contains('[checked] [default]'));
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
+
+    test(
       'a real choice renders plum focus, checked, default and reasons',
       () async {
         final text = await _renderChoice(
