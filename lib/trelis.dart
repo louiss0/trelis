@@ -31,6 +31,8 @@ export 'src/output_profile.dart';
 export 'src/prompt_structure.dart';
 export 'src/terminal_io.dart';
 
+// Immutable colour and interaction inputs, observations and results.
+// Resolver functions and the theme session state machine stay internal.
 export 'src/color_resolution.dart'
     show
         BackgroundObservation,
@@ -53,7 +55,9 @@ export 'src/interaction_resolution.dart'
         ScreenReaderPreference,
         TerminalLocality;
 export 'src/state_help_presentation.dart' show SingleSelectionStyle;
-export 'src/theme_session.dart' show ThemeResolvedCallback;
+export 'src/theme_session.dart'
+    show ThemeInteractionState, ThemeResolvedCallback;
+// Immutable observations accepted by theme constructors.
 export 'src/hint_observations.dart'
     show
         ContainerObservation,
@@ -115,4 +119,5 @@ export 'src/feedback.dart'
         FeedbackRenderer,
         FeedbackState,
         FeedbackTimer,
+        TaskActivity,
         TextKind;

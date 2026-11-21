@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'output_profile.dart';
@@ -204,6 +205,49 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
     acquire: adapter.acquire,
     closeInput: closeInput,
   );
+
+  /// The default environment for public theme instances.
+  ///
+  /// This keeps native acquisition, geometry and colour derivation in the
+  /// terminal seam so the public theme surface exposes no invocation-level I/O
+  /// configuration.
+  static TerminalEnvironment nativeThemeDefault() {
+    TerminalLease acquire() {
+      bool? echo;
+      bool? line;
+      try {
+        echo = stdin.echoMode;
+        stdin.echoMode = false;
+      } catch (_) {
+        echo = null;
+      }
+      try {
+        line = stdin.lineMode;
+        stdin.lineMode = false;
+      } catch (_) {
+        line = null;
+      }
+      return TerminalLease(() {
+        if (line != null) {
+          try {
+            stdin.lineMode = line;
+          } catch (_) {}
+        }
+        if (echo != null) {
+          try {
+            stdin.echoMode = echo;
+          } catch (_) {}
+        }
+      });
+    }
+
+    return TerminalEnvironment.native(
+      input: stdin.transform(utf8.decoder),
+      output: stdout,
+      acquire: acquire,
+      environment: Platform.environment,
+    );
+  }
 
   /// Binds scripted or explicitly declared I/O without native acquisition.
   factory TerminalEnvironment.scripted({

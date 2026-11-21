@@ -1,18 +1,7 @@
 // ignore_for_file: avoid_print
 
-import 'package:trelis/src/themes/minimal_presentation.dart';
 import 'package:trelis/trelis.dart';
 
-/// Demonstrates the internal, unstable Minimal adaptive presentation seam.
-///
-/// Run: `dart run example/minimal_theme_example.dart`
-///
-/// The public `MinimalTheme` factories still take an explicit `ColorTheme` and
-/// keep terminal-native colours by default until the coordinated cutover. This
-/// scripted example exercises the internal owner seam instead: two authored
-/// adaptive defaults selected by explicit background, then a separate
-/// application-provided whole-palette replacement. It is evidence for the
-/// migration, not a stable API or a claim about real terminal contrast.
 Future<void> main() async {
   await _show(
     'Minimal light default',
@@ -42,7 +31,7 @@ Future<void> _show(
   ComponentColors component = const ComponentColors(),
 }) async {
   final output = StringBuffer();
-  final tracer = MinimalPresentationTracer(
+  final theme = MinimalTheme(
     io: TerminalEnvironment.scripted(
       input: Stream.value('\r'),
       output: output,
@@ -54,14 +43,18 @@ Future<void> _show(
       ),
     ),
     colors: colors,
-    componentColors: component,
+
     interaction: const InteractionPreferences(mode: PromptMode.rich),
   );
 
-  final result = await tracer.select<String>('Choose a feature', [
-    Choice('starter', 'Starter'),
-    Choice('library', 'Library'),
-  ], defaultValue: 'starter');
+  final result = await theme
+      .select<String>(
+        'Choose a feature',
+        [Choice('starter', 'Starter'), Choice('library', 'Library')],
+        defaultValue: 'starter',
+        colors: component,
+      )
+      .prompt();
   final answer = result is Accepted<String> ? result.value : result.runtimeType;
 
   print(title);

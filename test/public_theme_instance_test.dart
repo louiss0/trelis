@@ -110,6 +110,56 @@ void main() {
       },
     );
 
+    test('live controls update their own feedback component', () async {
+      final output = StringBuffer();
+      final theme = PlainTheme(
+        io: TerminalEnvironment.scripted(
+          input: const Stream<String>.empty(),
+          output: output,
+        ),
+      );
+      final progress = await theme
+          .progress('Index', total: 4, milestone: 1)
+          .start();
+      final spinner = await theme.spinner('Scan').start();
+      final group = await theme.multiSpinner(['Download', 'Extract']).start();
+      progress.update(2);
+      spinner.update('looking for files');
+      group.update('Download', TaskActivity.running, phase: 'fetching');
+      group.finishTask('Download', FeedbackOutcome.completed, detail: 'saved');
+      await group.finish(FeedbackOutcome.completed);
+      await spinner.finish(FeedbackOutcome.completed);
+      await progress.finish(FeedbackOutcome.completed);
+      expect(output.toString(), contains('50%'));
+      expect(output.toString(), contains('looking for files'));
+      expect(output.toString(), contains('fetching'));
+      expect(output.toString(), contains('saved'));
+    });
+
+    test('locked choices are focusable and show a readable reason', () async {
+      final output = StringBuffer();
+      final theme = PlainTheme(
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('2\r'),
+          output: output,
+          profile: const OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.none,
+            glyphs: GlyphSet.ascii,
+          ),
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      );
+
+      await theme.select<String>('Deploy target', [
+        Choice('staging', 'Staging'),
+        Choice.locked('production', 'Production', reason: 'needs approval'),
+      ]).prompt();
+
+      expect(output.toString(), contains('[L]'));
+      expect(output.toString(), contains('needs approval'));
+    });
+
     test('a live feedback component can outlive its prompt', () async {
       final output = StringBuffer();
       final theme = PlainTheme(
@@ -150,6 +200,32 @@ void main() {
         expect(adapter.restored, adapter.acquired);
       },
     );
+
+    test('resolution is published only after the callback succeeds', () async {
+      late final PlainTheme theme;
+      final entered = Completer<void>();
+      final callback = Completer<void>();
+      theme = PlainTheme(
+        io: TerminalEnvironment.scripted(
+          input: const Stream<String>.empty(),
+          output: StringBuffer(),
+        ),
+        onResolved: (_) {
+          entered.complete();
+          return callback.future;
+        },
+      );
+      expect(theme.resolvedInteraction, isNull);
+      final pending = theme.spinner('Working').start();
+      await entered.future;
+      expect(theme.resolvedInteraction, isNull);
+      callback.complete();
+      final control = await pending;
+      final ThemeInteractionState? active = theme.resolvedInteraction;
+      expect(active?.mode, PromptMode.linear);
+      await control.stop();
+      expect(theme.resolvedInteraction, isNull);
+    });
 
     test('the resolution callback runs once per active period', () async {
       final resolutions = <ResolvedInteraction>[];

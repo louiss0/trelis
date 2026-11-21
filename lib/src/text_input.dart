@@ -4947,12 +4947,30 @@ void _checkChoiceText(String label, String? reason) {
 
 /// One choice, identified independently of its display label.
 final class Choice<T> {
-  Choice(this.value, this.label, {this.disabledReason}) {
+  Choice(this.value, this.label, {this.disabledReason, this.lockedReason})
+    : assert(
+        disabledReason == null || lockedReason == null,
+        'A choice has one restriction reason.',
+      ) {
     _checkChoiceText(label, disabledReason);
+    _checkChoiceText(label, lockedReason);
   }
+
+  /// A locked choice with a readable, non-selectable reason.
+  Choice.locked(this.value, this.label, {required String reason})
+    : disabledReason = null,
+      lockedReason = reason {
+    _checkChoiceText(label, reason);
+  }
+
   final T value;
   final String label;
+
+  /// An unavailable choice reason, rendered with `[!]` in themed prompts.
   final String? disabledReason;
+
+  /// A locked choice reason, rendered with `[L]` in themed prompts.
+  final String? lockedReason;
 }
 
 /// The expansion state a tree row presents, independent of selectability.
