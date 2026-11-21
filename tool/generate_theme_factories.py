@@ -7,6 +7,13 @@ with open('lib/src/themes/plain_theme.dart', 'r', encoding='utf-8') as f:
 structure = sys.argv[1]
 name = structure.capitalize() + 'Theme'
 result = source.replace('PlainTheme', name)
+# Every structural theme references PromptStructure in the forwarding calls
+# and in its documentation, so the generated library must import it.
+result = result.replace(
+    "import 'package:trelis/src/feedback.dart';\n",
+    "import 'package:trelis/src/feedback.dart';\n"
+    "import 'package:trelis/src/prompt_structure.dart';\n",
+)
 result = result.replace(
     'Plain-theme factory namespace.',
     f'{structure.capitalize()}-theme factory namespace.\n///\n/// Components created through these factories are configured with [PromptStructure.{structure}].',
