@@ -4,6 +4,7 @@ import 'package:test/test.dart';
 import 'package:trelis/src/background_query.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
+import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/themes/plain_adaptive_presentation.dart';
 import 'package:trelis/src/themes/plain_sepia_palettes.dart';
 import 'package:trelis/trelis.dart';
@@ -703,5 +704,38 @@ void main() {
         expect(text, isNot(contains('? PROJECT NAME')));
       },
     );
+  });
+
+  group('Plain state vocabulary', () {
+    test('state vocabulary keeps markers independent in both glyph sets', () {
+      final row = ChoicePresentation(
+        label: 'Starter',
+        focused: true,
+        checked: true,
+        isDefault: true,
+      );
+      for (final (glyphs, focus, selection, defaultMarker) in [
+        (StateGlyphs.unicode, '→', '✓', '★'),
+        (StateGlyphs.ascii, '>', 'x', 'D'),
+      ]) {
+        final rendered = renderChoiceRow(row, glyphs: glyphs, width: 24);
+        final markers = row.markers(glyphs: glyphs);
+        expect(markers.focus, focus);
+        expect(markers.selection, selection);
+        expect(markers.defaultMarker, defaultMarker);
+        expect(rendered, contains('Starter'));
+        expect(rendered, contains(focus));
+        expect(rendered, contains(selection));
+        expect(rendered, contains(defaultMarker));
+      }
+      expect(
+        renderStatus(
+          Status.warning,
+          'needs owner role',
+          glyphs: StateGlyphs.ascii,
+        ),
+        '! Warning: needs owner role',
+      );
+    });
   });
 }
