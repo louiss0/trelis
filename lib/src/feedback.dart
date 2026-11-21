@@ -86,6 +86,53 @@ TerminalSessionFeedbackRegion _startInSession(
   return session.startFeedbackRegion();
 }
 
+/// The semantic state of one feedback line before presentation.
+///
+/// These values describe what happened, not which glyph or colour renders it;
+/// the theme renderer chooses display-safe indicators from the owned period.
+enum FeedbackState {
+  information,
+  hint,
+  running,
+  progress,
+  success,
+  warning,
+  failure,
+}
+
+/// One display-safe feedback line awaiting theme-owned rendering.
+final class FeedbackLine {
+  const FeedbackLine(this.message, {required this.state});
+
+  /// Already-escaped semantic content, without a structural prefix.
+  final String message;
+  final FeedbackState state;
+}
+
+/// Renders structured feedback for one theme-owned active period.
+///
+/// Components keep their own value and lifecycle semantics; this seam only
+/// replaces their direct terminal formatting when a theme owns the output.
+abstract interface class FeedbackRenderer {
+  String render(FeedbackLine line);
+}
+
+FeedbackState _textState(TextKind kind) => switch (kind) {
+  TextKind.ordinary => FeedbackState.information,
+  TextKind.hint => FeedbackState.hint,
+  TextKind.success => FeedbackState.success,
+  TextKind.warning => FeedbackState.warning,
+  TextKind.error => FeedbackState.failure,
+};
+
+FeedbackState _outcomeState(FeedbackOutcome outcome) => switch (outcome) {
+  FeedbackOutcome.completed => FeedbackState.success,
+  FeedbackOutcome.failed => FeedbackState.failure,
+  FeedbackOutcome.skipped ||
+  FeedbackOutcome.cancelled ||
+  FeedbackOutcome.interrupted => FeedbackState.warning,
+};
+
 /// Literal, feedback-only text.
 final class Text {
   Text(
@@ -93,7 +140,22 @@ final class Text {
     this.kind = TextKind.ordinary,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+  }) : themeRenderer = null;
+
+  /// Internal construction seam for theme-owned feedback.
+  ///
+  /// This is not a stable public authoring path: the coordinated cutover
+  /// replaces static factories with theme instance methods. Existing direct
+  /// construction and invocation parameters remain unchanged.
+  Text.themed(
+    this.content, {
+    this.kind = TextKind.ordinary,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    required this.themeRenderer,
   });
+
+  final FeedbackRenderer? themeRenderer;
   final String content;
   final TextKind kind;
   final ColorTheme colors;
@@ -104,6 +166,18 @@ final class Text {
     TerminalIo? terminal,
     TerminalSession? session,
   }) {
+    final renderer = themeRenderer;
+    if (renderer != null) {
+      if (session == null || output != null || terminal != null) {
+        throw StateError(
+          'Themed feedback renders only through its theme-owned session.',
+        );
+      }
+      session.presentText(
+        renderer.render(FeedbackLine(_safe(content), state: _textState(kind))),
+      );
+      return;
+    }
     final prefix = switch (kind) {
       TextKind.ordinary => '',
       TextKind.hint => 'Hint: ',
@@ -119,7 +193,7 @@ final class Text {
       TextKind.error => colors.error,
     };
     final background = colors.background;
-    final line = _structureFeedbackLine(
+    final line = structureFeedbackLine(
       '$prefix${_safe(content)}',
       structure: structure,
       profile: _outputProfile(terminal: terminal),
@@ -155,7 +229,7 @@ final class Text {
 /// byte-for-byte unchanged. An enclosure never draws a frame around a single
 /// feedback event; the compact marker keeps the structure recognisable without
 /// claiming the event is a task stage.
-String _structureFeedbackLine(
+String structureFeedbackLine(
   String line, {
   required PromptStructure structure,
   required OutputProfile? profile,
@@ -223,6 +297,25 @@ final class Progress {
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+  }) : themeRenderer = null,
+       _total = total,
+       _clock = clock ?? _SystemFeedbackClock() {
+    if (interval.isNegative || milestone <= 0 || milestone > 100) {
+      throw ArgumentError('Invalid progress cadence');
+    }
+    if (total != null && total <= 0) throw ArgumentError.value(total, 'total');
+  }
+
+  /// Internal construction seam for theme-owned feedback.
+  Progress.themed(
+    this.label, {
+    int? total,
+    this.interval = const Duration(seconds: 5),
+    this.milestone = 10,
+    FeedbackClock? clock,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    required this.themeRenderer,
   }) : _total = total,
        _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative || milestone <= 0 || milestone > 100) {
@@ -230,6 +323,8 @@ final class Progress {
     }
     if (total != null && total <= 0) throw ArgumentError.value(total, 'total');
   }
+
+  final FeedbackRenderer? themeRenderer;
   final String label;
   final Duration interval;
   final int milestone;
@@ -303,7 +398,10 @@ final class Progress {
     final value = _total == null
         ? 'indeterminate'
         : '${(_value * 100 ~/ _total!)}%${_rich ? ' ($_value/$_total)' : ''}';
-    _emit('${_safe(label)}: running, $value');
+    _emit(
+      '${_safe(label)}: running, $value',
+      state: _total == null ? FeedbackState.running : FeedbackState.progress,
+    );
   }
 
   void update(int completed) {
@@ -351,7 +449,10 @@ final class Progress {
     }
     if (_phase == description) return;
     _phase = description;
-    _emit('${_safe(label)}: running, ${_safe(description)}');
+    _emit(
+      '${_safe(label)}: running, ${_safe(description)}',
+      state: FeedbackState.running,
+    );
   }
 
   /// Change the work estimate, explicitly identifying the recalculation.
@@ -372,7 +473,10 @@ final class Progress {
     _value = completed;
     _shownPercent = total == null ? 0 : completed * 100 ~/ total;
     final value = total == null ? 'indeterminate' : '$_shownPercent%';
-    _emit('${_safe(label)}: recalculated, $value');
+    _emit(
+      '${_safe(label)}: recalculated, $value',
+      state: FeedbackState.progress,
+    );
   }
 
   void _flush() {
@@ -386,27 +490,37 @@ final class Progress {
     _show();
   }
 
-  void _emit(String line, {bool finalLine = false}) {
+  void _emit(
+    String line, {
+    FeedbackState state = FeedbackState.information,
+    bool finalLine = false,
+  }) {
     final region = _sessionRegion;
-    final framed = _structureFeedbackLine(
-      line,
-      structure: structure,
-      profile: _profile,
-    );
-    final foreground = finalLine && framed.contains(': failed')
-        ? colors.error
-        : colors.foreground;
-    final styled = terminalStyledText(
-      framed,
-      foreground: foreground,
-      background: colors.background,
-      depth: _profile?.colorDepth ?? ColorDepth.none,
-    );
+    final renderer = themeRenderer;
+    final styled = renderer != null
+        ? renderer.render(FeedbackLine(line, state: state))
+        : _styleLine(line, finalLine: finalLine);
     if (region != null) {
       region.write(styled);
     } else {
       _output!.writeln(_rich ? '[status] $styled' : styled);
     }
+  }
+
+  String _styleLine(String line, {required bool finalLine}) {
+    final framed = structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    return terminalStyledText(
+      framed,
+      foreground: finalLine && framed.contains(': failed')
+          ? colors.error
+          : colors.foreground,
+      background: colors.background,
+      depth: _profile?.colorDepth ?? ColorDepth.none,
+    );
   }
 
   /// Release presentation resources without inventing an outcome.
@@ -433,6 +547,7 @@ final class Progress {
     _pending = null;
     _emit(
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
+      state: _outcomeState(outcome),
       finalLine: true,
     );
     _sessionRegion?.retire();
@@ -450,7 +565,17 @@ final class Spinner {
     this.label, {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+  }) : themeRenderer = null;
+
+  /// Internal construction seam for theme-owned feedback.
+  Spinner.themed(
+    this.label, {
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    required this.themeRenderer,
   });
+
+  final FeedbackRenderer? themeRenderer;
   final String label;
   final ColorTheme colors;
   final PromptStructure structure;
@@ -507,7 +632,7 @@ final class Spinner {
       _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
       _profile = profile;
     }
-    _emit('${_safe(label)}: $_state');
+    _emit('${_safe(label)}: $_state', state: FeedbackState.running);
   }
 
   void update(String state) {
@@ -517,30 +642,40 @@ final class Spinner {
     }
     if (state == _state) return;
     _state = state;
-    _emit('${_safe(label)}: ${_safe(state)}');
+    _emit('${_safe(label)}: ${_safe(state)}', state: FeedbackState.running);
   }
 
-  void _emit(String line, {bool finalLine = false}) {
+  void _emit(
+    String line, {
+    FeedbackState state = FeedbackState.information,
+    bool finalLine = false,
+  }) {
     final region = _sessionRegion;
-    final framed = _structureFeedbackLine(
-      line,
-      structure: structure,
-      profile: _profile,
-    );
-    final foreground = finalLine && framed.contains(': failed')
-        ? colors.error
-        : colors.foreground;
-    final styled = terminalStyledText(
-      framed,
-      foreground: foreground,
-      background: colors.background,
-      depth: _profile?.colorDepth ?? ColorDepth.none,
-    );
+    final renderer = themeRenderer;
+    final styled = renderer != null
+        ? renderer.render(FeedbackLine(line, state: state))
+        : _styleLine(line, finalLine: finalLine);
     if (region != null) {
       region.write(styled);
     } else {
       _output!.writeln(_rich ? '[status] $styled' : styled);
     }
+  }
+
+  String _styleLine(String line, {required bool finalLine}) {
+    final framed = structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    return terminalStyledText(
+      framed,
+      foreground: finalLine && framed.contains(': failed')
+          ? colors.error
+          : colors.foreground,
+      background: colors.background,
+      depth: _profile?.colorDepth ?? ColorDepth.none,
+    );
   }
 
   /// Release presentation resources without inventing an outcome.
@@ -563,6 +698,7 @@ final class Spinner {
     _finished = true;
     _emit(
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
+      state: _outcomeState(outcome),
       finalLine: true,
     );
     _sessionRegion?.retire();
@@ -597,6 +733,31 @@ final class MultiSpinner {
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+  }) : themeRenderer = null,
+       _clock = clock ?? _SystemFeedbackClock() {
+    if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
+    final displayNames = <String>{};
+    for (final task in tasks) {
+      if (task.isEmpty || !displayNames.add(_safe(task))) {
+        throw ArgumentError.value(
+          task,
+          'tasks',
+          'Names must be nonempty and visually distinct',
+        );
+      }
+      _tasks[task] = _GroupTask();
+    }
+    if (_tasks.isEmpty) throw ArgumentError('At least one task is required');
+  }
+
+  /// Internal construction seam for theme-owned feedback.
+  MultiSpinner.themed(
+    Iterable<String> tasks, {
+    this.interval = const Duration(seconds: 5),
+    FeedbackClock? clock,
+    this.colors = ColorThemes.terminalDefault,
+    this.structure = PromptStructure.plain,
+    required this.themeRenderer,
   }) : _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
     final displayNames = <String>{};
@@ -613,6 +774,7 @@ final class MultiSpinner {
     if (_tasks.isEmpty) throw ArgumentError('At least one task is required');
   }
 
+  final FeedbackRenderer? themeRenderer;
   final Duration interval;
   final Map<String, _GroupTask> _tasks = {};
   final Set<String> _pending = {};
@@ -674,7 +836,10 @@ final class MultiSpinner {
       _profile = profile;
     }
     for (final entry in _tasks.entries) {
-      _emit('${_safe(entry.key)}: ${entry.value.description}');
+      _emit(
+        '${_safe(entry.key)}: ${entry.value.description}',
+        state: FeedbackState.running,
+      );
       entry.value.shown = entry.value.description;
     }
   }
@@ -714,7 +879,10 @@ final class MultiSpinner {
     if (_closed || _pending.isEmpty) return;
     for (final entry in _tasks.entries) {
       if (_pending.contains(entry.key)) {
-        _emit('${_safe(entry.key)}: ${entry.value.description}');
+        _emit(
+          '${_safe(entry.key)}: ${entry.value.description}',
+          state: FeedbackState.running,
+        );
         entry.value.shown = entry.value.description;
       }
     }
@@ -729,7 +897,10 @@ final class MultiSpinner {
     state.outcome = outcome;
     state.detail = detail;
     _pending.remove(task);
-    _emit('${_safe(task)}: ${state.description}');
+    _emit(
+      '${_safe(task)}: ${state.description}',
+      state: _outcomeState(outcome),
+    );
     if (_tasks.values.every((value) => value.outcome != null)) {
       _summary();
       _closed = true;
@@ -751,27 +922,35 @@ final class MultiSpinner {
     }
   }
 
-  void _emit(String line) {
+  void _emit(String line, {FeedbackState state = FeedbackState.information}) {
     final region = _sessionRegion;
-    final framed = _structureFeedbackLine(
-      line,
-      structure: structure,
-      profile: _profile,
-    );
-    final foreground = framed.contains(': failed')
-        ? colors.error
-        : (framed.contains(': completed') ? colors.success : colors.foreground);
-    final styled = terminalStyledText(
-      framed,
-      foreground: foreground,
-      background: colors.background,
-      depth: _profile?.colorDepth ?? ColorDepth.none,
-    );
+    final renderer = themeRenderer;
+    final styled = renderer != null
+        ? renderer.render(FeedbackLine(line, state: state))
+        : _styleLine(line);
     if (region != null) {
       region.write(styled);
     } else {
       _output!.writeln(_rich ? '[status] $styled' : styled);
     }
+  }
+
+  String _styleLine(String line) {
+    final framed = structureFeedbackLine(
+      line,
+      structure: structure,
+      profile: _profile,
+    );
+    return terminalStyledText(
+      framed,
+      foreground: framed.contains(': failed')
+          ? colors.error
+          : (framed.contains(': completed')
+                ? colors.success
+                : colors.foreground),
+      background: colors.background,
+      depth: _profile?.colorDepth ?? ColorDepth.none,
+    );
   }
 
   /// Stop presentation without assigning outcomes to unfinished tasks.

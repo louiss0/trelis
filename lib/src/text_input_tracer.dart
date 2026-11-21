@@ -61,7 +61,7 @@ final class ThemeTextInputTracer {
   List<Object> get cleanupFailures => _owner.cleanupFailures;
 
   Future<PromptResult<String>> prompt() => _owner.prompt((handle) {
-    final palette = _componentPalette(handle).palette;
+    final palette = handle.componentColors(colors).palette;
     final mode = handle.interaction.screenReader
         ? PresentationMode.screenReader
         : handle.interaction.mode == PromptMode.rich
@@ -108,28 +108,4 @@ final class ThemeTextInputTracer {
     FutureOr<void> Function(ThemeSessionHandle handle) start, {
     required FutureOr<void> Function() stop,
   }) => _owner.startFeedback(start, stop: stop);
-
-  /// Layers the component override over the palette the period resolved.
-  ///
-  /// The theme owner has already selected the background and applied application
-  /// preferences, so those decisions are carried forward rather than resolved
-  /// twice. The pure colour resolver still applies the component replacement
-  /// and its shared and variant roles.
-  ResolvedColors _componentPalette(ThemeSessionHandle handle) {
-    final period = handle.colors;
-    final background = switch (period.background) {
-      BackgroundVariant.light => BackgroundPreference.light,
-      BackgroundVariant.dark => BackgroundPreference.dark,
-    };
-    return resolveColors(
-      facts: ColorDetectionFacts(
-        outputProfile: period.outputProfile,
-        noColor: handle.environment.environment['NO_COLOR'],
-      ),
-      lightDefault: period.palette,
-      darkDefault: period.palette,
-      preferences: ColorPreferences(background: background),
-      component: colors,
-    );
-  }
 }
