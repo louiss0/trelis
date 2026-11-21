@@ -259,9 +259,13 @@ final class ThemeSession {
     this.onCleanupError,
     this.factsForPeriod,
     this.hints,
+    ColorTheme? lightDefault,
+    ColorTheme? darkDefault,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
-  }) : _fixedFacts = facts,
+  }) : _lightDefault = lightDefault ?? ColorThemes.terminalDefault,
+       _darkDefault = darkDefault ?? ColorThemes.terminalDefault,
+       _fixedFacts = facts,
        _fixedColorFacts = colorFacts;
 
   final TerminalEnvironment environment;
@@ -281,6 +285,13 @@ final class ThemeSession {
   final NativeHintObservations? hints;
   final InteractionFacts? _fixedFacts;
   final ColorDetectionFacts? _fixedColorFacts;
+
+  /// The adaptive defaults of the theme owning this session.
+  ///
+  /// Resolution still applies application and component layers in the same
+  /// order; only the starting palettes come from the owning structure.
+  final ColorTheme _lightDefault;
+  final ColorTheme _darkDefault;
 
   ThemeInteractionState? _published;
   _ThemePeriod? _active;
@@ -544,8 +555,8 @@ final class ThemeSession {
     final colorFacts = _fixedColorFacts ?? _defaultColorFacts;
     final initialColors = resolveColors(
       facts: colorFacts,
-      lightDefault: ColorThemes.terminalDefault,
-      darkDefault: ColorThemes.terminalDefault,
+      lightDefault: _lightDefault,
+      darkDefault: _darkDefault,
       preferences: colors,
     );
     final period = _ThemePeriod(
@@ -586,8 +597,8 @@ final class ThemeSession {
             period.setColors(
               resolveColors(
                 facts: facts,
-                lightDefault: ColorThemes.terminalDefault,
-                darkDefault: ColorThemes.terminalDefault,
+                lightDefault: _lightDefault,
+                darkDefault: _darkDefault,
                 preferences: colors,
               ),
             );
