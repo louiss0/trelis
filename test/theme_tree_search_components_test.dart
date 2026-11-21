@@ -605,6 +605,25 @@ void main() {
     }
   });
 
+  test('themed tree keeps the theme-wide selection style', () async {
+    final output = StringBuffer();
+    final prompt = ThemeTreeSelectPrompt<String>(
+      'Pick',
+      [TreeNode('a', 'Alpha', selectable: true)],
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('/cancel\r'),
+        output: output,
+        profile: const OutputProfile(glyphs: GlyphSet.ascii),
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+      glyphs: StateGlyphs.ascii,
+      selectionStyle: SingleSelectionStyle.squares,
+      selectedValue: 'a',
+    );
+    expect(await prompt.prompt(), isA<Cancelled<String>>());
+    expect(output.toString(), contains('[x]'));
+  });
+
   test('all five themed families keep terminal outcomes distinct', () async {
     final linear = const InteractionPreferences(mode: PromptMode.linear);
     final cases = <({String name, Future<Object> Function(String) run})>[
