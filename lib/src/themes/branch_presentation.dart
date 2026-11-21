@@ -5,12 +5,14 @@
 /// before the coordinated public cutover; it is not a stable public API.
 library;
 
+import 'package:trelis/src/choice_tracer.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/color_theme.dart';
 import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/prompt_structure.dart';
 import 'package:trelis/src/terminal_io.dart';
-import 'package:trelis/src/text_input.dart' show InstructionDisplay, PromptResult;
+import 'package:trelis/src/text_input.dart'
+    show Choice, InstructionDisplay, PromptResult;
 import 'package:trelis/src/text_input_tracer.dart';
 import 'package:trelis/src/theme_session.dart'
     show ThemeInteractionFactsProvider, ThemeResolvedCallback;
@@ -86,6 +88,41 @@ final class BranchPresentationTracer {
   final ThemeInteractionFactsProvider? factsForPeriod;
 
   /// Renders a real Branch text input in the owner's resolved palette.
+  ThemeChoiceTracer get _choices => ThemeChoiceTracer(
+    io: io,
+    colors: componentColors,
+    themeColors: colors,
+    interaction: interaction,
+    structure: BranchPresentation.structure,
+    instructions: instructions,
+    lightDefault: BranchPresentation.lightDefault,
+    darkDefault: BranchPresentation.darkDefault,
+    onResolved: onResolved,
+    factsForPeriod: factsForPeriod,
+  );
+
+  /// Renders a real Branch single-choice component.
+  Future<PromptResult<T>> select<T>(
+    String label,
+    List<Choice<T>> choices, {
+    T? defaultValue,
+  }) => _choices.select<T>(label, choices, defaultValue: defaultValue);
+
+  /// Renders a real Branch multi-choice component.
+  Future<PromptResult<List<T>>> multiSelect<T>(
+    String label,
+    List<Choice<T>> choices, {
+    List<T> defaultValues = const [],
+    int min = 0,
+    int? max,
+  }) => _choices.multiSelect<T>(
+    label,
+    choices,
+    defaultValues: defaultValues,
+    min: min,
+    max: max,
+  );
+
   Future<PromptResult<String>> textInput(
     String label, {
     String initialValue = '',
