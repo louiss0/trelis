@@ -1,4 +1,4 @@
-import 'package:trelis/trelis.dart';
+import 'package:trelis/src/testing/compat_api.dart';
 
 /// Runs a rich-mode Select with two down-arrow navigations and prints the raw
 /// output with escape sequences visible, to show whether the choice list

@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:trelis/src/color_resolution.dart';
-import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/rail_ink_blue_theme.dart';
 import 'package:trelis/trelis.dart';
 

@@ -2,62 +2,74 @@ import 'dart:io';
 
 import 'package:trelis/trelis.dart';
 
-/// A short end-to-end flow over the public component seam, built through
-/// `RailTheme` (one of the fifteen structural theme namespaces). Swap
-/// `RailTheme` for `BoxTheme`, `LedgerTheme`, `PlainTheme`, etc. to change the
-/// visual grammar without changing any call below.
+/// A short end-to-end flow over the unstable theme-instance public API.
 ///
-/// Run `dart run example/trelis_example.dart` in a terminal. The mode is
-/// selected automatically, or forced with `--rich` or `--linear`. Add
-/// `--scripted` to replay the same flow from a fixed scripted stream, which
-/// also works without a terminal. Nothing here needs a secret, a network or a
-/// writable directory.
-Future<void> main(List<String> arguments) async {
-  final forced = arguments.contains('--linear')
-      ? PromptMode.linear
-      : arguments.contains('--rich')
-      ? PromptMode.rich
-      : null;
-  final mode = forced ?? PromptMode.automatic;
-  // One chunk per prompt: `demo`, accept the first target, add `new-tag`, then
-  // confirm yes. Each prompt needs its own single-subscription source.
+/// `RailTheme` owns its I/O and active period; swap it for any of the other
+/// fourteen structural themes to change the visual grammar without changing
+/// the prompt calls. This demo uses a fixed script so it runs without a
+/// terminal and demonstrates automatic cleanup: there is no theme close.
+///
+/// Run `dart run example/trelis_example.dart`.
+Future<void> main() async {
   const scriptedChunks = ['demo\r', '\r', 'new-tag\r\t\r', 'y\r'];
   var chunk = 0;
-  PromptSource? nextSource() => arguments.contains('--scripted')
-      ? ScriptedInput(Stream.value(scriptedChunks[chunk++]), stderr)
-      : null;
 
-  final name = await RailTheme.textInput(
-    'Project name',
-    required: true,
-  ).prompt(source: nextSource(), mode: mode);
+  ThemePrompt<String> promptFor(String label) => RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(scriptedChunks[chunk++]),
+      output: stderr,
+    ),
+  ).textInput(label, required: true);
+
+  final name = await promptFor('Project name').prompt();
   if (name is! Accepted<String>) return _stopped('Project name', name);
 
-  final target = await RailTheme.select<String>('Deploy target', [
+  final targetTheme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(scriptedChunks[chunk++]),
+      output: stderr,
+    ),
+  );
+  final target = await targetTheme.select<String>('Deploy target', [
     Choice('staging', 'Staging'),
-    Choice('production', 'Production', disabledReason: 'locked for this demo'),
-  ]).prompt(source: nextSource(), mode: mode);
+    Choice('production', 'Production', disabledReason: 'locked for demo'),
+  ]).prompt();
   if (target is! Accepted<String>) return _stopped('Deploy target', target);
 
-  final tags = await RailTheme.tagInput('Tags')
-      .prompt(source: nextSource(), mode: mode);
+  final tagsTheme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(scriptedChunks[chunk++]),
+      output: stderr,
+    ),
+  );
+  final tags = await tagsTheme.tagInput('Tags').prompt();
   if (tags is! Accepted<List<String>>) return _stopped('Tags', tags);
 
-  final confirm = await RailTheme.confirm(
-    'Deploy ${name.value} to ${target.value}?',
-  ).prompt(source: nextSource(), mode: mode);
+  final confirmTheme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(scriptedChunks[chunk++]),
+      output: stderr,
+    ),
+  );
+  final confirm = await confirmTheme
+      .confirm('Deploy ${name.value} to ${target.value}?')
+      .prompt();
   if (confirm is! Accepted<bool>) return _stopped('Confirmation', confirm);
   if (!confirm.value) {
     stderr.writeln('Declined; nothing was deployed.');
     return;
   }
 
-  final progress = RailTheme.progress('Preparing ${name.value}', total: 3);
-  progress.start(output: stderr, mode: mode, supportsRich: true);
-  for (var step = 1; step <= 3; step++) {
-    progress.update(step);
-  }
-  progress.finish(FeedbackOutcome.completed, detail: target.value);
+  final feedbackTheme = RailTheme(
+    io: TerminalEnvironment.scripted(
+      input: const Stream<String>.empty(),
+      output: stderr,
+    ),
+  );
+  final progress = await feedbackTheme
+      .progress('Preparing ${name.value}', total: 3)
+      .start();
+  await progress.finish(FeedbackOutcome.completed, detail: target.value);
 
   stderr.writeln(
     'Ready: project ${name.value}, target ${target.value}, '

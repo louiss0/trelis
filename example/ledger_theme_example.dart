@@ -2,7 +2,6 @@
 
 import 'dart:async';
 
-import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/ledger_adaptive_theme.dart';
 import 'package:trelis/trelis.dart';
 

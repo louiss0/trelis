@@ -96,25 +96,29 @@ final class ThemeFormattedPrompt<T> {
     required this._essential,
     required this._create,
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.colors = const ComponentColors(),
     ColorPreferences themeColors = const ColorPreferences(),
     InteractionPreferences interaction = const InteractionPreferences(),
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : _owner = ThemeSession(
-         environment: io,
-         colors: themeColors,
-         interaction: interaction,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+  }) : _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             colors: themeColors,
+             interaction: interaction,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   /// Exact decimal slider with a fixed lower bound and step.
   static ThemeFormattedPrompt<String> slider(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required String minimum,
     required String maximum,
     required String step,
@@ -150,6 +154,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -162,6 +167,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<(String, String)> rangeSlider(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required String minimum,
     required String maximum,
     required String step,
@@ -201,6 +207,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -213,6 +220,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<NumericAnswer?> number(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     NumericConvention? convention,
     NumericConvention? Function()? conventionProvider,
     bool decimal = false,
@@ -248,6 +256,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -260,6 +269,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<int> port(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool allowZero = false,
     String initialValue = '',
     ComponentColors colors = const ComponentColors(),
@@ -285,6 +295,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -297,6 +308,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<IPAddressValue> ipAddress(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool cidr = false,
     bool scoped = false,
     String initialValue = '',
@@ -326,6 +338,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -338,6 +351,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<String> url(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required Set<String> allowedSchemes,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
@@ -363,6 +377,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -375,6 +390,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<String> email(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool smtpUtf8 = false,
     String initialValue = '',
     ComponentColors colors = const ComponentColors(),
@@ -400,6 +416,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -412,6 +429,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<ColorValue?> color(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool required = true,
     String initialValue = '',
     ComponentColors colors = const ComponentColors(),
@@ -437,6 +455,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -449,6 +468,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<DurationValue> duration(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required DurationInputMode durationMode,
     bool signed = false,
     bool allowZero = true,
@@ -483,6 +503,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -495,6 +516,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<CronExpression> cron(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required CronProfile profile,
     String initialValue = '',
     CronPreviewConfig? preview,
@@ -522,6 +544,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -534,6 +557,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<MaskedValue> masked(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required List<MaskTemplate> templates,
     MaskedValue? initialValue,
     MaskInterpretation interpretation = MaskInterpretation.automatic,
@@ -563,6 +587,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -575,6 +600,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<List<String>> tag(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     TagStyle style = TagStyle.kebabCase,
     int? maxLength,
     String? Function(String)? validate,
@@ -605,6 +631,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -617,6 +644,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<CivilDate> date(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     DateFieldOrder? order,
     DateCalendar? calendar,
     DateDigits? digits,
@@ -646,6 +674,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -658,6 +687,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<({int hour, int minute, int? second})> time(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool twelveHour = false,
     bool seconds = false,
     String? initialValue,
@@ -688,6 +718,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,
@@ -700,6 +731,7 @@ final class ThemeFormattedPrompt<T> {
   static ThemeFormattedPrompt<String> timezone(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String? defaultValue,
     Map<String, String> unavailable = const {},
     ComponentColors colors = const ComponentColors(),
@@ -725,6 +757,7 @@ final class ThemeFormattedPrompt<T> {
       supplementaryHelp: supplementaryHelp,
     ).prompt(session: session),
     io: io,
+    session: session,
     colors: colors,
     themeColors: themeColors,
     interaction: interaction,

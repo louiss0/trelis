@@ -1,38 +1,32 @@
 import 'dart:io';
 
-import 'package:trelis/src/color_resolution.dart';
-import 'package:trelis/src/interaction_resolution.dart';
-import 'package:trelis/src/themes/bracket_theme_internal.dart';
 import 'package:trelis/trelis.dart';
 
-/// Demonstrates Bracket's adaptive defaults and a separate explicit override.
+/// Demonstrates Bracket theme instances with pinned and explicit palettes.
 ///
-/// This uses the internal theme-owner seam, not a stable public `BracketTheme`
-/// instance: the coordinated public cutover is a later ticket. The scripted
-/// environment and pinned background make the example runnable without a
-/// terminal; a real application can leave the background automatic so the theme
-/// owner selects the light or dark authored default.
+/// Run: dart example/bracket_theme_example.dart
+///
+/// A scripted environment makes the example runnable without a terminal. A
+/// real application omits the background preference so the theme owner selects
+/// the authored light or dark default. Feedback is explicitly finished; the
+/// theme restores the terminal when its final participant ends.
 Future<void> _show({
   required String title,
-  required ColorPreferences colors,
+  required BackgroundPreference background,
   ComponentColors component = const ComponentColors(),
 }) async {
   stdout.writeln('\n$title');
-  final theme = BracketInternalPresentation(
+  final theme = BracketTheme(
     io: TerminalEnvironment.scripted(
       input: Stream.value('Ada\r'),
       output: stdout,
-      profile: OutputProfile(
-        cursor: CapabilitySupport.supported,
-        geometry: OutputGeometry.fixed(columns: 72, rows: 20),
-        glyphs: GlyphSet.unicode,
-        colorDepth: ColorDepth.rgb,
-      ),
     ),
-    interaction: const InteractionPreferences(mode: PromptMode.rich),
-    colors: colors,
+    colors: ColorPreferences(background: background),
+    interaction: const InteractionPreferences(mode: PromptMode.linear),
   );
-  final result = await theme.textInput('Project name', colors: component);
+  final result = await theme
+      .textInput('Project name', colors: component)
+      .prompt();
   stdout.writeln(
     result is Accepted<String>
         ? 'Accepted: ${result.value}'
@@ -43,27 +37,24 @@ Future<void> _show({
 Future<void> main() async {
   await _show(
     title: 'Authored light default (Atelier Sepia direction, rust accent)',
-    colors: const ColorPreferences(background: BackgroundPreference.light),
+    background: BackgroundPreference.light,
   );
   await _show(
     title: 'Authored dark default (warm ink, rust accent)',
-    colors: const ColorPreferences(background: BackgroundPreference.dark),
+    background: BackgroundPreference.dark,
   );
   await _show(
     title: 'Explicit component palette replacement',
-    colors: const ColorPreferences(background: BackgroundPreference.light),
+    background: BackgroundPreference.light,
     component: ComponentColors.palette(ColorThemes.paper),
   );
 
-  // The still-public factory keeps its terminal-native omission; an explicit
-  // palette is a separate caller override, not the adaptive default.
-  final publicDefault = BracketTheme.textInput('Project name');
-  stdout.writeln(
-    '\nPublic factory omission: '
-    '${publicDefault.colors == ColorThemes.terminalDefault ? 'terminal-native' : 'adaptive'}',
+  final theme = BracketTheme(
+    io: TerminalEnvironment.scripted(
+      input: const Stream<String>.empty(),
+      output: stdout,
+    ),
   );
-  stdout.writeln(
-    'Public explicit override: '
-    '${BracketTheme.textInput('Project name', colors: ColorThemes.signal).colors.accent}',
-  );
+  await theme.text('Work complete', kind: TextKind.success).present();
+  stdout.writeln('Feedback presented.');
 }

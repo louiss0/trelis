@@ -101,6 +101,7 @@ final class ThemeBooleanPrompt {
     required this.label,
     required this.kind,
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.initialValue = false,
     this.instructions = InstructionDisplay.themeDefault,
     this.supplementaryHelp = const [],
@@ -113,6 +114,7 @@ final class ThemeBooleanPrompt {
     NativeHintObservations? hints,
   }) : _owner = _newOwner(
          io: io,
+         session: session,
          interaction: interaction,
          themeColors: themeColors,
          onResolved: onResolved,
@@ -123,6 +125,7 @@ final class ThemeBooleanPrompt {
   factory ThemeBooleanPrompt.confirm(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool initialValue = false,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
@@ -137,6 +140,7 @@ final class ThemeBooleanPrompt {
     label: label,
     kind: ThemeBooleanComponent.confirm,
     io: io,
+    session: session,
     initialValue: initialValue,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -152,6 +156,7 @@ final class ThemeBooleanPrompt {
   factory ThemeBooleanPrompt.checkbox(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool initialValue = false,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
@@ -166,6 +171,7 @@ final class ThemeBooleanPrompt {
     label: label,
     kind: ThemeBooleanComponent.checkbox,
     io: io,
+    session: session,
     initialValue: initialValue,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -181,6 +187,7 @@ final class ThemeBooleanPrompt {
   factory ThemeBooleanPrompt.toggle(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool initialValue = false,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
@@ -195,6 +202,7 @@ final class ThemeBooleanPrompt {
     label: label,
     kind: ThemeBooleanComponent.toggle,
     io: io,
+    session: session,
     initialValue: initialValue,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
@@ -297,6 +305,7 @@ final class ThemeSingleChoicePrompt<T> {
     required this.defaultValue,
     required this.selectionStyle,
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.instructions = InstructionDisplay.themeDefault,
     this.supplementaryHelp = const [],
     this.colors = const ComponentColors(),
@@ -322,6 +331,7 @@ final class ThemeSingleChoicePrompt<T> {
        _optionCount = options.length,
        _owner = _newOwner(
          io: io,
+         session: session,
          interaction: interaction,
          themeColors: themeColors,
          onResolved: onResolved,
@@ -333,6 +343,7 @@ final class ThemeSingleChoicePrompt<T> {
     String label,
     List<ThemeChoiceOption<T>> choices, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     T? defaultValue,
     T? selectedValue,
     StateGlyphs glyphs = StateGlyphs.unicode,
@@ -355,6 +366,7 @@ final class ThemeSingleChoicePrompt<T> {
     glyphs: glyphs,
     selectionStyle: selectionStyle,
     io: io,
+    session: session,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
     colors: colors,
@@ -370,6 +382,7 @@ final class ThemeSingleChoicePrompt<T> {
     String label,
     List<ThemeChoiceOption<T>> choices, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     T? defaultValue,
     T? selectedValue,
     StateGlyphs glyphs = StateGlyphs.unicode,
@@ -392,6 +405,7 @@ final class ThemeSingleChoicePrompt<T> {
     glyphs: glyphs,
     selectionStyle: selectionStyle,
     io: io,
+    session: session,
     instructions: instructions,
     supplementaryHelp: supplementaryHelp,
     colors: colors,
@@ -503,6 +517,7 @@ final class ThemeMultiSelectPrompt<T> {
     this.label,
     List<ThemeChoiceOption<T>> options, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     Iterable<T>? initialSelection,
     this.min = 0,
     this.max,
@@ -541,6 +556,7 @@ final class ThemeMultiSelectPrompt<T> {
        _optionCount = options.length,
        _owner = _newOwner(
          io: io,
+         session: session,
          interaction: interaction,
          themeColors: themeColors,
          onResolved: onResolved,
@@ -613,19 +629,22 @@ final class ThemeMultiSelectPrompt<T> {
 
 ThemeSession _newOwner({
   required TerminalEnvironment io,
+  ThemeSession? session,
   required InteractionPreferences interaction,
   required ColorPreferences themeColors,
   ThemeResolvedCallback? onResolved,
   ThemeInteractionFactsProvider? factsForPeriod,
   NativeHintObservations? hints,
-}) => ThemeSession(
-  environment: io,
-  interaction: interaction,
-  colors: themeColors,
-  onResolved: onResolved,
-  factsForPeriod: factsForPeriod,
-  hints: hints,
-);
+}) =>
+    session ??
+    ThemeSession(
+      environment: io,
+      interaction: interaction,
+      colors: themeColors,
+      onResolved: onResolved,
+      factsForPeriod: factsForPeriod,
+      hints: hints,
+    );
 
 PresentationMode _presentationMode(ThemeSessionHandle handle) =>
     switch ((handle.interaction.mode, handle.interaction.screenReader)) {

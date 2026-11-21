@@ -54,6 +54,7 @@ final class ThemeFilesystemPrompt<T> {
     required this.label,
     required this.kind,
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.base,
     this.initialValue = '',
     this.allowNonexistent = false,
@@ -72,19 +73,22 @@ final class ThemeFilesystemPrompt<T> {
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
   }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
-       _owner = ThemeSession(
-         environment: io,
-         colors: themeColors,
-         interaction: interaction,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+       _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             colors: themeColors,
+             interaction: interaction,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   /// Browses for an existing file, reviewed before it is returned.
   static ThemeFilesystemPrompt<String> filePicker(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String? base,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
@@ -99,6 +103,7 @@ final class ThemeFilesystemPrompt<T> {
     label: label,
     kind: ThemeFilesystemKind.filePicker,
     io: io,
+    session: session,
     base: base,
     target: PathTarget.file,
     colors: colors,
@@ -116,6 +121,7 @@ final class ThemeFilesystemPrompt<T> {
   static ThemeFilesystemPrompt<String> directoryPicker(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String? base,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
@@ -130,6 +136,7 @@ final class ThemeFilesystemPrompt<T> {
     label: label,
     kind: ThemeFilesystemKind.directoryPicker,
     io: io,
+    session: session,
     base: base,
     target: PathTarget.directory,
     colors: colors,
@@ -147,6 +154,7 @@ final class ThemeFilesystemPrompt<T> {
   static ThemeFilesystemPrompt<String> path(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     String? base,
     String initialValue = '',
     bool allowNonexistent = false,
@@ -164,6 +172,7 @@ final class ThemeFilesystemPrompt<T> {
     label: label,
     kind: ThemeFilesystemKind.path,
     io: io,
+    session: session,
     base: base,
     initialValue: initialValue,
     allowNonexistent: allowNonexistent,
@@ -183,6 +192,7 @@ final class ThemeFilesystemPrompt<T> {
   static ThemeFilesystemPrompt<IPAddressValue> ipAddress(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool cidr = false,
     bool scoped = false,
     String initialValue = '',
@@ -199,6 +209,7 @@ final class ThemeFilesystemPrompt<T> {
     label: label,
     kind: ThemeFilesystemKind.ipAddress,
     io: io,
+    session: session,
     cidr: cidr,
     scoped: scoped,
     initialValue: initialValue,
@@ -217,6 +228,7 @@ final class ThemeFilesystemPrompt<T> {
   static ThemeFilesystemPrompt<String> url(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required Set<String> allowedSchemes,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
@@ -231,6 +243,7 @@ final class ThemeFilesystemPrompt<T> {
     label: label,
     kind: ThemeFilesystemKind.url,
     io: io,
+    session: session,
     allowedSchemes: Set<String>.unmodifiable(allowedSchemes),
     colors: colors,
     structure: structure,
@@ -247,6 +260,7 @@ final class ThemeFilesystemPrompt<T> {
   static ThemeFilesystemPrompt<String> email(
     String label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     bool smtpUtf8 = false,
     String initialValue = '',
     ComponentColors colors = const ComponentColors(),
@@ -262,6 +276,7 @@ final class ThemeFilesystemPrompt<T> {
     label: label,
     kind: ThemeFilesystemKind.email,
     io: io,
+    session: session,
     smtpUtf8: smtpUtf8,
     initialValue: initialValue,
     colors: colors,

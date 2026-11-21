@@ -12,6 +12,7 @@ import 'color_resolution.dart';
 import 'color_theme.dart';
 import 'interaction_resolution.dart';
 import 'presentation.dart' show DisplayText;
+import 'prompt_structure.dart' show PromptStructure;
 import 'state_help_presentation.dart'
     show
         ComponentRoute,
@@ -21,7 +22,7 @@ import 'state_help_presentation.dart'
 import 'terminal_io.dart';
 import 'text_input.dart' show Choice, InstructionDisplay, PromptResult;
 import 'theme_session.dart';
-import 'themes/rail_theme.dart';
+import 'text_input.dart' show Select, TextInput;
 
 part 'rail_ink_blue_palettes.g.dart';
 
@@ -68,7 +69,7 @@ final class RailInkBlueTheme {
       primaryAction: 'Enter submits',
       shortPrimaryAction: 'Enter',
     );
-    return RailTheme.textInput(
+    return TextInput(
       label,
       initialValue: initialValue,
       required: required,
@@ -77,6 +78,7 @@ final class RailInkBlueTheme {
       colors: palette,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
+      structure: PromptStructure.rail,
     ).prompt(session: handle.session);
   });
 
@@ -97,13 +99,14 @@ final class RailInkBlueTheme {
       primaryAction: 'Enter selects',
       shortPrimaryAction: 'Enter',
     );
-    return RailTheme.select<T>(
+    return Select<T>(
       label,
       choices,
       defaultValue: defaultValue,
       colors: palette,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
+      structure: PromptStructure.rail,
     ).prompt(session: handle.session);
   });
 

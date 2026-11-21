@@ -415,21 +415,18 @@ void main() {
       },
     );
 
-    test('regenerating theme sources cannot adopt the adaptive defaults', () {
+    test('generated theme instances adopt their authored adaptive defaults', () {
       final template = File('lib/src/themes/plain_theme.dart')
           .readAsStringSync();
       final generated = File('lib/src/themes/box_theme.dart')
           .readAsStringSync();
       final atlas = File('lib/src/color_theme_palettes.g.dart')
           .readAsStringSync();
-      for (final source in [template, generated]) {
-        expect(
-          RegExp(r'ColorTheme colors = ColorThemes.terminalDefault')
-              .allMatches(source),
-          hasLength(38),
-        );
-        expect(source, isNot(contains('StructuralThemePalettes')));
-      }
+      expect(template, contains('extends StructuralTheme'));
+      expect(generated, contains('extends StructuralTheme'));
+      expect(generated, contains('PromptStructure.box'));
+      expect(generated, contains('StructuralThemePalettes.box.defaults'));
+      expect(generated, isNot(contains('static TextInput textInput')));
       expect(atlas, contains('static const terminalDefault'));
       expect(atlas, isNot(contains('BoxThemeDefault')));
     });

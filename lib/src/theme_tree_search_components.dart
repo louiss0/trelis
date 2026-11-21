@@ -48,6 +48,7 @@ final class ThemeTreeSelectPrompt<T> {
     this.label,
     List<TreeNode<T>> nodes, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.defaultValue,
     T? selectedValue,
     this.isCurrent,
@@ -70,14 +71,16 @@ final class ThemeTreeSelectPrompt<T> {
          selectedReference: _referenceOf(nodes, selectedValue),
          restrictions: _restrictionsOf(nodes),
        ),
-       _owner = ThemeSession(
-         environment: io,
-         interaction: interaction,
-         colors: themeColors,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+       _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             interaction: interaction,
+             colors: themeColors,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   final String label;
   final List<TreeNode<T>> nodes;
@@ -188,6 +191,7 @@ final class ThemeOrderPrompt<T> {
     this.label,
     List<Choice<T>> choices, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.instructions = InstructionDisplay.themeDefault,
     this.supplementaryHelp = const [],
     this.colors = const ComponentColors(),
@@ -207,14 +211,16 @@ final class ThemeOrderPrompt<T> {
                i + 1: ChoiceRestriction.locked,
          },
        ),
-       _owner = ThemeSession(
-         environment: io,
-         interaction: interaction,
-         colors: themeColors,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+       _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             interaction: interaction,
+             colors: themeColors,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   final String label;
   final List<Choice<T>> choices;
@@ -274,6 +280,7 @@ final class ThemeAutocompletePrompt {
   ThemeAutocompletePrompt(
     this.label, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     required this.suggestions,
     this.initialValue = '',
     this.required = false,
@@ -290,14 +297,16 @@ final class ThemeAutocompletePrompt {
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
   }) : _config = ChoicePresentationConfig(glyphs: glyphs, showReference: false),
-       _owner = ThemeSession(
-         environment: io,
-         interaction: interaction,
-         colors: themeColors,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+       _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             interaction: interaction,
+             colors: themeColors,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   final String label;
   final FutureOr<List<String>> Function(String) suggestions;
@@ -372,6 +381,7 @@ final class ThemeSearchPrompt<T> {
     this.label,
     List<Choice<T>> choices, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     this.kind = ThemeSearchComponent.search,
     this.search,
     this.defaultValue,
@@ -396,19 +406,22 @@ final class ThemeSearchPrompt<T> {
                i + 1: ChoiceRestriction.unavailable,
          },
        ),
-       _owner = ThemeSession(
-         environment: io,
-         interaction: interaction,
-         colors: themeColors,
-         onResolved: onResolved,
-         factsForPeriod: factsForPeriod,
-         hints: hints,
-       );
+       _owner =
+           session ??
+           ThemeSession(
+             environment: io,
+             interaction: interaction,
+             colors: themeColors,
+             onResolved: onResolved,
+             factsForPeriod: factsForPeriod,
+             hints: hints,
+           );
 
   factory ThemeSearchPrompt.search(
     String label,
     List<Choice<T>> choices, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     FutureOr<List<Choice<T>>> Function(String)? search,
     T? defaultValue,
     T? selectedValue,
@@ -426,6 +439,7 @@ final class ThemeSearchPrompt<T> {
     label,
     choices,
     io: io,
+    session: session,
     kind: ThemeSearchComponent.search,
     search: search,
     defaultValue: defaultValue,
@@ -446,6 +460,7 @@ final class ThemeSearchPrompt<T> {
     String label,
     List<Choice<T>> commands, {
     required TerminalEnvironment io,
+    ThemeSession? session,
     FutureOr<List<Choice<T>>> Function(String)? search,
     T? defaultValue,
     T? selectedValue,
@@ -463,6 +478,7 @@ final class ThemeSearchPrompt<T> {
     label,
     commands,
     io: io,
+    session: session,
     kind: ThemeSearchComponent.commandPalette,
     search: search,
     defaultValue: defaultValue,
