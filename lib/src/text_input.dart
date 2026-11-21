@@ -22,6 +22,7 @@ import 'state_help_presentation.dart'
         ChoicePresentation,
         ChoicePresentationConfig,
         ChoiceRestriction,
+        DisclosureState,
         renderChoiceRow;
 import 'shared_terminal.dart';
 import 'terminal_io.dart';
@@ -5065,23 +5066,49 @@ final class _ChoiceRow {
   ///
   /// Focus, selection, the default and a restriction occupy separate aligned
   /// positions, so a locked or unavailable row stays readable without colour.
-  ChoicePresentation get themedRow => ChoicePresentation(
-    label: '$reference. $label',
-    focused: focused,
-    checked: checked,
-    selected: checked == null
-        ? presentation?.selectedReference == reference
-        : null,
-    isDefault: isDefault,
-    style: presentation?.style ?? const ChoicePresentationConfig().style,
-    restriction:
-        presentation?.restrictionFor(
-          reference,
-          reason: disabledReason ?? lockedReason,
-        ) ??
-        ChoiceRestriction.none,
-    reason: disabledReason ?? lockedReason,
-  );
+  ChoicePresentation get themedRow {
+    // The state vocabulary keeps every fact in its own position. A tree's
+    // expansion is disclosure, an order row's position and movement are part
+    // of its label, and every reason a row cannot be accepted stays readable.
+    final reason = [
+      ?disabledReason,
+      ?lockedReason,
+      ?childrenUnavailableReason,
+      if (selectable == false) 'not selectable',
+      if (!current) 'no longer available',
+    ].join('; ');
+    final showReference = presentation?.showReference ?? true;
+    final labelText = [
+      if (showReference) '$reference.',
+      if (position != null) 'Position $position of $positionCount.',
+      label,
+      if (moving) '(moving)',
+    ].join(' ');
+    return ChoicePresentation(
+      label: labelText,
+      reference: showReference ? reference : null,
+      focused: focused,
+      checked: checked,
+      selected: checked == null
+          ? presentation?.selectedReference == reference
+          : null,
+      isDefault: isDefault,
+      style: presentation?.style ?? const ChoicePresentationConfig().style,
+      disclosure: switch (treeState) {
+        null || _TreeRowState.leaf => DisclosureState.leaf,
+        _TreeRowState.expanded => DisclosureState.expanded,
+        _TreeRowState.collapsed ||
+        _TreeRowState.childrenUnavailable => DisclosureState.collapsed,
+      },
+      restriction:
+          presentation?.restrictionFor(
+            reference,
+            reason: reason.isEmpty ? null : reason,
+          ) ??
+          ChoiceRestriction.none,
+      reason: reason.isEmpty ? null : reason,
+    );
+  }
 
   /// Display-safe row text for the configured vocabulary.
   String get themedText {

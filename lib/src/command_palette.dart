@@ -11,6 +11,7 @@ final class CommandPalette<T> {
     ColorTheme colors = ColorThemes.terminalDefault,
     PromptStructure structure = PromptStructure.plain,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    ChoicePresentationConfig? presentation,
     List<String> supplementaryHelp = const [],
   }) : _select = SearchSelect<T>._palette(
          label,
@@ -20,6 +21,7 @@ final class CommandPalette<T> {
          colors: colors,
          structure: structure,
          instructions: instructions,
+         presentation: presentation,
          supplementaryHelp: supplementaryHelp,
        );
 

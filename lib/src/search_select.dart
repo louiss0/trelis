@@ -10,6 +10,7 @@ final class SearchSelect<T> {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
        choices = List.unmodifiable(choices),
@@ -33,6 +34,7 @@ final class SearchSelect<T> {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
        choices = List.unmodifiable(choices),
@@ -56,6 +58,7 @@ final class SearchSelect<T> {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
        choices = List.unmodifiable(choices),
@@ -76,6 +79,9 @@ final class SearchSelect<T> {
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+
+  /// Theme-owned state vocabulary, or null for the legacy textual markers.
+  final ChoicePresentationConfig? presentation;
   final List<String> supplementaryHelp;
 
   /// Optional search policy. Results must use identities from [choices]; their
@@ -275,7 +281,11 @@ final class SearchSelect<T> {
       instructions,
       hidden: (
         title: '${safe(label)}.',
-        guidance: '${mode == PromptMode.linear ? '/help' : 'Ctrl+T'} for help.',
+        // Hidden instructions omit optional detail, never the primary action
+        // or the route to detailed help.
+        guidance: mode == PromptMode.linear
+            ? 'Enter a query, then a result reference. /help for help.'
+            : 'Type a query; Enter opens results. Ctrl+T help.',
       ),
       compact: (
         title: '${safe(label)}.',
@@ -393,8 +403,21 @@ final class SearchSelect<T> {
       }
       if (projection.rows.isNotEmpty) spine.breathingRow(out);
       for (final row in projection.rows) {
-        write(
-          '${row.reference}. ${row.label.value}${row.focused ? ' [focused]' : ''}${row.isDefault ? ' [default]' : ''}${row.unavailableReason == null ? '' : ' [unavailable: ${row.unavailableReason!.value}]'}',
+        _writeChoiceRow(
+          out,
+          _ChoiceRow(
+            reference: row.reference ?? 0,
+            label: row.label.value,
+            focused: row.focused,
+            isDefault: row.isDefault,
+            disabledReason: row.unavailableReason?.value,
+            presentation: presentation,
+          ),
+          width: _textInputWidth(effectiveProfile),
+          foreground: row.focused ? colors.accent : colors.foreground,
+          colors: colors,
+          profile: effectiveProfile,
+          spine: spine,
         );
       }
       if (spine.encloses || spine.heads) {

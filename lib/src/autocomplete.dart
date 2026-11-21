@@ -12,6 +12,7 @@ final class Autocomplete {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
        _input = TextInput(
@@ -33,6 +34,9 @@ final class Autocomplete {
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+
+  /// Theme-owned state vocabulary, or null for the legacy textual markers.
+  final ChoicePresentationConfig? presentation;
   final List<String> supplementaryHelp;
   final String? Function(String)? validate;
   final FutureOr<List<String>> Function(String) suggestions;
@@ -173,7 +177,12 @@ final class Autocomplete {
       out,
       parts: _instructionIntroParts(
         instructions,
-        hidden: (title: '${safe(label)}.', guidance: '/help for help.'),
+        hidden: (
+          title: '${safe(label)}.',
+          // Hidden instructions suppress optional detail, never the primary
+          // action or the route to detailed help.
+          guidance: 'Enter a query; then a candidate number or /submit. /help for help.',
+        ),
         compact: (
           title: '${safe(label)}.',
           guidance: 'Enter a query; then a candidate number or /submit. /help for help.',
@@ -283,8 +292,29 @@ final class Autocomplete {
                 .where((item) => !item.runes.any((r) => r < 32 || r == 127))
                 .toList();
             write('${candidates.length} suggestions.');
-            for (var i = 0; i < candidates.length; i++) {
-              write('${i + 1}. ${safe(candidates[i])}');
+            final config = presentation;
+            if (config == null) {
+              for (var i = 0; i < candidates.length; i++) {
+                write('${i + 1}. ${safe(candidates[i])}');
+              }
+            } else {
+              for (var i = 0; i < candidates.length; i++) {
+                _writeChoiceRow(
+                  out,
+                  _ChoiceRow(
+                    reference: i + 1,
+                    label: safe(candidates[i]),
+                    position: i + 1,
+                    positionCount: candidates.length,
+                    presentation: config,
+                  ),
+                  width: _textInputWidth(effectiveProfile),
+                  foreground: colors.foreground,
+                  colors: colors,
+                  profile: effectiveProfile,
+                  spine: spine,
+                );
+              }
             }
             recordResults();
           }
@@ -418,7 +448,10 @@ final class Autocomplete {
       out,
       parts: _instructionIntroParts(
         instructions,
-        hidden: (title: '${safe(label)}.', guidance: 'Ctrl+T for help.'),
+        hidden: (
+          title: '${safe(label)}.',
+          guidance: 'Type text; Tab accepts a suggestion; Enter submits. Ctrl+T help.',
+        ),
         compact: (
           title: '${safe(label)}.',
           guidance: 'Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',
@@ -506,6 +539,27 @@ final class Autocomplete {
             .toList();
         recordResults();
         notice('${candidates.length} suggestions; none active.');
+        final config = presentation;
+        if (config != null) {
+          for (var i = 0; i < candidates.length; i++) {
+            _writeChoiceRow(
+              out,
+              _ChoiceRow(
+                reference: i + 1,
+                label: safe(candidates[i]),
+                position: i + 1,
+                positionCount: candidates.length,
+                focused: i == focus,
+                presentation: config,
+              ),
+              width: _textInputWidth(effectiveProfile),
+              foreground: i == focus ? colors.accent : colors.foreground,
+              colors: colors,
+              profile: effectiveProfile,
+              spine: spine,
+            );
+          }
+        }
       }
 
       void fail(Object error) {
@@ -596,6 +650,27 @@ final class Autocomplete {
               write(
                 'Active candidate, not accepted: ${safe(candidates[focus])}.',
               );
+              final config = presentation;
+              if (config != null) {
+                for (var i = 0; i < candidates.length; i++) {
+                  _writeChoiceRow(
+                    out,
+                    _ChoiceRow(
+                      reference: i + 1,
+                      label: safe(candidates[i]),
+                      position: i + 1,
+                      positionCount: candidates.length,
+                      focused: i == focus,
+                      presentation: config,
+                    ),
+                    width: _textInputWidth(effectiveProfile),
+                    foreground: i == focus ? colors.accent : colors.foreground,
+                    colors: colors,
+                    profile: effectiveProfile,
+                    spine: spine,
+                  );
+                }
+              }
               return 'handled';
             }
             if (open &&
