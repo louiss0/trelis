@@ -148,8 +148,10 @@ Branch adaptive-presentation seam for light, dark and explicit palette choices.
 Round adaptive-presentation seam for light, dark and explicit palette choices.
 `dart run example/line_theme_example.dart` replays the internal, unstable
 Line adaptive-presentation seam for light, dark and explicit palette choices.
-Each demonstrates the migration work, not a public API or qualified terminal
-contrast.
+`dart run example/minimal_theme_example.dart` replays the internal, unstable
+Minimal adaptive-presentation seam for light, dark and explicit palette
+choices. Each demonstrates the migration work, not a public API or qualified
+terminal contrast.
 
 ## Recording presentation events
 
