@@ -120,6 +120,57 @@ void main() {
     expect(helpOutput.toString(), contains('protected'));
   });
 
+  test(
+    'search and command results use themed focus, default and restrictions',
+    () async {
+      final searchOutput = StringBuffer();
+      final cancelled =
+          await SearchSelect<String>(
+            'Fruit',
+            [
+              Choice('a', 'Apple', disabledReason: 'offline'),
+              Choice('b', 'Banana'),
+              Choice('c', 'Cherry'),
+            ],
+            defaultValue: 'b',
+            presentation: const ChoicePresentationConfig(
+              restrictions: {1: ChoiceRestriction.unavailable},
+            ),
+          ).prompt(
+            source: ScriptedInput(Stream.value('\r1\r/cancel\r'), searchOutput),
+            mode: PromptMode.linear,
+          );
+      expect(cancelled, isA<Cancelled<String>>());
+      final searchText = searchOutput.toString();
+      expect(searchText, contains('[!]'));
+      expect(searchText, contains('offline'));
+      expect(searchText, contains('→'));
+      expect(searchText, contains('★'));
+      expect(searchText, contains('Unavailable: offline.'));
+
+      final commandOutput = StringBuffer();
+      final accepted =
+          await CommandPalette<String>(
+            'Commands',
+            [Choice('open', 'Open file'), Choice('save', 'Save file')],
+            presentation: const ChoicePresentationConfig(
+              glyphs: StateGlyphs.ascii,
+              selectedReference: 2,
+            ),
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\r2\r'),
+              commandOutput,
+              outputProfile: _asciiProfile,
+            ),
+            mode: PromptMode.linear,
+          );
+      expect((accepted as Accepted<String>).value, 'save');
+      expect(commandOutput.toString(), contains('(*)'));
+      expect(commandOutput.toString(), contains('( )'));
+    },
+  );
+
   test('tree disclosure uses the portable ASCII pair', () async {
     final expanded = await _renderTree(
       glyphs: StateGlyphs.ascii,
