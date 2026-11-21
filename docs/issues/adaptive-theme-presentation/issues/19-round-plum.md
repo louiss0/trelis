@@ -1,6 +1,6 @@
 # 19 Round adaptive plum theme
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [09: composable state indicators and compact help](09-state-and-compact-help.md)
 
