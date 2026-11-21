@@ -144,7 +144,9 @@ terminal, or `--linear` to force sequential interaction.
 
 `dart run example/branch_theme_example.dart` replays the internal, unstable
 Branch adaptive-presentation seam for light, dark and explicit palette choices.
-It demonstrates the migration work, not a public API or qualified terminal
+`dart run example/round_theme_example.dart` replays the internal, unstable
+Round adaptive-presentation seam for light, dark and explicit palette choices.
+Each demonstrates the migration work, not a public API or qualified terminal
 contrast.
 
 ## Recording presentation events

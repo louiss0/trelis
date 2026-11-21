@@ -9,8 +9,8 @@ structure = sys.argv[1]
 name = structure.capitalize() + 'Theme'
 result = source.replace('PlainTheme', name)
 # The generated namespace refers to PromptStructure even though the plain
-# template does not. Every checked-in namespace carries the import; generate
-# it so regeneration does not silently remove a required dependency.
+# template does not. Every checked-in structural namespace carries the import;
+# generate it so regeneration does not silently remove a required dependency.
 if (structure != 'plain'
         and "import 'package:trelis/src/prompt_structure.dart';" not in result):
     result = result.replace(
