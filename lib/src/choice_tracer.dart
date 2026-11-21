@@ -14,10 +14,10 @@ import 'presentation.dart' show DisplayText;
 import 'prompt_structure.dart' show PromptStructure;
 import 'state_help_presentation.dart'
     show
-      ComponentRoute,
-      PresentationMode,
-      compactHint,
-      composePromptPresentation;
+        ComponentRoute,
+        PresentationMode,
+        compactHint,
+        composePromptPresentation;
 import 'terminal_io.dart';
 import 'text_input.dart'
     show Choice, InstructionDisplay, MultiSelect, PromptMode, PromptResult;

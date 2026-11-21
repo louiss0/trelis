@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:test/test.dart';
@@ -29,9 +30,9 @@ void main() {
 
   ColorTheme appPalette(BackgroundVariant variant) =>
       ColorThemes.terminalDefault.copyWith(
-        foreground: TerminalColor.indexed(variant == BackgroundVariant.light
-            ? 100
-            : 110),
+        foreground: TerminalColor.indexed(
+          variant == BackgroundVariant.light ? 100 : 110,
+        ),
         muted: TerminalColor.indexed(101),
       );
 
@@ -42,21 +43,24 @@ void main() {
   );
 
   group('Box authored adaptive defaults', () {
-    test('light and dark defaults are distinct warm-ink palettes with rust', () {
-      expect(box.light.foreground, TerminalColor.rgb(51, 41, 31));
-      expect(box.light.accent, TerminalColor.rgb(166, 69, 38));
-      expect(box.dark.foreground, TerminalColor.rgb(243, 233, 220));
-      expect(box.dark.accent, TerminalColor.rgb(232, 135, 90));
-      expect(box.light.accent, isNot(box.dark.accent));
-      expect(box.light.foreground, isNot(box.dark.foreground));
-      for (final palette in [box.light, box.dark]) {
-        expect(isTerminalDefault(palette.background), isTrue);
-        expect(palette.success, isNot(palette.accent));
-        expect(palette.warning, isNot(palette.accent));
-        expect(palette.error, isNot(palette.accent));
-        expect(palette.selectionForeground, isNot(palette.foreground));
-      }
-    });
+    test(
+      'light and dark defaults are distinct warm-ink palettes with rust',
+      () {
+        expect(box.light.foreground, TerminalColor.rgb(51, 41, 31));
+        expect(box.light.accent, TerminalColor.rgb(166, 69, 38));
+        expect(box.dark.foreground, TerminalColor.rgb(243, 233, 220));
+        expect(box.dark.accent, TerminalColor.rgb(232, 135, 90));
+        expect(box.light.accent, isNot(box.dark.accent));
+        expect(box.light.foreground, isNot(box.dark.foreground));
+        for (final palette in [box.light, box.dark]) {
+          expect(isTerminalDefault(palette.background), isTrue);
+          expect(palette.success, isNot(palette.accent));
+          expect(palette.warning, isNot(palette.accent));
+          expect(palette.error, isNot(palette.accent));
+          expect(palette.selectionForeground, isNot(palette.foreground));
+        }
+      },
+    );
 
     test('unknown background falls back to dark; explicit choice wins', () {
       final unknown = resolve();
@@ -109,34 +113,40 @@ void main() {
         expect(result.palette, same(authored));
       });
 
-      test('app replacement and its shared and variant roles layer in order',
-          () {
-        final result = resolve(
-          preferences: ColorPreferences(
-            background: preference,
-            colors: ComponentColors(
-              palette: appPalette(variant),
-              roles: ColorRoleOverrides(
-                accent: TerminalColor.indexed(11),
-                warning: TerminalColor.indexed(12),
+      test(
+        'app replacement and its shared and variant roles layer in order',
+        () {
+          final result = resolve(
+            preferences: ColorPreferences(
+              background: preference,
+              colors: ComponentColors(
+                palette: appPalette(variant),
+                roles: ColorRoleOverrides(
+                  accent: TerminalColor.indexed(11),
+                  warning: TerminalColor.indexed(12),
+                ),
+                lightRoles: ColorRoleOverrides(
+                  success: TerminalColor.indexed(13),
+                ),
+                darkRoles: ColorRoleOverrides(
+                  success: TerminalColor.indexed(14),
+                ),
               ),
-              lightRoles: ColorRoleOverrides(success: TerminalColor.indexed(13)),
-              darkRoles: ColorRoleOverrides(success: TerminalColor.indexed(14)),
             ),
-          ),
-        );
-        expect(
-          result.palette.foreground,
-          TerminalColor.indexed(isLight ? 100 : 110),
-        );
-        expect(result.palette.muted, TerminalColor.indexed(101));
-        expect(result.palette.accent, TerminalColor.indexed(11));
-        expect(result.palette.warning, TerminalColor.indexed(12));
-        expect(
-          result.palette.success,
-          TerminalColor.indexed(isLight ? 13 : 14),
-        );
-      });
+          );
+          expect(
+            result.palette.foreground,
+            TerminalColor.indexed(isLight ? 100 : 110),
+          );
+          expect(result.palette.muted, TerminalColor.indexed(101));
+          expect(result.palette.accent, TerminalColor.indexed(11));
+          expect(result.palette.warning, TerminalColor.indexed(12));
+          expect(
+            result.palette.success,
+            TerminalColor.indexed(isLight ? 13 : 14),
+          );
+        },
+      );
 
       test('component roles layer over the effective app palette', () {
         final result = resolve(
@@ -159,35 +169,34 @@ void main() {
         );
         expect(result.palette.warning, TerminalColor.indexed(12));
         expect(result.palette.accent, TerminalColor.indexed(21));
-        expect(
-          result.palette.error,
-          TerminalColor.indexed(isLight ? 22 : 23),
-        );
+        expect(result.palette.error, TerminalColor.indexed(isLight ? 22 : 23));
       });
 
-      test('component replacement discards the complete app palette and roles',
-          () {
-        final result = resolve(
-          preferences: ColorPreferences(
-            background: preference,
-            colors: ComponentColors(
-              palette: appPalette(variant),
-              roles: ColorRoleOverrides(
-                accent: TerminalColor.indexed(11),
-                warning: TerminalColor.indexed(12),
+      test(
+        'component replacement discards the complete app palette and roles',
+        () {
+          final result = resolve(
+            preferences: ColorPreferences(
+              background: preference,
+              colors: ComponentColors(
+                palette: appPalette(variant),
+                roles: ColorRoleOverrides(
+                  accent: TerminalColor.indexed(11),
+                  warning: TerminalColor.indexed(12),
+                ),
               ),
             ),
-          ),
-          component: ComponentColors(
-            palette: componentPalette(),
-            roles: ColorRoleOverrides(accent: TerminalColor.indexed(21)),
-          ),
-        );
-        expect(result.palette.foreground, TerminalColor.indexed(200));
-        expect(result.palette.muted, TerminalColor.indexed(201));
-        expect(result.palette.accent, TerminalColor.indexed(21));
-        expect(result.palette.warning, TerminalColor.indexed(202));
-      });
+            component: ComponentColors(
+              palette: componentPalette(),
+              roles: ColorRoleOverrides(accent: TerminalColor.indexed(21)),
+            ),
+          );
+          expect(result.palette.foreground, TerminalColor.indexed(200));
+          expect(result.palette.muted, TerminalColor.indexed(201));
+          expect(result.palette.accent, TerminalColor.indexed(21));
+          expect(result.palette.warning, TerminalColor.indexed(202));
+        },
+      );
 
       test('a component override cannot change background or I/O facts', () {
         final baseline = resolve(
@@ -246,36 +255,38 @@ void main() {
       }
     });
 
-    test('non-empty NO_COLOR is a hard final restriction against explicit color',
-        () {
-      final result = resolve(
-        preferences: const ColorPreferences(
-          background: BackgroundPreference.light,
-          colors: ComponentColors.palette(ColorThemes.terminalDefault),
-        ),
-        component: ComponentColors(
-          palette: ColorThemes.terminalDefault.copyWith(
-            foreground: TerminalColor.rgb(200, 10, 20),
-            background: TerminalColor.rgb(0, 0, 0),
+    test(
+      'non-empty NO_COLOR is a hard final restriction against explicit color',
+      () {
+        final result = resolve(
+          preferences: const ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.terminalDefault),
           ),
-        ),
-        facts: const ColorDetectionFacts(
-          outputProfile: OutputProfile(colorDepth: ColorDepth.rgb),
-          noColor: '1',
-        ),
-      );
-      expect(result.outputProfile.colorDepth, ColorDepth.none);
-      expect(result.shouldQueryBackground, isFalse);
-      expect(
-        terminalStyledText(
+          component: ComponentColors(
+            palette: ColorThemes.terminalDefault.copyWith(
+              foreground: TerminalColor.rgb(200, 10, 20),
+              background: TerminalColor.rgb(0, 0, 0),
+            ),
+          ),
+          facts: const ColorDetectionFacts(
+            outputProfile: OutputProfile(colorDepth: ColorDepth.rgb),
+            noColor: '1',
+          ),
+        );
+        expect(result.outputProfile.colorDepth, ColorDepth.none);
+        expect(result.shouldQueryBackground, isFalse);
+        expect(
+          terminalStyledText(
+            'ready',
+            foreground: result.palette.foreground,
+            background: result.palette.background,
+            depth: result.outputProfile.colorDepth,
+          ),
           'ready',
-          foreground: result.palette.foreground,
-          background: result.palette.background,
-          depth: result.outputProfile.colorDepth,
-        ),
-        'ready',
-      );
-    });
+        );
+      },
+    );
 
     test('output depth degrades the rust accent predictably', () {
       String styled(ColorDepth depth) => terminalStyledText(
@@ -297,7 +308,12 @@ void main() {
         palette: box.light,
         background: BoxPaletteReference.lightBackground,
         roles: <String, ({int red, int green, int blue, TerminalColor color})>{
-          'foreground': (red: 51, green: 41, blue: 31, color: box.light.foreground),
+          'foreground': (
+            red: 51,
+            green: 41,
+            blue: 31,
+            color: box.light.foreground,
+          ),
           'muted': (red: 110, green: 96, blue: 81, color: box.light.muted),
           'accent': (red: 166, green: 69, blue: 38, color: box.light.accent),
           'border': (red: 122, green: 102, blue: 80, color: box.light.border),
@@ -310,7 +326,12 @@ void main() {
         palette: box.dark,
         background: BoxPaletteReference.darkBackground,
         roles: <String, ({int red, int green, int blue, TerminalColor color})>{
-          'foreground': (red: 243, green: 233, blue: 220, color: box.dark.foreground),
+          'foreground': (
+            red: 243,
+            green: 233,
+            blue: 220,
+            color: box.dark.foreground,
+          ),
           'muted': (red: 187, green: 168, blue: 150, color: box.dark.muted),
           'accent': (red: 232, green: 135, blue: 90, color: box.dark.accent),
           'border': (red: 156, green: 132, blue: 110, color: box.dark.border),
@@ -321,38 +342,46 @@ void main() {
       ),
     }.entries) {
       for (final role in entry.value.roles.entries) {
-        test('${entry.key} ${role.key} reaches 4.5:1 on the reference surface',
-            () {
-          expect(
-            role.value.color,
-            TerminalColor.rgb(role.value.red, role.value.green, role.value.blue),
-          );
-          expect(
-            contrastRatio(
-              (role.value.red, role.value.green, role.value.blue),
-              (
-                entry.value.background.red,
-                entry.value.background.green,
-                entry.value.background.blue,
+        test(
+          '${entry.key} ${role.key} reaches 4.5:1 on the reference surface',
+          () {
+            expect(
+              role.value.color,
+              TerminalColor.rgb(
+                role.value.red,
+                role.value.green,
+                role.value.blue,
               ),
-            ),
-            greaterThanOrEqualTo(4.5),
-          );
-        });
+            );
+            expect(
+              contrastRatio(
+                (role.value.red, role.value.green, role.value.blue),
+                (
+                  entry.value.background.red,
+                  entry.value.background.green,
+                  entry.value.background.blue,
+                ),
+              ),
+              greaterThanOrEqualTo(4.5),
+            );
+          },
+        );
       }
     }
 
-    test('selection foreground reaches 4.5:1 on its rust selection background',
-        () {
-      expect(
-        contrastRatio((255, 253, 247), (166, 69, 38)),
-        greaterThanOrEqualTo(4.5),
-      );
-      expect(
-        contrastRatio((30, 27, 25), (232, 135, 90)),
-        greaterThanOrEqualTo(4.5),
-      );
-    });
+    test(
+      'selection foreground reaches 4.5:1 on its rust selection background',
+      () {
+        expect(
+          contrastRatio((255, 253, 247), (166, 69, 38)),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrastRatio((30, 27, 25), (232, 135, 90)),
+          greaterThanOrEqualTo(4.5),
+        );
+      },
+    );
 
     test('the reference surface is not a painted palette background', () {
       for (final palette in [box.light, box.dark]) {
@@ -370,17 +399,39 @@ void main() {
       );
     });
 
-    test('the adaptive defaults are not one of the generated atlas presets', () {
-      final presets = <ColorTheme>[
-        ColorThemes.punch,
-        ColorThemes.clay,
-        ColorThemes.copper,
-        ColorThemes.ember,
-      ];
-      for (final preset in presets) {
-        expect(box.light, isNot(preset));
-        expect(box.dark, isNot(preset));
+    test(
+      'the adaptive defaults are not one of the generated atlas presets',
+      () {
+        final presets = <ColorTheme>[
+          ColorThemes.punch,
+          ColorThemes.clay,
+          ColorThemes.copper,
+          ColorThemes.ember,
+        ];
+        for (final preset in presets) {
+          expect(box.light, isNot(preset));
+          expect(box.dark, isNot(preset));
+        }
+      },
+    );
+
+    test('regenerating theme sources cannot adopt the adaptive defaults', () {
+      final template = File('lib/src/themes/plain_theme.dart')
+          .readAsStringSync();
+      final generated = File('lib/src/themes/box_theme.dart')
+          .readAsStringSync();
+      final atlas = File('lib/src/color_theme_palettes.g.dart')
+          .readAsStringSync();
+      for (final source in [template, generated]) {
+        expect(
+          RegExp(r'ColorTheme colors = ColorThemes.terminalDefault')
+              .allMatches(source),
+          hasLength(38),
+        );
+        expect(source, isNot(contains('StructuralThemePalettes')));
       }
+      expect(atlas, contains('static const terminalDefault'));
+      expect(atlas, isNot(contains('BoxThemeDefault')));
     });
   });
 }
