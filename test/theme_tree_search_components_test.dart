@@ -86,7 +86,69 @@ ThemeOrderPrompt<String> _order(
       : StateGlyphs.unicode,
 );
 
+ThemeAutocompletePrompt _autocomplete(
+  String input,
+  StringSink output, {
+  InteractionPreferences interaction = const InteractionPreferences(),
+  OutputProfile profile = const OutputProfile(),
+}) => ThemeAutocompletePrompt(
+  'Name',
+  suggestions: (_) => ['Ada', 'Grace'],
+  io: TerminalEnvironment.scripted(
+    input: Stream.value(input),
+    output: output,
+    profile: profile,
+    supportsRich: profile.supportsRichInteraction,
+  ),
+  interaction: interaction,
+  instructions: InstructionDisplay.hidden,
+);
+
 void main() {
+  test(
+    'themed autocomplete keeps response-local candidates and essential help',
+    () async {
+      final linearOutput = StringBuffer();
+      final linear = await _autocomplete(
+        'A\r1\r/submit\r',
+        linearOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      ).prompt();
+      expect((linear as Accepted<String>).value, 'Ada');
+      expect(linearOutput.toString(), contains('Position 1 of 2'));
+      expect(linearOutput.toString(), contains('Enter a query'));
+      expect(linearOutput.toString(), contains('/help'));
+
+      final richOutput = StringBuffer();
+      final rich = await _autocomplete(
+        'a\x1b[B\x1b[B\t\r',
+        richOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        profile: _richProfile,
+      ).prompt();
+      expect((rich as Accepted<String>).value, 'Grace');
+      expect(richOutput.toString(), contains('Position 2 of 2'));
+      expect(richOutput.toString(), contains('→'));
+
+      final readerOutput = StringBuffer();
+      final reader = await _autocomplete(
+        '/cancel\r',
+        readerOutput,
+        interaction: const InteractionPreferences(
+          mode: PromptMode.linear,
+          screenReader: ScreenReaderPreference.on,
+        ),
+      ).prompt();
+      expect(reader, isA<Cancelled<String>>());
+      final text = readerOutput.toString();
+      expect(text, contains('Name autocomplete query.'));
+      expect(
+        text.indexOf('Name autocomplete query.'),
+        lessThan(text.indexOf('Name.')),
+      );
+    },
+  );
+
   test(
     'themed tree keeps disclosure, focus, default and restrictions apart',
     () async {

@@ -177,7 +177,12 @@ final class Autocomplete {
       out,
       parts: _instructionIntroParts(
         instructions,
-        hidden: (title: '${safe(label)}.', guidance: '/help for help.'),
+        hidden: (
+          title: '${safe(label)}.',
+          // Hidden instructions suppress optional detail, never the primary
+          // action or the route to detailed help.
+          guidance: 'Enter a query; then a candidate number or /submit. /help for help.',
+        ),
         compact: (
           title: '${safe(label)}.',
           guidance: 'Enter a query; then a candidate number or /submit. /help for help.',
@@ -443,7 +448,10 @@ final class Autocomplete {
       out,
       parts: _instructionIntroParts(
         instructions,
-        hidden: (title: '${safe(label)}.', guidance: 'Ctrl+T for help.'),
+        hidden: (
+          title: '${safe(label)}.',
+          guidance: 'Type text; Tab accepts a suggestion; Enter submits. Ctrl+T help.',
+        ),
         compact: (
           title: '${safe(label)}.',
           guidance: 'Type text; Tab accepts a suggestion; Enter submits the text. Ctrl+T help.',

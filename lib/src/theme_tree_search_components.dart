@@ -31,6 +31,7 @@ import 'state_help_presentation.dart'
 import 'terminal_io.dart';
 import 'text_input.dart'
     show
+        Autocomplete,
         Choice,
         InstructionDisplay,
         PromptResult,
@@ -256,6 +257,100 @@ final class ThemeOrderPrompt<T> {
       mode: mode,
       prompt: label,
       essential: '$label, ordering of ${choices.length} choices.',
+      hint: compactHint(
+        mode: mode,
+        component: ComponentRoute.standard,
+        primaryAction: primary,
+        shortPrimaryAction: short,
+      ),
+    ).essentialBefore!;
+  }
+}
+
+/// ThemeSession-backed Autocomplete prompt.
+final class ThemeAutocompletePrompt {
+  ThemeAutocompletePrompt(
+    this.label, {
+    required TerminalEnvironment io,
+    required this.suggestions,
+    this.initialValue = '',
+    this.required = false,
+    this.validate,
+    this.maxLength,
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+    this.colors = const ComponentColors(),
+    this.structure = PromptStructure.plain,
+    StateGlyphs glyphs = StateGlyphs.unicode,
+    ColorPreferences themeColors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ThemeInteractionFactsProvider? factsForPeriod,
+    NativeHintObservations? hints,
+  }) : _config = ChoicePresentationConfig(glyphs: glyphs, showReference: false),
+       _owner = ThemeSession(
+         environment: io,
+         interaction: interaction,
+         colors: themeColors,
+         onResolved: onResolved,
+         factsForPeriod: factsForPeriod,
+         hints: hints,
+       );
+
+  final String label;
+  final FutureOr<List<String>> Function(String) suggestions;
+  final String initialValue;
+  final bool required;
+  final String? Function(String)? validate;
+  final int? maxLength;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ComponentColors colors;
+  final PromptStructure structure;
+  final ChoicePresentationConfig _config;
+  final ThemeSession _owner;
+
+  /// Restoration failures retained after a successful primary operation.
+  List<Object> get cleanupFailures => _owner.cleanupFailures;
+
+  Future<PromptResult<String>> prompt() => _owner.prompt((handle) {
+    final mode = handle.presentationMode;
+    if (mode == PresentationMode.screenReader) {
+      handle.session.presentText(_essential(mode));
+    }
+    return Autocomplete(
+      label,
+      suggestions: suggestions,
+      initialValue: initialValue,
+      required: required,
+      validate: validate,
+      maxLength: maxLength,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
+      colors: handle.componentColors(colors).palette,
+      structure: structure,
+      presentation: _outputConfig(handle, _config),
+    ).prompt(session: handle.session);
+  });
+
+  /// Starts live feedback sharing this prompt's active period.
+  Future<ThemeFeedbackHandle> startFeedback(
+    FutureOr<void> Function(ThemeSessionHandle handle) start, {
+    required FutureOr<void> Function() stop,
+  }) => _owner.startFeedback(start, stop: stop);
+
+  String _essential(PresentationMode mode) {
+    final (primary, short) = switch (mode) {
+      PresentationMode.rich => (
+        'Type a query; Tab accepts a candidate; Enter submits',
+        'Type; Tab; Enter',
+      ),
+      _ => ('Enter a query; then a number or /submit', 'Query; number'),
+    };
+    return composePromptPresentation(
+      mode: mode,
+      prompt: label,
+      essential: '$label autocomplete query.',
       hint: compactHint(
         mode: mode,
         component: ComponentRoute.standard,
