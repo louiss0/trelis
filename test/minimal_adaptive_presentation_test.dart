@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
+import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/themes/minimal_presentation.dart';
 import 'package:trelis/trelis.dart';
 
@@ -173,4 +174,63 @@ void main() {
       expect(explicit.palette, MinimalPresentation.lightDefault);
     });
   });
+
+  group('Minimal text input through the internal seam', () {
+    for (final variant in BackgroundVariant.values) {
+      final isLight = variant == BackgroundVariant.light;
+      final foreground = isLight ? '54;43;34' : '244;236;224';
+      final muted = isLight ? '96;80;68' : '190;174;156';
+
+      test(
+        '$variant palette styles a real conversational text input',
+        () async {
+          final output = StringBuffer();
+          final tracer = MinimalPresentationTracer(
+            io: TerminalEnvironment.scripted(
+              input: Stream.value('Ada\r'),
+              output: output,
+              profile: _richProfile,
+            ),
+            colors: ColorPreferences(
+              background: isLight
+                  ? BackgroundPreference.light
+                  : BackgroundPreference.dark,
+            ),
+            interaction: const InteractionPreferences(mode: PromptMode.rich),
+          );
+
+          final result = await tracer.textInput('Project name');
+          final text = output.toString();
+
+          expect((result as Accepted<String>).value, 'Ada');
+          expect(
+            text,
+            contains('\x1b[38;2;$foreground;49mProject name (Optional).'),
+          );
+          expect(text, contains('\x1b[38;2;$muted;49mLeft/Right move;'));
+          expect(text, contains('Enter submits. Ctrl+T opens help.'));
+          expect(text, contains('› '));
+          expect(
+            text.indexOf('Project name'),
+            lessThan(text.indexOf('Ctrl+T opens help.')),
+          );
+          for (final enclosure in ['┌', '┐', '└', '┘', '╭', '╮', '╰', '╯']) {
+            expect(text, isNot(contains(enclosure)));
+          }
+          expect(text, isNot(contains('──')));
+          expect(text, isNot(contains('\x1b[48;2;')));
+          expect(text, isNot(contains('\x1b[?1049h')));
+          expect(text, isNot(contains('\x1b[2J')));
+        },
+      );
+    }
+  });
 }
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  styles: CapabilitySupport.supported,
+  colorDepth: ColorDepth.rgb,
+  glyphs: GlyphSet.unicode,
+  geometry: OutputGeometry.fixed(columns: 60, rows: 12),
+);
