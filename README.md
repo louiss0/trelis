@@ -1,8 +1,25 @@
 # Trelis
 
-A Dart prompting-library project, currently at the design-to-implementation
-stage. TextInput is the first public prompt component; other component APIs
-are not implemented yet.
+A Dart prompting-library project. The public API is currently **unstable**:
+the coordinated theme-instance cutover has landed, but the independent
+interaction and colour release gates have not. Components are created through
+theme instances, which own one I/O environment and restore terminal resources
+after the last active component. There is no public theme `close()`.
+
+```dart
+import 'package:trelis/trelis.dart';
+
+final theme = RailTheme(io: environment);
+final name = await theme.textInput('Name', initialValue: 'Ada').prompt();
+```
+
+See [the migration guide](docs/adaptive-theme-public-api-migration.md) for the
+breaking changes from static factories, direct constructors, invocation-level
+configuration and supplied answers. The detailed component sections below
+document the older construction seam retained for internal component tests;
+they are not the current public authoring API. The examples under `example/`
+use the public instances except for explicitly named internal adaptive
+previews.
 
 ## TextInput
 

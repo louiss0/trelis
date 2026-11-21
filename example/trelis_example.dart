@@ -11,7 +11,12 @@ import 'package:trelis/trelis.dart';
 ///
 /// Run `dart run example/trelis_example.dart`.
 Future<void> main() async {
-  const scriptedChunks = ['demo\r', '\r', 'new-tag\r\t\r', 'y\r'];
+  const scriptedChunks = [
+    'demo\r',
+    '1\r',
+    'new-tag\r/done\r',
+    'y\r',
+  ];
   var chunk = 0;
 
   ThemePrompt<String> promptFor(String label) => RailTheme(
