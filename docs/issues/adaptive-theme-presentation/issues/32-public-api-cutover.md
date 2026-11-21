@@ -38,7 +38,7 @@ Validation performed in this worktree:
 
 - `dart pub get` succeeded in the library and external fixture package.
 - `dart analyze`: No issues found.
-- `dart test`: 5538 tests passed after the final public-API lifecycle tests.
+- `dart test`: 5527 tests passed after the final public-API lifecycle tests.
 - `dart format --output=none --set-exit-if-changed .`: 342 files, 0 changed, exit 0.
 - `dart run tool/check_issue_tracker.dart`: passes (rerun after integration merge).
 - `python tool/check_generated_diffs.py`: generated diff check ok (43 targets).
