@@ -5076,15 +5076,16 @@ final class _ChoiceRow {
       if (childrenUnavailableReason != null) childrenUnavailableReason!,
       if (!current) 'no longer available',
     ].join('; ');
+    final showReference = presentation?.showReference ?? true;
     final labelText = [
-      '$reference.',
+      if (showReference) '$reference.',
       if (position != null) 'Position $position of $positionCount.',
       label,
       if (moving) '(moving)',
     ].join(' ');
     return ChoicePresentation(
       label: labelText,
-      reference: reference,
+      reference: showReference ? reference : null,
       focused: focused,
       checked: checked,
       selected: checked == null

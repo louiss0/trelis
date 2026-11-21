@@ -171,6 +171,48 @@ void main() {
     },
   );
 
+  test('autocomplete candidates use positions, not stale references', () async {
+    final linearOutput = StringBuffer();
+    final linear =
+        await Autocomplete(
+          'Name',
+          suggestions: (_) => ['Ada', 'Grace'],
+          presentation: const ChoicePresentationConfig(
+            showReference: false,
+            selectedReference: 2,
+          ),
+        ).prompt(
+          source: ScriptedInput(Stream.value('A\r1\r/submit\r'), linearOutput),
+          mode: PromptMode.linear,
+        );
+    expect((linear as Accepted<String>).value, 'Ada');
+    final linearText = linearOutput.toString();
+    expect(linearText, contains('Position 1 of 2'));
+    expect(linearText, contains('●'), reason: 'selection is a separate glyph');
+    expect(
+      linearText.indexOf('Position 1 of 2'),
+      lessThan(linearText.indexOf('Accepted into pending answer')),
+    );
+
+    final richOutput = StringBuffer();
+    final rich =
+        await Autocomplete(
+          'Name',
+          suggestions: (_) => ['Ada', 'Grace'],
+          presentation: const ChoicePresentationConfig(showReference: false),
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('a\x1b[B\x1b[B\t\r'),
+            richOutput,
+            outputProfile: _unicodeProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((rich as Accepted<String>).value, 'Grace');
+    expect(richOutput.toString(), contains('Position 2 of 2'));
+    expect(richOutput.toString(), contains('→'));
+  });
+
   test('tree disclosure uses the portable ASCII pair', () async {
     final expanded = await _renderTree(
       glyphs: StateGlyphs.ascii,

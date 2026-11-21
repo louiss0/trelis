@@ -127,12 +127,20 @@ final class ChoicePresentationConfig {
     this.style = SingleSelectionStyle.circles,
     this.selectedReference,
     this.restrictions = const <int, ChoiceRestriction>{},
+    this.showReference = true,
   });
 
   final StateGlyphs glyphs;
   final SingleSelectionStyle style;
   final int? selectedReference;
   final Map<int, ChoiceRestriction> restrictions;
+
+  /// Whether a row displays its stable reference.
+  ///
+  /// Response-local candidates are identified only by their position in the
+  /// current response, so a new response must never make an old ordinal look
+  /// like a stable identity.
+  final bool showReference;
 
   ChoiceRestriction restrictionFor(int reference, {String? reason}) =>
       restrictions[reference] ??
