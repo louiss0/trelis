@@ -9,7 +9,6 @@ library;
 import 'dart:async';
 
 import 'color_resolution.dart';
-import 'component_color_application.dart' show applyComponentColors;
 import 'interaction_resolution.dart';
 import 'presentation.dart' show DisplayText;
 import 'prompt_structure.dart' show PromptStructure;
@@ -21,7 +20,7 @@ import 'state_help_presentation.dart'
         composePromptPresentation;
 import 'terminal_io.dart';
 import 'text_input.dart'
-    show InstructionDisplay, Password, PromptMode, PromptResult, TextInput;
+    show InstructionDisplay, Password, PromptResult, TextInput;
 import 'theme_session.dart';
 
 final class ThemeTextInputTracer {
@@ -73,12 +72,8 @@ final class ThemeTextInputTracer {
   List<Object> get cleanupFailures => _owner.cleanupFailures;
 
   Future<PromptResult<String>> prompt() => _owner.prompt((handle) {
-    final palette = applyComponentColors(handle, colors).palette;
-    final mode = handle.interaction.screenReader
-        ? PresentationMode.screenReader
-        : handle.interaction.mode == PromptMode.rich
-        ? PresentationMode.rich
-        : PresentationMode.linear;
+    final palette = handle.componentColors(colors).palette;
+    final mode = handle.presentationMode;
     if (mode == PresentationMode.screenReader) {
       final presentation = composePromptPresentation(
         mode: mode,

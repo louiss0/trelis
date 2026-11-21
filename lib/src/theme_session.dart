@@ -15,6 +15,7 @@ import 'color_theme.dart';
 import 'feedback.dart' show Text;
 import 'hint_observations.dart';
 import 'interaction_resolution.dart';
+import 'state_help_presentation.dart' show PresentationMode;
 import 'shared_terminal.dart';
 import 'terminal_io.dart';
 import 'text_input.dart'
@@ -181,6 +182,38 @@ final class ThemeSessionHandle {
 
   /// The color decision resolved from injected facts for this period.
   ResolvedColors get colors => _period.colors;
+
+  /// The presentation direction this period resolved.
+  PresentationMode get presentationMode =>
+      switch ((interaction.mode, interaction.screenReader)) {
+        (_, true) => PresentationMode.screenReader,
+        (PromptMode.rich, false) => PresentationMode.rich,
+        (_, false) => PresentationMode.linear,
+      };
+
+  /// Layers a component override over the palette resolved for this period.
+  ///
+  /// Background selection and application preferences were already resolved
+  /// when the period started; only the component replacement and its roles are
+  /// resolved again. Component calls cannot change detection or selected I/O.
+  ResolvedColors componentColors(ComponentColors override) {
+    final period = colors;
+    return resolveColors(
+      facts: ColorDetectionFacts(
+        outputProfile: period.outputProfile,
+        noColor: environment.environment['NO_COLOR'],
+      ),
+      lightDefault: period.palette,
+      darkDefault: period.palette,
+      preferences: ColorPreferences(
+        background: switch (period.background) {
+          BackgroundVariant.light => BackgroundPreference.light,
+          BackgroundVariant.dark => BackgroundPreference.dark,
+        },
+      ),
+      component: override,
+    );
+  }
 
   /// Runs internal delegation without opening another active prompt.
   Future<T> delegate<T>(
