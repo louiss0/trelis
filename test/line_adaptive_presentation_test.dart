@@ -265,6 +265,181 @@ void main() {
         expect(text, isNot(contains('\x1b[?1049h')));
       },
     );
+
+    for (final variant in BackgroundVariant.values) {
+      final isLight = variant == BackgroundVariant.light;
+      final preference = isLight
+          ? BackgroundPreference.light
+          : BackgroundPreference.dark;
+      final defaultAccent = isLight ? '112;34;88' : '214;139;196';
+      final defaultForeground = isLight ? '52;40;36' : '242;234;238';
+
+      test(
+        '$variant app whole-palette replacement reaches the output',
+        () async {
+          final replacement = ColorThemes.terminalDefault.copyWith(
+            foreground: TerminalColor.rgb(11, 22, 33),
+            accent: TerminalColor.rgb(44, 55, 66),
+          );
+          final text = await _renderChoice(
+            colors: ColorPreferences(
+              background: preference,
+              colors: ComponentColors.palette(replacement),
+            ),
+          );
+
+          expect(text, contains('\x1b[38;2;11;22;33;49mPick tools'));
+          expect(text, contains('\x1b[38;2;44;55;66;49m  1. Starter'));
+          expect(text, isNot(contains('38;2;$defaultForeground;')));
+          expect(text, isNot(contains('38;2;$defaultAccent;')));
+        },
+      );
+
+      test('$variant app variant roles win over shared app roles', () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: preference,
+            colors: ComponentColors(
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(70, 71, 72)),
+              lightRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(80, 81, 82),
+              ),
+              darkRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(90, 91, 92),
+              ),
+            ),
+          ),
+        );
+
+        final expected = isLight ? '80;81;82' : '90;91;92';
+        expect(text, contains('\x1b[38;2;$expected;49m  1. Starter'));
+        expect(text, isNot(contains('38;2;70;71;72;')));
+        expect(text, isNot(contains('38;2;$defaultAccent;')));
+      });
+
+      test('$variant component palette discards the app layers', () async {
+        final app = ColorThemes.terminalDefault.copyWith(
+          foreground: TerminalColor.rgb(11, 22, 33),
+          accent: TerminalColor.rgb(44, 55, 66),
+        );
+        final component = ColorThemes.terminalDefault.copyWith(
+          foreground: TerminalColor.rgb(99, 88, 77),
+          accent: TerminalColor.rgb(66, 55, 44),
+        );
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: preference,
+            colors: ComponentColors(
+              palette: app,
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(12, 13, 14)),
+            ),
+          ),
+          component: ComponentColors.palette(component),
+        );
+
+        expect(text, contains('\x1b[38;2;99;88;77;49mPick tools'));
+        expect(text, contains('\x1b[38;2;66;55;44;49m  1. Starter'));
+        for (final obsolete in ['11;22;33', '44;55;66', '12;13;14']) {
+          expect(text, isNot(contains('38;2;$obsolete;')));
+        }
+      });
+
+      test('$variant component variant roles override shared roles', () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(background: preference),
+          component: ComponentColors(
+            roles: ColorRoleOverrides(accent: TerminalColor.rgb(3, 3, 3)),
+            lightRoles: ColorRoleOverrides(accent: TerminalColor.rgb(4, 4, 4)),
+            darkRoles: ColorRoleOverrides(accent: TerminalColor.rgb(5, 5, 5)),
+          ),
+        );
+
+        final expected = isLight ? '4;4;4' : '5;5;5';
+        expect(text, contains('\x1b[38;2;$expected;49m  1. Starter'));
+        expect(text, isNot(contains('38;2;3;3;3;')));
+        expect(text, isNot(contains('38;2;$defaultAccent;')));
+      });
+    }
+
+    test(
+      'explicit terminalDefault at app and component scope emits no colour',
+      () async {
+        final appPlain = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.terminalDefault),
+          ),
+        );
+        final componentPlain = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          component: const ComponentColors.palette(ColorThemes.terminalDefault),
+        );
+
+        for (final text in [appPlain, componentPlain]) {
+          expect(text, contains('──'));
+          expect(text, contains('Pick tools'));
+          expect(text, isNot(contains('\x1b[38;2;')));
+          expect(text, isNot(contains('\x1b[48;2;')));
+        }
+      },
+    );
+
+    test(
+      'non-empty NO_COLOR is the final restriction against explicit colours',
+      () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          component: ComponentColors.palette(ColorThemes.signal),
+          environment: const {'NO_COLOR': '1'},
+        );
+
+        expect(text, contains('──'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b]11')));
+      },
+    );
+
+    test('a component override cannot redirect background detection', () async {
+      final text = await _renderChoice(
+        colors: const ColorPreferences(background: BackgroundPreference.light),
+        component: ComponentColors(
+          darkPalette: ColorThemes.terminalDefault.copyWith(
+            foreground: TerminalColor.rgb(201, 202, 203),
+          ),
+        ),
+      );
+
+      expect(text, contains('\x1b[38;2;52;40;36;49mPick tools'));
+      expect(text, isNot(contains('38;2;201;202;203;')));
+    });
+
+    test(
+      'output depth degrades rgb requests without painting a surface',
+      () async {
+        final text = await _renderChoice(
+          profile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.indexed256,
+            glyphs: GlyphSet.unicode,
+            geometry: OutputGeometry.fixed(columns: 70, rows: 20),
+          ),
+        );
+
+        expect(text, contains('──'));
+        expect(text, contains('38;5;'));
+        expect(text, isNot(contains('38;2;')));
+        expect(text, isNot(contains('\x1b[48;5;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
   });
 }
 
