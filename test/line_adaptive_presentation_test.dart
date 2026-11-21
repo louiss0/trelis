@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
+import 'package:trelis/src/prompt_structure.dart';
+import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/themes/line_presentation.dart';
 import 'package:trelis/trelis.dart';
 
@@ -440,8 +442,127 @@ void main() {
         expect(text, isNot(contains('\x1b[48;2;')));
       },
     );
+
+    test(
+      'ASCII no-colour narrow output keeps markers and compact help',
+      () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          profile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.none,
+            glyphs: GlyphSet.ascii,
+            geometry: OutputGeometry.fixed(columns: 30, rows: 12),
+          ),
+        );
+
+        expect(text, contains('Pick tools'));
+        expect(text, contains('1. Starter [unchecked]'));
+        expect(text, contains('[focused]'));
+        expect(text, contains('[checked]'));
+        expect(text, contains('[default]'));
+        expect(text, contains('[unavailable: needs owner role]'));
+        // Narrow output wraps the status label across lines; it never
+        // truncates essential text to fit the nominal column count.
+        expect(text, contains('Unavailable: needs owner rol'));
+        expect(text, contains('Ctrl+T help'));
+        expect(text, contains('-'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+        expect(text, isNot(contains('\x1b[2J')));
+
+        for (final line in _visibleLines(text)) {
+          expect(line, isNot(contains('…')));
+          expect(line, isNot(contains('...')));
+        }
+      },
+    );
+  });
+
+  group('Line compact help placement', () {
+    final glyphs = headingGlyphsFor(PromptStructure.line, ascii: false)!;
+    final hint = compactHint(
+      mode: PresentationMode.rich,
+      component: ComponentRoute.standard,
+      primaryAction: 'Enter submits',
+      shortPrimaryAction: 'Enter',
+    );
+
+    test('the rule sits before the hint in rich and linear presentations', () {
+      final decoration = [glyphs.rule(12)];
+      final rich = composePromptPresentation(
+        mode: PresentationMode.rich,
+        prompt: 'Pick tools',
+        essential: 'Pick tools entry.',
+        hint: hint,
+        decoration: decoration,
+      );
+      final linear = composePromptPresentation(
+        mode: PresentationMode.linear,
+        prompt: 'Pick tools',
+        essential: 'Pick tools entry.',
+        hint: hint,
+        decoration: decoration,
+      );
+
+      expect(rich.placement, HintPlacement.richBottom);
+      expect(linear.placement, HintPlacement.linearAfter);
+      for (final presentation in [rich, linear]) {
+        expect(presentation.lines.first, 'Pick tools');
+        expect(presentation.lines, contains('────────────'));
+        expect(presentation.lines.last, hint.text);
+        expect(
+          presentation.lines.indexOf('────────────'),
+          lessThan(presentation.lines.length - 1),
+        );
+      }
+    });
+
+    test('screen-reader essentials precede the prompt with a help route', () {
+      final presentation = composePromptPresentation(
+        mode: PresentationMode.screenReader,
+        prompt: 'Pick tools',
+        essential: 'Pick tools entry.',
+        hint: hint,
+        decoration: [glyphs.rule(12)],
+      );
+
+      expect(presentation.placement, HintPlacement.screenReaderBefore);
+      expect(presentation.essentialBefore, 'Pick tools entry. ${hint.text}');
+      expect(presentation.essentialBefore, contains('Ctrl+T opens help'));
+      expect(presentation.lines, [presentation.essentialBefore!, 'Pick tools']);
+      expect(sequentialTranscript(presentation, response: 'b'), [
+        presentation.essentialBefore!,
+        'Pick tools',
+        'b',
+      ]);
+    });
+
+    test('short screens drop the rule and shorten the hint, not the route', () {
+      final presentation = composePromptPresentation(
+        mode: PresentationMode.rich,
+        prompt: 'Pick tools',
+        essential: 'Pick tools entry.',
+        hint: hint,
+        decoration: [glyphs.rule(12)],
+        availableRows: 2,
+      );
+
+      expect(presentation.lines, ['Pick tools', hint.shortText]);
+      expect(presentation.lines.join(), contains('Enter'));
+      expect(presentation.lines.join(), contains('Ctrl+T help'));
+    });
   });
 }
+
+List<String> _visibleLines(String text) => [
+  for (final line in text.replaceAll('\r', '').split('\n'))
+    if (line.isNotEmpty) line.replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), ''),
+];
 
 Future<String> _renderChoice({
   ColorPreferences colors = const ColorPreferences(),
