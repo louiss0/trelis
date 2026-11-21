@@ -142,6 +142,11 @@ in `test/`, including `text_input_windows.ps1`.
 several components; add `--scripted` to replay it from a fixed stream without a
 terminal, or `--linear` to force sequential interaction.
 
+`dart run example/minimal_theme_example.dart` replays the internal, unstable
+Minimal adaptive-presentation seam for light, dark and explicit palette
+choices. It demonstrates the migration work, not a public API or qualified
+terminal contrast.
+
 ## Recording presentation events
 
 `ScriptedInput(..., transcript: TextInputTranscript())` records one presentation
