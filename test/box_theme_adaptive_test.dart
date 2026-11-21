@@ -50,6 +50,34 @@ void main() {
   );
 
   test(
+    'a Box text input renders the dark default through the internal seam',
+    () async {
+      final output = StringBuffer();
+      final tracer = ThemeTextInputTracer(
+        'Project name',
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('Ada\r'),
+          output: output,
+          profile: _rgbProfile,
+        ),
+        structure: PromptStructure.box,
+        palettes: StructuralThemePalettes.box.defaults,
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        themeColors: const ColorPreferences(
+          background: BackgroundPreference.dark,
+        ),
+      );
+
+      expect((await tracer.prompt() as Accepted<String>).value, 'Ada');
+      final text = output.toString();
+      expect(text, contains('\x1b[38;2;243;233;220;49m'));
+      expect(text, contains('\x1b[38;2;156;132;110;49m'));
+      expect(text, isNot(contains('\x1b[48;2;')));
+      _expectHintBelowContent(text, '└');
+    },
+  );
+
+  test(
     'a real Box choice renders focus, selection and default independently',
     () async {
       final output = StringBuffer();
@@ -86,6 +114,39 @@ void main() {
       // The focused row uses the dark rust accent on the default surface.
       expect(text, contains('\x1b[38;2;232;135;90;49m'));
       expect(text, isNot(contains('\x1b[48;2;')));
+      _expectHintBelowContent(text, '└');
+    },
+  );
+
+  test(
+    'a light Box choice paints its rust accent on the default surface',
+    () async {
+      final output = StringBuffer();
+      final tracer = ThemeChoiceTracer<String>(
+        'Choose features',
+        _choices,
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('\r'),
+          output: output,
+          profile: _rgbProfile,
+        ),
+        structure: PromptStructure.box,
+        palettes: StructuralThemePalettes.box.defaults,
+        defaultValues: const ['starter'],
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        themeColors: const ColorPreferences(
+          background: BackgroundPreference.light,
+        ),
+      );
+
+      expect((await tracer.prompt() as Accepted<List<String>>).value, [
+        'starter',
+      ]);
+      final text = output.toString();
+      expect(text, contains('\x1b[38;2;166;69;38;49m'));
+      expect(text, contains('\x1b[38;2;51;41;31;49m'));
+      expect(text, isNot(contains('\x1b[48;2;')));
+      _expectHintBelowContent(text, '└');
     },
   );
 
@@ -125,6 +186,7 @@ void main() {
     expect(text, contains('[unchecked]'));
     expect(text, contains('Not provisioned'));
     expect(text, contains('Ctrl+T'));
+    _expectHintBelowContent(text, '+');
     expect(text, isNot(contains('\x1b[3')));
     expect(text, isNot(contains('\x1b[4')));
     expect(text, isNot(contains('\x1b[?1049h')));
@@ -162,6 +224,16 @@ void main() {
       );
     },
   );
+}
+
+/// The compact hint closes the active content after the frame's bottom rule.
+void _expectHintBelowContent(String text, String bottomRule) {
+  final primary = text.indexOf('Ctrl+T opens help.');
+  final hint = primary >= 0 ? primary : text.indexOf('Ctrl+T help');
+  expect(hint, greaterThan(0));
+  final bottom = text.lastIndexOf(bottomRule, hint);
+  expect(bottom, greaterThan(0));
+  expect(bottom, lessThan(hint));
 }
 
 List<String> _plainLines(String text) => [
