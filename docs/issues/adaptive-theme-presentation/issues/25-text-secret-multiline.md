@@ -1,6 +1,6 @@
 # 25 Migrate text, secret and multiline prompts
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [08](08-text-input-tracer.md), [09](09-state-and-compact-help.md)
 
