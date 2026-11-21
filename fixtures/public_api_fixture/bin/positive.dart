@@ -31,8 +31,8 @@ void exercise(StructuralTheme theme, List<Object> sink) {
   final ThemePrompt<int> tree = theme.treeSelect<int>('Tree', [
     TreeNode(1, 'A'),
   ]);
-  final ThemePrompt<({int hour, int minute, int? second})> time =
-      theme.timeInput('Time');
+  final ThemePrompt<({int hour, int minute, int? second})> time = theme
+      .timeInput('Time');
   final ThemePrompt<List<String>> tags = theme.tagInput('Tags');
   final ThemePrompt<String> autocomplete = theme.autocomplete(
     'Package',
@@ -49,14 +49,17 @@ void exercise(StructuralTheme theme, List<Object> sink) {
   ]);
   final ThemePrompt<MaskedValue> masked = theme.maskedInput(
     'Code',
-    templates: [MaskTemplate('digit', [MaskSlot('d', (v) => v == '1')])],
+    templates: [
+      MaskTemplate('digit', [MaskSlot('d', (v) => v == '1')]),
+    ],
   );
   final ThemePrompt<NumericAnswer?> number = theme.numberInput('Count');
   final ThemePrompt<int> port = theme.portInput('Port');
   final ThemePrompt<IPAddressValue> ip = theme.ipAddressInput('Address');
-  final ThemePrompt<String> url = theme.urlInput('URL', allowedSchemes: {
-    'https',
-  });
+  final ThemePrompt<String> url = theme.urlInput(
+    'URL',
+    allowedSchemes: {'https'},
+  );
   final ThemePrompt<String> email = theme.emailInput('Email');
   final ThemePrompt<ColorValue?> color = theme.colorInput('Color');
   final ThemePrompt<CronExpression> cron = theme.cronInput(

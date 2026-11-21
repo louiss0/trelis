@@ -18,26 +18,23 @@ void main() {
           .where((line) => line.startsWith('export '))
           .toList();
 
-      expect(
-        exports.where((line) => line.contains('src/themes/')),
-        [
-          "export 'src/themes/plain_theme.dart';",
-          "export 'src/themes/rail_theme.dart';",
-          "export 'src/themes/branch_theme.dart';",
-          "export 'src/themes/box_theme.dart';",
-          "export 'src/themes/round_theme.dart';",
-          "export 'src/themes/double_theme.dart';",
-          "export 'src/themes/minimal_theme.dart';",
-          "export 'src/themes/ascii_theme.dart';",
-          "export 'src/themes/chevron_theme.dart';",
-          "export 'src/themes/bracket_theme.dart';",
-          "export 'src/themes/form_theme.dart';",
-          "export 'src/themes/ledger_theme.dart';",
-          "export 'src/themes/colon_theme.dart';",
-          "export 'src/themes/line_theme.dart';",
-          "export 'src/themes/block_theme.dart';",
-        ],
-      );
+      expect(exports.where((line) => line.contains('src/themes/')), [
+        "export 'src/themes/plain_theme.dart';",
+        "export 'src/themes/rail_theme.dart';",
+        "export 'src/themes/branch_theme.dart';",
+        "export 'src/themes/box_theme.dart';",
+        "export 'src/themes/round_theme.dart';",
+        "export 'src/themes/double_theme.dart';",
+        "export 'src/themes/minimal_theme.dart';",
+        "export 'src/themes/ascii_theme.dart';",
+        "export 'src/themes/chevron_theme.dart';",
+        "export 'src/themes/bracket_theme.dart';",
+        "export 'src/themes/form_theme.dart';",
+        "export 'src/themes/ledger_theme.dart';",
+        "export 'src/themes/colon_theme.dart';",
+        "export 'src/themes/line_theme.dart';",
+        "export 'src/themes/block_theme.dart';",
+      ]);
       expect(exports, contains("export 'src/public_theme_api.dart';"));
       expect(exports, isNot(contains("export 'src/text_input.dart';")));
       expect(exports, isNot(contains("export 'src/feedback.dart';")));
@@ -66,44 +63,46 @@ void main() {
       expect(durationResult, isNull);
     });
 
-    test('public source has no supplied-answer or invocation configuration',
-        () {
-      final sources = <File>[
-        File('lib/trelis.dart'),
-        File('lib/src/public_theme_api.dart'),
-        ...Directory('lib/src/themes')
-            .listSync()
-            .whereType<File>()
-            .where((file) => file.path.endsWith('_theme.dart')),
-      ];
-      for (final source in sources) {
-        final text = source
-            .readAsLinesSync()
-            .where((line) => !line.trimLeft().startsWith('//'))
-            // Internal delegation binds the theme-owned session; only public
-            // parameter declarations are under test here.
-            .where((line) => !RegExp(r'^\s*(session|io): _').hasMatch(line))
-            .join('\n');
-        for (final banned in [
-          'SuppliedAnswer',
-          'SuppliedTags',
-          'PromptSource',
-          'source:',
-          'session:',
-          'output:',
-          'terminal:',
-          'outputProfile:',
-          'userPreference:',
-          'applicationPreference:',
-        ]) {
-          expect(
-            text,
-            isNot(contains(banned)),
-            reason: '${source.path} must not expose $banned',
-          );
+    test(
+      'public source has no supplied-answer or invocation configuration',
+      () {
+        final sources = <File>[
+          File('lib/trelis.dart'),
+          File('lib/src/public_theme_api.dart'),
+          ...Directory('lib/src/themes')
+              .listSync()
+              .whereType<File>()
+              .where((file) => file.path.endsWith('_theme.dart')),
+        ];
+        for (final source in sources) {
+          final text = source
+              .readAsLinesSync()
+              .where((line) => !line.trimLeft().startsWith('//'))
+              // Internal delegation binds the theme-owned session; only public
+              // parameter declarations are under test here.
+              .where((line) => !RegExp(r'^\s*(session|io): _').hasMatch(line))
+              .join('\n');
+          for (final banned in [
+            'SuppliedAnswer',
+            'SuppliedTags',
+            'PromptSource',
+            'source:',
+            'session:',
+            'output:',
+            'terminal:',
+            'outputProfile:',
+            'userPreference:',
+            'applicationPreference:',
+          ]) {
+            expect(
+              text,
+              isNot(contains(banned)),
+              reason: '${source.path} must not expose $banned',
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
     test('the external fixture compiles against the public barrel', () {
       final fixture = File('fixtures/public_api_fixture/bin/positive.dart');

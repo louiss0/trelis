@@ -1,0 +1,6 @@
+# The external fixture is a separate package; it deliberately does not inherit
+# the library's analysis_options.yaml or lints dependency.
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
