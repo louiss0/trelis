@@ -80,8 +80,10 @@ double _contrast(List<int> foreground, List<int> background) {
 void main() {
   group('Branch adaptive defaults', () {
     test('light and dark defaults are distinct warm-ink plum palettes', () {
-      expect(BranchPresentation.lightDefault,
-          isNot(BranchPresentation.darkDefault));
+      expect(
+        BranchPresentation.lightDefault,
+        isNot(BranchPresentation.darkDefault),
+      );
       expect(
         BranchPresentation.referenceBackground(BackgroundVariant.light),
         TerminalColor.rgb(246, 241, 232),
@@ -203,26 +205,29 @@ void main() {
   });
 
   group('Branch choices through the internal seam', () {
-    test('a real choice renders plum focus, checked, default and reasons', () async {
-      final text = await _renderChoice(
-        colors: const ColorPreferences(background: BackgroundPreference.dark),
-      );
+    test(
+      'a real choice renders plum focus, checked, default and reasons',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(background: BackgroundPreference.dark),
+        );
 
-      expect(text, contains('\x1b[38;2;238;232;235;49m├ Pick tools'));
-      expect(
-        text,
-        contains(
-          '\x1b[38;2;216;150;205;49m│ 1. Starter [unchecked] [focused] '
-          '[unavailable: needs owner role]',
-        ),
-      );
-      expect(text, contains('[checked] [default]'));
-      expect(text, contains('Unavailable: needs owner role.'));
-      expect(text.indexOf('└ '), greaterThan(text.indexOf('Starter')));
-      expect(text, contains('Ctrl+T help'));
-      expect(text, isNot(contains('\x1b[48;2;')));
-      expect(text, isNot(contains('\x1b[?1049h')));
-    });
+        expect(text, contains('\x1b[38;2;238;232;235;49m├ Pick tools'));
+        expect(
+          text,
+          contains(
+            '\x1b[38;2;216;150;205;49m│ 1. Starter [unchecked] [focused] '
+            '[unavailable: needs owner role]',
+          ),
+        );
+        expect(text, contains('[checked] [default]'));
+        expect(text, contains('Unavailable: needs owner role.'));
+        expect(text.indexOf('└ '), greaterThan(text.indexOf('Starter')));
+        expect(text, contains('Ctrl+T help'));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+      },
+    );
 
     for (final variant in BackgroundVariant.values) {
       final isLight = variant == BackgroundVariant.light;
@@ -232,32 +237,33 @@ void main() {
       final defaultAccent = isLight ? '125;43;96' : '216;150;205';
       final defaultForeground = isLight ? '55;45;40' : '238;232;235';
 
-      test('$variant app whole-palette replacement reaches the output', () async {
-        final replacement = ColorThemes.terminalDefault.copyWith(
-          foreground: TerminalColor.rgb(11, 22, 33),
-          accent: TerminalColor.rgb(44, 55, 66),
-        );
-        final text = await _renderChoice(
-          colors: ColorPreferences(
-            background: preference,
-            colors: ComponentColors.palette(replacement),
-          ),
-        );
+      test(
+        '$variant app whole-palette replacement reaches the output',
+        () async {
+          final replacement = ColorThemes.terminalDefault.copyWith(
+            foreground: TerminalColor.rgb(11, 22, 33),
+            accent: TerminalColor.rgb(44, 55, 66),
+          );
+          final text = await _renderChoice(
+            colors: ColorPreferences(
+              background: preference,
+              colors: ComponentColors.palette(replacement),
+            ),
+          );
 
-        expect(text, contains('\x1b[38;2;11;22;33;49m├ Pick tools'));
-        expect(text, contains('\x1b[38;2;44;55;66;49m│ 1. Starter'));
-        expect(text, isNot(contains('38;2;$defaultForeground;')));
-        expect(text, isNot(contains('38;2;$defaultAccent;')));
-      });
+          expect(text, contains('\x1b[38;2;11;22;33;49m├ Pick tools'));
+          expect(text, contains('\x1b[38;2;44;55;66;49m│ 1. Starter'));
+          expect(text, isNot(contains('38;2;$defaultForeground;')));
+          expect(text, isNot(contains('38;2;$defaultAccent;')));
+        },
+      );
 
       test('$variant variant roles win over shared app roles', () async {
         final text = await _renderChoice(
           colors: ColorPreferences(
             background: preference,
             colors: ComponentColors(
-              roles: ColorRoleOverrides(
-                accent: TerminalColor.rgb(70, 71, 72),
-              ),
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(70, 71, 72)),
               lightRoles: ColorRoleOverrides(
                 accent: TerminalColor.rgb(80, 81, 82),
               ),
@@ -288,9 +294,7 @@ void main() {
             background: preference,
             colors: ComponentColors(
               palette: app,
-              roles: ColorRoleOverrides(
-                accent: TerminalColor.rgb(12, 13, 14),
-              ),
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(12, 13, 14)),
             ),
           ),
           component: ComponentColors.palette(component),
@@ -303,105 +307,113 @@ void main() {
         }
       });
 
-      test('$variant component variant roles override its shared roles', () async {
+      test(
+        '$variant component variant roles override its shared roles',
+        () async {
+          final text = await _renderChoice(
+            colors: ColorPreferences(background: preference),
+            component: ComponentColors(
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(3, 3, 3)),
+              lightRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(4, 4, 4),
+              ),
+              darkRoles: ColorRoleOverrides(accent: TerminalColor.rgb(5, 5, 5)),
+            ),
+          );
+
+          final expected = isLight ? '4;4;4' : '5;5;5';
+          expect(text, contains('\x1b[38;2;$expected;49m│ 1. Starter'));
+          expect(text, isNot(contains('38;2;3;3;3;')));
+          expect(text, isNot(contains('38;2;$defaultAccent;')));
+        },
+      );
+    }
+
+    test(
+      'explicit terminalDefault at app and component scope emits no colour',
+      () async {
+        final appPlain = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.terminalDefault),
+          ),
+        );
+        final componentPlain = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          component: const ComponentColors.palette(ColorThemes.terminalDefault),
+        );
+
+        for (final text in [appPlain, componentPlain]) {
+          expect(text, contains('├ Pick tools'));
+          expect(text, isNot(contains('\x1b[38;2;')));
+          expect(text, isNot(contains('\x1b[48;2;')));
+        }
+      },
+    );
+
+    test(
+      'non-empty NO_COLOR is the final restriction against explicit colours',
+      () async {
         final text = await _renderChoice(
-          colors: ColorPreferences(background: preference),
-          component: ComponentColors(
-            roles: ColorRoleOverrides(
-              accent: TerminalColor.rgb(3, 3, 3),
-            ),
-            lightRoles: ColorRoleOverrides(
-              accent: TerminalColor.rgb(4, 4, 4),
-            ),
-            darkRoles: ColorRoleOverrides(
-              accent: TerminalColor.rgb(5, 5, 5),
-            ),
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          component: ComponentColors.palette(ColorThemes.signal),
+          environment: const {'NO_COLOR': '1'},
+        );
+
+        expect(text, contains('├ Pick tools'));
+        expect(text, contains('[checked] [default]'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b]11')));
+      },
+    );
+
+    test(
+      'ASCII no-colour narrow output keeps markers and compact help',
+      () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          profile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.none,
+            geometry: OutputGeometry.fixed(columns: 30, rows: 12),
+            glyphs: GlyphSet.ascii,
           ),
         );
 
-        final expected = isLight ? '4;4;4' : '5;5;5';
-        expect(text, contains('\x1b[38;2;$expected;49m│ 1. Starter'));
-        expect(text, isNot(contains('38;2;3;3;3;')));
-        expect(text, isNot(contains('38;2;$defaultAccent;')));
-      });
-    }
-
-    test('explicit terminalDefault at app and component scope emits no colour', () async {
-      final appPlain = await _renderChoice(
-        colors: const ColorPreferences(
-          background: BackgroundPreference.light,
-          colors: ComponentColors.palette(ColorThemes.terminalDefault),
-        ),
-      );
-      final componentPlain = await _renderChoice(
-        colors: ColorPreferences(
-          background: BackgroundPreference.light,
-          colors: ComponentColors.palette(ColorThemes.signal),
-        ),
-        component: const ComponentColors.palette(ColorThemes.terminalDefault),
-      );
-
-      for (final text in [appPlain, componentPlain]) {
-        expect(text, contains('├ Pick tools'));
+        expect(text, contains('+-Pick tools'));
+        expect(text, contains('| 1. Starter [unchecked]'));
+        expect(text, contains('[focused]'));
+        expect(text, contains('needs owner role'));
+        expect(text, contains('[checked]'));
+        expect(text, contains('[default]'));
+        expect(text, contains('Unavailable: needs owner rol'));
+        expect(text, contains('Ctrl+T help'));
+        expect(text.indexOf(r'\-'), greaterThan(text.indexOf('Starter')));
         expect(text, isNot(contains('\x1b[38;2;')));
         expect(text, isNot(contains('\x1b[48;2;')));
-      }
-    });
+        expect(text, isNot(contains('\x1b[?1049h')));
+        expect(text, isNot(contains('\x1b[2J')));
 
-    test('non-empty NO_COLOR is the final restriction against explicit colours', () async {
-      final text = await _renderChoice(
-        colors: ColorPreferences(
-          background: BackgroundPreference.light,
-          colors: ComponentColors.palette(ColorThemes.signal),
-        ),
-        component: ComponentColors.palette(ColorThemes.signal),
-        environment: const {'NO_COLOR': '1'},
-      );
-
-      expect(text, contains('├ Pick tools'));
-      expect(text, contains('[checked] [default]'));
-      expect(text, isNot(contains('\x1b[38;2;')));
-      expect(text, isNot(contains('\x1b[48;2;')));
-      expect(text, isNot(contains('\x1b]11')));
-    });
-
-    test('ASCII no-colour narrow output keeps markers and compact help', () async {
-      final text = await _renderChoice(
-        colors: ColorPreferences(
-          background: BackgroundPreference.light,
-          colors: ComponentColors.palette(ColorThemes.signal),
-        ),
-        profile: OutputProfile(
-          cursor: CapabilitySupport.supported,
-          colorDepth: ColorDepth.none,
-          geometry: OutputGeometry.fixed(columns: 30, rows: 12),
-          glyphs: GlyphSet.ascii,
-        ),
-      );
-
-      expect(text, contains('+-Pick tools'));
-      expect(text, contains('| 1. Starter [unchecked]'));
-      expect(text, contains('[focused]'));
-      expect(text, contains('needs owner role'));
-      expect(text, contains('[checked]'));
-      expect(text, contains('[default]'));
-      expect(text, contains('Unavailable: needs owner rol'));
-      expect(text, contains('Ctrl+T help'));
-      expect(text.indexOf(r'\-'), greaterThan(text.indexOf('Starter')));
-      expect(text, isNot(contains('\x1b[38;2;')));
-      expect(text, isNot(contains('\x1b[48;2;')));
-      expect(text, isNot(contains('\x1b[?1049h')));
-      expect(text, isNot(contains('\x1b[2J')));
-
-      // Narrow output wraps the stage and keeps the atomic restriction marker
-      // whole; essential text is never truncated to make it fit.
-      expect(text, contains('[unavailable: needs owner role]'));
-      expect(_visibleLines(text), isNotEmpty);
-      for (final line in _visibleLines(text)) {
-        expect(line, isNot(contains('…')));
-        expect(line, isNot(contains('...')));
-      }
-    });
+        // Narrow output wraps the stage and keeps the atomic restriction marker
+        // whole; essential text is never truncated to make it fit.
+        expect(text, contains('[unavailable: needs owner role]'));
+        expect(_visibleLines(text), isNotEmpty);
+        for (final line in _visibleLines(text)) {
+          expect(line, isNot(contains('…')));
+          expect(line, isNot(contains('...')));
+        }
+      },
+    );
   });
 }
 
@@ -423,18 +435,21 @@ Future<String> _renderChoice({
     componentColors: component,
     interaction: const InteractionPreferences(mode: PromptMode.rich),
   );
-  final result = await tracer.multiSelect<String>('Pick tools', [
-    Choice('a', 'Starter', disabledReason: 'needs owner role'),
-    Choice('b', 'Library'),
-  ], defaultValues: const ['b']);
+  final result = await tracer.multiSelect<String>(
+    'Pick tools',
+    [
+      Choice('a', 'Starter', disabledReason: 'needs owner role'),
+      Choice('b', 'Library'),
+    ],
+    defaultValues: const ['b'],
+  );
   expect(result, isA<Accepted<List<String>>>());
   return output.toString();
 }
 
 List<String> _visibleLines(String text) => [
   for (final line in text.replaceAll(RegExp(r'\r'), '').split('\n'))
-    if (line.isNotEmpty)
-      line.replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), ''),
+    if (line.isNotEmpty) line.replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), ''),
 ];
 
 final _choiceProfile = OutputProfile(

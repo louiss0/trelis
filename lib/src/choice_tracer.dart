@@ -17,10 +17,10 @@ import 'text_input.dart'
     show Choice, InstructionDisplay, MultiSelect, PromptResult, Select;
 import 'theme_session.dart'
     show
-      ThemeInteractionFactsProvider,
-      ThemeResolvedCallback,
-      ThemeSession,
-      ThemeSessionHandle;
+        ThemeInteractionFactsProvider,
+        ThemeResolvedCallback,
+        ThemeSession,
+        ThemeSessionHandle;
 
 final class ThemeChoiceTracer {
   ThemeChoiceTracer({
@@ -95,7 +95,8 @@ final class ThemeChoiceTracer {
     Future<PromptResult<R>> Function(
       ThemeSessionHandle handle,
       ColorTheme palette,
-    ) build,
+    )
+    build,
   ) => _owner.prompt(
     (handle) => build(handle, applyComponentColors(handle, colors).palette),
   );
