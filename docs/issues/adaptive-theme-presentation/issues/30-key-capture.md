@@ -1,6 +1,6 @@
 # 30 Migrate key capture prompts
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [09](09-state-and-compact-help.md)
 
