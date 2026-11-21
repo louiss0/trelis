@@ -274,7 +274,8 @@ final class ThemeSession {
   ///
   /// They are selected by [resolveColors] before application and component
   /// layers, so a theme can supply adaptive defaults without changing the
-  /// public palette override contract.
+  /// public palette override contract. Component overrides are applied after
+  /// the defaults for the resolved background have been selected.
   final ColorTheme lightDefault;
   final ColorTheme darkDefault;
   final ThemeResolvedCallback? onResolved;
