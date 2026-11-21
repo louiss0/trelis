@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
-import 'package:trelis/src/prompt_structure.dart';
 import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/themes/line_presentation.dart';
 import 'package:trelis/trelis.dart';
