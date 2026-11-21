@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
+import 'package:trelis/src/state_help_presentation.dart';
 import 'package:trelis/src/themes/minimal_presentation.dart';
 import 'package:trelis/trelis.dart';
 
@@ -450,7 +451,166 @@ void main() {
       },
     );
   });
+
+  group('Minimal ASCII and no-colour rendering', () {
+    test(
+      'ASCII no-colour narrow output keeps markers and compact help',
+      () async {
+        final text = await _renderChoice(
+          colors: ColorPreferences(
+            background: BackgroundPreference.light,
+            colors: ComponentColors.palette(ColorThemes.signal),
+          ),
+          profile: OutputProfile(
+            cursor: CapabilitySupport.supported,
+            colorDepth: ColorDepth.none,
+            glyphs: GlyphSet.ascii,
+            geometry: OutputGeometry.fixed(columns: 30, rows: 12),
+          ),
+        );
+
+        final plain = _renderedPromptText(text);
+        expect(plain, contains('Pick tools'));
+        expect(plain, contains('1. Starter [unchecked]'));
+        expect(plain, contains('[focused]'));
+        expect(plain, contains('[checked]'));
+        expect(plain, contains('[default]'));
+        expect(plain, contains('[unavailable: needs owner role]'));
+        expect(plain, contains('Unavailable: needs owner role.'));
+        expect(plain, contains('Enter submits'));
+        expect(plain, contains('Ctrl+T help'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+        expect(text, isNot(contains('\x1b[2J')));
+        for (final line in _visibleLines(text)) {
+          expect(line, isNot(contains('…')));
+          expect(line, isNot(contains('...')));
+        }
+      },
+    );
+
+    test(
+      'a narrow ASCII text input keeps the live marker and help route',
+      () async {
+        final output = StringBuffer();
+        final tracer = MinimalPresentationTracer(
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('Ada\r'),
+            output: output,
+            profile: OutputProfile(
+              cursor: CapabilitySupport.supported,
+              colorDepth: ColorDepth.none,
+              glyphs: GlyphSet.ascii,
+              geometry: OutputGeometry.fixed(columns: 24, rows: 8),
+            ),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+        );
+
+        final result = await tracer.textInput('Project name');
+        final text = output.toString();
+        expect((result as Accepted<String>).value, 'Ada');
+        expect(text, contains('> '));
+        expect(_renderedPromptText(text), contains('Project name'));
+        expect(_renderedPromptText(text), contains('Enter submits'));
+        expect(_renderedPromptText(text), contains('Ctrl+T opens help'));
+        expect(text, isNot(contains('\x1b[38;2;')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
+  });
+
+  group('Minimal compact help placement', () {
+    final glyphs = headingGlyphsFor(PromptStructure.minimal, ascii: false)!;
+    final hint = compactHint(
+      mode: PresentationMode.rich,
+      component: ComponentRoute.standard,
+      primaryAction: 'Enter submits',
+      shortPrimaryAction: 'Enter',
+    );
+
+    test('the grammar keeps the question, body and hint unframed', () {
+      expect(glyphs.headingPrefix, isEmpty);
+      expect(glyphs.headingSuffix, isEmpty);
+      expect(glyphs.bodyIndent, isEmpty);
+      expect(glyphs.hintPrefix, isEmpty);
+      expect(glyphs.bodyMarker, '› ');
+      expect(
+        headingGlyphsFor(PromptStructure.minimal, ascii: true)!.bodyMarker,
+        '> ',
+      );
+      expect(glyphs.drawsRule, isFalse);
+      expect(glyphs.drawsBand, isFalse);
+    });
+
+    test(
+      'the hint closes rich and linear presentations without decoration',
+      () {
+        final rich = composePromptPresentation(
+          mode: PresentationMode.rich,
+          prompt: 'Pick tools',
+          essential: 'Pick tools entry.',
+          hint: hint,
+        );
+        final linear = composePromptPresentation(
+          mode: PresentationMode.linear,
+          prompt: 'Pick tools',
+          essential: 'Pick tools entry.',
+          hint: hint,
+        );
+
+        expect(rich.placement, HintPlacement.richBottom);
+        expect(linear.placement, HintPlacement.linearAfter);
+        for (final presentation in [rich, linear]) {
+          expect(presentation.lines, ['Pick tools', hint.text]);
+          expect(presentation.lines.last, hint.text);
+          expect(presentation.lines.first, 'Pick tools');
+        }
+      },
+    );
+
+    test('screen-reader essentials precede the prompt with a help route', () {
+      final presentation = composePromptPresentation(
+        mode: PresentationMode.screenReader,
+        prompt: 'Pick tools',
+        essential: 'Pick tools entry.',
+        hint: hint,
+      );
+
+      expect(presentation.placement, HintPlacement.screenReaderBefore);
+      expect(presentation.essentialBefore, 'Pick tools entry. ${hint.text}');
+      expect(presentation.essentialBefore, contains('Ctrl+T opens help'));
+      expect(presentation.lines, [presentation.essentialBefore!, 'Pick tools']);
+      expect(sequentialTranscript(presentation, response: 'b'), [
+        presentation.essentialBefore!,
+        'Pick tools',
+        'b',
+      ]);
+    });
+
+    test('short screens keep the compact route without inventing chrome', () {
+      final presentation = composePromptPresentation(
+        mode: PresentationMode.rich,
+        prompt: 'Pick tools',
+        essential: 'Pick tools entry.',
+        hint: hint,
+        decoration: const ['!'],
+        availableRows: 2,
+      );
+
+      expect(presentation.lines, ['Pick tools', hint.shortText]);
+      expect(presentation.lines.join(), contains('Enter'));
+      expect(presentation.lines.join(), contains('Ctrl+T help'));
+      expect(presentation.lines, isNot(contains('!')));
+    });
+  });
 }
+
+List<String> _visibleLines(String text) => [
+  for (final line in text.replaceAll('\r', '').split('\n'))
+    if (line.isNotEmpty) line.replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), ''),
+];
 
 /// Strips style and repaint control so wrapped output can be inspected as
 /// the sequential text a reader would receive, without adding line breaks
