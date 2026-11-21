@@ -255,6 +255,8 @@ final class ThemeSession {
     required this.environment,
     this.interaction = const InteractionPreferences(),
     this.colors = const ColorPreferences(),
+    this.lightDefault = ColorThemes.terminalDefault,
+    this.darkDefault = ColorThemes.terminalDefault,
     this.onResolved,
     this.onCleanupError,
     this.factsForPeriod,
@@ -267,6 +269,14 @@ final class ThemeSession {
   final TerminalEnvironment environment;
   final InteractionPreferences interaction;
   final ColorPreferences colors;
+
+  /// The structural theme defaults this owner selects before overrides.
+  ///
+  /// They stay terminal-native unless a migrating theme supplies its authored
+  /// light and dark palettes; this keeps every pre-existing owner unchanged.
+  final ColorTheme lightDefault;
+  final ColorTheme darkDefault;
+
   final ThemeResolvedCallback? onResolved;
 
   /// Observes a cleanup failure that did not replace a primary result.
@@ -544,8 +554,8 @@ final class ThemeSession {
     final colorFacts = _fixedColorFacts ?? _defaultColorFacts;
     final initialColors = resolveColors(
       facts: colorFacts,
-      lightDefault: ColorThemes.terminalDefault,
-      darkDefault: ColorThemes.terminalDefault,
+      lightDefault: lightDefault,
+      darkDefault: darkDefault,
       preferences: colors,
     );
     final period = _ThemePeriod(
@@ -586,8 +596,8 @@ final class ThemeSession {
             period.setColors(
               resolveColors(
                 facts: facts,
-                lightDefault: ColorThemes.terminalDefault,
-                darkDefault: ColorThemes.terminalDefault,
+                lightDefault: lightDefault,
+                darkDefault: darkDefault,
                 preferences: colors,
               ),
             );

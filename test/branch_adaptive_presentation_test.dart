@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:trelis/src/color_resolution.dart';
+import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/themes/branch_presentation.dart';
 import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
@@ -164,4 +166,49 @@ void main() {
       expect(explicit.palette, BranchPresentation.lightDefault);
     });
   });
+
+  group('Branch text input through the internal seam', () {
+    for (final variant in BackgroundVariant.values) {
+      final isLight = variant == BackgroundVariant.light;
+      final foreground = isLight ? '55;45;40' : '238;232;235';
+      final muted = isLight ? '98;83;77' : '177;165;173';
+
+      test('$variant palette styles a real branching text input', () async {
+        final output = StringBuffer();
+        final tracer = BranchPresentationTracer(
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('Ada\r'),
+            output: output,
+            profile: _richProfile,
+          ),
+          colors: ColorPreferences(
+            background: isLight
+                ? BackgroundPreference.light
+                : BackgroundPreference.dark,
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+        );
+
+        final result = await tracer.textInput('Choose features');
+        final text = output.toString();
+
+        expect((result as Accepted<String>).value, 'Ada');
+        expect(text, contains('\x1b[38;2;$foreground;49m├ Choose features'));
+        expect(text, contains('\x1b[38;2;$muted;49m│ '));
+        expect(text, contains('\x1b[38;2;$muted;49m└ '));
+        expect(text, contains('Ctrl+T opens help.'));
+        expect(text, contains('│ '));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+        expect(text, isNot(contains('\x1b[2J')));
+      });
+    }
+  });
 }
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  colorDepth: ColorDepth.rgb,
+  geometry: OutputGeometry.fixed(columns: 70, rows: 20),
+  glyphs: GlyphSet.unicode,
+);

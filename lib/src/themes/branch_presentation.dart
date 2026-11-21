@@ -7,7 +7,13 @@ library;
 
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/color_theme.dart';
+import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/prompt_structure.dart';
+import 'package:trelis/src/terminal_io.dart';
+import 'package:trelis/src/text_input.dart' show InstructionDisplay, PromptResult;
+import 'package:trelis/src/text_input_tracer.dart';
+import 'package:trelis/src/theme_session.dart'
+    show ThemeInteractionFactsProvider, ThemeResolvedCallback;
 
 /// The authored Branch defaults and the reference surfaces they were designed
 /// against.
@@ -53,4 +59,57 @@ abstract final class BranchPresentation {
 
   /// Branch's title/continuation-line grammar.
   static const structure = PromptStructure.branch;
+}
+
+/// Creates real Branch components that resolve their colours through the
+/// internal theme owner.
+///
+/// [colors] and [componentColors] keep the application and component override
+/// layers separate; neither can change the environment or background query.
+final class BranchPresentationTracer {
+  BranchPresentationTracer({
+    required this.io,
+    this.colors = const ColorPreferences(),
+    this.componentColors = const ComponentColors(),
+    this.interaction = const InteractionPreferences(),
+    this.instructions = InstructionDisplay.themeDefault,
+    this.onResolved,
+    this.factsForPeriod,
+  });
+
+  final TerminalEnvironment io;
+  final ColorPreferences colors;
+  final ComponentColors componentColors;
+  final InteractionPreferences interaction;
+  final InstructionDisplay instructions;
+  final ThemeResolvedCallback? onResolved;
+  final ThemeInteractionFactsProvider? factsForPeriod;
+
+  /// Renders a real Branch text input in the owner's resolved palette.
+  Future<PromptResult<String>> textInput(
+    String label, {
+    String initialValue = '',
+    bool required = false,
+    String? Function(String)? validate,
+    int? maxLength,
+  }) {
+    final tracer = ThemeTextInputTracer(
+      label,
+      io: io,
+      initialValue: initialValue,
+      required: required,
+      validate: validate,
+      maxLength: maxLength,
+      instructions: instructions,
+      colors: componentColors,
+      themeColors: colors,
+      interaction: interaction,
+      lightDefault: BranchPresentation.lightDefault,
+      darkDefault: BranchPresentation.darkDefault,
+      structure: BranchPresentation.structure,
+      onResolved: onResolved,
+      factsForPeriod: factsForPeriod,
+    );
+    return tracer.prompt();
+  }
 }

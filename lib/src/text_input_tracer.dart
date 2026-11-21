@@ -9,7 +9,9 @@ library;
 import 'dart:async';
 
 import 'color_resolution.dart';
+import 'color_theme.dart';
 import 'interaction_resolution.dart';
+import 'prompt_structure.dart' show PromptStructure;
 import 'presentation.dart' show DisplayText;
 import 'state_help_presentation.dart'
     show
@@ -34,14 +36,19 @@ final class ThemeTextInputTracer {
     this.mask = false,
     this.instructions = InstructionDisplay.themeDefault,
     this.colors = const ComponentColors(),
+    this.structure = PromptStructure.plain,
     ColorPreferences themeColors = const ColorPreferences(),
     InteractionPreferences interaction = const InteractionPreferences(),
+    ColorTheme lightDefault = ColorThemes.terminalDefault,
+    ColorTheme darkDefault = ColorThemes.terminalDefault,
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
   }) : _owner = ThemeSession(
          environment: io,
          colors: themeColors,
          interaction: interaction,
+         lightDefault: lightDefault,
+         darkDefault: darkDefault,
          onResolved: onResolved,
          factsForPeriod: factsForPeriod,
        );
@@ -55,6 +62,9 @@ final class ThemeTextInputTracer {
   final bool mask;
   final InstructionDisplay instructions;
   final ComponentColors colors;
+
+  /// The structural grammar the traced component renders.
+  final PromptStructure structure;
   final ThemeSession _owner;
 
   /// Restoration failures retained after a successful primary operation.
@@ -89,6 +99,7 @@ final class ThemeTextInputTracer {
         validate: validate,
         mask: mask,
         instructions: instructions,
+        structure: structure,
         colors: palette,
       ).prompt(session: handle.session);
     }
@@ -99,6 +110,7 @@ final class ThemeTextInputTracer {
       validate: validate,
       maxLength: maxLength,
       instructions: instructions,
+      structure: structure,
       colors: palette,
     ).prompt(session: handle.session);
   });
