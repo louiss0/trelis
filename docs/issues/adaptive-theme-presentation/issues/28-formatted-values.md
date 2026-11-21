@@ -1,6 +1,6 @@
 # 28 Migrate formatted value prompts
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [25](25-text-secret-multiline.md)
 
