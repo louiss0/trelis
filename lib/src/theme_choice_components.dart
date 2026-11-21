@@ -261,15 +261,20 @@ final class ThemeBooleanPrompt {
   }) => _owner.startFeedback(start, stop: stop);
 
   String _essential(PresentationMode mode) {
-    final (primary, short) = switch (kind) {
-      ThemeBooleanComponent.confirm => (
+    final (primary, short) = switch ((kind, mode)) {
+      (_, PresentationMode.screenReader) || (_, PresentationMode.linear) => (
+        'Enter yes or no; an empty line accepts the default',
+        'Enter yes/no',
+      ),
+      (ThemeBooleanComponent.confirm, _) => (
         'Y or N changes the draft; Enter submits',
         'Y/N; Enter',
       ),
-      ThemeBooleanComponent.checkbox || ThemeBooleanComponent.toggle => (
-        'Space changes the draft; Enter submits',
-        'Space; Enter',
-      ),
+      (ThemeBooleanComponent.checkbox, _) ||
+      (
+        ThemeBooleanComponent.toggle,
+        _,
+      ) => ('Space changes the draft; Enter submits', 'Space; Enter'),
     };
     return composePromptPresentation(
       mode: mode,
