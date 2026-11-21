@@ -60,7 +60,7 @@ reported `Already up to date.`):
   suites and `component_acceptance_matrix`) — 249 passed.
 - `dart format --output=none --set-exit-if-changed .` — 255 files, 0 changed.
 - `dart analyze` — no issues found.
-- `dart test -r compact` — 5021 passed.
+- `dart test -r compact` — 5022 passed.
 - `dart run tool/check_issue_tracker.dart` — 177 Git-backed tracker files; no
   legacy local tracker remains.
 
