@@ -11,6 +11,7 @@ import 'dart:async';
 import 'color_resolution.dart';
 import 'interaction_resolution.dart';
 import 'presentation.dart' show DisplayText;
+import 'prompt_structure.dart' show PromptStructure;
 import 'state_help_presentation.dart'
     show
         ComponentRoute,
@@ -38,12 +39,15 @@ final class ThemeTextInputTracer {
     InteractionPreferences interaction = const InteractionPreferences(),
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
+    this.structure = PromptStructure.plain,
+    this.palettes = ThemePaletteDefaults.terminalNative,
   }) : _owner = ThemeSession(
          environment: io,
          colors: themeColors,
          interaction: interaction,
          onResolved: onResolved,
          factsForPeriod: factsForPeriod,
+         palettes: palettes,
        );
 
   final String label;
@@ -55,6 +59,13 @@ final class ThemeTextInputTracer {
   final bool mask;
   final InstructionDisplay instructions;
   final ComponentColors colors;
+
+  /// The structure this tracer renders, fixed by the owning theme.
+  final PromptStructure structure;
+
+  /// The owning theme's adaptive light/dark defaults.
+  final ThemePaletteDefaults palettes;
+
   final ThemeSession _owner;
 
   /// Restoration failures retained after a successful primary operation.
@@ -90,6 +101,7 @@ final class ThemeTextInputTracer {
         mask: mask,
         instructions: instructions,
         colors: palette,
+        structure: structure,
       ).prompt(session: handle.session);
     }
     return TextInput(
@@ -100,6 +112,7 @@ final class ThemeTextInputTracer {
       maxLength: maxLength,
       instructions: instructions,
       colors: palette,
+      structure: structure,
     ).prompt(session: handle.session);
   });
 

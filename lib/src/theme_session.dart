@@ -259,16 +259,25 @@ final class ThemeSession {
     this.onCleanupError,
     this.factsForPeriod,
     this.hints,
-    this.lightDefault = ColorThemes.terminalDefault,
-    this.darkDefault = ColorThemes.terminalDefault,
+    ColorTheme? lightDefault,
+    ColorTheme? darkDefault,
     InteractionFacts? facts,
     ColorDetectionFacts? colorFacts,
-  }) : _fixedFacts = facts,
+    ThemePaletteDefaults? palettes,
+  }) : palettes = ThemePaletteDefaults(
+         // Explicit structural defaults win over a supplied palette bundle.
+         light: lightDefault ?? palettes?.light ?? ColorThemes.terminalDefault,
+         dark: darkDefault ?? palettes?.dark ?? ColorThemes.terminalDefault,
+       ),
+       _fixedFacts = facts,
        _fixedColorFacts = colorFacts;
 
   final TerminalEnvironment environment;
   final InteractionPreferences interaction;
   final ColorPreferences colors;
+
+  /// The selected structural theme's adaptive defaults.
+  final ThemePaletteDefaults palettes;
 
   /// The structural theme's authored defaults for each background variant.
   ///
@@ -276,8 +285,10 @@ final class ThemeSession {
   /// layers, so a theme can supply adaptive defaults without changing the
   /// public palette override contract. Component overrides are applied after
   /// the defaults for the resolved background have been selected.
-  final ColorTheme lightDefault;
-  final ColorTheme darkDefault;
+  ColorTheme get lightDefault => palettes.light;
+
+  ColorTheme get darkDefault => palettes.dark;
+
   final ThemeResolvedCallback? onResolved;
 
   /// Observes a cleanup failure that did not replace a primary result.
