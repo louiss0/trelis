@@ -49,6 +49,7 @@ final class TreeSelect<T> {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.presentation,
     List<String> supplementaryHelp = const [],
   }) : nodes = List.unmodifiable(nodes),
        supplementaryHelp = List.unmodifiable(supplementaryHelp) {
@@ -76,6 +77,9 @@ final class TreeSelect<T> {
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+
+  /// Theme-owned state vocabulary, or null for the legacy textual markers.
+  final ChoicePresentationConfig? presentation;
   final List<String> supplementaryHelp;
 
   /// Optional currentness check for nodes that can disappear during a prompt.
@@ -337,6 +341,7 @@ final class TreeSelect<T> {
         selectable: node.canSelect,
         disabledReason: node.disabledReason,
         current: currentPath(row.$2),
+        presentation: presentation,
       );
     }
 
