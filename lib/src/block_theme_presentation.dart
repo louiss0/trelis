@@ -11,7 +11,14 @@ import 'dart:async';
 import 'color_resolution.dart';
 import 'color_theme.dart';
 import 'interaction_resolution.dart';
+import 'presentation.dart' show DisplayText;
 import 'prompt_structure.dart';
+import 'state_help_presentation.dart'
+    show
+        ComponentRoute,
+        PresentationMode,
+        compactHint,
+        composePromptPresentation;
 import 'terminal_io.dart';
 import 'text_input.dart'
     show
@@ -203,12 +210,14 @@ final class BlockThemePresentation {
     required TerminalEnvironment io,
     ColorPreferences colors = const ColorPreferences(),
     InteractionPreferences interaction = const InteractionPreferences(),
+    ColorDetectionFacts? colorFacts,
   }) : _owner = ThemeSession(
          environment: io,
          colors: colors,
          interaction: interaction,
          lightDefault: BlockAdaptivePalettes.light,
          darkDefault: BlockAdaptivePalettes.dark,
+         colorFacts: colorFacts,
        );
 
   final ThemeSession _owner;
@@ -223,6 +232,13 @@ final class BlockThemePresentation {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
   }) => _owner.prompt((handle) {
     final palette = _componentPalette(handle, colors);
+    _presentEssential(
+      handle,
+      label,
+      essential: '$label entry.',
+      primaryAction: 'Enter submits',
+      shortPrimaryAction: 'Enter',
+    );
     return TextInput(
       label,
       initialValue: initialValue,
@@ -245,6 +261,13 @@ final class BlockThemePresentation {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
   }) => _owner.prompt((handle) {
     final palette = _componentPalette(handle, colors);
+    _presentEssential(
+      handle,
+      label,
+      essential: '$label choices.',
+      primaryAction: 'Space toggles; Enter submits',
+      shortPrimaryAction: 'Space/Enter',
+    );
     return MultiSelect<T>(
       label,
       choices,
@@ -256,6 +279,31 @@ final class BlockThemePresentation {
       colors: palette.palette,
     ).prompt(session: handle.session);
   });
+
+  /// Places concise essential guidance before a screen-reader prompt.
+  ///
+  /// The component keeps its own visible compact hint in every other mode.
+  void _presentEssential(
+    ThemeSessionHandle handle,
+    String label, {
+    required String essential,
+    required String primaryAction,
+    required String shortPrimaryAction,
+  }) {
+    if (!handle.interaction.screenReader) return;
+    final presentation = composePromptPresentation(
+      mode: PresentationMode.screenReader,
+      prompt: DisplayText.from(label).value,
+      essential: DisplayText.from(essential).value,
+      hint: compactHint(
+        mode: PresentationMode.screenReader,
+        component: ComponentRoute.standard,
+        primaryAction: primaryAction,
+        shortPrimaryAction: shortPrimaryAction,
+      ),
+    );
+    handle.session.presentText(presentation.essentialBefore!);
+  }
 
   /// Layers a component override over the palette the period resolved.
   ResolvedColors _componentPalette(
