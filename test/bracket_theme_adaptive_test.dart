@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:test/test.dart';
 import 'package:trelis/src/color_resolution.dart';
 import 'package:trelis/src/interaction_resolution.dart';
+import 'package:trelis/src/state_help_presentation.dart'
+    show StateGlyphs, Status, renderStatus;
 import 'package:trelis/src/themes/bracket_theme_internal.dart';
 import 'package:trelis/trelis.dart';
 
@@ -538,5 +540,192 @@ void main() {
       text,
       isNot(contains(_foreground((red: 117, green: 118, blue: 119)))),
     );
+  });
+
+  Future<String> renderAsciiMultiSelect(int columns) async {
+    final output = StringBuffer();
+    final theme = _theme(
+      output,
+      background: BackgroundPreference.dark,
+      input: Stream.value('\r'),
+      profile: _profile(ascii: true, depth: ColorDepth.none, columns: columns),
+    );
+    await theme.multiSelect<String>(
+      'Features',
+      [
+        Choice('starter', 'Starter'),
+        Choice('library', 'Library'),
+        Choice('locked', 'Locked', disabledReason: 'locked by policy'),
+      ],
+      defaultValues: const ['library'],
+    );
+    return output.toString();
+  }
+
+  test(
+    'ASCII no-colour Bracket keeps independent markers and compact help',
+    () async {
+      final text = await renderAsciiMultiSelect(40);
+      final lines = _lines(text);
+
+      expect(text, isNot(contains('\x1b[38;')));
+      expect(text, isNot(contains('\x1b[48;')));
+      expect(lines.first, startsWith('[ '));
+      expect(lines.first, contains('Features'));
+
+      final focused = lines
+          .where((line) => line.contains('[focused]'))
+          .toList();
+      final defaulted = lines
+          .where((line) => line.contains('[default]'))
+          .toList();
+      expect(focused, hasLength(1));
+      expect(defaulted, hasLength(1));
+      expect(focused.single, contains('[unchecked]'));
+      expect(focused.single, isNot(contains('[default]')));
+      expect(defaulted.single, contains('[checked]'));
+      expect(defaulted.single, isNot(contains('[focused]')));
+      expect(text, contains('[unavailable: locked by policy]'));
+
+      final help = lines.indexWhere((line) => line.contains('Ctrl+T'));
+      expect(help, greaterThan(lines.indexOf(defaulted.single)));
+      final hintText = text.replaceAll(RegExp(r'\s'), '');
+      expect(hintText, contains('Entersubmits'));
+      expect(hintText, contains('Ctrl+Thelp'));
+
+      for (final line in lines) {
+        expect(line.length, lessThanOrEqualTo(40), reason: line);
+      }
+    },
+  );
+
+  test(
+    'narrow ASCII Bracket keeps essential markers inside the columns',
+    () async {
+      final text = await renderAsciiMultiSelect(10);
+      final lines = _lines(text);
+
+      expect(text, isNot(contains('\x1b[38;')));
+      expect(text, isNot(contains('\x1b[48;')));
+      final joined = lines.join('').replaceAll(RegExp(r'\s'), '');
+      for (final essential in [
+        'Features',
+        'Starter',
+        'Library',
+        '[unchecked]',
+        '[checked]',
+        '[focused]',
+        '[default]',
+        'Ctrl+T',
+      ]) {
+        expect(joined, contains(essential), reason: essential);
+      }
+      expect(text, isNot(contains('\x1b[2K')));
+      expect(text, contains('[unavailable: locked by policy]'));
+    },
+  );
+
+  test('ASCII no-colour validation keeps a readable status label', () async {
+    final output = StringBuffer();
+    final theme = _theme(
+      output,
+      background: BackgroundPreference.dark,
+      input: Stream.value('ab\rc\r'),
+      profile: _profile(ascii: true, depth: ColorDepth.none),
+    );
+
+    final result = await theme.textInput(
+      'Project name',
+      validate: (value) => value == 'abc' ? null : 'Name must be abc.',
+    );
+
+    expect((result as Accepted<String>).value, 'abc');
+    final text = output.toString();
+    expect(text, isNot(contains('\x1b[38;')));
+    expect(text, isNot(contains('\x1b[48;')));
+    final lines = _lines(text);
+    expect(
+      lines.where((line) => line.trim() == 'Name must be abc.'),
+      isNotEmpty,
+      reason: 'the validation notice stays readable without colour',
+    );
+    expect(lines.first, startsWith('[ '));
+    expect(lines.where((line) => line.contains('Ctrl+T')), isNotEmpty);
+    expect(
+      renderStatus(
+        Status.warning,
+        'Name must be abc.',
+        glyphs: StateGlyphs.ascii,
+      ),
+      '! Warning: Name must be abc.',
+      reason: 'the shared status seam keeps an explicit text label',
+    );
+  });
+
+  test(
+    'linear Bracket choice keeps readable draft and result labels',
+    () async {
+      final output = StringBuffer();
+      final theme = _theme(
+        output,
+        background: BackgroundPreference.dark,
+        input: Stream.value('2\r'),
+        mode: PromptMode.linear,
+      );
+
+      final result = await theme.select<String>('Features', [
+        Choice('starter', 'Starter'),
+        Choice('library', 'Library'),
+      ]);
+
+      expect((result as Accepted<String>).value, 'library');
+      final lines = _lines(output.toString());
+      expect(
+        lines.where((line) => line.trim().startsWith('Current text:')),
+        isNotEmpty,
+        reason: 'linear entry keeps a readable draft label',
+      );
+      expect(
+        lines.where((line) => line.trim().startsWith('Cursor position:')),
+        isNotEmpty,
+        reason: 'linear entry keeps a readable caret label',
+      );
+      expect(
+        lines.where((line) => line.contains('Accepted: Library.')),
+        isNotEmpty,
+        reason: 'the outcome keeps a readable status label',
+      );
+    },
+  );
+
+  test('the pre-cutover Bracket factory keeps its public palette', () async {
+    final input = BracketTheme.textInput('Name');
+    expect(input.structure, PromptStructure.bracket);
+    expect(input.colors, ColorThemes.terminalDefault);
+
+    final output = StringBuffer();
+    final result = await input.prompt(
+      source: ScriptedInput(
+        Stream.value('Ada\r'),
+        output,
+        outputProfile: _profile(),
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<String>).value, 'Ada');
+    expect(output.toString(), isNot(contains('\x1b[38;')));
+    expect(output.toString(), contains('[ Name'));
+
+    final explicit = StringBuffer();
+    await BracketTheme.textInput('Name', colors: ColorThemes.signal).prompt(
+      source: ScriptedInput(
+        Stream.value('Ada\r'),
+        explicit,
+        outputProfile: _profile(),
+      ),
+      mode: PromptMode.rich,
+    );
+    expect(explicit.toString(), contains('\x1b[38;2;230;232;244;'));
+    expect(explicit.toString(), contains('[ Name'));
   });
 }
