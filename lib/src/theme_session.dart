@@ -281,6 +281,10 @@ final class ThemeSession {
 
   /// The structural theme's authored defaults for each background variant.
   ///
+  /// They default to terminal-native colours for callers that have not
+  /// authored adaptive defaults yet. A structural theme supplies its own pair
+  /// so omission resolves to that theme rather than to a generic palette.
+  ///
   /// They are selected by [resolveColors] before application and component
   /// layers, so a theme can supply adaptive defaults without changing the
   /// public palette override contract. Component overrides are applied after
