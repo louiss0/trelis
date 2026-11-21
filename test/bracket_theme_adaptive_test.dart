@@ -49,6 +49,72 @@ List<String> _lines(String text) => text
     .where((line) => line.trim().isNotEmpty)
     .toList();
 
+const _appPaletteFg = (red: 11, green: 22, blue: 33);
+const _componentPaletteFg = (red: 44, green: 55, blue: 66);
+const _appAccent = (red: 77, green: 88, blue: 99);
+const _appLightAccent = (red: 101, green: 102, blue: 103);
+const _appDarkAccent = (red: 104, green: 105, blue: 106);
+const _componentAccent = (red: 111, green: 112, blue: 113);
+const _componentLightAccent = (red: 114, green: 115, blue: 116);
+const _componentDarkAccent = (red: 117, green: 118, blue: 119);
+
+ColorTheme _palette({
+  required BracketRgb foreground,
+  required BracketRgb border,
+  required BracketRgb accent,
+}) => ColorTheme(
+  foreground: TerminalColor.rgb(
+    foreground.red,
+    foreground.green,
+    foreground.blue,
+  ),
+  background: const TerminalColor.terminalDefault(),
+  muted: TerminalColor.rgb(150, 150, 150),
+  accent: TerminalColor.rgb(accent.red, accent.green, accent.blue),
+  selectionForeground: TerminalColor.rgb(255, 255, 255),
+  selectionBackground: TerminalColor.rgb(50, 50, 50),
+  success: TerminalColor.rgb(20, 150, 20),
+  warning: TerminalColor.rgb(150, 120, 20),
+  error: TerminalColor.rgb(150, 20, 20),
+  border: TerminalColor.rgb(border.red, border.green, border.blue),
+);
+
+final ColorTheme _appPalette = _palette(
+  foreground: _appPaletteFg,
+  border: (red: 12, green: 23, blue: 34),
+  accent: _appAccent,
+);
+final ColorTheme _componentPalette = _palette(
+  foreground: _componentPaletteFg,
+  border: (red: 45, green: 56, blue: 67),
+  accent: _componentAccent,
+);
+
+Future<String> _renderSelect({
+  required BackgroundPreference background,
+  ColorPreferences? preferences,
+  ComponentColors component = const ComponentColors(),
+  OutputProfile? profile,
+  Map<String, String?> environment = const {},
+  ColorDetectionFacts? colorFacts,
+}) async {
+  final output = StringBuffer();
+  final theme = _theme(
+    output,
+    background: background,
+    input: Stream.value('\r'),
+    profile: profile,
+    colors: preferences ?? ColorPreferences(background: background),
+    environment: environment,
+    colorFacts: colorFacts,
+  );
+  await theme.select<String>('Features', [
+    Choice('starter', 'Starter'),
+    Choice('library', 'Library'),
+  ], colors: component);
+  return output.toString();
+}
+
 BracketInternalPresentation _theme(
   StringBuffer output, {
   required BackgroundPreference background,
@@ -212,6 +278,265 @@ void main() {
         _foreground(BracketPaletteDefaults.darkRgb[BracketPaletteRole.accent]!),
       ),
       reason: 'the focused answer uses the authored rust accent',
+    );
+  });
+
+  for (final variant in [
+    (name: 'light', value: BackgroundPreference.light),
+    (name: 'dark', value: BackgroundPreference.dark),
+  ]) {
+    test(
+      '${variant.name} applies every Bracket palette layer in order',
+      () async {
+        final light = variant.value == BackgroundPreference.light;
+        final expectedRgb = light
+            ? BracketPaletteDefaults.lightRgb
+            : BracketPaletteDefaults.darkRgb;
+        final defaultForeground = _foreground(
+          expectedRgb[BracketPaletteRole.foreground]!,
+        );
+        final appForeground = _foreground(_appPaletteFg);
+        final componentForeground = _foreground(_componentPaletteFg);
+        final appAccent = _foreground(_appAccent);
+        final appVariantAccent = _foreground(
+          light ? _appLightAccent : _appDarkAccent,
+        );
+        final componentAccent = _foreground(_componentAccent);
+        final componentVariantAccent = _foreground(
+          light ? _componentLightAccent : _componentDarkAccent,
+        );
+
+        var text = await _renderSelect(background: variant.value);
+        expect(text, contains(defaultForeground));
+        expect(text, isNot(contains(appForeground)));
+
+        text = await _renderSelect(
+          background: variant.value,
+          preferences: ColorPreferences(
+            background: variant.value,
+            colors: ComponentColors.palette(_appPalette),
+          ),
+        );
+        expect(text, contains(appForeground));
+        expect(text, isNot(contains(defaultForeground)));
+
+        text = await _renderSelect(
+          background: variant.value,
+          preferences: ColorPreferences(
+            background: variant.value,
+            colors: ComponentColors(
+              palette: _appPalette,
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(77, 88, 99)),
+            ),
+          ),
+        );
+        expect(text, contains(appAccent));
+
+        text = await _renderSelect(
+          background: variant.value,
+          preferences: ColorPreferences(
+            background: variant.value,
+            colors: ComponentColors(
+              palette: _appPalette,
+              lightRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(101, 102, 103),
+              ),
+              darkRoles: ColorRoleOverrides(
+                accent: TerminalColor.rgb(104, 105, 106),
+              ),
+            ),
+          ),
+        );
+        expect(text, contains(appVariantAccent));
+        expect(text, isNot(contains(appAccent)));
+
+        text = await _renderSelect(
+          background: variant.value,
+          preferences: ColorPreferences(
+            background: variant.value,
+            colors: ComponentColors(
+              palette: _appPalette,
+              roles: ColorRoleOverrides(accent: TerminalColor.rgb(77, 88, 99)),
+            ),
+          ),
+          component: ComponentColors.palette(_componentPalette),
+        );
+        expect(text, contains(componentForeground));
+        expect(text, isNot(contains(appForeground)));
+        expect(text, isNot(contains(appAccent)));
+
+        text = await _renderSelect(
+          background: variant.value,
+          preferences: ColorPreferences(
+            background: variant.value,
+            colors: ComponentColors.palette(_appPalette),
+          ),
+          component: ComponentColors(
+            palette: _componentPalette,
+            lightRoles: ColorRoleOverrides(
+              accent: TerminalColor.rgb(114, 115, 116),
+            ),
+            darkRoles: ColorRoleOverrides(
+              accent: TerminalColor.rgb(117, 118, 119),
+            ),
+          ),
+        );
+        expect(text, contains(componentForeground));
+        expect(text, contains(componentVariantAccent));
+        expect(text, isNot(contains(componentAccent)));
+        expect(text, isNot(contains(appAccent)));
+      },
+    );
+  }
+
+  test('explicit terminal default wins at app and component scope', () async {
+    var text = await _renderSelect(
+      background: BackgroundPreference.dark,
+      preferences: const ColorPreferences(
+        background: BackgroundPreference.dark,
+        colors: ComponentColors.palette(ColorThemes.terminalDefault),
+      ),
+    );
+    expect(text, isNot(contains('\x1b[38;')));
+    expect(text, isNot(contains('\x1b[48;')));
+    expect(text, contains('Ctrl+T'));
+
+    text = await _renderSelect(
+      background: BackgroundPreference.dark,
+      preferences: ColorPreferences(
+        background: BackgroundPreference.dark,
+        colors: ComponentColors.palette(_appPalette),
+      ),
+      component: ComponentColors.palette(ColorThemes.terminalDefault),
+    );
+    expect(text, isNot(contains('\x1b[38;')));
+    expect(text, isNot(contains(_foreground(_appPaletteFg))));
+  });
+
+  test(
+    'output capability and NO_COLOR degrade real Bracket rendering',
+    () async {
+      final indexed = await _renderSelect(
+        background: BackgroundPreference.light,
+        profile: _profile(depth: ColorDepth.indexed256),
+      );
+      expect(indexed, contains('\x1b[38;5;'));
+      expect(indexed, isNot(contains('\x1b[38;2;')));
+
+      final plain = await _renderSelect(
+        background: BackgroundPreference.light,
+        profile: _profile(depth: ColorDepth.none),
+      );
+      expect(plain, isNot(contains('\x1b[38;')));
+      expect(plain, contains('Ctrl+T'));
+
+      final restricted = await _renderSelect(
+        background: BackgroundPreference.light,
+        environment: const {'NO_COLOR': '1'},
+        preferences: ColorPreferences(
+          background: BackgroundPreference.light,
+          colors: ComponentColors.palette(_appPalette),
+        ),
+        component: ComponentColors.palette(_componentPalette),
+      );
+      expect(restricted, isNot(contains('\x1b[38;')));
+      expect(restricted, isNot(contains('\x1b[48;')));
+      expect(restricted, contains('Ctrl+T'));
+    },
+  );
+
+  test(
+    'unknown background falls back to dark and explicit choice wins',
+    () async {
+      final fallback = await _renderSelect(
+        background: BackgroundPreference.automatic,
+        preferences: const ColorPreferences(
+          background: BackgroundPreference.automatic,
+          allowBackgroundQuery: false,
+        ),
+      );
+      expect(
+        fallback,
+        contains(
+          _foreground(
+            BracketPaletteDefaults.darkRgb[BracketPaletteRole.foreground]!,
+          ),
+        ),
+      );
+
+      final explicit = await _renderSelect(
+        background: BackgroundPreference.light,
+        colorFacts: ColorDetectionFacts(
+          outputProfile: _profile(),
+          passiveBackground: BackgroundObservation.dark,
+          queriedBackground: BackgroundObservation.dark,
+        ),
+      );
+      expect(
+        explicit,
+        contains(
+          _foreground(
+            BracketPaletteDefaults.lightRgb[BracketPaletteRole.foreground]!,
+          ),
+        ),
+      );
+
+      final queried = await _renderSelect(
+        background: BackgroundPreference.automatic,
+        preferences: const ColorPreferences(
+          background: BackgroundPreference.automatic,
+          allowBackgroundQuery: false,
+        ),
+        colorFacts: ColorDetectionFacts(
+          outputProfile: _profile(),
+          passiveBackground: BackgroundObservation.dark,
+          queriedBackground: BackgroundObservation.light,
+        ),
+      );
+      expect(
+        queried,
+        contains(
+          _foreground(
+            BracketPaletteDefaults.lightRgb[BracketPaletteRole.foreground]!,
+          ),
+        ),
+      );
+    },
+  );
+
+  test('Bracket defaults never paint the terminal surface', () async {
+    for (final background in [
+      BackgroundPreference.light,
+      BackgroundPreference.dark,
+    ]) {
+      final text = await _renderSelect(background: background);
+      expect(text, contains(';49m'));
+      expect(text, isNot(contains('48;2;')));
+      expect(text, isNot(contains('48;5;')));
+      expect(text, isNot(contains('\x1b[?1049h')));
+    }
+  });
+
+  test('component overrides cannot change the resolved background', () async {
+    final text = await _renderSelect(
+      background: BackgroundPreference.light,
+      component: ComponentColors(
+        darkPalette: _componentPalette,
+        darkRoles: ColorRoleOverrides(accent: TerminalColor.rgb(117, 118, 119)),
+      ),
+    );
+    expect(
+      text,
+      contains(
+        _foreground(
+          BracketPaletteDefaults.lightRgb[BracketPaletteRole.foreground]!,
+        ),
+      ),
+    );
+    expect(text, isNot(contains(_foreground(_componentPaletteFg))));
+    expect(
+      text,
+      isNot(contains(_foreground((red: 117, green: 118, blue: 119)))),
     );
   });
 }
