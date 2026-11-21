@@ -1,9 +1,18 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:trelis/src/color_resolution.dart';
+import 'package:trelis/src/interaction_resolution.dart';
 import 'package:trelis/src/themes/round_presentation.dart';
 import 'package:trelis/trelis.dart';
 import 'package:test/test.dart';
+
+final _richProfile = OutputProfile(
+  cursor: CapabilitySupport.supported,
+  colorDepth: ColorDepth.rgb,
+  geometry: OutputGeometry.fixed(columns: 70, rows: 20),
+  glyphs: GlyphSet.unicode,
+);
 
 /// Independent authored values for the Round adaptive defaults.
 ///
@@ -158,5 +167,50 @@ void main() {
       expect(explicit.background, BackgroundVariant.light);
       expect(explicit.palette, RoundPresentation.lightDefault);
     });
+  });
+
+  group('Round text input through the internal seam', () {
+    for (final variant in BackgroundVariant.values) {
+      final isLight = variant == BackgroundVariant.light;
+      final foreground = isLight ? '58;46;42' : '240;232;236';
+      final muted = isLight ? '100;84;78' : '180;166;175';
+      final border = isLight ? '107;88;82' : '147;128;142';
+
+      test('$variant palette styles a real rounded text input', () async {
+        final output = StringBuffer();
+        final tracer = RoundPresentationTracer(
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('Ada\r'),
+            output: output,
+            profile: _richProfile,
+          ),
+          colors: ColorPreferences(
+            background: isLight
+                ? BackgroundPreference.light
+                : BackgroundPreference.dark,
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+        );
+
+        final result = await tracer.textInput('Project name');
+        final text = output.toString();
+
+        expect((result as Accepted<String>).value, 'Ada');
+        expect(text, contains('\x1b[38;2;$border;49m╭─'));
+        expect(text, contains('─╮\x1b[0m'));
+        expect(text, contains('\x1b[38;2;$foreground;49m│ Project name'));
+        expect(text, contains('\x1b[38;2;$border;49m╰─'));
+        expect(text, contains('─╯\x1b[0m'));
+        expect(
+          text,
+          contains('\x1b[38;2;$muted;49m  Enter submits. Ctrl+T opens help.'),
+        );
+        expect(text.indexOf('╮'), lessThan(text.indexOf('Project name')));
+        expect(text.indexOf('╯'), lessThan(text.indexOf('Ctrl+T opens help.')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+        expect(text, isNot(contains('\x1b[2J')));
+      });
+    }
   });
 }
