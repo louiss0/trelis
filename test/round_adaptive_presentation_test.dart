@@ -213,4 +213,84 @@ void main() {
       });
     }
   });
+
+  group('Round choices through the internal seam', () {
+    test(
+      'a real light choice uses the authored sepia and plum roles',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(
+            background: BackgroundPreference.light,
+          ),
+        );
+
+        expect(text, contains('\x1b[38;2;107;88;82;49m╭─'));
+        expect(text, contains('\x1b[38;2;58;46;42;49m│ Pick tools'));
+        expect(text, contains('\x1b[38;2;119;39;94;49m│ 1. Starter'));
+        expect(text, contains('╰─'));
+        expect(text, contains('[checked] [default]'));
+        expect(text.indexOf('╯'), greaterThan(text.indexOf('Starter')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+      },
+    );
+
+    test(
+      'a real dark choice renders plum focus, checked, default and reasons',
+      () async {
+        final text = await _renderChoice(
+          colors: const ColorPreferences(background: BackgroundPreference.dark),
+        );
+
+        expect(text, contains('\x1b[38;2;147;128;142;49m╭─'));
+        expect(text, contains('\x1b[38;2;240;232;236;49m│ Pick tools'));
+        expect(
+          text,
+          contains(
+            '\x1b[38;2;222;146;202;49m│ 1. Starter [unchecked] [focused] '
+            '[unavailable: needs owner role]',
+          ),
+        );
+        expect(text, contains('[checked] [default]'));
+        expect(
+          text,
+          contains('\x1b[38;2;240;190;120;49m  Unavailable: needs owner role.'),
+        );
+        expect(text.indexOf('╯'), greaterThan(text.indexOf('Starter')));
+        expect(text, contains('Ctrl+T help'));
+        expect(text.indexOf('Ctrl+T help'), greaterThan(text.indexOf('╯')));
+        expect(text, isNot(contains('\x1b[48;2;')));
+        expect(text, isNot(contains('\x1b[?1049h')));
+      },
+    );
+  });
+}
+
+Future<String> _renderChoice({
+  ColorPreferences colors = const ColorPreferences(),
+  ComponentColors component = const ComponentColors(),
+  Map<String, String?> environment = const <String, String?>{},
+  OutputProfile? profile,
+}) async {
+  final output = StringBuffer();
+  final tracer = RoundPresentationTracer(
+    io: TerminalEnvironment.scripted(
+      input: Stream.value(' \r'),
+      output: output,
+      profile: profile ?? _richProfile,
+      environment: environment,
+    ),
+    colors: colors,
+    componentColors: component,
+    interaction: const InteractionPreferences(mode: PromptMode.rich),
+  );
+  final result = await tracer.multiSelect<String>(
+    'Pick tools',
+    [
+      Choice('a', 'Starter', disabledReason: 'needs owner role'),
+      Choice('b', 'Library'),
+    ],
+    defaultValues: const ['b'],
+  );
+  expect(result, isA<Accepted<List<String>>>());
+  return output.toString();
 }
