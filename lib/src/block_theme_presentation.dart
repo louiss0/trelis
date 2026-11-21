@@ -21,12 +21,7 @@ import 'state_help_presentation.dart'
         composePromptPresentation;
 import 'terminal_io.dart';
 import 'text_input.dart'
-    show
-        Choice,
-        InstructionDisplay,
-        MultiSelect,
-        PromptResult,
-        TextInput;
+    show Choice, InstructionDisplay, MultiSelect, PromptResult, TextInput;
 import 'theme_session.dart';
 
 /// One authored normal-text role and the reference surface it was chosen for.
