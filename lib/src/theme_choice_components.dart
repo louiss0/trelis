@@ -89,11 +89,9 @@ final class ThemeChoiceOption<T> {
   Choice<T> get choice => Choice<T>(
     value,
     label,
-    disabledReason: switch (restriction) {
-      ChoiceRestriction.locked => 'Locked: $reason',
-      ChoiceRestriction.unavailable => 'Unavailable: $reason',
-      ChoiceRestriction.none => null,
-    },
+    // The reason stays plain text; the restriction category is carried by
+    // the presentation configuration as [L] / [!], not repeated in prose.
+    disabledReason: reason,
   );
 }
 

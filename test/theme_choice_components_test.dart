@@ -206,6 +206,292 @@ void main() {
       },
     );
   });
+
+  group('themed single-choice family', () {
+    test(
+      'all five selection styles render through the real component',
+      () async {
+        for (final style in SingleSelectionStyle.values) {
+          final output = StringBuffer();
+          final prompt = ThemeSingleChoicePrompt<String>.select(
+            'Pick',
+            [
+              ThemeChoiceOption('a', 'Alpha', selected: true),
+              ThemeChoiceOption('b', 'Beta', isDefault: true),
+            ],
+            io: TerminalEnvironment.scripted(
+              input: Stream.value('2\r'),
+              output: output,
+              profile: const OutputProfile(glyphs: GlyphSet.ascii),
+            ),
+            interaction: const InteractionPreferences(mode: PromptMode.linear),
+            instructions: InstructionDisplay.hidden,
+            selectionStyle: style,
+            defaultValue: 'b',
+          );
+
+          expect(
+            await prompt.prompt(),
+            isA<Accepted<String>>(),
+            reason: '${style.name} accepts a focused identity',
+          );
+          final text = output.toString().replaceAll('\n', '');
+          expect(text, contains(style.asciiSelected), reason: style.name);
+          expect(text, contains(style.asciiUnselected), reason: style.name);
+          expect(text, contains('/help opens help.'), reason: style.name);
+          final selectedLine = output
+              .toString()
+              .split('\n')
+              .firstWhere((line) => line.contains('Alpha'));
+          final defaultLine = output
+              .toString()
+              .split('\n')
+              .firstWhere((line) => line.contains('Beta'));
+          expect(selectedLine, contains(style.asciiSelected));
+          expect(defaultLine, contains(style.asciiUnselected));
+          expect(
+            defaultLine,
+            contains('D'),
+            reason: 'default is a separate position',
+          );
+        }
+
+        final unicodeOutput = StringBuffer();
+        final unicode = ThemeSingleChoicePrompt<String>.radio(
+          'Pick',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true),
+            ThemeChoiceOption('b', 'Beta'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('2\r'),
+            output: unicodeOutput,
+            profile: const OutputProfile(glyphs: GlyphSet.unicode),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          selectionStyle: SingleSelectionStyle.triangles,
+        );
+        await unicode.prompt();
+        expect(unicodeOutput.toString(), contains('▲'));
+        expect(unicodeOutput.toString(), contains('△'));
+      },
+    );
+
+    test(
+      'locked and unavailable choices stay focusable but cannot be accepted',
+      () async {
+        final output = StringBuffer();
+        final prompt = ThemeSingleChoicePrompt<String>.select(
+          'Pick',
+          [
+            ThemeChoiceOption('a', 'Alpha', lockedReason: 'needs owner role'),
+            ThemeChoiceOption('b', 'Beta', unavailableReason: 'offline'),
+            ThemeChoiceOption('c', 'Gamma'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('\r\x1b[B\r\x1b[B\x14\x1b\r'),
+            output: output,
+            profile: _richProfile,
+            supportsRich: true,
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.rich),
+          defaultValue: 'a',
+        );
+
+        expect((await prompt.prompt() as Accepted<String>).value, 'c');
+        final text = output.toString();
+        expect(text, contains('[L]'));
+        expect(text, contains('needs owner role'));
+        expect(text, contains('[!'));
+        expect(text, contains('Unavailable: offline'));
+        final flat = text.replaceAll('\n', '');
+        expect(
+          flat,
+          contains(
+            'Unavailable: needs owner role. Navigate to an enabled choice.',
+          ),
+        );
+        expect(
+          flat,
+          contains('Unavailable: offline. Navigate to an enabled choice.'),
+        );
+        final helpIndex = text.indexOf('Help: Select');
+        expect(helpIndex, greaterThan(0));
+        expect(
+          text.lastIndexOf('Gamma'),
+          greaterThan(helpIndex),
+          reason: 'help dismissal restores the focused row',
+        );
+      },
+    );
+
+    test(
+      'linear choice validation, paging and restrictions stay readable',
+      () async {
+        final output = StringBuffer();
+        final prompt = ThemeSingleChoicePrompt<String>.radio(
+          'Pick',
+          [
+            ...List.generate(11, (i) => ThemeChoiceOption('id$i', 'Choice $i')),
+            ThemeChoiceOption('last', 'Later', unavailableReason: 'offline'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('99\r\x7f\x7f12\r\x7f\x7f/next\r11\r'),
+            output: output,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          instructions: InstructionDisplay.hidden,
+        );
+
+        expect((await prompt.prompt() as Accepted<String>).value, 'id10');
+        final text = output.toString();
+        expect(text, contains('Enter a valid choice reference.'));
+        expect(
+          text,
+          contains('Unavailable: offline. Choose an enabled reference.'),
+        );
+        expect(text, contains('Page 2 of 2'));
+        expect(text, contains('/next, /previous, /help and /cancel'));
+        expect(text, contains('/help opens help.'));
+      },
+    );
+
+    test(
+      'a screen-reader single choice introduces the prompt in sequence',
+      () async {
+        final output = StringBuffer();
+        final prompt = ThemeSingleChoicePrompt<String>.select(
+          'Pick',
+          [
+            ThemeChoiceOption('a', 'Alpha'),
+            ThemeChoiceOption('b', 'Beta', lockedReason: 'needs owner role'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('1\r'),
+            output: output,
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(
+            mode: PromptMode.linear,
+            screenReader: ScreenReaderPreference.on,
+          ),
+        );
+
+        expect((await prompt.prompt() as Accepted<String>).value, 'a');
+        final text = output.toString();
+        expect(text, contains('Pick, selection of 2 choices.'));
+        expect(text, contains('Up or Down moves focus; Enter accepts'));
+        expect(text, contains('/help opens help.'));
+        expect(
+          text.indexOf('Pick, selection of 2 choices.'),
+          lessThan(text.indexOf('Pick Select:')),
+        );
+        expect(text, contains('needs owner role'));
+      },
+    );
+
+    test(
+      'single-choice families retain outcomes, reuse and per-period resolution',
+      () async {
+        for (final kind in ThemeSingleChoiceComponent.values) {
+          expect(
+            await _single(kind, '/cancel\r').prompt(),
+            isA<Cancelled<String>>(),
+            reason: '$kind cancel',
+          );
+          expect(
+            await _single(kind, '\x03').prompt(),
+            isA<Interrupted<String>>(),
+            reason: '$kind interrupt',
+          );
+          expect(
+            await _single(kind, '').prompt(),
+            isA<InputEnded<String>>(),
+            reason: '$kind EOF',
+          );
+          final output = StringBuffer();
+          expect(
+            await _singleProbe(kind, output).prompt(),
+            isA<Unavailable<String>>(),
+            reason: '$kind rich availability',
+          );
+          expect(output.toString(), isEmpty);
+        }
+
+        var resolutions = 0;
+        final reused = ThemeSingleChoicePrompt<String>.radio(
+          'Pick',
+          [
+            ThemeChoiceOption('a', 'Alpha', selected: true),
+            ThemeChoiceOption('b', 'Beta'),
+          ],
+          io: TerminalEnvironment.scripted(
+            input: _AnswersPerListen(['2\r', '1\r']),
+            output: StringBuffer(),
+            profile: const OutputProfile(glyphs: GlyphSet.ascii),
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+          onResolved: (_) async => resolutions++,
+        );
+
+        expect((await reused.prompt() as Accepted<String>).value, 'b');
+        expect((await reused.prompt() as Accepted<String>).value, 'a');
+        expect(resolutions, 2);
+      },
+    );
+  });
+}
+
+ThemeSingleChoicePrompt<String> _single(
+  ThemeSingleChoiceComponent kind,
+  String input,
+) => _singleWith(
+  kind,
+  input: input,
+  output: StringBuffer(),
+  interaction: const InteractionPreferences(mode: PromptMode.linear),
+);
+
+ThemeSingleChoicePrompt<String> _singleProbe(
+  ThemeSingleChoiceComponent kind,
+  StringBuffer output,
+) => _singleWith(
+  kind,
+  input: '1\r',
+  output: output,
+  interaction: const InteractionPreferences(mode: PromptMode.rich),
+);
+
+ThemeSingleChoicePrompt<String> _singleWith(
+  ThemeSingleChoiceComponent kind, {
+  required String input,
+  required StringBuffer output,
+  required InteractionPreferences interaction,
+}) {
+  final io = TerminalEnvironment.scripted(
+    input: Stream.value(input),
+    output: output,
+    profile: const OutputProfile(glyphs: GlyphSet.ascii),
+  );
+  final choices = [
+    ThemeChoiceOption('a', 'Alpha'),
+    ThemeChoiceOption('b', 'Beta'),
+  ];
+  return switch (kind) {
+    ThemeSingleChoiceComponent.select => ThemeSingleChoicePrompt.select(
+      'Pick',
+      choices,
+      io: io,
+      interaction: interaction,
+    ),
+    ThemeSingleChoiceComponent.radio => ThemeSingleChoicePrompt.radio(
+      'Pick',
+      choices,
+      io: io,
+      interaction: interaction,
+    ),
+  };
 }
 
 ThemeBooleanPrompt _boolean(ThemeBooleanComponent kind, String input) =>

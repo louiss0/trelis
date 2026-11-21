@@ -4154,7 +4154,7 @@ abstract class _BooleanPrompt {
     spine.hint(
       out,
       mode == PromptMode.linear
-          ? r'Enter yes/y or no/n, or an empty line for the displayed default. Exact /help and /cancel are commands; quote commands with a backslash and double a leading backslash. Identified paste is literal.'
+          ? r'Enter yes/y or no/n, or an empty line for the displayed default. /help opens help and /cancel cancels; both are exact commands. Quote commands with a backslash and double a leading backslash. Identified paste is literal.'
           : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.muted,
     );
@@ -5366,7 +5366,7 @@ abstract class _SingleChoice<T> {
     const pageSize = 10;
     final hint = mode == PromptMode.rich
         ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
-        : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
+        : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. /help opens help. /cancel cancels. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
     var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
@@ -5785,7 +5785,7 @@ final class MultiSelect<T> {
         if (choices[i].label.toLowerCase().contains(filter.toLowerCase())) i,
     ];
     final hint = mode == PromptMode.linear
-        ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. /help opens help. /cancel cancels. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
     var hintShown = false;
     void show() {
