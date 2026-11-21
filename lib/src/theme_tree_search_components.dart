@@ -30,7 +30,13 @@ import 'state_help_presentation.dart'
         composePromptPresentation;
 import 'terminal_io.dart';
 import 'text_input.dart'
-    show InstructionDisplay, PromptResult, TreeSelect, TreeNode;
+    show
+        Choice,
+        InstructionDisplay,
+        PromptResult,
+        SortableSelect,
+        TreeSelect,
+        TreeNode;
 import 'theme_session.dart';
 
 /// ThemeSession-backed TreeSelect prompt.
@@ -170,6 +176,93 @@ final class ThemeTreeSelectPrompt<T> {
 
     visit(nodes);
     return Map.unmodifiable(restrictions);
+  }
+}
+
+/// ThemeSession-backed SortableSelect prompt.
+final class ThemeOrderPrompt<T> {
+  ThemeOrderPrompt(
+    this.label,
+    List<Choice<T>> choices, {
+    required TerminalEnvironment io,
+    this.instructions = InstructionDisplay.themeDefault,
+    this.supplementaryHelp = const [],
+    this.colors = const ComponentColors(),
+    this.structure = PromptStructure.plain,
+    StateGlyphs glyphs = StateGlyphs.unicode,
+    ColorPreferences themeColors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ThemeInteractionFactsProvider? factsForPeriod,
+    NativeHintObservations? hints,
+  }) : choices = List.unmodifiable(choices),
+       _config = ChoicePresentationConfig(
+         glyphs: glyphs,
+         restrictions: {
+           for (var i = 0; i < choices.length; i++)
+             if (choices[i].disabledReason != null)
+               i + 1: ChoiceRestriction.locked,
+         },
+       ),
+       _owner = ThemeSession(
+         environment: io,
+         interaction: interaction,
+         colors: themeColors,
+         onResolved: onResolved,
+         factsForPeriod: factsForPeriod,
+         hints: hints,
+       );
+
+  final String label;
+  final List<Choice<T>> choices;
+  final InstructionDisplay instructions;
+  final List<String> supplementaryHelp;
+  final ComponentColors colors;
+  final PromptStructure structure;
+  final ChoicePresentationConfig _config;
+  final ThemeSession _owner;
+
+  /// Restoration failures retained after a successful primary operation.
+  List<Object> get cleanupFailures => _owner.cleanupFailures;
+
+  Future<PromptResult<List<T>>> prompt() => _owner.prompt((handle) {
+    final mode = handle.presentationMode;
+    if (mode == PresentationMode.screenReader) {
+      handle.session.presentText(_essential(mode));
+    }
+    return SortableSelect<T>(
+      label,
+      choices,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
+      colors: handle.componentColors(colors).palette,
+      structure: structure,
+      presentation: _outputConfig(handle, _config),
+    ).prompt(session: handle.session);
+  });
+
+  /// Starts live feedback sharing this prompt's active period.
+  Future<ThemeFeedbackHandle> startFeedback(
+    FutureOr<void> Function(ThemeSessionHandle handle) start, {
+    required FutureOr<void> Function() stop,
+  }) => _owner.startFeedback(start, stop: stop);
+
+  String _essential(PresentationMode mode) {
+    final (primary, short) = switch (mode) {
+      PresentationMode.rich => ('Space moves; Enter submits', 'Space; Enter'),
+      _ => ('/move changes order; /done submits', '/move; /done'),
+    };
+    return composePromptPresentation(
+      mode: mode,
+      prompt: label,
+      essential: '$label, ordering of ${choices.length} choices.',
+      hint: compactHint(
+        mode: mode,
+        component: ComponentRoute.standard,
+        primaryAction: primary,
+        shortPrimaryAction: short,
+      ),
+    ).essentialBefore!;
   }
 }
 

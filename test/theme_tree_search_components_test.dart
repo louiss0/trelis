@@ -59,6 +59,33 @@ ThemeTreeSelectPrompt<String> _tree(
   selectionStyle: style,
 );
 
+List<Choice<String>> _choices() => [
+  Choice('a', 'Alpha'),
+  Choice('b', 'Beta'),
+  Choice('anchor', 'Anchor', disabledReason: 'protected'),
+];
+
+ThemeOrderPrompt<String> _order(
+  String input,
+  StringSink output, {
+  InteractionPreferences interaction = const InteractionPreferences(),
+  OutputProfile profile = const OutputProfile(),
+}) => ThemeOrderPrompt<String>(
+  'Order',
+  _choices(),
+  io: TerminalEnvironment.scripted(
+    input: Stream.value(input),
+    output: output,
+    profile: profile,
+    supportsRich: profile.supportsRichInteraction,
+  ),
+  interaction: interaction,
+  instructions: InstructionDisplay.hidden,
+  glyphs: profile.glyphs == GlyphSet.ascii
+      ? StateGlyphs.ascii
+      : StateGlyphs.unicode,
+);
+
 void main() {
   test(
     'themed tree keeps disclosure, focus, default and restrictions apart',
@@ -110,6 +137,52 @@ void main() {
         lessThan(text.indexOf('Pick TreeSelect')),
       );
       expect(text, contains('/help opens help.'));
+    },
+  );
+  test(
+    'themed ordering keeps positions, locks and ordering help apart',
+    () async {
+      final richOutput = StringBuffer();
+      final rich = await _order(
+        ' \x1b[B\r\r',
+        richOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+        profile: _richProfile,
+      ).prompt();
+      expect((rich as Accepted<List<String>>).value, ['b', 'a', 'anchor']);
+      final richText = richOutput.toString().replaceAll(RegExp(r'\s+'), ' ');
+      expect(richText, contains('Position 1 of 3'));
+      expect(richText, contains('(moving)'));
+      expect(richText, contains('[L]'));
+      expect(richText, contains('protected'));
+      expect(richText, contains('Ctrl+T help'));
+
+      final linearOutput = StringBuffer();
+      final linear = await _order(
+        '/help\r/move\r2\r1\r/done\r',
+        linearOutput,
+        interaction: const InteractionPreferences(mode: PromptMode.linear),
+      ).prompt();
+      expect((linear as Accepted<List<String>>).value, ['b', 'a', 'anchor']);
+      expect(linearOutput.toString(), contains('Help: Ordering the list.'));
+      expect(linearOutput.toString(), contains('/help and /cancel'));
+
+      final readerOutput = StringBuffer();
+      final reader = await _order(
+        '/done\r',
+        readerOutput,
+        interaction: const InteractionPreferences(
+          mode: PromptMode.linear,
+          screenReader: ScreenReaderPreference.on,
+        ),
+      ).prompt();
+      expect((reader as Accepted<List<String>>).value, ['a', 'b', 'anchor']);
+      final text = readerOutput.toString();
+      expect(text, contains('Order, ordering of 3 choices.'));
+      expect(
+        text.indexOf('Order, ordering'),
+        lessThan(text.indexOf('Order SortableSelect')),
+      );
     },
   );
 }
