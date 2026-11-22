@@ -14,17 +14,9 @@ folders). Add `--scripted` to replay a fixed linear answer; redirected output
 replays it automatically. The four feedback components (Text, Progress, Spinner
 and MultiSpinner) need no input.
 
-`example/prompt.dart` is a shortcut that runs `rail/text_input.dart`, so
-`dart run example/prompt.dart` still shows a single component.
 `example/support/one_component.dart` is the shared runner, not an example.
 The static HTML atlas lives in `assets/prototype-themes/`; no Python or HTML
 file is in this folder.
-
-The top-level `*_theme_example.dart`, `*_adaptive_theme_example.dart` and
-`plain_adaptive_example.dart` files are separate adaptive-default demos that
-show several scripted invocations each; they are validated references for the
-unstable adaptive seam, distinct from the 570 single-component palette
-samples described below.
 
 ## Structural theme folders
 

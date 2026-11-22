@@ -170,24 +170,9 @@ and one colour theme:
 dart run example/rail/text_input.dart
 ```
 
-`dart run example/prompt.dart` is a shortcut for that rail example. Add
-`--scripted` to replay a fixed answer without a terminal. The folder list,
+Add `--scripted` to replay a fixed answer without a terminal. The folder list,
 component list and palette assignments are in
 [example/README.md](example/README.md).
-
-`dart run example/branch_theme_example.dart` replays the internal, unstable
-Branch adaptive-presentation seam for light, dark and explicit palette choices.
-`dart run example/round_theme_example.dart` replays the internal, unstable
-Round adaptive-presentation seam for light, dark and explicit palette choices.
-`dart run example/line_theme_example.dart` replays the internal, unstable
-Line adaptive-presentation seam for light, dark and explicit palette choices.
-`dart run example/minimal_theme_example.dart` replays the internal, unstable
-Minimal adaptive-presentation seam for light, dark and explicit palette
-choices.
-`dart run example/form_theme_example.dart` replays the internal, unstable Form
-adaptive-presentation seam for light, dark and explicit palette choices. Each
-demonstrates the migration work, not a public API or qualified terminal
-contrast.
 
 ## Recording presentation events
 
