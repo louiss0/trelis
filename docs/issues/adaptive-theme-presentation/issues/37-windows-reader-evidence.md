@@ -42,3 +42,12 @@ result: pass | fail | not tested
 - Narrator does not set this parameter. Other readers, terminals and remote or
   ambiguous locality remain untested in this run. Windows enablement remains
   blocked pending the required human evidence.
+
+2026-11-22: Agent GUI check using Orca computer use, without NVDA:
+opened Windows Terminal, ran `dart run example/rail/text_input.dart` from the
+repository directory, entered `staging`, and pressed Enter. The screen showed
+`Deployment target (Optional)`, keyboard instructions and `Accepted: staging`.
+This is a visual smoke check only, not evidence of NVDA announcements, reader
+usability, native signal selection or accessibility qualification. Windows
+Terminal version and session locality were not established. No NVDA process was
+observed. The required reader-on and reader-off comparison remains outstanding.
