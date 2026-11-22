@@ -23,3 +23,22 @@ result: pass | fail | not tested
 - [ ] Exercise prompt plus live feedback, cleanup and a later active period; report whether re-detection and interaction remain usable.
 - [ ] Record relevant native fixture and automated test commands/results alongside actual human observations, without presenting simulations as reader evidence.
 - [ ] Document Narrator limitation, untested terminals/readers and remote or ambiguous locality; failed or missing evidence blocks Windows enablement.
+
+## Comments
+
+2026-11-22: Partial agent-run fixture and automated evidence at `54d7af2`:
+
+- Windows `10.0.26200.0`, Dart `3.13.2` on `windows_x64`.
+- `dart run tool/windows_reader_fixture.dart`: binding available; fixture-only
+  gate enabled; observation `ScreenReaderObservation.negative`. The production
+  gate remains off. A negative parameter is not proof that no reader is active.
+- `dart test test/hint_observations_session_test.dart test/windows_reader_hint_test.dart -r expanded`:
+  14 tests passed, including simulated locality, explicit preferences, and
+  observation after cleanup.
+- The agent session had no computer-use tool or audio observation, and found no
+  running NVDA or Windows Terminal process. No NVDA on/off run, utterances,
+  interactive usability, terminal version or locality was verified. The native
+  fixture and synthetic tests are not reader usability evidence.
+- Narrator does not set this parameter. Other readers, terminals and remote or
+  ambiguous locality remain untested in this run. Windows enablement remains
+  blocked pending the required human evidence.
