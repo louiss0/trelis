@@ -60,7 +60,7 @@ Help transitions preserve draft/focus/stage as resolved in [Define compact guida
 - lib/src/text_input.dart combines component/session/editor/backend code today; _edit tracks grapheme-indexed caret and command/paste semantics. Choice rendering separates focus, defaults and unavailable choices.
 - lib/src/date_input.dart segmented editing requires both active-control identity and a caret inside incomplete segment drafts.
 - lib/src/feedback.dart preserves explicit caller-owned lifecycle and cadence semantics; disposal and reaching total are not success.
-- example/prototype-themes/generate.py separates vocabulary, framing and specimen content, but static whole-row tuples and decorative cursor samples are not a sufficient runtime representation or behavioral contract.
+- tool/generate_theme_atlas.py separates vocabulary, framing and specimen content, but static whole-row tuples and decorative cursor samples are not a sufficient runtime representation or behavioral contract.
 
 ### Follow-up
 

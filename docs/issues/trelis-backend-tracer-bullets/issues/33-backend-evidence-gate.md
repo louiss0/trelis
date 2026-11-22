@@ -12,12 +12,12 @@
 
 **Acceptance reference:** [B-GATE](../../trelis-backend-implementation/spec.md#b-gate).
 
-- [x] Audit every active backend ticket and normative B requirement at the accepted revision `81738e8a9e7278f872ab4b6c7c404c111607a4e2` (local integration `d9d8790` merged in); every requirement and task verdict, with its evidence pointer and limitation, is recorded in [the acceptance audit](../../../../doc/evidence/trelis-backend/backend-acceptance.md).
+- [x] Audit every active backend ticket and normative B requirement at the accepted revision `81738e8a9e7278f872ab4b6c7c404c111607a4e2` (local integration `d9d8790` merged in); every requirement and task verdict, with its evidence pointer and limitation, is recorded in [the acceptance audit](../../../../assets/evidence/trelis-backend/backend-acceptance.md).
 - [x] Require fresh all-platform CI/native and Windows agent-GUI evidence without adding a human or physical Linux/macOS gate. The fresh six-job matrix passed on a tree whose code is byte-identical to the accepted revision, and ticket 32 captured every named B-GUI checkpoint at that same code revision.
 - [x] Re-run affected evidence after changes and state limitations without treating readiness or planned coverage as a pass. The previous audit's four follow-ups (visible ASCII run, narrow/idle resize capture, re-captured cleanups, corrected inventory) were all executed, and the local suite/native wrappers were re-run at the candidate.
 - [x] Before resolving this ticket, mirror an actually accepted verdict and artifact pointers to the retained legacy gate reference; do not mark superseded layered work implemented. Mirrored into `issues/16-backend-evidence-gate.md` of the retained compatibility gate, with the finer 33-ticket plan named as the executed plan and no superseded task claimed as implemented.
 
-- [x] Record actual public-behavior verification, source revision, environment, results and evidence limitations in [the acceptance audit](../../../../doc/evidence/trelis-backend/backend-acceptance.md); this publication is not implementation or a test pass.
+- [x] Record actual public-behavior verification, source revision, environment, results and evidence limitations in [the acceptance audit](../../../../assets/evidence/trelis-backend/backend-acceptance.md); this publication is not implementation or a test pass.
 
 ## Comments
 
@@ -33,7 +33,7 @@ without erasing them.
 At the accepted revision every normative B requirement has an executed check and
 an artifact pointer, and every tracker ticket 01–32 is resolved with evidence
 re-run or re-captured at this one code revision (`git diff --stat b94efda
-81738e8` lists only `doc/` and `docs/issues/` files, so the GUI captures, the probe
+81738e8` lists only `assets/` and `docs/issues/` files, so the GUI captures, the probe
 runs and the matrix describe the same backend):
 
 - concurrent `Text`/`Spinner`/`Progress` writes preserve the draft and caret
@@ -64,7 +64,7 @@ affected check at the new revision (154 files, 961 tests, a fresh six-job
 matrix, a Windows console resize scenario and a POSIX PTY resize scenario); the
 verdict, its artifact pointers and its limitations are unchanged. The
 dispositions — including the two evidence corrections carried here — are in
-[the post-review record](../../../../doc/evidence/trelis-backend/post-review-fixes.md).
+[the post-review record](../../../../assets/evidence/trelis-backend/post-review-fixes.md).
 
 Limitations are carried forward rather than waived: Linux/macOS evidence is
 CI-only, Windows native checks inject console records or use a pseudoconsole,

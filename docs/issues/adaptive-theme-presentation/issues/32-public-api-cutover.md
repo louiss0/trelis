@@ -161,3 +161,35 @@ available.
 Remaining gaps unchanged: native/screen-reader qualification, real
 NVDA/Windows Terminal evidence and human light/dark visual review remain with
 the independent release gates; the API stays marked unstable.
+
+2026-11-22 - Local-work migration onto the reviewed cutover (same worktree,
+pending lead commit): the dirty-main backup was replayed - staged patch via
+`git apply --3way --index` plus the unstaged patch and five untracked files
+(the empty `theme_text_input_tracer_test.dart` placeholder was skipped to keep
+the real tracked tracer test). Conflicts: `lib/trelis.dart` doc comment and
+exports keep the unstable allowlist (no broad `src/text_input.dart` export);
+two `text_input.dart` hunks keep `SharedTerminalLease.run` and port only the
+prototype `presentation` argument; the inventory test keeps the migrated
+checks. Restored: `doc/` to `assets/` relocation, `tool/` Python generators,
+`lib/src/presentation_preferences.dart` with `prototypeTextInputPrompt` /
+`prototypeSelectPrompt` kept out of the public barrel (three prototype tests
+now import `src/testing/compat_api.dart`), the prototype comparison HTML, and
+the user's example deletion (`plain_theme_example.dart`,
+`trelis_example.dart`; `example/prompt.dart` and
+`example/plain/text_input.dart` replace them). All 510 prompt examples and
+60 feedback examples migrated to theme instances: `Theme(io: io).component`,
+`ComponentColors.palette(ColorThemes.*)`, parameterless `.prompt()`, feedback
+`.start()` controls with `multiSpinner` released by `stop()`.
+
+Validation today: `dart analyze` no issues (all 587 example files included);
+focused tests - `public_theme_instance_test` 21, the three restored
+presentation-preferences tests, `theme_palette_matrix_test`,
+`path_input_behavior_test`, `filesystem_picker_test` - all pass (one
+restored test's expected wording was updated to accept the current
+'character limit' rejection); `check_generated_diffs.py` 43 ok and
+`generate_color_themes.py` output is byte-identical;
+`check_doc_links.dart` 1202 links ok; `check_issue_tracker.dart` 177 files ok;
+`check_public_api.dart` 77 negative cases rejected including
+`PresentationPreferences` and both prototype functions. Scripted smoke: all
+38 `example/rail/*.dart` and the other 14 themes' `text_input.dart` run
+--scripted and accept their fixed answers.

@@ -24,5 +24,5 @@ The active numeric/network/color ticket must choose the remaining acceptance/nor
 - Worker: 74288ff0-4b9a-4be
 - Worktree: C:/Users/bvlou/projects/trelis-research-typed-value-standards (created from bd5a19f)
 - Research branch: research/trelis-typed-value-standards
-- Completed report: [Typed-value grammar and interpretation boundaries, with system numeric supplement](../../../../doc/research/trelis-typed-value-standards.md)
+- Completed report: [Typed-value grammar and interpretation boundaries, with system numeric supplement](../../../../assets/research/trelis-typed-value-standards.md)
 - Exact report commit: a687dbd2b499b945fe752f92a5c8bbfd9c291a06 on research/trelis-typed-value-standards. Parent combined the complete report and numeric supplement, committed only that file, and verified the research worktree is clean.

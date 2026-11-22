@@ -36,7 +36,7 @@ tool/check_issue_tracker.dart` → clean. CI green on the integration branch.
 
 **Answer.** `pubspec.yaml` now carries `version: 1.0.0` and the public
 repository URL; the full battery is green and
-`doc/evidence/trelis-package-rename/verdict.md` records an ACCEPTED verdict
+`assets/evidence/trelis-package-rename/verdict.md` records an ACCEPTED verdict
 with the measured results and the explicit out-of-scope items (pub.dev
 publishing, accessibility qualification, historical-name preservation). The
 rename spec is complete.

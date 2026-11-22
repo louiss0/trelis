@@ -21,6 +21,6 @@
 
 Implemented on `ticket/backend-01-baseline` at `9469994ed64b6a225df07de7e0e25911479b2213` and merged into `integration/trelis-backend-tracer-bullets` by merge commit `cea914e1b6ac270e3f9f5345b3aff4df188553ea`.
 
-Evidence is recorded in `doc/evidence/trelis-backend/baseline.md` with the native repeat report in `doc/evidence/trelis-backend/baseline-text-input-repeat.txt`. Deterministic public-seam fixtures and tracer tests are in `test/support/backend_baseline_fixture.dart` and `test/backend_baseline_harness_test.dart`.
+Evidence is recorded in `assets/evidence/trelis-backend/baseline.md` with the native repeat report in `assets/evidence/trelis-backend/baseline-text-input-repeat.txt`. Deterministic public-seam fixtures and tracer tests are in `test/support/backend_baseline_fixture.dart` and `test/backend_baseline_harness_test.dart`.
 
 Merged verification passed the focused baseline tests (3), `dart analyze`, and documentation link checking. The implementation report also records a full 642-test pass, the 144-case component acceptance matrix, fresh Windows TextInput repeat evidence, an initially flaky feedback-native probe followed by a passing sequential retry, and unavailable CI/POSIX-native/GUI evidence without representing those as passes.

@@ -37,7 +37,7 @@ options, public tests and evidence.
   them, with delegation through wrapper components.
 - `example/plain_theme_example.dart` public example.
 - Evidence document at
-  `doc/evidence/trelis-theme/theme-01-plain-palettes-evidence.md`.
+  `assets/evidence/trelis-theme/theme-01-plain-palettes-evidence.md`.
 
 **Verification at `7f19424`:**
 

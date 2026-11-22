@@ -44,7 +44,7 @@ longer stringify embedded error text, so application data and secret drafts are
 not copied into a message. Late updates on retired regions perform no writes and
 a closed handle rejects new prompts, regions and standalone-writer registration.
 
-Evidence is in `doc/evidence/trelis-backend/17-session-failure-recovery.md`:
+Evidence is in `assets/evidence/trelis-backend/17-session-failure-recovery.md`:
 `test/terminal_session_failure_recovery_test.dart` drives `TerminalSession`,
 `TextInput`, `Text`, `Spinner`, `Progress`, `ScriptedInput`, `TerminalIo` and
 `TerminalResizeObserver` with conditional-throwing sinks, a failing reader, and
@@ -98,7 +98,7 @@ suite passed 13 tests, related session/feedback/modal-help/short-screen/resize/
 terminal-io suites passed 35 tests, `dart analyze` reported no issues,
 `dart format --set-exit-if-changed` reported no changes,
 `dart run tool/check_doc_links.dart` checked 152 links in 42 files, and the
-full suite passed 717 tests. `doc/evidence/trelis-backend/17-session-failure-recovery.md`
+full suite passed 717 tests. `assets/evidence/trelis-backend/17-session-failure-recovery.md`
 records the contract, red-before-fix evidence and limitations.
 
 Remaining limitation recorded rather than changed unverified (superseded by the native-console follow-up below): a prompt on the
@@ -185,7 +185,7 @@ SDK `3.13.2 (stable)`, `windows_x64`:
 | `dart test --reporter compact` | 837 passed, 2 failed (839 total); both failures are pre-existing and path-length sensitive, see below. |
 | `dart format --output=none --set-exit-if-changed lib/src/text_input.dart test/terminal_session_failure_recovery_test.dart test/text_input_native_app.dart` | Passed: `Formatted 3 files (0 changed)`. |
 | `dart format --output=none --set-exit-if-changed .` | Failed on the same three pre-existing files outside this ticket (`test/linear_text_input_events_test.dart`, `test/native_text_input_capabilities_test.dart`, `test/terminal_session_short_screen_test.dart`): `Formatted 146 files (3 changed)`. Left unchanged. |
-| `dart run tool/check_doc_links.dart` | Passed: `Checked 153 relative links in 55 Markdown files.` (55 rather than 49 because of untracked `docs/` and `doc/research/` files present in this working tree). |
+| `dart run tool/check_doc_links.dart` | Passed: `Checked 153 relative links in 55 Markdown files.` (55 rather than 49 because of untracked `docs/` and `assets/research/` files present in this working tree). |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario session-retire -Report <temp>` (twice) | Passed both runs: `text input session-retire PASS result=retired state=503:7:25:1 -> 496:7:25:1 -> 503:7:25:1`. |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario rich -Report <temp>` | Passed: `text input rich PASS result=alpha state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1`. |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File test/key_capture_windows.ps1 -Scenario rich -Report <temp>` (twice) | Passed both runs: `key capture PASS result=A:control+shift:observed,C:shift:observed state=503:7:25:1 -> 503:7:25:1 -> 503:7:25:1`. |

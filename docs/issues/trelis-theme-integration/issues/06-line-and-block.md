@@ -60,7 +60,7 @@ every applicable component, tests and evidence.
   `test/theme_heading_framing_test.dart` and
   `test/theme_form_ledger_colon_framing_test.dart`.
 - Evidence document at
-  `doc/evidence/trelis-theme/theme-06-line-and-block-evidence.md`.
+  `assets/evidence/trelis-theme/theme-06-line-and-block-evidence.md`.
 
 **Verification at `HEAD` before merge:**
 

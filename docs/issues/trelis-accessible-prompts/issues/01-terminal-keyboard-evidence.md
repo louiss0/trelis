@@ -11,7 +11,7 @@ Parent: [Trelis accessible prompt interaction specification](../map.md)
 - Worker: 57fc8aa4-3088-449
 - Research branch: research/trelis-keyboard
 - Worktree: C:/Users/bvlou/projects/trelis-research-keyboard
-- Completed report: [Terminal keyboard capabilities and cross-platform conflicts](../../../../doc/research/trelis-keyboard.md).
+- Completed report: [Terminal keyboard capabilities and cross-platform conflicts](../../../../assets/research/trelis-keyboard.md).
 - Exact report commit: 7e9259aad31af82740f7f7b9b29b0ff585c04bfb on research/trelis-keyboard. Parent saved the complete report and committed only that file; the research worktree is clean.
 
 ## Answer

@@ -5,7 +5,7 @@ Status: complete
 
 ## Destination
 
-Settle a research-backed interaction specification for the 38 currently in-scope specimens in doc/theme-components.md before development (excluding StepperForm and RegexInput): shared and component-specific keyboard behavior, screen-reader access, compatibility/fallback rules, and verification criteria for Windows, macOS and Linux.
+Settle a research-backed interaction specification for the 38 currently in-scope specimens in assets/theme-components.md before development (excluding StepperForm and RegexInput): shared and component-specific keyboard behavior, screen-reader access, compatibility/fallback rules, and verification criteria for Windows, macOS and Linux.
 
 ## Notes
 
@@ -14,7 +14,7 @@ Settle a research-backed interaction specification for the 38 currently in-scope
 - Broad terminal compatibility is a design goal, not universal qualification. Cross-platform implementation is required; manual accessibility qualification belongs to the exact Windows Terminal + NVDA scope and does not assign manual macOS/Linux testing to the human. Separate desired support, documented capability and observed verification.
 - DateInput is the existing slash-entry specimen, not a new calendar-grid component; its resolved interaction contract is indexed below.
 - Keyboard operability and screen-reader usability are both required. Research simpler/linear alternatives without assuming a particular fallback design is already approved.
-- Inventory: [theme specimens](../../../doc/theme-components.md); existing direction and Windows patch evidence: [backend notes](../../../doc/terminal-backend.md). Dart TUI is an existing direction, not an accessibility guarantee.
+- Inventory: [theme specimens](../../../assets/theme-components.md); existing direction and Windows patch evidence: [backend notes](../../../assets/terminal-backend.md). Dart TUI is an existing direction, not an accessibility guarantee.
 - Consult grilling and domain-modeling for decision tickets; research for research tickets; prototype if a human decision needs a concrete experiment. Skill files live under C:/Users/bvlou/.agents/skills/.
 - Tracker: local Markdown per C:/Users/bvlou/.agents/skills/setup-matt-pocock-skills/references/issue-tracker-local.md. Child files live in issues/. Status open means unclaimed, claimed means in progress, resolved means closed. Claim by saving Status: claimed and an Assignee before work. Dependencies are Blocked by identifiers; query children rather than listing open tickets here. Lowest-numbered open, unclaimed child whose blockers are resolved is the next frontier ticket. Resolve with an appended Answer and a named context pointer here. Names, not bare IDs, are used in human-facing narration.
 - Research uses isolated throwaway research branches/worktrees. Each research ticket points to its findings and exact revision. Source investigation is not real terminal or assistive-technology verification.
@@ -57,14 +57,14 @@ Settle a research-backed interaction specification for the 38 currently in-scope
 
 - [Specify locale-calendar DateInput interactions](issues/17-locale-calendar-date-contract.md): confirmed qualified system-calendar slash entry, disclosed short-year windows, explicit era/month context, preserved invalid drafts and reviewed date-only results without silent Gregorian fallback.
 
-- [Research and interaction handoff](../../../doc/trelis-interaction-handoff.md): navigation and implementation gates for all 38 resolved component contracts; detailed answers remain in their tickets.
+- [Research and interaction handoff](../../../assets/trelis-interaction-handoff.md): navigation and implementation gates for all 38 resolved component contracts; detailed answers remain in their tickets.
 - [Accessible terminal prompt component specification](spec.md): ready-for-agent implementation handoff, including public-behavior tests and native/NVDA qualification gates.
 
 - [Agree on interaction-specification readiness and verification gates](issues/09-spec-readiness.md): confirmed all 38 contracts, cross-component consistency, component-class/record/extension-type construction boundaries and the complete research/handoff package. The map is ready for implementation handoff; execution and qualification remain future work.
 
 ## Not yet specified
 
-No in-scope interaction or component-construction fog remains for this planning destination. Feasibility failures during future probes may reopen named decisions through a new map; they are not an unfinished route here. The visible research index and handoff summary are packaged under doc/. Exact component signatures, outcome-type names and implementation architecture beyond the agreed construction model are outside this destination.
+No in-scope interaction or component-construction fog remains for this planning destination. Feasibility failures during future probes may reopen named decisions through a new map; they are not an unfinished route here. The visible research index and handoff summary are packaged under assets/. Exact component signatures, outcome-type names and implementation architecture beyond the agreed construction model are outside this destination.
 
 ## Out of scope
 

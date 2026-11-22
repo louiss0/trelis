@@ -21,4 +21,4 @@
 
 ## Answer
 
-Implemented in commit `b42297c` and refreshed against resize and colour integration in `1ec3114`. TextInput now exposes `InstructionDisplay`, configurable compact/expanded/hidden guidance and additive supplementary help while protecting label, context, validation and help access. Rich and linear help describe current controls, preserve draft/caret, provide transcript fallback, and cover validation plus cancellation/interruption/EOF/error outcomes through public tests. Evidence is recorded in `doc/evidence/trelis-backend/11-text-input-help.md`.
+Implemented in commit `b42297c` and refreshed against resize and colour integration in `1ec3114`. TextInput now exposes `InstructionDisplay`, configurable compact/expanded/hidden guidance and additive supplementary help while protecting label, context, validation and help access. Rich and linear help describe current controls, preserve draft/caret, provide transcript fallback, and cover validation plus cancellation/interruption/EOF/error outcomes through public tests. Evidence is recorded in `assets/evidence/trelis-backend/11-text-input-help.md`.

@@ -21,6 +21,6 @@
 
 ## Answer
 
-Implemented on `ticket/backend-03-output-profiles`. The public profile vocabulary and resolver are exported through `package:prompty/prompty.dart`; `TextInput.prompt`, `ScriptedInput`, and optional `TerminalIoOutputProfile` apply them at the approved public seams. `doc/evidence/trelis-backend/ticket-03-output-profiles.md` records the behavior, commands, environment, results, and remaining backend-gate limitations.
+Implemented on `ticket/backend-03-output-profiles`. The public profile vocabulary and resolver are exported through `package:prompty/prompty.dart`; `TextInput.prompt`, `ScriptedInput`, and optional `TerminalIoOutputProfile` apply them at the approved public seams. `assets/evidence/trelis-backend/ticket-03-output-profiles.md` records the behavior, commands, environment, results, and remaining backend-gate limitations.
 
 The focused public profile/TextInput/terminal-I/O checks, 144-case component acceptance matrix, formatter, analyzer, documentation-link check, and full 654-test suite passed before resolution. Rich scripted fixtures now declare positive 100x30 geometry; automatic and explicit-rich behavior without it is asserted separately.

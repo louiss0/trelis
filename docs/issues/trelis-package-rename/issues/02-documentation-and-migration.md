@@ -16,7 +16,7 @@ publish truthful consumer migration guidance and a CHANGELOG entry.
       import change and the one-line migration.
 - [x] `GLOSSARY.md` and live docs that name the package use `trelis` (do not
       rewrite resolved design/evidence history or quoted identifiers).
-- [x] Publish `doc/evidence/trelis-package-rename/migration.md` (or equivalent)
+- [x] Publish `assets/evidence/trelis-package-rename/migration.md` (or equivalent)
       with the before/after import mapping, the entry-point change, and any
       pubspec/version notes.
 - [x] No live `package:prompty` reference remains in documentation or examples.
@@ -39,10 +39,10 @@ passed. `dart run tool/check_doc_links.dart` → 0 broken links.
 **Answer.** README title/import/example path, `example/prompty_example.dart`
 (renamed to `trelis_example.dart`), LICENSE copyright and the CHANGELOG now use
 `trelis`; a `1.0.0` CHANGELOG entry and
-`doc/evidence/trelis-package-rename/migration.md` document the breaking import
+`assets/evidence/trelis-package-rename/migration.md` document the breaking import
 change and the one-line migration. Remaining `prompty` text is intentionally
 left: historical evidence/research/tracker docs, the archived
-`example/prototype-themes`, the rename's own before/after descriptions, and two
+`assets/prototype-themes`, the rename's own before/after descriptions, and two
 internal string literals (`date_input.dart`'s `prompty-civil-arithmetic-v1`
 provenance identifier and an `Expando` debug label), which are not package
 imports and would be behavior changes if rewritten. No live `package:prompty`

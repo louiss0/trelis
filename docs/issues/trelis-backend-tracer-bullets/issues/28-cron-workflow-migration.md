@@ -84,7 +84,7 @@ passed 727 tests. Code and tests are at revision `43e0592`; the final pass was
 repeated at the branch tip, which changes only this record's wording. Evidence,
 source revision, environment, commands, expected/actual results and limitations
 are recorded in
-`doc/evidence/trelis-backend/28-cron-workflow-migration.md`.
+`assets/evidence/trelis-backend/28-cron-workflow-migration.md`.
 
 Limitations: this is scripted public-behavior evidence only. Native PTY,
 Linux/macOS CI, visible-terminal GUI/NVDA, the native `cron_input_windows.ps1`

@@ -23,6 +23,6 @@
 
 Implemented on `ticket/backend-02-terminal-io` at `31c8e8c8b1a1288b0db1f54a8f22f95123fea557` and merged into `integration/trelis-backend-tracer-bullets` by merge commit `526789368e90ed655c11f9e61b846c0361475ec9`.
 
-The additive public adapter is in `lib/src/terminal_io.dart`, exported from `lib/prompty.dart`, and integrated with `TextInput` and all four feedback components while retaining legacy invocation paths. Public-seam tests are in `test/terminal_io_test.dart`; implementation evidence and limitations are recorded in `doc/evidence/trelis-backend/ticket-02-terminal-io.md` with the Windows repeat report in `doc/evidence/trelis-backend/ticket-02-text-input-repeat.txt`.
+The additive public adapter is in `lib/src/terminal_io.dart`, exported from `lib/prompty.dart`, and integrated with `TextInput` and all four feedback components while retaining legacy invocation paths. Public-seam tests are in `test/terminal_io_test.dart`; implementation evidence and limitations are recorded in `assets/evidence/trelis-backend/ticket-02-terminal-io.md` with the Windows repeat report in `assets/evidence/trelis-backend/ticket-02-text-input-repeat.txt`.
 
 Merged verification passed 39 focused tests, `dart analyze`, and documentation link checking. Ticket-branch verification also passed the 144-case public component matrix and the full 647-test suite, plus fresh retained-native Windows repeat/restoration evidence.

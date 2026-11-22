@@ -307,7 +307,7 @@ void main() {
     // The removed selection is refused with its protected reason. The reason is
     // either the exact absence wording or the fail-closed inspection message:
     // the native last error is read by a second FFI call and can be lost (see
-    // doc/evidence/trelis-backend/27-filesystem-migration.md), and the contract
+    // assets/evidence/trelis-backend/27-filesystem-migration.md), and the contract
     // deliberately refuses rather than inferring absence, so neither wording
     // may be demanded as the only truthful one.
     expect(out.toString(), contains('Cannot choose ${file.path}:'));

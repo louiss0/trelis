@@ -82,7 +82,7 @@ suite passed 737 tests. Code and tests are at revision `0d0f7ea`; the final run
 was repeated at HEAD `0b0ce7a`, which changes only this record's wording.
 Evidence, source revision, environment, commands, expected/actual results and
 limitations are recorded in
-`doc/evidence/trelis-backend/26-range-mask-migration.md`.
+`assets/evidence/trelis-backend/26-range-mask-migration.md`.
 
 Limitations: this is scripted public-behavior evidence only. Native PTY,
 Linux/macOS CI, visible-terminal GUI/NVDA, alternate-screen modal help for this

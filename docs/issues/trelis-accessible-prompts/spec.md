@@ -411,7 +411,7 @@ exact recorded environment can support a whole-library accessibility claim.
 ## Further Notes
 
 - The completed [Wayfinder map](map.md) and its resolved tickets are the canonical interaction-decision authority. This spec is the implementation handoff; it does not replace ticket-level detail.
-- The [visible handoff summary](../../../doc/trelis-interaction-handoff.md) orients implementation order and scope. The [research index](../../../doc/research/index.md) links all eight source reports with their original exact commits/branches.
+- The [visible handoff summary](../../../assets/trelis-interaction-handoff.md) orients implementation order and scope. The [research index](../../../assets/research/index.md) links all eight source reports with their original exact commits/branches.
 - The [domain glossary](../../../GLOSSARY.md) defines rich/linear interaction, feedback components, command/literal entry, draft/focus state, civil dates, calendar periods, canonical tags, logical key gestures and related project vocabulary.
 - The atlas remains a visual reference: 40 historical specimens, 45 themes and 15 structures. The current implementation scope is 38 components. One named `plain` rich profile is the initial accessibility-qualification target, alongside linear mode; this does not eliminate implementation of other structures.
 - Broad terminal compatibility remains a design goal, not a support claim. Cross-platform implementation is required even where actual OS/accessibility verification remains outstanding.

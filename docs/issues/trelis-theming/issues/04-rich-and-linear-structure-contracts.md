@@ -89,7 +89,7 @@ Exact capability detection/override precedence, indexed conversion and ambiguous
 
 ### Evidence and follow-up
 
-Design inputs: example/prototype-themes/generate.py vocabulary()/prompt() and structures.js descriptive anatomy. Current source evidence: lib/src/text_input.dart has cursor/TERM checks and a local conservative single-line width approximation, but no common Unicode cell-width/layout/capability system; feedback.dart uses different current capability checks and has no colour renderer.
+Design inputs: tool/generate_theme_atlas.py vocabulary()/prompt() and structures.js descriptive anatomy. Current source evidence: lib/src/text_input.dart has cursor/TERM checks and a local conservative single-line width approximation, but no common Unicode cell-width/layout/capability system; feedback.dart uses different current capability checks and has no colour renderer.
 
 [Specify shared output capabilities and display measurement](07-output-capabilities-and-measurement.md) is now sharp enough to ticket: define how the renderer obtains reliable stream-specific facts, test/scripted overrides, width measurement and colour conversion, and how unknown facts fall back. This is necessary before the verification/handoff decision, not an assertion that the backend already supports the matrix.
 

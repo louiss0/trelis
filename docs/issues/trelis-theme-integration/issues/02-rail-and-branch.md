@@ -44,7 +44,7 @@ interactive component, export both namespaces, add tests and evidence.
   `test/theme_structure_rendering_test.dart` and
   `test/theme_structure_framing_test.dart`, plus the barrel export inventory
   update.
-- Evidence document at `doc/evidence/trelis-theme/theme-02-rail-branch-evidence.md`.
+- Evidence document at `assets/evidence/trelis-theme/theme-02-rail-branch-evidence.md`.
 
 **Verification at `HEAD` before merge:**
 

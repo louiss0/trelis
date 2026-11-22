@@ -22,7 +22,7 @@ Do not copy behavior into theme implementations or reopen resolved choices. Cons
 - [Specify shared output capabilities and display measurement](../trelis-theming/issues/07-output-capabilities-and-measurement.md).
 - [Specify shared multi-region output composition](../trelis-theming/issues/08-multi-region-output-composition.md).
 - [Source API baseline](../trelis-theming/api-baseline.md), [expanded factory signatures](../trelis-theming/factory-signatures.md), and [current help inventory](../trelis-theming/help-inventory.md).
-- [Primary-source capability/width research and executable probe findings](../../../doc/research/trelis-output-capabilities-and-width.md).
+- [Primary-source capability/width research and executable probe findings](../../../assets/research/trelis-output-capabilities-and-width.md).
 
 Baseline production source revision: `80f4752e16a6e3b2451f2b87b9450e535ae3fa30`. Revalidate the inventory against the actual implementation revision. Do not overwrite unrelated working-tree changes or existing scratch/evidence artifacts.
 
@@ -116,7 +116,7 @@ A final audit checks every requirement, task resolution and evidence link at one
 
 For each requirement record: status (pass/fail/pending/not-applicable with justification), source revision, date, environment/OS/terminal/SDK, selected input/output, mode and effective profile, relevant TERM/COLORTERM/NO_COLOR/geometry and width policy, command/scenario, expected/actual result, logs/screenshots/CI artifact URL and limitations. Use synthetic sensitive values and avoid copying them into user-facing runtime output. Do not count intended test counts as executed results.
 
-Store implementation reports under doc/evidence/trelis-backend/ (or linked CI artifacts), with a final backend-acceptance.md report. The planned directory/report is not evidence until created by execution. Agent GUI evidence should include tool/version and input-generation method. Record NVDA version/configuration and speech source only when actually observed.
+Store implementation reports under assets/evidence/trelis-backend/ (or linked CI artifacts), with a final backend-acceptance.md report. The planned directory/report is not evidence until created by execution. Agent GUI evidence should include tool/version and input-generation method. Record NVDA version/configuration and speech source only when actually observed.
 
 ## Existing commands to retain and extend
 

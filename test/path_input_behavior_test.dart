@@ -97,7 +97,7 @@ void main() {
       // reason may be the exact absence wording or the fail-closed inspection
       // message, because the native last error is read by a second FFI call and
       // can be lost (see
-      // doc/evidence/trelis-backend/27-filesystem-migration.md): the contract
+      // assets/evidence/trelis-backend/27-filesystem-migration.md): the contract
       // refuses rather than inferring absence, so neither wording may be
       // demanded as the only truthful one.
       expect(

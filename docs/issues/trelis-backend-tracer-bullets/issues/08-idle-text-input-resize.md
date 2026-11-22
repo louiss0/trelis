@@ -22,4 +22,4 @@
 
 ## Answer
 
-Implemented in commit `e9883be`. Rich TextInput can now observe resize notifications with bounded fallback polling, coalesce unchanged geometry, repaint while idle without mutating draft/caret or transcript history, tolerate invalid and failed observations, and cancel watcher/timer resources on exit. Public resize tests, a Windows caret/restoration probe and limitations—including pending native idle-notification adapter wiring—are recorded in `doc/evidence/trelis-backend/08-idle-text-input-resize.md`.
+Implemented in commit `e9883be`. Rich TextInput can now observe resize notifications with bounded fallback polling, coalesce unchanged geometry, repaint while idle without mutating draft/caret or transcript history, tolerate invalid and failed observations, and cancel watcher/timer resources on exit. Public resize tests, a Windows caret/restoration probe and limitations—including pending native idle-notification adapter wiring—are recorded in `assets/evidence/trelis-backend/08-idle-text-input-resize.md`.

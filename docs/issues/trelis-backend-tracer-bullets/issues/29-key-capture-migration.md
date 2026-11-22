@@ -76,7 +76,7 @@ passed 726 tests. Code and tests are at revision `03259be`; the final pass was
 repeated at the branch tip `e3648e8`, which changes this record only. Evidence,
 source revision, environment, commands, expected/actual results and limitations
 are recorded in
-`doc/evidence/trelis-backend/29-key-capture-migration.md`.
+`assets/evidence/trelis-backend/29-key-capture-migration.md`.
 
 Limitations: this is scripted public-behavior evidence only. Native
 `key_capture_windows.ps1`/`key_capture_native_app.dart` capture, PTY,

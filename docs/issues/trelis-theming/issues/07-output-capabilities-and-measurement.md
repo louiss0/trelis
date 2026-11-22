@@ -108,7 +108,7 @@ Only component/compositor-owned cells receive palette backgrounds; restore owned
 
 ### Evidence and implementation prerequisites
 
-[Primary-source research, exact-version package audit and executed fixture findings](../../../../doc/research/trelis-output-capabilities-and-width.md) distinguish official API contracts, heuristics, proposed policy, source inspection and executed probes. Both candidate archives were downloaded outside the repo and SHA-256 verified. The probe ran source imports against existing characters configuration; it was not a backend implementation or real-terminal/font test.
+[Primary-source research, exact-version package audit and executed fixture findings](../../../../assets/research/trelis-output-capabilities-and-width.md) distinguish official API contracts, heuristics, proposed policy, source inspection and executed probes. Both candidate archives were downloaded outside the repo and SHA-256 verified. The probe ran source imports against existing characters configuration; it was not a backend implementation or real-terminal/font test.
 
 Backend acceptance must cover selected stderr/stdout independence; redirected/dumb/unknown outputs; dimension exceptions and zero geometry; profile precedence and hard restrictions; synthetic-rich migration; NO_COLOR absent/empty/nonempty; independent cursor/style/colour/glyph combinations; idle resize/teardown; explicit versus automatic failures; colour conversion fixtures; cluster/display/caret mappings; secret-safe geometry; and prompt/feedback parity. Existing native state restoration tests remain mandatory.
 

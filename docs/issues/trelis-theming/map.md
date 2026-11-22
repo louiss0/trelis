@@ -24,7 +24,7 @@ An implementation-ready design for adapting Trelis's existing components to the 
 - Relevant safety warnings remain visible; structure may control placement and styling, not bury them in help.
 - Existing component behavior is shared rather than reimplemented per structure.
 - Existing instructions must inform the design. See [Current component help inventory](help-inventory.md).
-- Design inputs: example/prototype-themes/generate.py (palette specifications, vocabulary, prompt layouts and specimens); example/prototype-themes/structures.html. Atlas editorial sheet headings are not runtime component instructions.
+- Design inputs: tool/generate_theme_atlas.py (palette specifications, vocabulary, prompt layouts and specimens); assets/prototype-themes/structures.html. Atlas editorial sheet headings are not runtime component instructions.
 - Earlier context: ../trelis-accessible-prompts/spec.md. Existing theme selection is an input, not a new question.
 - Approved factory and palette identifiers/defaults now live in [Specify structural-theme factories and colour configuration](issues/03-static-theme-api-and-colours.md); consult its resolution rather than the early illustrative examples.
 

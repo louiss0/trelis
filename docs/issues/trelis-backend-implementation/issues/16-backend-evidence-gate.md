@@ -16,7 +16,7 @@ Independently audit the completed backend and its evidence before unblocking nam
 - [ ] Confirm every implementation task is resolved and every B requirement has current pass evidence or an explicitly justified non-applicable subcase; required platform/GUI checks cannot be waived by wording.
 - [ ] Verify all-platform CI/native results and Windows agent GUI observations refer to the accepted revision; rerun affected evidence after fixes.
 - [ ] Check no partial/old/configured-only result is represented as a pass, no human checkpoint is hidden in the plan and no accessibility claim is inferred from automation.
-- [ ] Publish doc/evidence/trelis-backend/backend-acceptance.md with requirement-to-artifact links, migration notes, limitations and an explicit accepted/blocked verdict.
+- [ ] Publish assets/evidence/trelis-backend/backend-acceptance.md with requirement-to-artifact links, migration notes, limitations and an explicit accepted/blocked verdict.
 - [ ] Only an accepted verdict/resolved gate task unblocks the separate theme handoff; do not start theme implementation as part of this audit.
 
 ## Evidence required
@@ -35,9 +35,9 @@ The user approved a finer, end-to-end [33-ticket backend plan](../../trelis-back
   `81738e8a9e7278f872ab4b6c7c404c111607a4e2`, published by
   [33: Accept or block the backend evidence gate](../../trelis-backend-tracer-bullets/issues/33-backend-evidence-gate.md).
   That revision's code is byte-identical to `b94efda3…`, where every Windows GUI
-  capture was made (`git diff --stat b94efda 81738e8` lists only `doc/` and
+  capture was made (`git diff --stat b94efda 81738e8` lists only `assets/` and
   `docs/issues/` paths).
-- **Audit report:** `doc/evidence/trelis-backend/backend-acceptance.md`
+- **Audit report:** `assets/evidence/trelis-backend/backend-acceptance.md`
   (requirement-to-artifact matrix for B-BASE…B-GATE, ticket audit, limitations,
   and the explicit accepted verdict).
 - **Platform/native evidence:** fresh six-job matrix
@@ -46,8 +46,8 @@ The user approved a finer, end-to-end [33-ticket backend plan](../../trelis-back
   scenarios each, one Windows native job with 17 console scenarios and six
   pseudoconsole cases.
 - **Windows agent GUI evidence:**
-  `doc/evidence/trelis-backend/32-agent-windows-gui.md` with
-  `doc/evidence/trelis-backend/gui/11…31` — concurrent editing and caret
+  `assets/evidence/trelis-backend/32-agent-windows-gui.md` with
+  `assets/evidence/trelis-backend/gui/11…31` — concurrent editing and caret
   (`11`–`13`), modal help and dismissal (`14`, `15`, `25`, `26`), private entry
   (`16`, `17`), ASCII/no-colour (`18`, `19`, `21`), narrow/idle resize
   (`22`–`24`), repeated prompts (`27`), required-value rejection and recovery
@@ -57,7 +57,7 @@ The user approved a finer, end-to-end [33-ticket backend plan](../../trelis-back
   visible GUI run is one host with agent-injected synthetic input; the visible
   GUI frames were captured before the native resize observation existed, so the
   live idle-reflow claim rests on the Windows console and POSIX PTY checks
-  recorded in [the post-review record](../../../../doc/evidence/trelis-backend/post-review-fixes.md)
+  recorded in [the post-review record](../../../../assets/evidence/trelis-backend/post-review-fixes.md)
   rather than on those stills; NVDA was absent, so there is no speech or
   accessibility qualification; Unicode cluster/width policy is not a universal
   terminal/font claim; forcible process termination is outside the restoration
@@ -77,7 +77,7 @@ The user approved a finer, end-to-end [33-ticket backend plan](../../trelis-back
   records the two earlier blocked verdicts, excludes superseded captures, and
   claims no accessibility qualification.
 - *Publish the acceptance report:* satisfied by
-  `doc/evidence/trelis-backend/backend-acceptance.md`.
+  `assets/evidence/trelis-backend/backend-acceptance.md`.
 - *Only an accepted verdict unblocks the separate theme handoff:* the handoff is
   now unblocked, and no theme implementation was started here.
 

@@ -56,7 +56,7 @@ component, tests and evidence.
   without regard to case) and `test/theme_heading_framing_test.dart`, plus the
   barrel export inventory update.
 - Evidence document at
-  `doc/evidence/trelis-theme/theme-04-lightweight-heading-themes-evidence.md`.
+  `assets/evidence/trelis-theme/theme-04-lightweight-heading-themes-evidence.md`.
 
 **Verification at `HEAD` before merge:**
 

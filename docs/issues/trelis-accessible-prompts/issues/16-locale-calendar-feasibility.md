@@ -26,5 +26,5 @@ Follow-up questions fit [Specify locale-calendar DateInput interactions](17-loca
 - Worker: 778b73b3-b28f-432
 - Worktree: C:/Users/bvlou/projects/trelis-research-locale-calendars (created from bd5a19f)
 - Research branch: research/trelis-locale-calendars
-- Completed report: [Calendar-aware slash date entry and date-only results](../../../../doc/research/trelis-locale-calendars.md)
+- Completed report: [Calendar-aware slash date entry and date-only results](../../../../assets/research/trelis-locale-calendars.md)
 - Exact report commit: 1cf1a052e88fd507b7bc6a1852c205c1d7e29d13 on research/trelis-locale-calendars. Parent saved/committed only the complete report; the worktree is clean.

@@ -21,4 +21,4 @@
 
 ## Answer
 
-Implemented on `ticket/backend-10-linear-events` in commit `ff73f96`. The public `ScriptedInput(transcript: TextInputTranscript())` seam now separates current editable views from ordered identified presentation events, preserves genuine repeated help and validation occurrences plus caret/paste/literal provenance, and does not infer events from snapshots or `onChanged`. Redirected native output and deterministic ordering are verified. Evidence is recorded in `doc/evidence/trelis-backend/ticket-10-linear-events.md` and `ticket-10-redirected.txt`.
+Implemented on `ticket/backend-10-linear-events` in commit `ff73f96`. The public `ScriptedInput(transcript: TextInputTranscript())` seam now separates current editable views from ordered identified presentation events, preserves genuine repeated help and validation occurrences plus caret/paste/literal provenance, and does not infer events from snapshots or `onChanged`. Redirected native output and deterministic ordering are verified. Evidence is recorded in `assets/evidence/trelis-backend/ticket-10-linear-events.md` and `ticket-10-redirected.txt`.

@@ -22,7 +22,7 @@
 ## Comments
 
 Agent-operated Windows terminal evidence at `b94efda3779fe24ae41164ddd53015be7621d814`
-is recorded in [the GUI report](../../../../doc/evidence/trelis-backend/32-agent-windows-gui.md),
+is recorded in [the GUI report](../../../../assets/evidence/trelis-backend/32-agent-windows-gui.md),
 which is the canonical description of every frame: the synthetic action, the
 checkpoint it satisfies and the expected-versus-observed note. Every named
 B-GUI checkpoint is captured at that one code revision, so nothing is carried
@@ -43,7 +43,7 @@ notification, so an idle resize did not reflow the prompt — the narrow frames
 show draft/caret preservation plus terminal soft wrap. The post-review fixes add
 a reachable native observation path and prove idle reflow from a real Windows
 console resize and a POSIX PTY resize
-([post-review record](../../../../doc/evidence/trelis-backend/post-review-fixes.md));
+([post-review record](../../../../assets/evidence/trelis-backend/post-review-fixes.md));
 these frames were not re-captured and are not re-described as adaptive relayout.
 
 The superseded `7676a5f` captures (`06`–`10`) are deleted, including the

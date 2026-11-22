@@ -11,7 +11,7 @@ Parent: [Trelis accessible prompt interaction specification](../map.md)
 - Worker: 4fa35609-3f44-442
 - Research branch: research/trelis-component-feasibility
 - Worktree: C:/Users/bvlou/projects/trelis-research-component-feasibility
-- Completed report: [Component interaction precedents and Dart TUI feasibility](../../../../doc/research/trelis-component-feasibility.md).
+- Completed report: [Component interaction precedents and Dart TUI feasibility](../../../../assets/research/trelis-component-feasibility.md).
 - Exact report commit: 8b389e4c13eac1ef1776f5082c0b150bd27f53de on research/trelis-component-feasibility. Parent saved the full worker report and committed only that file; research worktree is clean.
 
 ## Answer
@@ -26,4 +26,4 @@ Research-derived design questions fit the existing shared-contract, family and r
 
 ## Question
 
-For the 39 specimens in doc/theme-components.md other than StepperForm, what interaction precedents and implementation constraints should inform later design? Inspect the atlas specimens and archived backend evidence locally, then investigate primary sources for Dart TUI's relevant event, editing, rendering and lifecycle capabilities and any current fix equivalent to the documented Windows restoration patch. Group overlapping controls without deciding their final public API. Cover navigation, selection versus focus, submission/cancellation, validation, feedback-only components, complex controls and discoverability. Use official CLI/library sources and standards as precedents; distinguish terminal facts from GUI/web analogies. Produce a traceability table covering all 39 specimens, citations, feasibility gaps, and open decisions. Do not implement components.
+For the 39 specimens in assets/theme-components.md other than StepperForm, what interaction precedents and implementation constraints should inform later design? Inspect the atlas specimens and archived backend evidence locally, then investigate primary sources for Dart TUI's relevant event, editing, rendering and lifecycle capabilities and any current fix equivalent to the documented Windows restoration patch. Group overlapping controls without deciding their final public API. Cover navigation, selection versus focus, submission/cancellation, validation, feedback-only components, complex controls and discoverability. Use official CLI/library sources and standards as precedents; distinguish terminal facts from GUI/web analogies. Produce a traceability table covering all 39 specimens, citations, feasibility gaps, and open decisions. Do not implement components.

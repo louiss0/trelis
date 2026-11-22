@@ -13,6 +13,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import 'background_query.dart';
 import 'output_profile.dart';
+import 'presentation_preferences.dart';
 import 'color_theme.dart';
 import 'native_resize.dart';
 import 'presentation.dart';
@@ -2342,6 +2343,8 @@ final class TextInput {
   /// the exact sequential report it always wrote.
   final String? Function(String draft)? _livePreview;
   bool _active = false;
+
+  /// Runs this prompt.
   Future<PromptResult<String>> prompt({
     PromptSource? source,
     PromptMode? mode,
@@ -2351,8 +2354,34 @@ final class TextInput {
     TerminalIo? terminal,
     OutputProfile? outputProfile,
     TerminalSession? session,
+  }) => _prompt(
+    source: source,
+    mode: mode,
+    userPreference: userPreference,
+    applicationPreference: applicationPreference,
+    output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
+  );
+
+  Future<PromptResult<String>> _prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
+    PresentationPreferences? presentation,
   }) async {
     if (session != null) {
+      if (presentation != null) {
+        throw ArgumentError(
+          'Presentation preferences are supported only for standalone TextInput prompts.',
+        );
+      }
       return session._promptRunner(
         _run,
         source: source,
@@ -2372,6 +2401,18 @@ final class TextInput {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      final initialPresentation = presentation == null
+          ? null
+          : resolvePresentation(
+              outputProfile: const OutputProfile(),
+              lightDefault: colors,
+              darkDefault: colors,
+              invocation: presentation,
+              invocationMode: selected,
+            );
+      final selectedMode = initialPresentation?.screenReader == true
+          ? PromptMode.linear
+          : selected;
       if (source != null && terminal != null) {
         throw ArgumentError('Specify either source or terminal, not both.');
       }
@@ -2396,22 +2437,33 @@ final class TextInput {
                       terminal.environment['NO_COLOR']?.isNotEmpty == true,
                   resizeObserver: _terminalResizeObserver(terminal),
                 ),
-                selected,
+                selectedMode,
                 outputProfile: outputProfile,
+                presentation: presentation,
               );
             });
           }
           return await _terminal<String>(
-            selected,
+            selectedMode,
             output ?? stdout,
-            (source, mode, _) =>
-                _run(source, mode, outputProfile: outputProfile),
+            (source, mode, _) => _run(
+              source,
+              mode,
+              outputProfile: outputProfile,
+              presentation: presentation,
+            ),
+            enableLinearPasteControl: initialPresentation?.screenReader == true,
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected, outputProfile: outputProfile);
+      return await _run(
+        source,
+        selectedMode,
+        outputProfile: outputProfile,
+        presentation: presentation,
+      );
     } finally {
       _active = false;
     }
@@ -2423,6 +2475,7 @@ final class TextInput {
     OutputProfile? outputProfile,
     _Keys? keys,
     TerminalSession? session,
+    PresentationPreferences? presentation,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -2440,6 +2493,17 @@ final class TextInput {
     }
     final scripted = source as ScriptedInput;
     final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
+    final resolved = presentation == null
+        ? null
+        : resolvePresentation(
+            outputProfile: effectiveProfile,
+            lightDefault: colors,
+            darkDefault: colors,
+            invocation: presentation,
+            invocationMode: mode,
+          );
+    mode = resolved?.mode ?? mode;
+    final effectiveColors = resolved?.palette ?? colors;
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -2458,7 +2522,7 @@ final class TextInput {
       linear: mode == PromptMode.linear,
       instructions: instructions,
       outputProfile: effectiveProfile,
-      colors: colors,
+      colors: effectiveColors,
       structure: structure,
     );
     scripted.transcript?._event(
@@ -2481,18 +2545,22 @@ final class TextInput {
           linear: mode == PromptMode.linear,
           sequential:
               mode != PromptMode.rich &&
-              !effectiveProfile.supportsRichInteraction,
+              (resolved?.screenReader == true ||
+                  !effectiveProfile.supportsRichInteraction),
           transientHelp:
+              resolved?.screenReader != true &&
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
           maxLength: maxLength,
           exemptCommandsFromLimit: mode == PromptMode.linear,
           required: required,
+          clearHelpCommand: resolved?.screenReader == true,
+          allowCommandPrefixes: resolved?.screenReader == true,
           supplementaryHelp: supplementaryHelp,
           onChanged: rich ? null : _onChanged,
           livePreview: rich ? _livePreview : null,
           transcript: scripted.transcript,
           outputProfile: effectiveProfile,
-          colors: colors,
+          colors: effectiveColors,
           structure: structure,
           resizeObserver: mode == PromptMode.rich
               ? scripted.resizeObserver
@@ -2516,6 +2584,27 @@ final class TextInput {
           return InputEnded();
         }
         value = result.value;
+        // Command prefixes may temporarily exceed the limit while being typed;
+        // a non-command draft must still satisfy the field constraint.
+        if (resolved?.screenReader == true &&
+            maxLength != null &&
+            value.characters.length > maxLength!) {
+          final message = 'Maximum length is $maxLength graphemes.';
+          _renderTextInputValidation(
+            scripted.output,
+            message,
+            linear: true,
+            instructions: instructions,
+            outputProfile: effectiveProfile,
+            colors: effectiveColors,
+            structure: structure,
+          );
+          scripted.transcript?._event(
+            TextInputPresentationEventKind.validation,
+            text: message,
+          );
+          continue;
+        }
         if (required && value.isEmpty) {
           const message = 'Required: enter a non-empty value and submit again.';
           _renderTextInputValidation(
@@ -2524,7 +2613,7 @@ final class TextInput {
             linear: mode == PromptMode.linear,
             instructions: instructions,
             outputProfile: effectiveProfile,
-            colors: colors,
+            colors: effectiveColors,
             structure: structure,
           );
           scripted.transcript?._event(
@@ -2541,7 +2630,7 @@ final class TextInput {
             linear: mode == PromptMode.linear,
             instructions: instructions,
             outputProfile: effectiveProfile,
-            colors: colors,
+            colors: effectiveColors,
             structure: structure,
           );
           scripted.transcript?._event(
@@ -2589,15 +2678,20 @@ Future<({String action, String value})> _edit(
   TerminalResizeObserver? resizeObserver,
   TerminalSession? session,
   void Function(bool literal)? onSubmit,
+  List<bool>? initialPasteProvenance,
+  void Function(List<bool> provenance)? onSubmittedProvenance,
   int? pasteMaxLength,
   Set<String> extraCommands = const {},
   bool multilinePaste = false,
 }) async {
   var chars = initial.characters.toList();
   var pos = chars.length;
-  var provenance = List<bool>.filled(chars.length, false, growable: true);
+  var provenance = initialPasteProvenance == null
+      ? List<bool>.filled(chars.length, false, growable: true)
+      : List<bool>.of(initialPasteProvenance);
   var synthetic = -1;
   if (linear &&
+      initialPasteProvenance == null &&
       (initial == '/cancel' ||
           initial == '/help' ||
           extraCommands.contains(initial) ||
@@ -3132,6 +3226,14 @@ Future<({String action, String value})> _edit(
           continue;
         }
         onSubmit?.call(literal);
+        if (onSubmittedProvenance != null) {
+          // Quoted commands become literal data after the quote is removed.
+          // Preserve that protection alongside per-grapheme paste flags.
+          final submittedProvenance = text == chars.join()
+              ? List<bool>.of(provenance)
+              : List<bool>.filled(text.characters.length, literal);
+          onSubmittedProvenance(submittedProvenance);
+        }
         transcript?._event(
           TextInputPresentationEventKind.submitted,
           text: secret ? null : text,
@@ -3442,8 +3544,9 @@ Future<PromptResult<T>> _posixTerminal<T>(
   PromptMode mode,
   Stdout outputStream,
   Future<PromptResult<T>> Function(ScriptedInput, PromptMode, void Function())
-  run,
-) async {
+  run, {
+  bool enableLinearPasteControl = false,
+}) async {
   final capable =
       outputStream.hasTerminal && Platform.environment['TERM'] != 'dumb';
   final rich =
@@ -3500,7 +3603,9 @@ Future<PromptResult<T>> _posixTerminal<T>(
       return Unavailable('Cannot acquire terminal input.');
     }
     acquired = true;
-    if (rich) {
+    // Bracketed paste is an input-safety protocol, not an in-place redraw.
+    // Request it for screen-reader linear input when the terminal can support it.
+    if (rich || (enableLinearPasteControl && capable)) {
       outputStream.write('\x1b[?2004h');
       pasteEnabled = true;
     }
@@ -3539,6 +3644,7 @@ Future<PromptResult<T>> _terminal<T>(
   Future<PromptResult<T>> Function(ScriptedInput, PromptMode, void Function())
   run, {
   _CaptureControl? capture,
+  bool enableLinearPasteControl = false,
 }) async {
   if (!stdin.hasTerminal) {
     return Unavailable(
@@ -3546,7 +3652,12 @@ Future<PromptResult<T>> _terminal<T>(
     );
   }
   if (Platform.isLinux || Platform.isMacOS) {
-    return _posixTerminal(mode, outputStream, run);
+    return _posixTerminal(
+      mode,
+      outputStream,
+      run,
+      enableLinearPasteControl: enableLinearPasteControl,
+    );
   }
   if (!Platform.isWindows) {
     return Unavailable(
@@ -5309,8 +5420,34 @@ abstract class _SingleChoice<T> {
     TerminalIo? terminal,
     OutputProfile? outputProfile,
     TerminalSession? session,
+  }) => _prompt(
+    source: source,
+    mode: mode,
+    userPreference: userPreference,
+    applicationPreference: applicationPreference,
+    output: output,
+    terminal: terminal,
+    outputProfile: outputProfile,
+    session: session,
+  );
+
+  Future<PromptResult<T>> _prompt({
+    PromptSource? source,
+    PromptMode? mode,
+    PromptMode? userPreference,
+    PromptMode? applicationPreference,
+    Stdout? output,
+    TerminalIo? terminal,
+    OutputProfile? outputProfile,
+    TerminalSession? session,
+    PresentationPreferences? presentation,
   }) async {
     if (session != null) {
+      if (presentation != null) {
+        throw ArgumentError(
+          'Presentation preferences are supported only for standalone Select prompts.',
+        );
+      }
       return session._promptRunner<T>(
         _run,
         source: source,
@@ -5330,6 +5467,18 @@ abstract class _SingleChoice<T> {
           userPreference ??
           applicationPreference ??
           PromptMode.automatic;
+      final initialPresentation = presentation == null
+          ? null
+          : resolvePresentation(
+              outputProfile: const OutputProfile(),
+              lightDefault: colors,
+              darkDefault: colors,
+              invocation: presentation,
+              invocationMode: selected,
+            );
+      final selectedMode = initialPresentation?.screenReader == true
+          ? PromptMode.linear
+          : selected;
       if (source != null && terminal != null) {
         throw ArgumentError('Specify either source or terminal, not both.');
       }
@@ -5354,22 +5503,33 @@ abstract class _SingleChoice<T> {
                       terminal.environment['NO_COLOR']?.isNotEmpty == true,
                   resizeObserver: _terminalResizeObserver(terminal),
                 ),
-                selected,
+                selectedMode,
                 outputProfile: outputProfile,
+                presentation: presentation,
               );
             });
           }
           return await _terminal<T>(
-            selected,
+            selectedMode,
             output ?? stdout,
-            (source, mode, _) =>
-                _run(source, mode, outputProfile: outputProfile),
+            (source, mode, _) => _run(
+              source,
+              mode,
+              outputProfile: outputProfile,
+              presentation: presentation,
+            ),
+            enableLinearPasteControl: initialPresentation?.screenReader == true,
           );
         } finally {
           _terminalActive = false;
         }
       }
-      return await _run(source, selected, outputProfile: outputProfile);
+      return await _run(
+        source,
+        selectedMode,
+        outputProfile: outputProfile,
+        presentation: presentation,
+      );
     } finally {
       _active = false;
     }
@@ -5381,6 +5541,7 @@ abstract class _SingleChoice<T> {
     OutputProfile? outputProfile,
     _Keys? keys,
     TerminalSession? session,
+    PresentationPreferences? presentation,
   }) async {
     if (source is SuppliedAnswer) {
       final n = int.tryParse(source.value);
@@ -5394,6 +5555,17 @@ abstract class _SingleChoice<T> {
     }
     final scripted = source as ScriptedInput;
     final effectiveProfile = _effectiveOutputProfile(scripted, outputProfile);
+    final resolved = presentation == null
+        ? null
+        : resolvePresentation(
+            outputProfile: effectiveProfile,
+            lightDefault: this.colors,
+            darkDefault: this.colors,
+            invocation: presentation,
+            invocationMode: mode,
+          );
+    mode = resolved?.mode ?? mode;
+    final colors = resolved?.palette ?? this.colors;
     if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
       return Unavailable(
         'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
@@ -5478,7 +5650,7 @@ abstract class _SingleChoice<T> {
             focused: i == focus,
             isDefault: defaultValue != null && c.value == defaultValue,
             disabledReason: c.disabledReason,
-            presentation: presentation,
+            presentation: this.presentation,
           ),
           width: width,
           foreground: i == focus ? colors.accent : colors.foreground,
@@ -5505,6 +5677,7 @@ abstract class _SingleChoice<T> {
     try {
       if (mode == PromptMode.linear) {
         var entry = '';
+        var entryProvenance = <bool>[];
         while (true) {
           final result = await _edit(
             inputKeys,
@@ -5512,8 +5685,15 @@ abstract class _SingleChoice<T> {
             out,
             linear: true,
             sequential: true,
+            initialPasteProvenance: radio ? null : entryProvenance,
+            onSubmittedProvenance: radio
+                ? null
+                : (flags) => entryProvenance = flags,
             extraCommands: const {'/next', '/previous'},
-            linearHelpText: _help(linear: true),
+            linearHelpText: resolved?.screenReader == true
+                ? [_help(linear: true), ...supplementaryHelp].join(' ')
+                : _help(linear: true),
+            colors: resolved == null ? ColorThemes.terminalDefault : colors,
             outputProfile: effectiveProfile,
             structure: structure,
             session: session,
@@ -5527,6 +5707,7 @@ abstract class _SingleChoice<T> {
             }
             if (result.value == '/previous' && page > 0) page--;
             entry = '';
+            entryProvenance = [];
             show();
             continue;
           }
@@ -7057,3 +7238,51 @@ final class TagInput {
     }
   }
 }
+
+/// Unsupported prototype seam for tests; not part of the public API.
+Future<PromptResult<String>> prototypeTextInputPrompt(
+  TextInput prompt, {
+  PromptSource? source,
+  PromptMode? mode,
+  PromptMode? userPreference,
+  PromptMode? applicationPreference,
+  Stdout? output,
+  TerminalIo? terminal,
+  OutputProfile? outputProfile,
+  TerminalSession? session,
+  PresentationPreferences? presentation,
+}) => prompt._prompt(
+  source: source,
+  mode: mode,
+  userPreference: userPreference,
+  applicationPreference: applicationPreference,
+  output: output,
+  terminal: terminal,
+  outputProfile: outputProfile,
+  session: session,
+  presentation: presentation,
+);
+
+/// Unsupported prototype seam for tests; not part of the public API.
+Future<PromptResult<T>> prototypeSelectPrompt<T>(
+  Select<T> prompt, {
+  PromptSource? source,
+  PromptMode? mode,
+  PromptMode? userPreference,
+  PromptMode? applicationPreference,
+  Stdout? output,
+  TerminalIo? terminal,
+  OutputProfile? outputProfile,
+  TerminalSession? session,
+  PresentationPreferences? presentation,
+}) => prompt._prompt(
+  source: source,
+  mode: mode,
+  userPreference: userPreference,
+  applicationPreference: applicationPreference,
+  output: output,
+  terminal: terminal,
+  outputProfile: outputProfile,
+  session: session,
+  presentation: presentation,
+);

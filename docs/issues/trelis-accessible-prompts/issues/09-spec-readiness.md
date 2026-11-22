@@ -40,8 +40,8 @@ The human's construction requirements are part of the handoff:
 
 ### Packaged evidence and handoff
 
-- [Research index](../../../../doc/research/index.md) links all eight reports and their exact original report commits/branches. The reports were consolidated through history on docs/trelis-interaction-research, retaining provenance.
-- [Research and interaction handoff](../../../../doc/trelis-interaction-handoff.md) is a visible navigation/orientation summary, not a second authority for interaction answers.
+- [Research index](../../../../assets/research/index.md) links all eight reports and their exact original report commits/branches. The reports were consolidated through history on docs/trelis-interaction-research, retaining provenance.
+- [Research and interaction handoff](../../../../assets/trelis-interaction-handoff.md) is a visible navigation/orientation summary, not a second authority for interaction answers.
 - The map and its tickets remain canonical; the root glossary records domain vocabulary.
 - Historical 39-specimen/regex research remains historical; the current 38-component scope is consistent across the map, inventory and verification gate.
 

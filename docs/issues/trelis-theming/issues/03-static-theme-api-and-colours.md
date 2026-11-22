@@ -155,7 +155,7 @@ ColorThemes.terminalDefault is the default for every structural factory and dire
 
 ### Existing named palettes
 
-Expose all 45 existing SPECS palettes from example/prototype-themes/generate.py as immutable ColorThemes values, separate from structural classes. Lower-camel-case identifiers derive from the existing hyphenated slugs:
+Expose all 45 existing SPECS palettes from tool/generate_theme_atlas.py as immutable ColorThemes values, separate from structural classes. Lower-camel-case identifiers derive from the existing hyphenated slugs:
 
 signal, paper, mainframe, blueprint, ember, orchid, workbench, tide, ink, arcade, fieldnotes, nordic, punch, ledger, infrared, porcelain, basalt, citrus, lavender, glacier, vinyl, botanical, terminalAmber, slate, solar, deepSpace, moss, copper, midnightMint, typewriter, neonGrid, sandstone, blueHour, matcha, obsidian, clay, polar, forestFloor, ultraviolet, seaGlass, carbon, sakura, terminalGreen, desertDusk, ion.
 

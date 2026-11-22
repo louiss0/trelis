@@ -94,7 +94,7 @@ On Windows (NT 10.0.26200.0) with Dart SDK 3.13.2, the tree/order suites passed
 42 tests, the component matrix passed 144 tests, `dart analyze` reported no
 issues, the changed files are formatting-clean and the documentation-link check
 passed; the full suite passed 835 tests. Evidence and limitations are recorded in
-`doc/evidence/trelis-backend/22-tree-order-migration.md`; native PTY, visible
+`assets/evidence/trelis-backend/22-tree-order-migration.md`; native PTY, visible
 GUI/NVDA, Linux/macOS CI, alternate-screen modal help, rich vertical viewport and
 final-gate verification remain outstanding, and a state marker wider than the
 declared width overflows rather than being split.

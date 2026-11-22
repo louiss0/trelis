@@ -299,6 +299,6 @@ Supporting artifacts:
 - [Source API baseline](api-baseline.md).
 - [Expanded typed factory-signature notation](factory-signatures.md).
 - [Current component help inventory](help-inventory.md).
-- [Capability and Unicode-width research, source audit and executed temporary probes](../../../doc/research/trelis-output-capabilities-and-width.md).
+- [Capability and Unicode-width research, source audit and executed temporary probes](../../../assets/research/trelis-output-capabilities-and-width.md).
 
 The source inventory was captured at revision 80f4752e16a6e3b2451f2b87b9450e535ae3fa30 and must be checked against the implementation revision. Temporary package probes are research evidence only; they do not establish that the new backend, platform matrix or GUI gate has passed.

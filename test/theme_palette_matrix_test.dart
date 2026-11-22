@@ -6,7 +6,7 @@ import 'package:test/test.dart';
 /// Independent verification of the 45 named colour palettes.
 ///
 /// The expected values are not copied from the generated Dart file. This
-/// fixture reads the source atlas (`example/prototype-themes/generate.py`, the
+/// fixture reads the source atlas (`tool/generate_theme_atlas.py`, the
 /// throwaway visual study the palettes were derived from), parses its declared
 /// colours, and asserts that every named `ColorThemes` preset maps the atlas
 /// roles the atlas and the specification say it maps: text to foreground,
@@ -19,7 +19,7 @@ import 'package:test/test.dart';
 /// facts, independently of any one component's interaction.
 
 /// The source atlas, relative to the package root the test runner uses.
-const _atlasPath = 'example/prototype-themes/generate.py';
+const _atlasPath = 'tool/generate_theme_atlas.py';
 
 /// The atlas tuple order: page, terminal, text, muted, accent, selected
 /// foreground, success, error, rule.

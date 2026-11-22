@@ -18,7 +18,7 @@ palettes are all unchanged — this is a naming and packaging migration only.
   `CHANGELOG.md`, `GLOSSARY.md`, and the docs that name the package, without
   rewriting resolved design/evidence history (historical commit references and
   quoted identifiers stay as written unless they are live import paths).
-- Publish migration guidance (a `doc/evidence/trelis-package-rename/migration.md`
+- Publish migration guidance (a `assets/evidence/trelis-package-rename/migration.md`
   or equivalent) and a CHANGELOG entry describing the rename, the breaking
   import change, and the one-line consumer migration (`package:prompty/...` →
   `package:trelis/...`).

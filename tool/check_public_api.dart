@@ -95,6 +95,9 @@ const _internalNames = <String>[
   'InteractionConflict',
   'InteractionUnavailable',
   'ColorDetectionFacts',
+  'PresentationPreferences',
+  'prototypeTextInputPrompt',
+  'prototypeSelectPrompt',
 ];
 
 /// Resolver functions stay internal; hints arrive through theme parameters.

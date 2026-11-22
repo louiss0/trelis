@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palette family comparison · throwaway prototype</title>
+<style>
+  :root { font-family: system-ui, sans-serif; color: #17202c; background: #edf0f4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 0 110px; }
+  header, main { max-width: 1420px; margin: auto; padding: 24px clamp(16px, 3vw, 42px); }
+  header { padding-bottom: 8px; }
+  .eyebrow { font-size: .75rem; letter-spacing: .14em; font-weight: 800; text-transform: uppercase; color: #42546a; }
+  h1 { font-size: clamp(1.8rem, 4vw, 3rem); line-height: 1.05; margin: 12px 0; letter-spacing: -.04em; }
+  header p { max-width: 78ch; line-height: 1.5; }
+  .direction { display: flex; justify-content: space-between; align-items: end; gap: 16px; border-bottom: 1px solid #b8c1cc; margin-bottom: 18px; }
+  .direction h2 { margin: 0 0 8px; font-size: 1.45rem; }
+  .direction p { margin: 0 0 12px; color: #42546a; }
+  .counter { white-space: nowrap; font-weight: 700; }
+  .matrix { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .column { min-width: 0; }
+  .column h3 { margin: 0 0 8px; font-size: 1rem; }
+  .terminal { background: var(--surface); color: var(--fg); margin-bottom: 12px; padding: 18px; min-height: 262px; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-x: auto; }
+  .terminal .variant-label { font: 700 10px/1.2 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 14px; }
+  .prompt { min-width: 260px; }
+  .rail .prompt { border-left: 1px solid var(--accent); padding-left: 12px; }
+  .box .prompt { border: 1px solid var(--accent); padding: 9px 12px; }
+  .title { color: var(--accent); font-weight: 700; }
+  .question { font-weight: 700; margin: 4px 0; }
+  .row { white-space: nowrap; padding: 0 4px; }
+  .focused { background: var(--highlight); }
+  .marker, .check { color: var(--accent); font-weight: 700; }
+  .muted { color: var(--muted); }
+  .success { color: var(--success); } .warning { color: var(--warning); } .error { color: var(--error); }
+  .help { color: var(--muted); margin-top: 9px; font-size: .88em; }
+  .overview, .study { margin-top: 48px; border-top: 2px solid #42546a; padding-top: 20px; }
+  .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 370px), 1fr)); gap: 16px; }
+  .overview-card { min-width: 0; }
+  .overview-card h3 { margin: 8px 0; }
+  .overview-card .terminal { min-height: 0; }
+  .overview-card pre { margin: 0; font: inherit; white-space: pre; }
+  .study-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0; }
+  .study-controls label { display: grid; gap: 5px; font-weight: 700; }
+  .study-controls select { font: inherit; padding: 8px; max-width: 100%; }
+  .study-controls select:focus-visible { outline: 3px solid #0054a8; outline-offset: 3px; }
+  .study-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .study-card { min-width: 0; } .study-card h3 { margin: 8px 0; }
+  .study-card .terminal { min-height: 0; }
+  .study-card pre { margin: 0; font: inherit; white-space: pre; }
+  .study-line { display: block; min-height: 1.65em; }
+  .study-line.accent { color: var(--accent); } .study-line.rule { color: var(--muted); }
+  .study-line.selected, .study-selection { background: var(--accent); color: var(--surface); }
+  .study-audit { margin: 20px 0; }
+  @media (max-width: 900px) { .study-grid { grid-template-columns: 1fr; } }
+  .evidence { margin-top: 26px; }
+  .evidence h3 { margin-bottom: 6px; }
+  .evidence p { color: #42546a; line-height: 1.5; max-width: 90ch; }
+  .tables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .audit { background: white; padding: 14px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .8rem; text-align: left; }
+  th, td { border-bottom: 1px solid #d9dfe6; padding: 6px; white-space: nowrap; }
+  .fail { color: #a02222; font-weight: 700; }
+  .switcher { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; border-radius: 12px; padding: 9px; background: #17202c; color: white; box-shadow: 0 5px 24px #0004; z-index: 2; }
+  .switcher button { background: #fff; color: #17202c; border: 0; border-radius: 7px; padding: 9px 13px; font: inherit; font-weight: 700; cursor: pointer; }
+  .switcher button:focus-visible { outline: 3px solid #77bcff; outline-offset: 3px; }
+  .switcher output { min-width: 160px; text-align: center; font-size: .85rem; font-weight: 700; }
+  @media (max-width: 900px) { .matrix { grid-template-columns: 1fr; } .column { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .column h3 { grid-column: 1 / -1; } .terminal { margin: 0; } }
+  @media (max-width: 600px) { .column, .tables { grid-template-columns: 1fr; } .direction { align-items: start; flex-direction: column; gap: 0; } .counter { margin-bottom: 10px; } .switcher output { min-width: 125px; } }
+</style>
+</head>
+<body>
+<!-- Throwaway exploration: palette-family directions and Atelier light studies, same three structures, selected with ?variant=. -->
+<header>
+  <div class="eyebrow">Throwaway prototype · visual exploration</div>
+  <h1>Palette families and warmer Atelier studies.</h1>
+  <p>Which palette direction best unites the structural themes without making them identical? Compare the same rail, box, and minimal prompts on light and dark reference surfaces. These are illustrations, not implemented defaults.</p>
+</header>
+<main>
+  <section aria-labelledby="direction-title">
+    <div class="direction"><div><div class="eyebrow">Palette direction</div><h2 id="direction-title"></h2><p id="direction-description"></p></div><div class="counter" id="counter"></div></div>
+    <div class="matrix" id="matrix"></div>
+  </section>
+  <section class="overview" aria-labelledby="overview-title">
+    <div class="eyebrow">Read-only overview · provisional mapping</div>
+    <h2 id="overview-title">Chosen accent directions · all 15 structures</h2>
+    <p>These provisional assignments follow the adaptive theme design direction and remain open to visual review. Each static Select specimen comes from the shared structure generator, shown on light and dark visual reference surfaces. The surfaces simulate an untouched terminal background, not a proposed fill; this is not a production implementation or a guarantee of terminal contrast. Colors and shades are starting points, not final values.</p>
+    <div class="overview-grid" id="overview-grid"></div>
+  </section>
+  <section class="study" aria-labelledby="study-title">
+    <div class="eyebrow">Separate interactive study · no assignments saved</div>
+    <h2 id="study-title">Accent assignment study · all 15 structures</h2>
+    <p>Choose a structure and specimen to compare four coordinated Atelier/Sepia accents, each shown on both simulated reference backgrounds. Rail with blue is a proposed starting point, not a decision; every combination remains open. The shared structure specimens below are static, not working prompts. Selecting an option here does not assign or save a palette.</p>
+    <div class="study-controls">
+      <label>Structural theme <select id="study-structure"></select></label>
+      <label>Specimen <select id="study-component"><option>Select</option><option>TextInput</option><option>StepperForm</option><option>MultiSpinner</option></select></label>
+    </div>
+    <p id="study-description"></p>
+    <div id="study-grid" class="study-grid"></div>
+    <p>In the separate state key below, <strong>›</strong> indicates focus and <strong>✓</strong> indicates checked; both can coexist. The shared Select specimens themselves show a focused choice, not a checked state. Reference backgrounds simulate an untouched terminal surface, not a proposed fill; actual terminal contrast varies.</p>
+    <div class="tables study-audit" id="study-audit"></div>
+  </section>
+  <section class="evidence" aria-labelledby="contrast-title">
+    <h3 id="contrast-title">Reference contrast · sample measurements</h3>
+    <p>Calculated from the shown hexadecimal colors using WCAG relative luminance. Normal text aims for 4.5:1; the table includes text and accent on the surface and on the localized selection. Reference surfaces stand in for an untouched terminal background, not a proposed terminal fill. Actual backgrounds, transparency, color mapping, fonts and rendering vary; these numbers are not accessibility guarantees.</p>
+    <div class="tables" id="tables"></div>
+    <p>In these static examples, <strong>›</strong> means focused and <strong>✓</strong> means checked; both can appear together. The unavailable reason stays readable. Terminal symbols, ASCII alternatives, no-color behavior and screen-reader presentation require separate implementation and testing.</p>
+  </section>
+</main>
+<nav class="switcher" aria-label="Palette direction selector">
+  <button type="button" id="previous" aria-label="Previous palette direction">←</button>
+  <output id="current" aria-live="polite"></output>
+  <button type="button" id="next" aria-label="Next palette direction">→</button>
+</nav>
+<script src="structures.js"></script>
+<script>
+// Each direction shares neutrals and status colors within a mode; structural accents differ.
+const families = [
+  { key: 'signal', name: 'Signal / cool precision', description: 'Cool graphite neutrals with electric blue, violet and teal accents.', accents: { dark: ['#75b6ff', '#c2a8ff', '#7bd7c8'], light: ['#004db3', '#6336a7', '#006b61'] } },
+  { key: 'atelier', name: 'Atelier / baseline', description: 'The original Atelier comparison: ink blue, terracotta and plum accents on shared neutrals.', accents: { dark: ['#8cbaff', '#f0a68c', '#d4a9dc'], light: ['#274e92', '#9a3f24', '#793a80'] } },
+  { key: 'atelier-sepia', name: 'Atelier Sepia / warm ink', description: 'Brown-black ink and sepia borders with rust, ochre and warm plum accents; the dark Atelier stays unchanged.', light: { fg: '#342820', muted: '#665044', success: '#52602d', warning: '#805000', error: '#9c3026' }, accents: { dark: ['#8cbaff', '#f0a68c', '#d4a9dc'], light: ['#704426', '#973d25', '#733e62'] } },
+  { key: 'atelier-clay', name: 'Atelier Clay / warm ink', description: 'Reddish charcoal ink and clay borders with copper, olive and berry accents; the dark Atelier stays unchanged.', light: { fg: '#382724', muted: '#6b4b45', success: '#4e602b', warning: '#795000', error: '#a02f29' }, accents: { dark: ['#8cbaff', '#f0a68c', '#d4a9dc'], light: ['#863f2c', '#77501d', '#853c52'] } },
+  { key: 'field', name: 'Field / mineral calm', description: 'Mineral neutrals with marine, moss and indigo accents.', accents: { dark: ['#7ecad5', '#b7ce83', '#b4b8ff'], light: ['#006b78', '#506a1b', '#494aab'] } }
+];
+const modes = {
+  dark: { surface: '#151b24', fg: '#e5e9ef', muted: '#adb9c8', highlight: '#293442', success: '#82d7a3', warning: '#f1c878', error: '#ff9d9d' },
+  light: { surface: '#f8f7f3', fg: '#202a35', muted: '#526171', highlight: '#e1e7eb', success: '#206b3c', warning: '#805500', error: '#ae3030' }
+};
+const structures = [ { name: 'Rail', cls: 'rail' }, { name: 'Box', cls: 'box' }, { name: 'Minimal', cls: 'minimal' } ];
+const params = new URLSearchParams(location.search);
+let index = Math.max(0, families.findIndex(f => f.key === params.get('variant')));
+function luminance(hex) {
+  const rgb = hex.match(/[\da-f]{2}/gi).map(v => parseInt(v, 16) / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+}
+function contrast(a, b) { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
+function styles(mode, accent) { return Object.entries({ ...mode, accent }).map(([k,v]) => `--${k}:${v}`).join(';'); }
+function modeFor(modeName, family) { return { ...modes[modeName], ...(family[modeName] || {}) }; }
+function terminal(modeName, accent, structure, family) {
+  const mode = modeFor(modeName, family);
+  return `<div class="terminal ${structure.cls}" style="${styles(mode, accent)}" aria-label="${structure.name}, ${modeName} reference surface, static prompt example">
+    <div class="variant-label">${modeName} surface · ${mode.surface} · accent ${accent}</div>
+    <div class="prompt"><div class="title">◇ DEPLOYMENT</div><div class="question">Choose environments</div>
+    <div class="row focused"><span class="marker">›</span> <span class="check">✓</span> Staging</div>
+    <div class="row">&nbsp; <span class="check">✓</span> Development</div>
+    <div class="row">&nbsp; ○ Production <span class="muted">— requires approval</span></div>
+    <div class="help">↑↓ move · space select · enter confirm · ? help</div></div>
+    <div style="margin-top:12px"><span class="success">✓ Ready</span> &nbsp; <span class="warning">! Review</span> &nbsp; <span class="error">× Failed</span></div>
+  </div>`;
+}
+function audit(modeName, family) {
+  const m = modeFor(modeName, family);
+  const pairs = [['Text', m.fg, m.surface], ['Muted text', m.muted, m.surface], ['Success', m.success, m.surface], ['Warning', m.warning, m.surface], ['Error', m.error, m.surface], ['Selected text', m.fg, m.highlight], ...structures.flatMap((s,i) => [[`${s.name} accent`, family.accents[modeName][i], m.surface], [`${s.name} selected accent`, family.accents[modeName][i], m.highlight]])];
+  return `<div class="audit"><strong>${modeName === 'dark' ? 'Dark' : 'Light'} reference</strong><table><thead><tr><th scope="col">Role</th><th scope="col">Foreground</th><th scope="col">Background</th><th scope="col">Ratio</th></tr></thead><tbody>${pairs.map(([label, fg, bg]) => { const ratio = contrast(fg,bg); return `<tr><th scope="row">${label}</th><td>${fg}</td><td>${bg}</td><td class="${ratio < 4.5 ? 'fail' : ''}">${ratio.toFixed(2)}:1${ratio < 4.5 ? ' (below target)' : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+function render() {
+  const family = families[index];
+  document.getElementById('direction-title').textContent = family.name;
+  document.getElementById('direction-description').textContent = family.description;
+  document.getElementById('counter').textContent = `${index + 1} / ${families.length}`;
+  document.getElementById('current').textContent = `${index + 1} / ${families.length} · ${family.name.split(' / ')[0]}`;
+  document.getElementById('matrix').innerHTML = structures.map((s,i) => `<section class="column"><h3>${s.name}</h3>${terminal('dark', family.accents.dark[i], s, family)}${terminal('light', family.accents.light[i], s, family)}</section>`).join('');
+  document.getElementById('tables').innerHTML = audit('dark', family) + audit('light', family);
+}
+function select(delta) {
+  index = (index + delta + families.length) % families.length;
+  const url = new URL(location.href); url.searchParams.set('variant', families[index].key);
+  try { history.replaceState(null, '', url.href); } catch (_) { location.href = url.href; return; }
+  render();
+}
+document.getElementById('previous').addEventListener('click', () => select(-1));
+document.getElementById('next').addEventListener('click', () => select(1));
+document.addEventListener('keydown', event => {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); select(event.key === 'ArrowLeft' ? -1 : 1); }
+});
+window.addEventListener('popstate', () => { index = Math.max(0, families.findIndex(f => f.key === new URLSearchParams(location.search).get('variant'))); render(); });
+render();
+
+// Reuse the atlas's generated structural specimens; these are not production renderings.
+const studyAccents = [
+  { name: 'Blue', dark: '#8cbaff', light: '#274e92' },
+  { name: 'Rust', dark: '#f0a68c', light: '#973d25' },
+  { name: 'Plum', dark: '#d4a9dc', light: '#733e62' },
+  { name: 'Sepia', dark: '#e0ba91', light: '#704426' }
+];
+const studyStructure = document.getElementById('study-structure');
+const studyComponent = document.getElementById('study-component');
+for (const structure of window.STRUCTURES) {
+  const option = document.createElement('option');
+  option.value = structure.id;
+  option.textContent = `${String(structure.number).padStart(2, '0')} / ${structure.title} (${structure.id})`;
+  studyStructure.append(option);
+}
+function studyMode(name) {
+  return modeFor(name, families.find(f => f.key === 'atelier-sepia'));
+}
+function studyTerminal(structure, component, name, accent, includeKey = true) {
+  const mode = studyMode(name);
+  const terminal = document.createElement('div');
+  terminal.className = 'terminal'; terminal.style.cssText = styles(mode, accent[name]);
+  if (!includeKey) {
+    terminal.tabIndex = 0;
+    terminal.setAttribute('role', 'region');
+    terminal.setAttribute('aria-label', `${structure.id} Select specimen, ${name} reference surface`);
+  }
+  const label = document.createElement('div'); label.className = 'variant-label';
+  label.textContent = `${name} reference ${mode.surface} · accent ${accent[name]}`;
+  terminal.append(label);
+  const pre = document.createElement('pre');
+  for (const item of structure.specimens[component]) {
+    const row = document.createElement('span');
+    row.className = `study-line ${item.role === 'text' ? '' : item.role}${item.selected ? ' selected' : ''}`;
+    // Enclosure borders remain outside the filled selection, as in structures.html.
+    if (item.selected && ['box', 'round', 'double'].includes(structure.id)) {
+      row.classList.remove('selected');
+      row.append(document.createTextNode(item.text.slice(0, 2)));
+      const selection = document.createElement('span'); selection.className = 'study-selection';
+      selection.textContent = item.text.slice(2, -1);
+      row.append(selection, document.createTextNode(item.text.slice(-1)));
+    } else row.textContent = item.text || '\u00a0';
+    pre.append(row);
+  }
+  terminal.append(pre);
+  if (includeKey) {
+    const key = document.createElement('div'); key.style.marginTop = '12px';
+    key.innerHTML = '<div class="row focused"><span class="marker">›</span> <span class="check">✓</span> focused + checked</div><div class="row">&nbsp; <span class="check">✓</span> checked only</div>';
+    terminal.append(key);
+  }
+  return terminal;
+}
+function studyAudit(name) {
+  const m = studyMode(name);
+  const pairs = [['Text', m.fg, m.surface], ['Muted / rule', m.muted, m.surface], ['Success', m.success, m.surface], ['Warning', m.warning, m.surface], ['Error', m.error, m.surface], ['State key text', m.fg, m.highlight], ...studyAccents.flatMap(a => [[`${a.name} accent`, a[name], m.surface], [`${a.name} state key`, a[name], m.highlight], [`${a.name} reverse selection`, m.surface, a[name]]])];
+  return `<div class="audit"><strong>${name} reference · 4.5:1 normal-text target</strong><table><thead><tr><th scope="col">Role</th><th scope="col">Foreground</th><th scope="col">Background</th><th scope="col">Ratio</th></tr></thead><tbody>${pairs.map(([label, fg, bg]) => { const ratio = contrast(fg, bg); return `<tr><th scope="row">${label}</th><td>${fg}</td><td>${bg}</td><td class="${ratio < 4.5 ? 'fail' : ''}">${ratio.toFixed(2)}:1${ratio < 4.5 ? ' (below target)' : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+}
+function renderStudy() {
+  const structure = window.STRUCTURES.find(s => s.id === studyStructure.value);
+  document.getElementById('study-description').textContent = `${structure.title}: ${structure.description} Atlas examples: ${structure.themes.map(t => t.name).join(', ')}. Showing ${studyComponent.value}; choose an accent visually, not as a final assignment.`;
+  const grid = document.getElementById('study-grid'); grid.replaceChildren();
+  for (const accent of studyAccents) {
+    const card = document.createElement('section'); card.className = 'study-card';
+    const heading = document.createElement('h3'); heading.textContent = `${accent.name}${structure.id === 'rail' && accent.name === 'Blue' ? ' · proposed Rail starting point' : ''}`;
+    card.append(heading, studyTerminal(structure, studyComponent.value, 'dark', accent), studyTerminal(structure, studyComponent.value, 'light', accent));
+    grid.append(card);
+  }
+  document.getElementById('study-audit').innerHTML = studyAudit('dark') + studyAudit('light');
+}
+// Provisional structure-to-accent directions from the adaptive theme design.
+const assignments = {
+  rail: 'Blue', ascii: 'Blue', double: 'Blue', chevron: 'Blue', colon: 'Blue',
+  box: 'Rust', bracket: 'Rust', block: 'Rust',
+  branch: 'Plum', round: 'Plum', line: 'Plum',
+  minimal: 'Sepia', plain: 'Sepia', form: 'Sepia', ledger: 'Sepia'
+};
+function renderOverview() {
+  const grid = document.getElementById('overview-grid');
+  for (const structure of window.STRUCTURES) {
+    const accent = studyAccents.find(a => a.name === assignments[structure.id]);
+    const card = document.createElement('section'); card.className = 'overview-card';
+    const heading = document.createElement('h3');
+    heading.textContent = `${structure.id[0].toUpperCase() + structure.id.slice(1)} · ${accent.name === 'Blue' ? 'Ink blue' : accent.name}`;
+    card.append(heading, studyTerminal(structure, 'Select', 'light', accent, false), studyTerminal(structure, 'Select', 'dark', accent, false));
+    grid.append(card);
+  }
+}
+renderOverview();
+studyStructure.addEventListener('change', renderStudy);
+studyComponent.addEventListener('change', renderStudy);
+renderStudy();
+</script>
+</body>
+</html>

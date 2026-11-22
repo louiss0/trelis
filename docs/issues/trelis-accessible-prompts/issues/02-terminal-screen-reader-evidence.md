@@ -11,7 +11,7 @@ Parent: [Trelis accessible prompt interaction specification](../map.md)
 - Worker: ec184a0a-fecb-40b
 - Research branch: research/trelis-screen-readers
 - Worktree: C:/Users/bvlou/projects/trelis-research-screen-readers
-- Completed report: [Screen-reader access and nonvisual terminal interaction](../../../../doc/research/trelis-screen-readers.md).
+- Completed report: [Screen-reader access and nonvisual terminal interaction](../../../../assets/research/trelis-screen-readers.md).
 - Exact report commit: 23530e5affa2c4022d9f764bd9ea56cfd9d14833 on research/trelis-screen-readers. Parent saved the complete worker report and committed only that report; research worktree is clean.
 
 ## Answer

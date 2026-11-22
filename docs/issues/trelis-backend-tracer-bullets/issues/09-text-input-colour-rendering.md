@@ -22,4 +22,4 @@
 
 ## Answer
 
-Implemented in commit `7793315` and refreshed against resize integration in `430b32a`. Public immutable `TerminalColor`, ten-role `ColorTheme`, and `ColorThemes.terminalDefault` now drive semantic TextInput styling with deterministic RGB/indexed/ANSI16 downgrade rules. Native defaults, nonempty `NO_COLOR`, real redirection and monochrome output remain hard restrictions; backgrounds are limited to owned cells and styles are restored. Evidence is recorded in `doc/evidence/trelis-backend/09-text-input-colour-rendering.md`.
+Implemented in commit `7793315` and refreshed against resize integration in `430b32a`. Public immutable `TerminalColor`, ten-role `ColorTheme`, and `ColorThemes.terminalDefault` now drive semantic TextInput styling with deterministic RGB/indexed/ANSI16 downgrade rules. Native defaults, nonempty `NO_COLOR`, real redirection and monochrome output remain hard restrictions; backgrounds are limited to owned cells and styles are restored. Evidence is recorded in `assets/evidence/trelis-backend/09-text-input-colour-rendering.md`.

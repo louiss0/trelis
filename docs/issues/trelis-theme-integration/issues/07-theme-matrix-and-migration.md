@@ -62,13 +62,13 @@ unchanged library:
   `copyWith` immutability, whole-palette replacement, terminal-native defaults and
   an alternate palette across structurally different layouts with no neighbour
   leak.
-- `doc/evidence/trelis-theme/migration.md` — migration guidance: Trelis name with
+- `assets/evidence/trelis-theme/migration.md` — migration guidance: Trelis name with
   unchanged package/import names, unchanged direct-constructor presentation,
   compact help and warning visibility, palette/default changes, profile/session
   options, explicit synthetic geometry for scripted rich output, the preserved
   value types and cancellation/interruption/EOF/unavailable distinctions, and the
   out-of-scope accessibility and universal-width qualifiers.
-- `doc/evidence/trelis-theme/theme-07-matrix-evidence.md` — the evidence record and
+- `assets/evidence/trelis-theme/theme-07-matrix-evidence.md` — the evidence record and
   the explicit **accepted** theme verdict with revision-linked artifacts, plus the
   recorded limitations and one pre-existing, unrelated documentation-link
   condition.
@@ -85,7 +85,7 @@ unchanged library:
 - `dart run tool/check_doc_links.dart` → reports 34 broken links that all
   target pre-existing, unmigrated documentation; every target is absent at the
   integration base, and the two documents added here introduce none (see
-  `doc/evidence/trelis-theme/theme-07-matrix-evidence.md`, section 6).
+  `assets/evidence/trelis-theme/theme-07-matrix-evidence.md`, section 6).
 - `git status` → clean.
 
 **Answer.** All acceptance bullets are satisfied. All fifteen namespaces expose

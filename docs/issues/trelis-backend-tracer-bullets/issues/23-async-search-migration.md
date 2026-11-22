@@ -48,7 +48,7 @@ registration"), `tree_order.dart`'s `_ChoiceRow` and stage-led tree/order help,
 and this ticket's live help additions (`liveHelpText`, `liveLinearHelpText`,
 `onHelpDismissed`, `onHelpVisibilityChanged`). Unrelated root work was left
 alone: `GLOSSARY.md` stays modified and the untracked `AGENTS.md`, `docs/`,
-`docs/issues/` and `doc/research/` entries stay uncommitted.
+`docs/issues/` and `assets/research/` entries stay uncommitted.
 
 Re-run in the integration worktree at `13b524b`: the six async/search/palette/
 timezone/native-fixture suites passed 111 tests (reproducing the ticket figure),
@@ -128,7 +128,7 @@ changed files are formatting-clean and the documentation-link check passed 154
 links in 51 files. Asynchronous scenarios release requests through
 `test/support/async_search_fixture.dart` instead of sleeping; the only wall-clock
 wait left is the shared editor's own 80 ms lone-Escape disambiguation timer. Evidence and limitations are recorded in
-`doc/evidence/trelis-backend/23-async-search-migration.md`; native PTY, visible
+`assets/evidence/trelis-backend/23-async-search-migration.md`; native PTY, visible
 GUI/NVDA, Linux/macOS CI, alternate-screen modal help, short-screen resize and
 final-gate verification remain outstanding, help summarises protected reasons as
 a count for large result sets, and region-level isolation of a failed writer

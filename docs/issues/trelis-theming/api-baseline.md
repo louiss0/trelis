@@ -379,6 +379,6 @@ static MultiSpinner multiSpinner(
 ## Inventory boundary and resolution status
 
 - **38 actual implemented classes:** 14 core prompts + 4 suggestion/choice parts + 10 specialized inputs + 2 filesystem pickers + 2 key capture prompts + 2 duration/date prompts + 4 feedback classes.
-- **`StepperForm` is prototype-only and excluded.** This distinction is explicitly documented in `doc/theme-components.md:59` and `docs/issues/trelis-theming/issues/03-static-theme-api-and-colours.md:118`.
+- **`StepperForm` is prototype-only and excluded.** This distinction is explicitly documented in `assets/theme-components.md:59` and `docs/issues/trelis-theming/issues/03-static-theme-api-and-colours.md:118`.
 - No proposed presentation parameters are included.
 - No files were edited and no tests were run.

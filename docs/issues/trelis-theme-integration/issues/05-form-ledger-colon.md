@@ -62,7 +62,7 @@ typed-prefix grammar in every applicable component, tests and evidence.
   export inventory update and the heading vocabulary invariant that now covers
   the seven decorated structures.
 - Evidence document at
-  `doc/evidence/trelis-theme/theme-05-form-ledger-colon-evidence.md`.
+  `assets/evidence/trelis-theme/theme-05-form-ledger-colon-evidence.md`.
 
 **Verification at `HEAD` before merge:**
 

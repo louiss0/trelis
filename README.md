@@ -98,20 +98,22 @@ literally, and double an initial backslash to enter one. Identified bracketed
 paste is literal; unframed paste cannot be distinguished from typing. Paste
 frames are bounded to 4096 UTF-16 code units and oversized frames are rejected
 as a unit. Character limits count grapheme clusters. Accessibility is not
-qualified by the automated tests; see [the editable probe](doc/editable-probe.md)
+qualified by the automated tests; see [the editable probe](assets/editable-probe.md)
 for evidence and limitations.
 
 ## Visual reference
 
-Open [the 15 prompt structures](example/prototype-themes/structures.html) to
-compare layout grammars, or browse [the 45-theme atlas](example/prototype-themes/index.html).
+Open [the 15 prompt structures](assets/prototype-themes/structures.html) to
+compare layout grammars, or browse [the 45-theme atlas](assets/prototype-themes/index.html).
 The complete folder is retained so the structure page's data, gallery links and
 images work together. These are static visual references, not working prompts.
+The HTML and images live in `assets/`; the Python generator and local server
+live in `tool/`, never in `example/`.
 
 Open the HTML directly, or serve it locally:
 
 ```powershell
-python example/prototype-themes/serve.py
+python tool/serve_theme_atlas.py
 ```
 
 Then visit <http://127.0.0.1:8765/structures.html>.
@@ -128,12 +130,12 @@ patched general-purpose TUI runtime.
 This is not a claim of universal superiority or completed accessibility. Dart
 TUI retains general rendering and stock-model advantages; POSIX execution and
 the whole-library NVDA baseline retain their recorded evidence gates. Read
-[the requirements-based comparison, limitations and archived patch evidence](doc/terminal-backend.md).
+[the requirements-based comparison, limitations and archived patch evidence](assets/terminal-backend.md).
 
 ## Components used to make the themes
 
 The atlas depicts **40 named components** across 45 themes. See the
-[complete component-name inventory](doc/theme-components.md), sourced directly
+[complete component-name inventory](assets/theme-components.md), sourced directly
 from the atlas generator. The structures page compares four of those components
 across fifteen structures; neither inventory is a claim of implemented APIs.
 
@@ -157,9 +159,21 @@ dart test
 Windows native console regressions can also be run with the PowerShell scripts
 in `test/`, including `text_input_windows.ps1`.
 
-`dart run example/trelis_example.dart` runs a short interactive flow across
-several components; add `--scripted` to replay it from a fixed stream without a
-terminal, or `--linear` to force sequential interaction.
+## Run one component
+
+`example/` has one folder per structural theme. Each folder contains a file for
+every one of the 38 components, so all **15 × 38 = 570** combinations are
+available. Any file shows exactly **one** component with one structural theme
+and one colour theme:
+
+```powershell
+dart run example/rail/text_input.dart
+```
+
+`dart run example/prompt.dart` is a shortcut for that rail example. Add
+`--scripted` to replay a fixed answer without a terminal. The folder list,
+component list and palette assignments are in
+[example/README.md](example/README.md).
 
 `dart run example/branch_theme_example.dart` replays the internal, unstable
 Branch adaptive-presentation seam for light, dark and explicit palette choices.
@@ -207,7 +221,7 @@ The pre-backend public surface is retained. Direct constructors, generic type
 parameters, callbacks, answer types, linear commands, result outcomes and
 `source: SuppliedAnswer` semantics are unchanged; no package or import was
 renamed. Revalidated against the source inventory in
-[the compatibility evidence](doc/evidence/trelis-backend/30-compatibility-and-contract.md).
+[the compatibility evidence](assets/evidence/trelis-backend/30-compatibility-and-contract.md).
 
 Intentional additive changes since that inventory:
 
@@ -631,7 +645,7 @@ conversion is an independent arithmetic implementation informed by ICU 76.1
 Gregorian year by subtracting 543; it is not an ICU provider or a qualification
 of ICU behavior. The provider is qualified only for its stated bounded profiles,
 and accessibility qualification has not been performed. See
-[DateInput evidence](doc/date-input-evidence.md).
+[DateInput evidence](assets/date-input-evidence.md).
 
 ## CronInput
 
@@ -655,7 +669,7 @@ Ctrl+C interrupts; Escape in rich mode or `/cancel` in linear cancels the previe
 and returns to the retained expression, where a second cancellation ends the
 prompt. A preview is civil-time matching, not scheduler execution. Provider
 identity, work bounds and the unqualified dialect gaps are recorded in
-[doc/cron-preview-evidence.md](doc/cron-preview-evidence.md).
+[assets/cron-preview-evidence.md](assets/cron-preview-evidence.md).
 
 `CronInput` runs on the shared backend: it accepts `terminal`, `outputProfile`
 and `session`, resolves the invocation/source/legacy profile precedence, refuses
@@ -670,7 +684,7 @@ shape, the 4096-code-unit limit, the accepted syntax and the bounded
 matching-preview limitation in the same block, and names the review actions.
 This is scripted public-behavior evidence only; native PTY, CI and visible
 terminal probes remain outstanding. See
-[the cron migration evidence](doc/evidence/trelis-backend/28-cron-workflow-migration.md).
+[the cron migration evidence](assets/evidence/trelis-backend/28-cron-workflow-migration.md).
 
 ### TimeInput
 

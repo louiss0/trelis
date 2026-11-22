@@ -50,7 +50,7 @@ every applicable component, tests and evidence.
   `test/theme_enclosure_framing_test.dart`, plus the barrel export inventory
   update.
 - Evidence document at
-  `doc/evidence/trelis-theme/theme-03-enclosure-themes-evidence.md`.
+  `assets/evidence/trelis-theme/theme-03-enclosure-themes-evidence.md`.
 
 **Verification at `HEAD` before merge:**
 

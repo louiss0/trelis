@@ -21,4 +21,4 @@
 
 ## Answer
 
-Implemented on `ticket/backend-04-native-capabilities` in commit `02a1aa9`. Native and public TextInput scenarios now resolve output conservatively, restore supported terminal state on all exercised exits, and preserve both operation and restoration failures through `TerminalRestorationException`. Evidence is recorded in `doc/evidence/trelis-backend/ticket-04-native-capabilities.md`. Linux/macOS native CI, GUI/NVDA evidence, NO_COLOR-specific native coverage and injected native dimension-query failures remain assigned to later gate work.
+Implemented on `ticket/backend-04-native-capabilities` in commit `02a1aa9`. Native and public TextInput scenarios now resolve output conservatively, restore supported terminal state on all exercised exits, and preserve both operation and restoration failures through `TerminalRestorationException`. Evidence is recorded in `assets/evidence/trelis-backend/ticket-04-native-capabilities.md`. Linux/macOS native CI, GUI/NVDA evidence, NO_COLOR-specific native coverage and injected native dimension-query failures remain assigned to later gate work.
