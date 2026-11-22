@@ -139,6 +139,115 @@ void main() {
     },
   );
 
+  test('native output resolves a declared 256-colour terminal', () {
+    final profile = TerminalEnvironment.nativeProfile(
+      hasTerminal: true,
+      supportsRich: true,
+      term: 'xterm-256color',
+    );
+
+    expect(profile.colorDepth, ColorDepth.indexed256);
+  });
+
+  test(
+    'native output resolves observed colour support independently of rich',
+    () {
+      for (final rich in [false, true]) {
+        for (final observation in [
+          (
+            term: '',
+            colorTerm: 'truecolor',
+            wt: false,
+            ansi: false,
+            depth: ColorDepth.rgb,
+          ),
+          (
+            term: '',
+            colorTerm: '24bit',
+            wt: false,
+            ansi: false,
+            depth: ColorDepth.rgb,
+          ),
+          (
+            term: '',
+            colorTerm: '',
+            wt: true,
+            ansi: false,
+            depth: ColorDepth.rgb,
+          ),
+          (
+            term: 'xterm-direct',
+            colorTerm: '',
+            wt: false,
+            ansi: false,
+            depth: ColorDepth.rgb,
+          ),
+          (
+            term: 'xterm-256color',
+            colorTerm: 'truecolor',
+            wt: false,
+            ansi: false,
+            depth: ColorDepth.rgb,
+          ),
+          (
+            term: 'xterm',
+            colorTerm: '',
+            wt: false,
+            ansi: false,
+            depth: ColorDepth.ansi16,
+          ),
+          (
+            term: '',
+            colorTerm: '',
+            wt: false,
+            ansi: true,
+            depth: ColorDepth.ansi16,
+          ),
+          (
+            term: 'unknown',
+            colorTerm: '',
+            wt: false,
+            ansi: false,
+            depth: ColorDepth.none,
+          ),
+        ]) {
+          final profile = TerminalEnvironment.nativeProfile(
+            hasTerminal: true,
+            supportsRich: rich,
+            term: observation.term,
+            colorTerm: observation.colorTerm,
+            windowsTerminal: observation.wt,
+            supportsAnsiEscapes: observation.ansi,
+          );
+          expect(
+            profile.colorDepth,
+            observation.depth,
+            reason: '$observation rich=$rich',
+          );
+        }
+      }
+    },
+  );
+
+  test('native colour observations cannot override output restrictions', () {
+    for (final restriction in [
+      (hasTerminal: false, term: 'xterm-256color', disabled: false),
+      (hasTerminal: true, term: 'dumb', disabled: false),
+      (hasTerminal: true, term: 'xterm-256color', disabled: true),
+    ]) {
+      final profile = TerminalEnvironment.nativeProfile(
+        hasTerminal: restriction.hasTerminal,
+        supportsRich: true,
+        term: restriction.term,
+        colorTerm: 'truecolor',
+        windowsTerminal: true,
+        supportsAnsiEscapes: true,
+        colorDisabled: restriction.disabled,
+      );
+      expect(profile.colorDepth, ColorDepth.none);
+    }
+  });
+
   test('redirected native output declares no unsuitable capabilities', () {
     final profile = TerminalEnvironment.nativeProfile(
       hasTerminal: false,

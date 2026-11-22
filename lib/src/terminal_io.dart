@@ -83,17 +83,41 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
   /// A redirected or otherwise non-interactive output does not gain cursor,
   /// geometry, alternate-screen or colour capability from a caller's rich
   /// hint. Geometry and terminal-style observations are hints; they never
-  /// enlarge an output that reports itself as redirected.
+  /// enlarge an output that reports itself as redirected. Colour observations
+  /// are independent of cursor support: COLORTERM/Windows Terminal can declare
+  /// RGB, TERM can declare indexed or basic ANSI colour, and an ANSI-capable
+  /// stream supplies only the basic palette. Unknown output remains colourless.
   static OutputProfile nativeProfile({
     required bool hasTerminal,
     required bool supportsRich,
     String term = '',
+    String colorTerm = '',
+    bool windowsTerminal = false,
+    bool supportsAnsiEscapes = false,
     int? columns,
     int? rows,
     bool colorDisabled = false,
   }) {
     final capable = hasTerminal && term != 'dumb';
     final rich = capable && supportsRich;
+    final declaredColor = colorTerm.toLowerCase();
+    final colorDepth = switch (term) {
+      _ when !capable || colorDisabled => ColorDepth.none,
+      _
+          when windowsTerminal ||
+              declaredColor == 'truecolor' ||
+              declaredColor == '24bit' ||
+              term.endsWith('-direct') ||
+              term.endsWith('-truecolor') =>
+        ColorDepth.rgb,
+      _ when term.contains('256color') => ColorDepth.indexed256,
+      _
+          when supportsAnsiEscapes ||
+              RegExp(r'^(xterm|screen|tmux|rxvt|linux|ansi|vt100|cygwin)(-|$)')
+                  .hasMatch(term) =>
+        ColorDepth.ansi16,
+      _ => ColorDepth.none,
+    };
     final usableGeometry =
         hasTerminal &&
         columns != null &&
@@ -113,9 +137,7 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
       geometry: usableGeometry
           ? OutputGeometry.fixed(columns: columns, rows: rows)
           : const OutputGeometry.automatic(),
-      colorDepth: capable && !colorDisabled
-          ? ColorDepth.automatic
-          : ColorDepth.none,
+      colorDepth: colorDepth,
     );
   }
 
@@ -148,6 +170,9 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
       supportsRich:
           supportsRich ?? (output.hasTerminal && selectedTerm != 'dumb'),
       term: selectedTerm,
+      colorTerm: observations['COLORTERM'] ?? '',
+      windowsTerminal: observations['WT_SESSION']?.isNotEmpty == true,
+      supportsAnsiEscapes: output.supportsAnsiEscapes,
       columns: columns,
       rows: rows,
       colorDisabled:

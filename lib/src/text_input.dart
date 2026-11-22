@@ -3532,6 +3532,9 @@ OutputProfile _nativeOutputProfile(Stdout output, bool supportsRich) {
     hasTerminal: output.hasTerminal,
     supportsRich: supportsRich,
     term: term,
+    colorTerm: Platform.environment['COLORTERM'] ?? '',
+    windowsTerminal: Platform.environment['WT_SESSION']?.isNotEmpty == true,
+    supportsAnsiEscapes: output.supportsAnsiEscapes,
     columns: columns,
     rows: rows,
     colorDisabled:
