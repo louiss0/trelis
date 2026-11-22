@@ -29,9 +29,11 @@ typedef WindowsReaderNativeCall = int? Function(Pointer<Uint32> value);
 /// Supplies the native binding, or null when no callable binding exists.
 typedef WindowsReaderBindingLookup = WindowsReaderBinding? Function();
 
-/// Win64 has one native calling convention, which matches Dart's FFI C ABI.
-/// The Win32 x86 stdcall convention cannot be expressed by this SDK's FFI
-/// API, so x86 is treated as a missing binding rather than called unsafely.
+/// Windows x64 and ARM64 each have one native calling convention, which
+/// matches Dart's FFI C ABI. The Win32 IA32 stdcall convention cannot be
+/// expressed by this SDK's FFI API, so 32-bit x86 is treated as a missing
+/// binding rather than called unsafely. This binding only reads one
+/// parameter; it does not claim to be a native screen-reader.
 typedef _SystemParametersInfoNative = Int32 Function(
   Uint32 uiAction,
   Uint32 uiParam,
@@ -84,9 +86,13 @@ final class WindowsReaderBinding {
   ScreenReaderObservation read() {
     Pointer<Uint32>? value;
     try {
-      value = allocate<Uint32>(sizeOf<Uint32>());
+      value = allocate<Uint32>();
       value.value = 0;
-      if (call(value) != 1) return ScreenReaderObservation.unknown;
+      // A Win32 BOOL success is any nonzero value, not only 1.
+      final succeeded = call(value);
+      if (succeeded == null || succeeded == 0) {
+        return ScreenReaderObservation.unknown;
+      }
       return switch (value.value) {
         1 => ScreenReaderObservation.positive,
         0 => ScreenReaderObservation.negative,

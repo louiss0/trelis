@@ -53,7 +53,7 @@ final class ThemeTreeSelectPrompt<T> {
     T? selectedValue,
     this.isCurrent,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     StateGlyphs glyphs = StateGlyphs.unicode,
@@ -63,7 +63,8 @@ final class ThemeTreeSelectPrompt<T> {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : nodes = List.unmodifiable(nodes),
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       nodes = List.unmodifiable(nodes),
        _nodeCount = _countNodes(nodes),
        _config = ChoicePresentationConfig(
          glyphs: glyphs,
@@ -193,7 +194,7 @@ final class ThemeOrderPrompt<T> {
     required TerminalEnvironment io,
     ThemeSession? session,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     StateGlyphs glyphs = StateGlyphs.unicode,
@@ -202,7 +203,8 @@ final class ThemeOrderPrompt<T> {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : choices = List.unmodifiable(choices),
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(choices),
        _config = ChoicePresentationConfig(
          glyphs: glyphs,
          restrictions: {
@@ -287,7 +289,7 @@ final class ThemeAutocompletePrompt {
     this.validate,
     this.maxLength,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     StateGlyphs glyphs = StateGlyphs.unicode,
@@ -296,7 +298,8 @@ final class ThemeAutocompletePrompt {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : _config = ChoicePresentationConfig(glyphs: glyphs, showReference: false),
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       _config = ChoicePresentationConfig(glyphs: glyphs, showReference: false),
        _owner =
            session ??
            ThemeSession(
@@ -387,7 +390,7 @@ final class ThemeSearchPrompt<T> {
     this.defaultValue,
     T? selectedValue,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     StateGlyphs glyphs = StateGlyphs.unicode,
@@ -396,7 +399,8 @@ final class ThemeSearchPrompt<T> {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : choices = List.unmodifiable(choices),
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(choices),
        _config = ChoicePresentationConfig(
          glyphs: glyphs,
          selectedReference: _referenceOf(choices, selectedValue),

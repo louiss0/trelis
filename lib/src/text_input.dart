@@ -465,6 +465,7 @@ final class TerminalSession {
     this._userPreference,
     this._applicationPreference,
     this._outputProfile,
+    this._onWriterFailure,
   ) {
     _writer = SharedOutputCoordinator(
       _output,
@@ -479,6 +480,7 @@ final class TerminalSession {
   final PromptMode? _userPreference;
   final PromptMode? _applicationPreference;
   final OutputProfile? _outputProfile;
+  final void Function(Object error, StackTrace stackTrace)? _onWriterFailure;
   final SharedReaderCoordinator _readers = SharedReaderCoordinator();
   final List<TerminalSessionFeedbackRegion> _feedback = [];
   final Map<int, int> _liveGenerations = {};
@@ -569,6 +571,12 @@ final class TerminalSession {
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
     _readers.retire(error, stackTrace);
+    // Live participants must stop too: a caller that only ever saw a writer
+    // failure cannot be relied on to finish its controls. The owner callback
+    // must never mask the original writer error.
+    try {
+      _onWriterFailure?.call(error, stackTrace);
+    } catch (_) {}
   }
 
   /// Returns the session-owned reader for [input].
@@ -915,6 +923,7 @@ final class TerminalSession {
     PromptMode? userPreference,
     PromptMode? applicationPreference,
     OutputProfile? outputProfile,
+    void Function(Object error, StackTrace stackTrace)? onWriterFailure,
   }) async {
     if (source != null && terminal != null) {
       throw ArgumentError('Specify either source or terminal, not both.');
@@ -937,6 +946,7 @@ final class TerminalSession {
       userPreference,
       applicationPreference,
       outputProfile,
+      onWriterFailure,
     );
     // Replace the temporary claim with the handle exposed to the callback.
     _screenOwners[selectedSink as Object] = session;

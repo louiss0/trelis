@@ -32,25 +32,22 @@ export 'src/prompt_structure.dart';
 export 'src/terminal_io.dart';
 
 // Immutable colour and interaction inputs, observations and results.
-// Resolver functions and the theme session state machine stay internal.
+// Resolver functions, resolver fact inputs and the theme session state
+// machine stay internal; hint observations arrive through theme
+// constructor parameters instead.
 export 'src/color_resolution.dart'
     show
         BackgroundObservation,
         BackgroundPreference,
         BackgroundVariant,
-        ColorDetectionFacts,
         ColorPreferences,
         ColorRoleOverrides,
         ComponentColors,
         ResolvedColors;
 export 'src/interaction_resolution.dart'
     show
-        InteractionFacts,
         InteractionPreferences,
-        InteractionResolution,
         ResolvedInteraction,
-        InteractionConflict,
-        InteractionUnavailable,
         ScreenReaderObservation,
         ScreenReaderPreference,
         TerminalLocality;

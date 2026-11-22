@@ -1,4 +1,4 @@
-param([string]$Scenario = 'repeat', [string]$Report = (Join-Path $env:TEMP 'prompty-probe-report.txt'))
+param([string]$Scenario = 'repeat', [switch]$PublicApi, [string]$Report = (Join-Path $env:TEMP 'prompty-probe-report.txt'))
 $ErrorActionPreference = 'Stop'
 Remove-Item $Report -Force -ErrorAction SilentlyContinue
 Add-Type @"
@@ -74,7 +74,8 @@ $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
 $redirect = if ($Scenario -eq 'redirected') { "2> '$file.stderr'" } else { '' }
 $term = if ($Scenario -like 'dumb-*') { "`$env:TERM='dumb';" } else { "" }
-$line = "$term Set-Location '$root'; while (!(Test-Path '$file.ready')) { Start-Sleep -Milliseconds 50 }; & '$dart' run test/text_input_native_app.dart $Scenario '$file.trigger' $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$appScenario = if ($PublicApi) { "public-$Scenario" } else { $Scenario }
+$line = "$term Set-Location '$root'; while (!(Test-Path '$file.ready')) { Start-Sleep -Milliseconds 50 }; & '$dart' run test/text_input_native_app.dart $appScenario '$file.trigger' $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -166,7 +167,7 @@ try {
    if($edited -notmatch "^[0-9]+:${row}:> <[0-9]+8X(?:9|>)$"){throw "long-line insertion left stale or wrapped text: $edited"}
    [NativeProbe]::Text("`r")
   }
-  'repeat' { [NativeProbe]::Text("`r`r") }
+  'repeat' { if($PublicApi){[NativeProbe]::Text("`r`r`r")}else{[NativeProbe]::Text("`r`r")} }
   'error' { [NativeProbe]::Text("`r`r") }
   'eof' { [NativeProbe]::Key([char]26,90,8) }
   'escape' { [NativeProbe]::Key([char]27,27,0) }
@@ -224,6 +225,7 @@ try {
   if ($transcript.Contains([char]27) -or !$transcript.Contains('Name')) { throw 'unstable redirected output' }
  }
  if($before -ne $after){throw "console state changed: $before -> $after"}
- Set-Content $Report "text input $Scenario PASS result=$actual state=$before -> $during -> $after"
+ $pubMarker = if ($PublicApi) { ' public' } else { '' }
+ Set-Content $Report "text input$pubMarker $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "text input $Scenario FAIL $_"; throw }
 finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.ready","$file.done","$file.stderr","$file.trigger" -Force -ErrorAction SilentlyContinue }

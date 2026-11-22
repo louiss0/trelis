@@ -207,10 +207,10 @@ final class ThemeFeedbackTracer {
     FeedbackClock? clock,
   }) async {
     final renderer = _renderer();
-    late final Progress component;
+    Progress? component;
     final handle = await _owner.startFeedback((period) {
       renderer.attach(period);
-      component = Progress.themed(
+      final started = Progress.themed(
         label,
         total: total,
         interval: interval,
@@ -218,13 +218,15 @@ final class ThemeFeedbackTracer {
         clock: clock,
         themeRenderer: renderer,
       );
-      component.start(session: period.session);
-    }, stop: () => component.dispose());
-    return ThemeFeedbackControl._(handle, component, (outcome, detail) {
+      component = started;
+      started.start(session: period.session);
+    }, stop: () => component?.dispose());
+    final progress = component!;
+    return ThemeFeedbackControl._(handle, progress, (outcome, detail) {
       if (outcome == null) {
-        component.dispose();
+        progress.dispose();
       } else {
-        component.finish(outcome, detail: detail);
+        progress.finish(outcome, detail: detail);
       }
     });
   }
@@ -232,17 +234,19 @@ final class ThemeFeedbackTracer {
   /// Starts activity whose total work is unknown.
   Future<ThemeFeedbackControl<Spinner>> spinner(String label) async {
     final renderer = _renderer();
-    late final Spinner component;
+    Spinner? component;
     final handle = await _owner.startFeedback((period) {
       renderer.attach(period);
-      component = Spinner.themed(label, themeRenderer: renderer);
-      component.start(session: period.session);
-    }, stop: () => component.dispose());
-    return ThemeFeedbackControl._(handle, component, (outcome, detail) {
+      final started = Spinner.themed(label, themeRenderer: renderer);
+      component = started;
+      started.start(session: period.session);
+    }, stop: () => component?.dispose());
+    final spinner = component!;
+    return ThemeFeedbackControl._(handle, spinner, (outcome, detail) {
       if (outcome == null) {
-        component.dispose();
+        spinner.dispose();
       } else {
-        component.finish(outcome, detail: detail);
+        spinner.finish(outcome, detail: detail);
       }
     });
   }
@@ -255,23 +259,25 @@ final class ThemeFeedbackTracer {
   }) async {
     final renderer = _renderer();
     final names = tasks.toList();
-    late final MultiSpinner component;
+    MultiSpinner? component;
     final handle = await _owner.startFeedback((period) {
       renderer.attach(period);
-      component = MultiSpinner.themed(
+      final started = MultiSpinner.themed(
         tasks,
         interval: interval,
         clock: clock,
         themeRenderer: renderer,
       );
-      component.start(session: period.session);
-    }, stop: () => component.dispose());
-    return ThemeFeedbackControl._(handle, component, (outcome, detail) {
+      component = started;
+      started.start(session: period.session);
+    }, stop: () => component?.dispose());
+    final multiSpinner = component!;
+    return ThemeFeedbackControl._(handle, multiSpinner, (outcome, detail) {
       if (outcome == null) {
-        component.dispose();
+        multiSpinner.dispose();
       } else {
         for (final task in names) {
-          component.finishTask(task, outcome, detail: detail);
+          multiSpinner.finishTask(task, outcome, detail: detail);
         }
       }
     });

@@ -67,3 +67,97 @@ rendering, and screen-reader qualification remain with the independent release
 gates (37-42). The default native theme environment is a best-effort
 stdin/stdout binding; custom environments are the tested seam. Scripted I/O is
 documented as non-equivalent to supplied answers.
+
+2026-11-22 - Consolidated review fixes on detached worktree prompty-32-35 at
+389fe3c:
+
+- `TerminalEnvironment.nativeThemeDefault({Stdout? output})` now returns a
+  native marker environment: prompts run through the existing
+  handle-preserving console transport (`_terminal`/`_promptOnNativeConsole`,
+  `_consoleInput`/`_posixInput`, per-prompt acquire/restore and resize/paste
+  handling) instead of a Dart stdin subscription. `usesNativeConsole` is set
+  only by this factory and cannot be selected by scripted or custom
+  environments; the marker stream is never subscribed and the outer lease is a
+  no-op by design. The profile getter re-observes the selected output on each
+  use. The session background query remains honestly unavailable on the
+  marker since it has no selected input; no competing native reader was added.
+- All 34 public interactive factory bodies now construct the component at
+  public creation via a `.prompt` tearoff, so configuration - including
+  mutable `choices`, `defaultValues`, `supplementaryHelp`, `maskedInput`
+  templates and `multiSpinner` task names - is captured once. 8 component
+  constructors and the formatted-prompt create seam now snapshot
+  `supplementaryHelp` with `List.unmodifiable`; `maskedInput` templates and
+  `timezoneSelect` unavailable collections are snapshotted at the public
+  factory boundary. Live feedback components still build on start; their
+  names and configuration are captured at creation.
+- Passive `COLORFGBG` advisory wired into `_defaultColorFacts`: only the exact
+  2- or 3-integer form is accepted; final `0` reports dark, `7`/`15` light;
+  custom ANSI palette indices are not modelled and stay unavailable. Explicit
+  `ColorPreferences.background` and the bounded query take precedence;
+  `NO_COLOR` still strips colour.
+- Removed the unreachable duplicate `ThemeSessionColorLayering` extension and
+  removed `InteractionFacts`, `InteractionResolution`, `InteractionConflict`,
+  `InteractionUnavailable` and `ColorDetectionFacts` from the public barrel;
+  `InteractionPreferences`, `ResolvedInteraction` and the hint observation
+  types remain.
+- `tool/check_public_api.dart` now analyses machine format and requires each
+  case's expected diagnostic codes. Negative snippets are one hidden name per
+  case: the 38 legacy concrete component classes, internal Theme* wrappers,
+  the 5 removed resolver fact/outcome types and the hidden resolver
+  functions, plus split feedback present/start configuration cases
+  (UNDEFINED_NAMED_PARAMETER), theme_close (UNDEFINED_METHOD) and per-
+  parameter invocation rejection at the `.prompt()` boundary.
+- Writer failures on the shared output path now retire all live feedback
+  participants in the active period and fail prompts parked on input with the
+  original error, via an internal `onWriterFailure` callback wired to
+  `_ThemePeriod.writerFailed`; feedback `finish` publishes its cleanup
+  future before running end/stop so synchronous reentrant calls share the
+  same outcome, and a failed `startFeedback` still stops partially
+  initialised producers.
+
+Validation today (Windows 10.0.26200.9974, Dart 3.13.2 windows_x64):
+
+- `dart analyze`: no issues found.
+- `dart test test/public_theme_instance_test.dart -r expanded`: 20 passed
+  (new capture-snapshot, maskedInput template capture, COLORFGBG and writer-
+  failure lifecycle tests, including a reentrant stop during a finish write
+  failure sharing the same cleanup outcome; passive hint sensitivity-checked
+  by temporarily unwiring `passiveBackground`, which failed only the light
+  case).
+- `dart test test/theme_session_feedback_lifecycle_test.dart
+  test/theme_session_coordinated_feedback_test.dart -r expanded`: 23 passed.
+- `dart test test/theme_session_cleanup_test.dart -r expanded`: 6 passed.
+- `dart test test/windows_reader_hint_test.dart -r expanded`: 6 passed.
+- `dart run tool/check_public_api.dart`: positive fixture ok; every negative
+  case rejected with its expected diagnostic code (per-name hidden inventory
+  cases included).
+- `python tool/check_generated_diffs.py`: ok (43 targets).
+- Native public routes via `test/text_input_windows.ps1 -PublicApi`
+  (fixture `_runPublicScenario`, `PlainTheme` on
+  `nativeThemeDefault(output: stderr)`): PASS repeat `alpha,alpha`, error
+  `alpha`, interrupt, eof, redirected, rich `alpha`, help-text-rich `alphXa`,
+  help-password-linear `accepted`, escape `cancel`; console state restored on
+  every run (`503:7:25:1` before and after). After the shared-writer failure
+  callback landed in `TerminalSession`, public repeat and error were re-run
+  and still PASS with state restored.
+- Known limitation: `linear-cursor` fails its harness caret assertion on
+  BOTH the legacy and public routes; that establishes a pre-existing,
+  unresolved harness behavior rather than a proven environmental cause or a
+  cutover regression. The native public API already existed at baseline
+  389fe3c - only the new fixture route and output argument were added - so a
+  native pre-fix failure was not recorded; the new public native routes pass
+  as listed above.
+
+Final gate (same platform): `dart test -r expanded` full suite 5543 tests,
+all passed (2:41); `dart analyze` clean; `dart format --set-exit-if-changed .`
+342 files 0 changed; `tool/check_issue_tracker.dart` 177 files ok;
+`tool/check_doc_links.dart` 1201 links ok after repairing a pre-existing
+CP1252 byte sequence present at base 389fe3c in `19-round-plum.md`
+(re-encoded UTF-8 to unblock the checker; unrelated to this change); `check_generated_diffs.py` 43 targets ok;
+`check_public_api.dart` rerun: 74 negative cases all rejected with expected
+codes; `windows_reader_fixture.dart` observation `negative`, binding
+available.
+
+Remaining gaps unchanged: native/screen-reader qualification, real
+NVDA/Windows Terminal evidence and human light/dark visual review remain with
+the independent release gates; the API stays marked unstable.

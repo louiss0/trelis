@@ -104,7 +104,7 @@ final class ThemeBooleanPrompt {
     ThemeSession? session,
     this.initialValue = false,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     InteractionPreferences interaction = const InteractionPreferences(),
@@ -112,7 +112,8 @@ final class ThemeBooleanPrompt {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : _owner = _newOwner(
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       _owner = _newOwner(
          io: io,
          session: session,
          interaction: interaction,
@@ -307,7 +308,7 @@ final class ThemeSingleChoicePrompt<T> {
     required TerminalEnvironment io,
     ThemeSession? session,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     InteractionPreferences interaction = const InteractionPreferences(),
@@ -317,7 +318,8 @@ final class ThemeSingleChoicePrompt<T> {
     NativeHintObservations? hints,
     StateGlyphs glyphs = StateGlyphs.unicode,
     T? selectedValue,
-  }) : choices = List.unmodifiable(options.map((option) => option.choice)),
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(options.map((option) => option.choice)),
        _config = ChoicePresentationConfig(
          glyphs: glyphs,
          style: selectionStyle,
@@ -524,7 +526,7 @@ final class ThemeMultiSelectPrompt<T> {
     StateGlyphs glyphs = StateGlyphs.unicode,
     this.selectionStyle = SingleSelectionStyle.circles,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     ColorPreferences themeColors = const ColorPreferences(),
@@ -532,7 +534,8 @@ final class ThemeMultiSelectPrompt<T> {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : choices = List.unmodifiable(options.map((option) => option.choice)),
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       choices = List.unmodifiable(options.map((option) => option.choice)),
        _defaults = List.unmodifiable([
          for (final option in options)
            if (option.isDefault) option.value,

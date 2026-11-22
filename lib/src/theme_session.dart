@@ -132,7 +132,7 @@ final class ThemeFeedbackHandle {
   final ThemeSession _owner;
   final _Participation _participation;
   final FutureOr<void> Function() _stop;
-  bool _finished = false;
+  Future<void>? _finishing;
 
   /// The handle created when this participant entered the period.
   ThemeSessionHandle get handle => _participation.handle;
@@ -141,9 +141,19 @@ final class ThemeFeedbackHandle {
   TerminalSession get session => handle.session;
 
   /// Ends this participant once, preserving [end]'s primary failure.
-  Future<void> finish([FutureOr<void> Function()? end]) async {
-    if (_finished) return;
-    _finished = true;
+  ///
+  /// Concurrent finish calls - a caller's stop racing the session's
+  /// automatic writer-failure cleanup - share one cleanup outcome.
+  Future<void> finish([FutureOr<void> Function()? end]) {
+    final existing = _finishing;
+    if (existing != null) return existing;
+    final completed = Completer<void>();
+    _finishing = completed.future;
+    _finish(end).then(completed.complete, onError: completed.completeError);
+    return completed.future;
+  }
+
+  Future<void> _finish(FutureOr<void> Function()? end) async {
     Object? primary;
     StackTrace? primaryStackTrace;
 
@@ -156,9 +166,13 @@ final class ThemeFeedbackHandle {
       }
     }
 
-    if (end != null) await capture(end);
-    await capture(_stop);
-    await _owner._releaseAfter(_participation, primary, primaryStackTrace);
+    try {
+      if (end != null) await capture(end);
+      await capture(_stop);
+      await _owner._releaseAfter(_participation, primary, primaryStackTrace);
+    } finally {
+      _participation.period.feedback.remove(this);
+    }
     if (primary != null) {
       Error.throwWithStackTrace(primary!, primaryStackTrace!);
     }
@@ -221,29 +235,6 @@ final class ThemeSessionHandle {
   ) async => await operation(this);
 }
 
-/// Reuses the period's resolved background and output profile while layering
-/// one component's colour override over the palette already chosen by the
-/// owner. Detection decisions are never repeated by a component.
-extension ThemeSessionColorLayering on ThemeSessionHandle {
-  ResolvedColors componentColors(ComponentColors component) {
-    final period = colors;
-    final background = switch (period.background) {
-      BackgroundVariant.light => BackgroundPreference.light,
-      BackgroundVariant.dark => BackgroundPreference.dark,
-    };
-    return resolveColors(
-      facts: ColorDetectionFacts(
-        outputProfile: period.outputProfile,
-        noColor: environment.environment['NO_COLOR'],
-      ),
-      lightDefault: period.palette,
-      darkDefault: period.palette,
-      preferences: ColorPreferences(background: background),
-      component: component,
-    );
-  }
-}
-
 final class _ThemePeriod {
   _ThemePeriod(this.owner, this.interaction, this.state, this.colors);
 
@@ -256,6 +247,10 @@ final class _ThemePeriod {
 
   late final TerminalSession session;
   late final Future<void> done;
+
+  /// Live feedback participants registered for automatic stop when the
+  /// session-owned writer fails.
+  final Set<ThemeFeedbackHandle> feedback = <ThemeFeedbackHandle>{};
   Object? cleanupError;
   StackTrace? cleanupStackTrace;
   int _participants = 0;
@@ -280,6 +275,24 @@ final class _ThemePeriod {
   _Participation participate(ThemeOperationKind kind) {
     _participants++;
     return _Participation(owner, this, ThemeSessionHandle._(this), kind);
+  }
+
+  /// Stops every live feedback participant after the session writer fails.
+  ///
+  /// The period stops accepting work and goes idle immediately; each
+  /// participant's own finish runs its stop action and release once, and any
+  /// cleanup failure is recorded rather than masking the writer error that
+  /// already reached the caller.
+  void writerFailed(Object error, StackTrace stackTrace) {
+    stopAccepting();
+    owner._periodIdle(this);
+    for (final handle in feedback.toList()) {
+      unawaited(
+        handle.finish().catchError((Object failure, StackTrace stack) {
+          owner._recordCleanupFailure(failure, stack);
+        }),
+      );
+    }
   }
 
   /// Marks the period as idle immediately, before cleanup starts.
@@ -455,13 +468,21 @@ final class ThemeSession {
         availability,
         cancellation,
       );
+      final handle = ThemeFeedbackHandle._(this, participation, stop);
+      participation.period.feedback.add(handle);
       try {
         await start(participation.handle);
       } catch (error, stackTrace) {
-        await _releaseAfter(participation, error, stackTrace);
+        // Stop producers even when initialization only partially succeeded,
+        // preserving the start failure alongside any cleanup failure.
+        try {
+          await handle.finish();
+        } catch (cleanupError) {
+          throw TerminalSessionCleanupException(error, cleanupError);
+        }
         Error.throwWithStackTrace(error, stackTrace);
       }
-      return ThemeFeedbackHandle._(this, participation, stop);
+      return handle;
     } on _InitializationUnavailable catch (error) {
       throw ThemeSessionUnavailable(error.reason);
     } on _InitializationCancelled catch (_) {
@@ -690,8 +711,11 @@ final class ThemeSession {
           rethrow;
         }
       },
-      terminal: environment,
+      terminal: environment.usesNativeConsole ? null : environment,
+      output: environment.usesNativeConsole ? environment.output : null,
+      outputProfile: environment.usesNativeConsole ? environment.profile : null,
       mode: resolved.mode,
+      onWriterFailure: period.writerFailed,
     );
     period.done = done;
     done.then(
@@ -834,7 +858,29 @@ final class ThemeSession {
   ColorDetectionFacts get _defaultColorFacts => ColorDetectionFacts(
     outputProfile: environment.profile,
     noColor: environment.environment['NO_COLOR'],
+    passiveBackground: _passiveBackground(environment.environment),
   );
+
+  /// Reads the conservative `COLORFGBG` advisory hint.
+  ///
+  /// Only the exact two- or three-integer form is accepted, and only the
+  /// well-known final values map: `0` reports dark, `7` or `15` report light.
+  /// Every other shape, including custom ANSI palette indices whose luminance
+  /// this implementation does not model, stays unavailable so an explicit
+  /// application choice and the bounded query always win.
+  static BackgroundObservation _passiveBackground(
+    Map<String, String?> environment,
+  ) {
+    final value = environment['COLORFGBG'];
+    if (value == null || !RegExp(r'^\d+;\d+(;\d+)?$').hasMatch(value)) {
+      return BackgroundObservation.unavailable;
+    }
+    return switch (value.split(';').last) {
+      '0' => BackgroundObservation.dark,
+      '7' || '15' => BackgroundObservation.light,
+      _ => BackgroundObservation.unavailable,
+    };
+  }
 
   InteractionFacts get _defaultFacts => InteractionFacts(
     output: environment.profile,

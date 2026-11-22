@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'output_profile.dart';
@@ -70,12 +69,13 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
   TerminalEnvironment._({
     required this.input,
     required this.output,
-    required this.profile,
+    this._profile,
     required this.ownershipIdentity,
     this.environment = const <String, String?>{},
     this._supportsRich,
     required this._acquire,
     this.closeInput,
+    this.usesNativeConsole = false,
   });
 
   /// Declares the conservative profile for observed native-output facts.
@@ -119,6 +119,42 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
     );
   }
 
+  /// Observes terminal facts for one native [output] under [observations].
+  ///
+  /// A redirected or otherwise non-interactive output reports no terminal
+  /// capability. Geometry probing is fallible; a failed probe leaves geometry
+  /// unknown rather than failing the environment.
+  static OutputProfile _observedNativeProfile(
+    Stdout output,
+    Map<String, String?> observations, {
+    String? term,
+    bool? supportsRich,
+  }) {
+    final selectedTerm = term ?? observations['TERM'] ?? '';
+    int? columns;
+    int? rows;
+    if (output.hasTerminal) {
+      try {
+        columns = output.terminalColumns;
+        rows = output.terminalLines;
+      } on FileSystemException {
+        // Capability probing is fallible; geometry remains unknown.
+      } on UnsupportedError {
+        // Capability probing is fallible; geometry remains unknown.
+      }
+    }
+    return nativeProfile(
+      hasTerminal: output.hasTerminal,
+      supportsRich:
+          supportsRich ?? (output.hasTerminal && selectedTerm != 'dumb'),
+      term: selectedTerm,
+      columns: columns,
+      rows: rows,
+      colorDisabled:
+          !output.hasTerminal || observations['NO_COLOR']?.isNotEmpty == true,
+    );
+  }
+
   /// Binds an observed native selected output and its acquisition callback.
   ///
   /// Acquisition belongs to the shared terminal seam; this environment records
@@ -136,31 +172,13 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
     bool? supportsRich,
   }) {
     final observations = environment ?? Platform.environment;
-    final selectedTerm = term ?? observations['TERM'] ?? '';
-    int? columns;
-    int? rows;
-    if (output.hasTerminal) {
-      try {
-        columns = output.terminalColumns;
-        rows = output.terminalLines;
-      } on FileSystemException {
-        // Capability probing is fallible; geometry remains unknown.
-      } on UnsupportedError {
-        // Capability probing is fallible; geometry remains unknown.
-      }
-    }
     final selectedProfile =
         profile ??
-        nativeProfile(
-          hasTerminal: output.hasTerminal,
-          supportsRich:
-              supportsRich ?? (output.hasTerminal && selectedTerm != 'dumb'),
-          term: selectedTerm,
-          columns: columns,
-          rows: rows,
-          colorDisabled:
-              !output.hasTerminal ||
-              observations['NO_COLOR']?.isNotEmpty == true,
+        _observedNativeProfile(
+          output,
+          observations,
+          term: term,
+          supportsRich: supportsRich,
         );
     return TerminalEnvironment._(
       input: input,
@@ -211,41 +229,15 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
   /// This keeps native acquisition, geometry and colour derivation in the
   /// terminal seam so the public theme surface exposes no invocation-level I/O
   /// configuration.
-  static TerminalEnvironment nativeThemeDefault() {
-    TerminalLease acquire() {
-      bool? echo;
-      bool? line;
-      try {
-        echo = stdin.echoMode;
-        stdin.echoMode = false;
-      } catch (_) {
-        echo = null;
-      }
-      try {
-        line = stdin.lineMode;
-        stdin.lineMode = false;
-      } catch (_) {
-        line = null;
-      }
-      return TerminalLease(() {
-        if (line != null) {
-          try {
-            stdin.lineMode = line;
-          } catch (_) {}
-        }
-        if (echo != null) {
-          try {
-            stdin.echoMode = echo;
-          } catch (_) {}
-        }
-      });
-    }
-
-    return TerminalEnvironment.native(
-      input: stdin.transform(utf8.decoder),
-      output: stdout,
-      acquire: acquire,
-      environment: Platform.environment,
+  static TerminalEnvironment nativeThemeDefault({Stdout? output}) {
+    final selected = output ?? stdout;
+    return TerminalEnvironment._(
+      input: const Stream<String>.empty(),
+      output: selected,
+      ownershipIdentity: selected,
+      environment: Map.unmodifiable(Platform.environment),
+      acquire: () => TerminalLease(null),
+      usesNativeConsole: true,
     );
   }
 
@@ -275,8 +267,25 @@ final class TerminalEnvironment implements TerminalIo, TerminalIoOutputProfile {
   @override
   final StringSink output;
 
+  final OutputProfile? _profile;
+
   /// The declared capabilities of [output].
-  final OutputProfile profile;
+  ///
+  /// A native console marker has no stored profile: the getter re-observes
+  /// the selected output each call so terminal, geometry and colour facts
+  /// reflect the console at use rather than at theme creation.
+  OutputProfile get profile {
+    final stored = _profile;
+    if (stored != null) return stored;
+    return _observedNativeProfile(output as Stdout, environment);
+  }
+
+  /// Whether prompts must use the handle-preserving native console path.
+  ///
+  /// Only [nativeThemeDefault] selects this; scripted and custom adapters can
+  /// never opt into native console input. The marker's empty input stream is
+  /// never subscribed: each prompt acquires its own native transport.
+  final bool usesNativeConsole;
 
   @override
   OutputProfile get outputProfile => profile;

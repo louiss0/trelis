@@ -64,7 +64,7 @@ library or public export was changed, so pre-cutover callers and generated
 `RoundTheme` factories remain untouched.
 
 Rendered a real `TextInput` and a real `MultiSelect` through the internal owner
-with `PromptStructure.round`, asserting the `?`/`¦`/`?`/`?` enclosure, title,
+with `PromptStructure.round`, asserting the rounded enclosure, title,
 contained choices, warning status label and compact help outside the bottom
 rule in both variants. Tests cover focus/checked/default/restriction markers,
 app and component palette layers, `terminalDefault`, indexed degradation,
@@ -75,13 +75,13 @@ may exceed the nominal width, which the narrow test asserts instead.
 
 Validation before integration merge (worktree branch):
 
-- `dart test test/round_adaptive_presentation_test.dart -r compact` — 23 passed.
-- `dart format --output=none --set-exit-if-changed .` — 256 files, 0 changed.
-- `dart analyze` — no issues found.
-- `dart test -r compact` — 5026 passed.
-- `dart run tool/check_issue_tracker.dart` — 177 Git-backed tracker files; no legacy local tracker remains.
-- `dart run example/round_theme_example.dart` — three scripted renderings completed (light default, dark default, explicit override), exit 0.
-- `python tool/generate_color_themes.py`, `python tool/generate_theme_factories.py round`, `python tool/generate_theme_tests.py round`, then `dart format` on the generated Round files — no tracked generated diff. The generator now emits the required `PromptStructure` import and the checked-in spacing; the untracked generated acceptance-matrix file was removed rather than added in this pre-cutover ticket.
+- `dart test test/round_adaptive_presentation_test.dart -r compact` â€” 23 passed.
+- `dart format --output=none --set-exit-if-changed .` â€” 256 files, 0 changed.
+- `dart analyze` â€” no issues found.
+- `dart test -r compact` â€” 5026 passed.
+- `dart run tool/check_issue_tracker.dart` â€” 177 Git-backed tracker files; no legacy local tracker remains.
+- `dart run example/round_theme_example.dart` â€” three scripted renderings completed (light default, dark default, explicit override), exit 0.
+- `python tool/generate_color_themes.py`, `python tool/generate_theme_factories.py round`, `python tool/generate_theme_tests.py round`, then `dart format` on the generated Round files â€” no tracked generated diff. The generator now emits the required `PromptStructure` import and the checked-in spacing; the untracked generated acceptance-matrix file was removed rather than added in this pre-cutover ticket.
 
 Decisions: the authored palettes never set a surface colour, so default
 rendering paints no terminal background; the RGB references exist only for the

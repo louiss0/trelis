@@ -85,6 +85,33 @@ void main() {
     expect(allocator.frees, allocator.allocations);
   });
 
+  test('any nonzero native success return is accepted', () {
+    for (final entry in <(int, int, ScreenReaderObservation)>[
+      (-1, 1, ScreenReaderObservation.positive),
+      (2, 1, ScreenReaderObservation.positive),
+      (-1, 0, ScreenReaderObservation.negative),
+      (2, 0, ScreenReaderObservation.negative),
+    ]) {
+      final binding = WindowsReaderBinding(
+        call: (value) {
+          value.value = entry.$2;
+          return entry.$1;
+        },
+      );
+      final probe = WindowsReaderProbe(
+        enabled: true,
+        isWindows: () => true,
+        lookup: () => binding,
+      );
+
+      expect(
+        probe(HintPlatform.windows),
+        entry.$3,
+        reason: 'success return ${entry.$1}',
+      );
+    }
+  });
+
   test('the gate and unsupported paths never reach native code', () {
     var calls = 0;
     final binding = WindowsReaderBinding(

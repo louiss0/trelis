@@ -2,8 +2,11 @@
 ///
 /// The positive fixture compiles against only `package:trelis/trelis.dart`.
 /// Negative snippets are written temporarily inside the fixture package so
-/// `dart analyze` resolves them through the same path dependency, then removed.
-/// A negative case passes only when analysis reports the expected error kind.
+/// `dart analyze --format machine` resolves them through the same path
+/// dependency, then removed. A negative case passes only when every analyzer
+/// error carries one of the case's expected diagnostic codes and at least one
+/// expected code was observed, so an unrelated failure cannot pass as a
+/// rejection and one hidden symbol cannot hide behind another's error.
 library;
 
 import 'dart:io';
@@ -11,57 +14,176 @@ import 'dart:io';
 final _fixture = Directory('fixtures/public_api_fixture');
 final _negativeDir = Directory('fixtures/public_api_fixture/tool');
 
-const _cases = <String, String>{
-  'direct_constructor': '''
+final class _Case {
+  const _Case(this.source, this.expectedCodes);
+
+  final String source;
+
+  /// Machine-format error codes that prove the surface rejected the snippet.
+  final Set<String> expectedCodes;
+}
+
+_Case _hidden(String name) => _Case(
+  '''
+import 'package:trelis/trelis.dart';
+void main() => print($name);
+''',
+  {'UNDEFINED_IDENTIFIER'},
+);
+
+/// The 34 legacy interactive component classes plus the 4 legacy feedback
+/// components: none may be reachable through the public barrel.
+const _legacyComponents = <String>[
+  'TextInput',
+  'Password',
+  'Multiline',
+  'Confirm',
+  'Checkbox',
+  'Toggle',
+  'Select',
+  'Radio',
+  'MultiSelect',
+  'TreeSelect',
+  'SortableSelect',
+  'CommandPalette',
+  'Autocomplete',
+  'SearchSelect',
+  'Slider',
+  'RangeSlider',
+  'NumberInput',
+  'PortInput',
+  'TimeInput',
+  'TagInput',
+  'MaskedInput',
+  'ColorInput',
+  'CronInput',
+  'DurationInput',
+  'DateInput',
+  'TimezoneSelect',
+  'IPAddressInput',
+  'URLInput',
+  'EmailInput',
+  'PathInput',
+  'FilePicker',
+  'DirectoryPicker',
+  'Keypress',
+  'KeyChordInput',
+  'Text',
+  'Progress',
+  'Spinner',
+  'MultiSpinner',
+];
+
+/// Internal theme component wrappers and resolver internals that must also
+/// stay hidden.
+const _internalNames = <String>[
+  'ThemeTextPrompt',
+  'ThemeBooleanPrompt',
+  'ThemeSingleChoicePrompt',
+  'ThemeMultiSelectPrompt',
+  'ThemeTreeSelectPrompt',
+  'ThemeOrderPrompt',
+  'ThemeAutocompletePrompt',
+  'ThemeSearchPrompt',
+  'ThemeFilesystemPrompt',
+  'ThemeFormattedPrompt',
+  'ThemeKeyCapturePrompt',
+  'ThemeSession',
+  'TerminalSession',
+  'InteractionFacts',
+  'InteractionResolution',
+  'InteractionConflict',
+  'InteractionUnavailable',
+  'ColorDetectionFacts',
+];
+
+/// Resolver functions stay internal; hints arrive through theme parameters.
+const _resolverFunctions = <String>['resolveInteraction', 'resolveColors'];
+
+_Case _snippet(String body, Set<String> codes) => _Case('''
+import 'package:trelis/trelis.dart';
+void main() {
+  final theme = RailTheme(io: TerminalEnvironment.scripted(
+    input: const Stream<String>.empty(), output: StringBuffer()));
+$body
+}
+''', codes);
+
+final _cases = <String, _Case>{
+  'direct_constructor': _Case(
+    '''
 import 'package:trelis/trelis.dart';
 void main() {
   final component = TextInput('Name');
   print(component);
 }
 ''',
-  'static_factory': '''
+    {'UNDEFINED_FUNCTION'},
+  ),
+  'static_factory': _Case(
+    '''
 import 'package:trelis/trelis.dart';
 void main() {
   final component = RailTheme.textInput('Name');
   print(component);
 }
 ''',
-  'supplied_answer': '''
+    {'UNDEFINED_METHOD'},
+  ),
+  'supplied_answer': _Case(
+    '''
 import 'package:trelis/trelis.dart';
 void main() => print(SuppliedAnswer('answer'));
 ''',
-  'supplied_tags': '''
+    {'UNDEFINED_FUNCTION'},
+  ),
+  'supplied_tags': _Case(
+    '''
 import 'package:trelis/trelis.dart';
 void main() => print(SuppliedTags(['tag']));
 ''',
-  'invocation_io': '''
-import 'package:trelis/trelis.dart';
-void main() {
-  final theme = RailTheme(io: TerminalEnvironment.scripted(
-    input: const Stream<String>.empty(), output: StringBuffer()));
-  print(theme.textInput('Name', source: null));
-}
-''',
-  'invocation_mode': '''
-import 'package:trelis/trelis.dart';
-void main() {
-  final theme = RailTheme(io: TerminalEnvironment.scripted(
-    input: const Stream<String>.empty(), output: StringBuffer()));
-  print(theme.confirm('Proceed?', mode: null));
-}
-''',
-  'prompt_configuration': '''
-import 'package:trelis/trelis.dart';
-void main() {
-  final theme = RailTheme(io: TerminalEnvironment.scripted(
-    input: const Stream<String>.empty(), output: StringBuffer()));
-  print(theme.textInput('Name').prompt(session: null));
-}
-''',
+    {'UNDEFINED_FUNCTION'},
+  ),
+  'invocation_io': _snippet("  print(theme.textInput('Name', source: null));", {
+    'UNDEFINED_NAMED_PARAMETER',
+  }),
+  'invocation_mode': _snippet(
+    "  print(theme.confirm('Proceed?', mode: null));",
+    {'UNDEFINED_NAMED_PARAMETER'},
+  ),
+  for (final parameter in [
+    'mode',
+    'source',
+    'terminal',
+    'output',
+    'outputProfile',
+    'presentation',
+    'session',
+  ])
+    'prompt_$parameter': _snippet(
+      "  print(theme.textInput('Name').prompt($parameter: null));",
+      {'UNDEFINED_NAMED_PARAMETER'},
+    ),
+  'feedback_present_configuration': _snippet(
+    "  print(theme.text('done').present(clock: null));",
+    {'UNDEFINED_NAMED_PARAMETER'},
+  ),
+  'feedback_start_configuration': _snippet(
+    "  print(theme.progress('job').start(session: null));",
+    {'UNDEFINED_NAMED_PARAMETER'},
+  ),
+  'theme_close': _snippet("  theme.close();", {'UNDEFINED_METHOD'}),
+  for (final name in _legacyComponents) 'hidden_$name': _hidden(name),
+  for (final name in _internalNames) 'hidden_$name': _hidden(name),
+  for (final name in _resolverFunctions) 'hidden_resolver_$name': _hidden(name),
 };
 
-Future<ProcessResult> _analyze(String path) =>
-    Process.run('dart', ['analyze', path], workingDirectory: _fixture.path);
+Future<ProcessResult> _analyze(String path) => Process.run('dart', [
+  'analyze',
+  '--format',
+  'machine',
+  path,
+], workingDirectory: _fixture.path);
 
 void _fail(String message) {
   stderr.writeln(message);
@@ -96,16 +218,34 @@ Future<void> main() async {
   for (final entry in _cases.entries) {
     final relative = 'tool/${entry.key}.dart';
     final file = File('${_negativeDir.path}/${entry.key}.dart');
-    await file.writeAsString(entry.value);
+    await file.writeAsString(entry.value.source);
     try {
       final result = await _analyze(relative);
       final output = '${result.stdout}\n${result.stderr}';
-      if (result.exitCode == 0) {
-        _fail('${entry.key}: expected an analyzer error, got success.');
-      } else if (!output.contains('error -')) {
-        _fail('${entry.key}: analyzer failed without an error:\n$output');
+      final observed = <String>{};
+      final unexpected = <String>[];
+      for (final line in output.split('\n')) {
+        final fields = line.split('|');
+        if (fields.length < 4 || fields[0] != 'ERROR') continue;
+        final code = fields[2];
+        if (entry.value.expectedCodes.contains(code)) {
+          observed.add(code);
+        } else {
+          unexpected.add(line);
+        }
+      }
+      if (observed.isEmpty) {
+        _fail(
+          '${entry.key}: no expected diagnostic '
+          '${entry.value.expectedCodes} in output:\n$output',
+        );
+      } else if (unexpected.isNotEmpty) {
+        _fail(
+          '${entry.key}: unexpected analyzer errors:\n'
+          '${unexpected.join('\n')}\nfull output:\n$output',
+        );
       } else {
-        stdout.writeln('${entry.key}: rejected');
+        stdout.writeln('${entry.key}: rejected (${observed.join(', ')})');
       }
     } finally {
       if (file.existsSync()) file.deleteSync();

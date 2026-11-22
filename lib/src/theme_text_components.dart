@@ -42,7 +42,7 @@ final class ThemeTextPrompt {
     this.maxLength,
     this.mask = false,
     this.instructions = InstructionDisplay.themeDefault,
-    this.supplementaryHelp = const [],
+    List<String> supplementaryHelp = const [],
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     ColorPreferences themeColors = const ColorPreferences(),
@@ -50,7 +50,8 @@ final class ThemeTextPrompt {
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : _owner =
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       _owner =
            session ??
            ThemeSession(
              environment: io,

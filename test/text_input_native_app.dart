@@ -2,10 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:trelis/src/testing/compat_api.dart';
+import 'package:trelis/trelis.dart' as public_api;
 
 Future<void> main(List<String> args) async {
   try {
     final scenario = args.isEmpty ? 'repeat' : args.first;
+    if (scenario.startsWith('public-')) {
+      await _runPublicScenario(scenario.substring('public-'.length));
+      return;
+    }
     // Optional harness release file: a native scenario that injects its own
     // failure waits for it so the harness can observe the acquired state first.
     final trigger = args.length > 1 ? args[1] : null;
@@ -162,6 +167,77 @@ Future<void> main(List<String> args) async {
   } catch (error) {
     print('ERROR:$error');
   }
+}
+
+/// Public-theme cutover routes over the real native console.
+///
+/// Each route mirrors its legacy scenario: the theme selects the native
+/// marker environment, so prompts run through the handle-preserving console
+/// transport rather than a Dart stdin subscription. Prompt output stays on
+/// stderr exactly like the legacy routes so redirected captures keep working.
+Future<void> _runPublicScenario(String scenario) async {
+  final mode = switch (scenario) {
+    'rich' || 'help-text-rich' => public_api.PromptMode.rich,
+    _ => public_api.PromptMode.linear,
+  };
+  public_api.PlainTheme theme() => public_api.PlainTheme(
+    io: public_api.TerminalEnvironment.nativeThemeDefault(output: stderr),
+    interaction: public_api.InteractionPreferences(mode: mode),
+  );
+
+  String describe(public_api.PromptResult<String> result) => switch (result) {
+    public_api.Accepted<String>(:final value) => value,
+    public_api.Cancelled<String>() => 'cancel',
+    public_api.Interrupted<String>() => 'interrupt',
+    public_api.InputEnded<String>() => 'eof',
+    public_api.Unavailable<String>(:final reason) => 'unavailable:$reason',
+  };
+
+  if (scenario.startsWith('help-')) {
+    final result = scenario.contains('password')
+        ? await theme().password('Synthetic password').prompt()
+        : await theme().textInput('Name', initialValue: 'alpha').prompt();
+    print(
+      scenario.contains('password')
+          ? (result is public_api.Accepted<String> &&
+                    result.value == 'TrelisCanary7Q9'
+                ? 'accepted'
+                : 'wrong')
+          : describe(result),
+    );
+    return;
+  }
+  if (scenario == 'error') {
+    final failing = theme().textInput(
+      'Failure',
+      validate: (_) => throw StateError('validation'),
+    );
+    try {
+      await failing.prompt();
+    } on StateError {
+      // A subsequent prompt must still be usable after validation throws.
+    }
+    final result = await theme()
+        .textInput('Name', initialValue: 'alpha')
+        .prompt();
+    print(result is public_api.Accepted<String> ? result.value : 'failed');
+    return;
+  }
+  if (scenario == 'repeat') {
+    final reusable = theme().textInput('Name', initialValue: 'alpha');
+    final first = describe(await reusable.prompt());
+    final second = describe(await reusable.prompt());
+    // A second theme over the same selected output must still prompt.
+    final third = describe(
+      await theme().textInput('Name', initialValue: 'alpha').prompt(),
+    );
+    print(third == 'alpha' ? '$first,$second' : 'third:$third');
+    return;
+  }
+  final result = await theme()
+      .textInput('Name', initialValue: 'alpha')
+      .prompt();
+  print(describe(result));
 }
 
 const _triggerLimit = Duration(seconds: 60);

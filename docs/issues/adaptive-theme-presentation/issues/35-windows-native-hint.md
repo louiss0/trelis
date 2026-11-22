@@ -35,12 +35,12 @@ qualification is claimed.
 Validation on this branch after merging `integration/adaptive-theme-presentation`
 (already up to date, no conflicts):
 
-- `dart test test/windows_reader_hint_test.dart -r compact` — 5 passed.
-- `dart test test/hint_observations_session_test.dart test/windows_reader_hint_test.dart -r compact` — 13 passed.
-- `dart test -r compact` — 4936 passed.
-- `dart format --output=none --set-exit-if-changed .` — exit 0, 242 files unchanged.
-- `dart analyze` — no issues found.
-- `dart run tool/check_issue_tracker.dart` — 177 Git-backed tracker files, no legacy local tracker.
+- `dart test test/windows_reader_hint_test.dart -r compact` - 5 passed.
+- `dart test test/hint_observations_session_test.dart test/windows_reader_hint_test.dart -r compact` - 13 passed.
+- `dart test -r compact` - 4936 passed.
+- `dart format --output=none --set-exit-if-changed .` - exit 0, 242 files unchanged.
+- `dart analyze` - no issues found.
+- `dart run tool/check_issue_tracker.dart` - 177 Git-backed tracker files, no legacy local tracker.
 
 Native fixture on Windows 11 Home 10.0.26200.0, checked with
 `[System.Environment]::OSVersion.VersionString` and `Get-CimInstance
@@ -55,6 +55,30 @@ multi-viewer session was available, so no real positive native signal, spoken
 output or locality behavior was observed. Windows IA32 stdcall and other Windows
 ABIs were not validated. Synthetic tests and this fixture do not qualify
 accessibility; tickets 37/39 and the release gate remain open.
+
+
+
+2026-11-22 - Review fix on detached worktree prompty-32-35 at 389fe3c:
+`WindowsReaderBinding.read` now accepts any nonzero Win32 BOOL success return
+(previously only `1`); `null` or `0` returns stay unknown, the output cell is
+still zero-initialised, validated for exactly 0/1 and freed in `finally`.
+Corrected comments: supported ABIs are Windows x64 and ARM64; Windows IA32
+stdcall stays a missing/unknown binding, and the binding claims no
+native-reader qualification. TDD evidence: the new test 'any nonzero native
+success return is accepted' (returns -1 and 2 with output 1 and 0) failed
+before the fix - every case observed unknown - and passes after.
+
+Validation today (Windows 10.0.26200.9974, Dart 3.13.2 windows_x64):
+
+- `dart test test/windows_reader_hint_test.dart -r expanded`: 6 passed.
+- `dart analyze`: no issues found.
+- Final gate: `dart test -r expanded` full suite 5543 tests all passed;
+  `windows_reader_fixture.dart` observation `negative`, binding available
+  (production gate stays default-off).
+
+Gaps unchanged: the probe stays default-off; no real screen-reader signal,
+Narrator/NVDA or remote/locality session was observed; qualification remains
+with the release-gate tickets.
 
 ## Acceptance criteria
 

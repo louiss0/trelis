@@ -98,12 +98,14 @@ final class ThemeFormattedPrompt<T> {
     required TerminalEnvironment io,
     ThemeSession? session,
     this.colors = const ComponentColors(),
+    List<String> supplementaryHelp = const [],
     ColorPreferences themeColors = const ColorPreferences(),
     InteractionPreferences interaction = const InteractionPreferences(),
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
     NativeHintObservations? hints,
-  }) : _owner =
+  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+       _owner =
            session ??
            ThemeSession(
              environment: io,
@@ -140,7 +142,7 @@ final class ThemeFormattedPrompt<T> {
     essential:
         '$label exact decimal: minimum $minimum, maximum $maximum, '
         'step $step${units == null ? '' : ', units $units'}.',
-    create: (palette, session) => Slider(
+    create: (palette, session, help) => Slider(
       label,
       minimum: minimum,
       maximum: maximum,
@@ -151,8 +153,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -191,7 +194,7 @@ final class ThemeFormattedPrompt<T> {
     essential:
         '$label lower and upper exact decimals: minimum $minimum, '
         'maximum $maximum, step $step, minimum gap $minimumGap.',
-    create: (palette, session) => RangeSlider(
+    create: (palette, session, help) => RangeSlider(
       label,
       minimum: minimum,
       maximum: maximum,
@@ -204,8 +207,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -241,7 +245,7 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.number,
     label: label,
     essential: '$label ${decimal ? 'decimal' : 'integer'} numeric entry.',
-    create: (palette, session) => NumberInput(
+    create: (palette, session, help) => NumberInput(
       label,
       convention: convention,
       conventionProvider: conventionProvider,
@@ -253,8 +257,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -285,15 +290,16 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.port,
     label: label,
     essential: '$label ASCII decimal port, ${allowZero ? 0 : 1} to 65535.',
-    create: (palette, session) => PortInput(
+    create: (palette, session, help) => PortInput(
       label,
       allowZero: allowZero,
       initialValue: initialValue,
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -327,7 +333,7 @@ final class ThemeFormattedPrompt<T> {
     essential:
         '$label numeric IPv4 or IPv6 address'
         '${cidr ? ' with prefix' : ''}${scoped ? ' and zone' : ''}.',
-    create: (palette, session) => IPAddressInput(
+    create: (palette, session, help) => IPAddressInput(
       label,
       cidr: cidr,
       scoped: scoped,
@@ -335,8 +341,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -368,14 +375,15 @@ final class ThemeFormattedPrompt<T> {
     essential:
         '$label absolute URL; allowed schemes '
         '${allowedSchemes.join(', ')}.',
-    create: (palette, session) => URLInput(
+    create: (palette, session, help) => URLInput(
       label,
       allowedSchemes: allowedSchemes,
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -406,15 +414,16 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.email,
     label: label,
     essential: '$label bare SMTP address entry.',
-    create: (palette, session) => EmailInput(
+    create: (palette, session, help) => EmailInput(
       label,
       smtpUtf8: smtpUtf8,
       initialValue: initialValue,
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -445,15 +454,16 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.color,
     label: label,
     essential: '$label CSS sRGB colour entry; the preview is textual.',
-    create: (palette, session) => ColorInput(
+    create: (palette, session, help) => ColorInput(
       label,
       required: required,
       initialValue: initialValue,
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -490,7 +500,7 @@ final class ThemeFormattedPrompt<T> {
         '$label '
         '${durationMode == DurationInputMode.elapsed ? 'elapsed' : 'calendar-relative'} '
         'duration entry with a textual interpretation.',
-    create: (palette, session) => DurationInput(
+    create: (palette, session, help) => DurationInput(
       label,
       durationMode: durationMode,
       signed: signed,
@@ -500,8 +510,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -533,7 +544,7 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.cron,
     label: label,
     essential: '$label ${profile.name} cron expression entry.',
-    create: (palette, session) => CronInput(
+    create: (palette, session, help) => CronInput(
       label,
       profile: profile,
       initialValue: initialValue,
@@ -541,8 +552,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -576,7 +588,7 @@ final class ThemeFormattedPrompt<T> {
     essential:
         '$label mask entry; templates '
         '${templates.map((template) => template.name).join(', ')}.',
-    create: (palette, session) => MaskedInput(
+    create: (palette, session, help) => MaskedInput(
       label,
       templates: templates,
       initialValue: initialValue,
@@ -584,8 +596,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -620,7 +633,7 @@ final class ThemeFormattedPrompt<T> {
         '$label '
         '${style == TagStyle.snakeCase ? 'snake_case' : 'kebab-case'} tag '
         'collection; draft tags are not accepted until added.',
-    create: (palette, session) => TagInput(
+    create: (palette, session, help) => TagInput(
       label,
       style: style,
       maxLength: maxLength,
@@ -628,8 +641,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -662,7 +676,7 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.date,
     label: label,
     essential: '$label civil date entry in ${order?.name ?? 'system'} order.',
-    create: (palette, session) => DateInput(
+    create: (palette, session, help) => DateInput(
       label,
       order: order,
       calendar: calendar,
@@ -671,8 +685,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -707,7 +722,7 @@ final class ThemeFormattedPrompt<T> {
         '$label time of day, not a date or timezone'
         '${seconds ? ', with seconds' : ''}'
         '${twelveHour ? ', 12-hour clock' : ''}.',
-    create: (palette, session) => TimeInput(
+    create: (palette, session, help) => TimeInput(
       label,
       twelveHour: twelveHour,
       seconds: seconds,
@@ -715,8 +730,9 @@ final class ThemeFormattedPrompt<T> {
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -747,15 +763,16 @@ final class ThemeFormattedPrompt<T> {
     kind: ThemeFormattedComponent.timezone,
     label: label,
     essential: '$label IANA zone identity search; no offset preview.',
-    create: (palette, session) => TimezoneSelect(
+    create: (palette, session, help) => TimezoneSelect(
       label,
       defaultValue: defaultValue,
       unavailable: unavailable,
       colors: palette,
       structure: structure,
       instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
+      supplementaryHelp: help,
     ).prompt(session: session),
+    supplementaryHelp: supplementaryHelp,
     io: io,
     session: session,
     colors: colors,
@@ -770,9 +787,11 @@ final class ThemeFormattedPrompt<T> {
   final String label;
   final ComponentColors colors;
   final String _essential;
+  final List<String> supplementaryHelp;
   final Future<PromptResult<T>> Function(
     ColorTheme palette,
     TerminalSession session,
+    List<String> supplementaryHelp,
   )
   _create;
   final ThemeSession _owner;
@@ -794,7 +813,7 @@ final class ThemeFormattedPrompt<T> {
         ).essentialBefore!,
       );
     }
-    return _create(palette, handle.session);
+    return _create(palette, handle.session, supplementaryHelp);
   });
 
   /// Starts live feedback that shares this prompt's active period.

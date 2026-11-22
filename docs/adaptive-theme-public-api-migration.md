@@ -70,6 +70,38 @@ await control.finish(FeedbackOutcome.completed);
 active period before any output. Feedback does not display an artificial help
 hint.
 
+## Creation captures configuration
+
+Component and live-feedback methods build the underlying component when they
+are called. Collection arguments - choice lists, multi-select defaults,
+supplementary help lines and `multiSpinner` task names - are snapshotted at
+that point, so later caller-side mutation of the original collections cannot
+change a created prompt. Reusing a prompt reruns the same configuration.
+
+## Native environment default
+
+When no `io` is supplied the theme uses `TerminalEnvironment.nativeThemeDefault`,
+which binds the handle-preserving native console transport rather than a Dart
+stdin subscription. Each prompt still acquires and restores its own native
+lease - echo, line mode and VT input handling stay with the existing per-prompt
+transport - and the environment's output profile is re-observed from the
+selected output on each use. The marker stream is never subscribed, so the
+session-owned background query is unavailable for the default environment;
+background resolution then falls back to the passive hint and the dark default.
+A custom `TerminalEnvironment` with a real input stream remains the seam for
+scripted runs and background queries.
+
+## Passive background hint
+
+When the application does not choose a background and no query ran, the theme
+consults the `COLORFGBG` environment variable as a conservative advisory hint.
+Only the exact two- or three-integer form is accepted, and only well-known
+final values map: `0` reports a dark background, `7` or `15` report light. Any
+other shape - including custom ANSI palette indices whose luminance is not
+modelled - is treated as unavailable and falls back to the dark default.
+Explicit `ColorPreferences.background` and the bounded background query both
+take precedence; `NO_COLOR` still disables colour entirely.
+
 ## Colours
 
 Omitting a component palette selects the structural theme's authored
@@ -108,10 +140,16 @@ scripted I/O and assume identical results.
 
 The external fixture in `fixtures/public_api_fixture` compiles against only
 the public barrel and checks every returned handle type. Negative snippets
-verify that static factories, direct constructors, invocation-level I/O or
-mode configuration, and supplied-answer types are rejected. Automated tests
-cover reusable prompts, EOF, concurrent prompts, live feedback outliving a
-prompt, cleanup races and reacquisition at internal seams.
+are analysed in machine format and must produce their expected diagnostic
+codes - static factories, direct component constructors, hidden resolver and
+fact types, invocation-level I/O, mode or session configuration, parameterless
+feedback reconfiguration, `theme.close()` and supplied-answer types are all
+rejected. Automated tests cover reusable prompts, EOF, concurrent prompts,
+creation-time collection snapshots, live feedback outliving a prompt, the
+passive `COLORFGBG` hint, cleanup races and reacquisition at internal seams.
+The native Windows fixture has public-API routes (`public-<scenario>`) that
+drive real console scenarios through `PlainTheme` with the default native
+environment.
 
 These checks do **not** establish native terminal behaviour, real light/dark
 visual contrast, or human screen-reader qualification. Windows and macOS

@@ -256,7 +256,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeTextPrompt.text(
+    ThemeTextPrompt.text(
       label,
       io: _io,
       session: _owner,
@@ -268,7 +268,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> password(
@@ -281,7 +281,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeTextPrompt.secret(
+    ThemeTextPrompt.secret(
       label,
       io: _io,
       session: _owner,
@@ -293,7 +293,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> multiline(
@@ -306,7 +306,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeTextPrompt.multiline(
+    ThemeTextPrompt.multiline(
       label,
       io: _io,
       session: _owner,
@@ -318,7 +318,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   // Boolean and basic choices.
@@ -330,7 +330,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeBooleanPrompt.confirm(
+    ThemeBooleanPrompt.confirm(
       label,
       io: _io,
       session: _owner,
@@ -339,7 +339,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<bool> checkbox(
@@ -349,7 +349,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeBooleanPrompt.checkbox(
+    ThemeBooleanPrompt.checkbox(
       label,
       io: _io,
       session: _owner,
@@ -358,7 +358,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<bool> toggle(
@@ -368,7 +368,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeBooleanPrompt.toggle(
+    ThemeBooleanPrompt.toggle(
       label,
       io: _io,
       session: _owner,
@@ -377,7 +377,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   List<ThemeChoiceOption<T>> _options<T>(List<Choice<T>> choices) => [
@@ -398,7 +398,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeSingleChoicePrompt<T>.select(
+    ThemeSingleChoicePrompt<T>.select(
       label,
       _options(choices),
       io: _io,
@@ -409,7 +409,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<T> radio<T>(
@@ -420,7 +420,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeSingleChoicePrompt<T>.radio(
+    ThemeSingleChoicePrompt<T>.radio(
       label,
       _options(choices),
       io: _io,
@@ -431,7 +431,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<List<T>> multiSelect<T>(
@@ -444,7 +444,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeMultiSelectPrompt<T>(
+    ThemeMultiSelectPrompt<T>(
       label,
       _options(choices),
       io: _io,
@@ -457,7 +457,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   // Tree, ordering and search.
@@ -471,7 +471,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeTreeSelectPrompt<T>(
+    ThemeTreeSelectPrompt<T>(
       label,
       nodes,
       io: _io,
@@ -483,7 +483,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<List<T>> sortableSelect<T>(
@@ -493,7 +493,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeOrderPrompt<T>(
+    ThemeOrderPrompt<T>(
       label,
       choices,
       io: _io,
@@ -502,7 +502,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> autocomplete(
@@ -516,7 +516,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeAutocompletePrompt(
+    ThemeAutocompletePrompt(
       label,
       io: _io,
       session: _owner,
@@ -529,7 +529,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<T> searchSelect<T>(
@@ -541,7 +541,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeSearchPrompt<T>.search(
+    ThemeSearchPrompt<T>.search(
       label,
       choices,
       io: _io,
@@ -552,7 +552,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<T> commandPalette<T>(
@@ -564,7 +564,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeSearchPrompt<T>.commandPalette(
+    ThemeSearchPrompt<T>.commandPalette(
       label,
       commands,
       io: _io,
@@ -575,7 +575,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   // Formatted values.
@@ -592,7 +592,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.slider(
+    ThemeFormattedPrompt.slider(
       label,
       io: _io,
       session: _owner,
@@ -606,7 +606,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<(String, String)> rangeSlider(
@@ -623,7 +623,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.rangeSlider(
+    ThemeFormattedPrompt.rangeSlider(
       label,
       io: _io,
       session: _owner,
@@ -639,7 +639,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<NumericAnswer?> numberInput(
@@ -655,7 +655,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.number(
+    ThemeFormattedPrompt.number(
       label,
       io: _io,
       session: _owner,
@@ -670,7 +670,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<int> portInput(
@@ -681,7 +681,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.port(
+    ThemeFormattedPrompt.port(
       label,
       io: _io,
       session: _owner,
@@ -691,7 +691,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<({int hour, int minute, int? second})> timeInput(
@@ -703,7 +703,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.time(
+    ThemeFormattedPrompt.time(
       label,
       io: _io,
       session: _owner,
@@ -714,7 +714,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<List<String>> tagInput(
@@ -726,7 +726,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.tag(
+    ThemeFormattedPrompt.tag(
       label,
       io: _io,
       session: _owner,
@@ -737,7 +737,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<MaskedValue> maskedInput(
@@ -749,18 +749,18 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.masked(
+    ThemeFormattedPrompt.masked(
       label,
       io: _io,
       session: _owner,
       structure: structure,
-      templates: templates,
+      templates: List<MaskTemplate>.unmodifiable(templates),
       initialValue: initialValue,
       interpretation: interpretation,
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<ColorValue?> colorInput(
@@ -771,7 +771,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.color(
+    ThemeFormattedPrompt.color(
       label,
       io: _io,
       session: _owner,
@@ -781,7 +781,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<CronExpression> cronInput(
@@ -793,7 +793,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.cron(
+    ThemeFormattedPrompt.cron(
       label,
       io: _io,
       session: _owner,
@@ -804,7 +804,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<DurationValue> durationInput(
@@ -818,7 +818,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.duration(
+    ThemeFormattedPrompt.duration(
       label,
       io: _io,
       session: _owner,
@@ -831,7 +831,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<CivilDate> dateInput(
@@ -844,7 +844,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.date(
+    ThemeFormattedPrompt.date(
       label,
       io: _io,
       session: _owner,
@@ -856,7 +856,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> timezoneSelect(
@@ -867,17 +867,17 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFormattedPrompt.timezone(
+    ThemeFormattedPrompt.timezone(
       label,
       io: _io,
       session: _owner,
       structure: structure,
       defaultValue: defaultValue,
-      unavailable: unavailable,
+      unavailable: Map<String, String>.unmodifiable(unavailable),
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   // Filesystem and network.
@@ -891,7 +891,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFilesystemPrompt.ipAddress(
+    ThemeFilesystemPrompt.ipAddress(
       label,
       io: _io,
       session: _owner,
@@ -902,7 +902,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> urlInput(
@@ -912,7 +912,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFilesystemPrompt.url(
+    ThemeFilesystemPrompt.url(
       label,
       io: _io,
       session: _owner,
@@ -921,7 +921,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> emailInput(
@@ -932,7 +932,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFilesystemPrompt.email(
+    ThemeFilesystemPrompt.email(
       label,
       io: _io,
       session: _owner,
@@ -942,7 +942,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> pathInput(
@@ -955,7 +955,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFilesystemPrompt.path(
+    ThemeFilesystemPrompt.path(
       label,
       io: _io,
       session: _owner,
@@ -967,7 +967,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> filePicker(
@@ -977,7 +977,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFilesystemPrompt.filePicker(
+    ThemeFilesystemPrompt.filePicker(
       label,
       io: _io,
       session: _owner,
@@ -986,7 +986,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<String> directoryPicker(
@@ -996,7 +996,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeFilesystemPrompt.directoryPicker(
+    ThemeFilesystemPrompt.directoryPicker(
       label,
       io: _io,
       session: _owner,
@@ -1005,7 +1005,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   // Key capture.
@@ -1017,7 +1017,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeKeyCapturePrompt.keypress(
+    ThemeKeyCapturePrompt.keypress(
       label,
       io: _io,
       session: _owner,
@@ -1026,7 +1026,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   ThemePrompt<List<KeyGesture>> keyChordInput(
@@ -1036,7 +1036,7 @@ abstract class StructuralTheme {
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    () => ThemeKeyCapturePrompt.keyChordInput(
+    ThemeKeyCapturePrompt.keyChordInput(
       label,
       io: _io,
       session: _owner,
@@ -1045,7 +1045,7 @@ abstract class StructuralTheme {
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,
-    ).prompt(),
+    ).prompt,
   );
 
   // Feedback.
@@ -1114,9 +1114,10 @@ abstract class StructuralTheme {
       structure: structure,
       colors: colors,
     );
+    final names = List<String>.unmodifiable(tasks);
     return _live(() async {
       return ThemeMultiSpinnerControl._(
-        await feedback.multiSpinner(tasks, interval: interval, clock: clock),
+        await feedback.multiSpinner(names, interval: interval, clock: clock),
       );
     });
   }
