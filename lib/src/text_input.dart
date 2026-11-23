@@ -2673,8 +2673,7 @@ final class TextInput {
           maxLength: maxLength,
           exemptCommandsFromLimit: mode == PromptMode.linear,
           required: required,
-          clearHelpCommand:
-              clearHelpCommand ?? resolved?.screenReader == true,
+          clearHelpCommand: clearHelpCommand ?? resolved?.screenReader == true,
           allowCommandPrefixes: resolved?.screenReader == true,
           supplementaryHelp: supplementaryHelp,
           helpText: helpText,
@@ -2782,6 +2781,7 @@ Future<({String action, String value})> _edit(
   bool clearHelpCommand = false,
   bool allowCommandPrefixes = false,
   int? maxLength,
+  int? maxUtf16Length,
   bool exemptCommandsFromLimit = false,
   bool required = false,
   List<String> supplementaryHelp = const [],
@@ -2791,6 +2791,7 @@ Future<({String action, String value})> _edit(
   String Function()? liveLinearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  void Function(int caret)? onCaretChanged,
   void Function(bool belowEditableRow)? onEditableRowBoundary,
   String? Function(String draft)? livePreview,
   void Function()? onHelpDismissed,
@@ -2955,6 +2956,21 @@ Future<({String action, String value})> _edit(
       return;
     }
     final added = data.characters.toList();
+    // [maxLength] budgets grapheme clusters; [maxUtf16Length] budgets UTF-16
+    // code units, which differ for astral characters and combined clusters.
+    // The synthetic command prefix is excluded from both counts.
+    final unitCount =
+        candidate.length - (synthetic >= 0 ? chars[synthetic].length : 0);
+    if (maxUtf16Length != null &&
+        unitCount > maxUtf16Length &&
+        !commandPrefix) {
+      notice(
+        'Insertion rejected: character limit is $maxUtf16Length UTF-16 '
+        'code units.',
+        event: StageEvent.warning,
+      );
+      return;
+    }
     chars.insertAll(pos, added);
     if (synthetic >= pos) synthetic += added.length;
     provenance.insertAll(pos, List<bool>.filled(added.length, isPaste));
@@ -2982,6 +2998,7 @@ Future<({String action, String value})> _edit(
   }
 
   void display() {
+    onCaretChanged?.call(pos);
     void writePrompt(void Function() action) {
       final activeSession = session;
       if (activeSession == null) {

@@ -288,6 +288,38 @@ void main() {
     );
   });
 
+  test(
+    'astral edits are rejected at the 4096 UTF-16 assembled bound',
+    () async {
+      final output = StringBuffer();
+      // Each emoji is one grapheme but two UTF-16 code units, so the grapheme
+      // budget alone would admit ~4092 of them (over 8000 code units). The
+      // cell budget is 4092 UTF-16 code units (4096 minus four separators),
+      // so exactly 2046 emoji fit and every further insertion is rejected
+      // without partial insertion.
+      final emoji = '💩' * 2050;
+      final result = await CronInput('Schedule', profile: CronProfile.unix)
+          .prompt(
+            source: ScriptedInput(
+              Stream.value('$emoji\t\x03'),
+              output,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(result, isA<Interrupted<CronExpression>>());
+      final text = output.toString();
+      expect(
+        'Insertion rejected: character limit is 4092 UTF-16 code units.'
+            .allMatches(text)
+            .length,
+        4,
+        reason: text,
+      );
+      expect(text, isNot(contains('character limit is 4092 graphemes')));
+    },
+  );
+
   test('rich cells keep cancel interrupt and input-end outcomes', () async {
     CronInput input() => CronInput('Schedule', profile: CronProfile.unix);
     Future<PromptResult<CronExpression>> run(String keys) => input().prompt(

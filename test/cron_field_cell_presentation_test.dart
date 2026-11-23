@@ -275,6 +275,37 @@ void main() {
     expect(lines.any((line) => line.contains(']')), isTrue);
   });
 
+  test(
+    'an over-wide cell windows around the caret, not just the tail',
+    () async {
+      final output = StringBuffer();
+      final wide = List.filled(20, '1-2').join(','); // 79 cells of content.
+      final result = await CronInput('Schedule', profile: CronProfile.unix)
+          .prompt(
+            source: ScriptedInput(
+              // Paste the wide draft, move the caret to the head with Home,
+              // then leave the cell so the stage row repaints.
+              Stream.value('\x1b[200~$wide\x1b[201~\x1b[H\t*\t*\t*\t*\t\r'),
+              output,
+              outputProfile: _profile(columns: 36),
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '$wide * * * *',
+      );
+      final row = _visibleLines(output.toString())
+          .where((line) => line.contains('1-2') && line.contains(']'))
+          .last;
+      // The window keeps the head of the draft visible and marks the hidden
+      // tail; a caret-at-end window would hide the head instead.
+      expect(row, contains('[ 1-2,1-2,'), reason: row);
+      expect(row, contains('... ]'), reason: row);
+      expect(row, isNot(contains('[ ...')), reason: row);
+    },
+  );
+
   test('idle resize repaints the stage rows without touching drafts', () async {
     final keys = StreamController<String>();
     addTearDown(keys.close);

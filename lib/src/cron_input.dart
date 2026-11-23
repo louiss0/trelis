@@ -171,17 +171,17 @@ List<Set<int>?> _compileQuartzFields(List<String> fields) {
   final dom = fields[3];
   final dow = fields[5].toUpperCase();
   return [
-    quartzCronField(fields[0], 0, 59),
-    quartzCronField(fields[1], 0, 59),
-    quartzCronField(fields[2], 0, 23),
+    cronFieldValues(fields[0], 0, 59),
+    cronFieldValues(fields[1], 0, 59),
+    cronFieldValues(fields[2], 0, 23),
     dom == '?' || dom.startsWith('L') || dom.endsWith('W')
         ? null
-        : quartzCronField(dom, 1, 31),
-    quartzCronField(fields[4], 1, 12, quartzCronMonths),
+        : cronFieldValues(dom, 1, 31),
+    cronFieldValues(fields[4], 1, 12, cronMonthNames),
     dow == '?' || dow.contains('#') || dow.endsWith('L')
         ? null
-        : quartzCronField(dow, 1, 7, quartzCronWeekdays),
-    fields.length == 7 ? quartzCronField(fields[6], 1970, 2199) : null,
+        : cronFieldValues(dow, 1, 7, cronWeekdayNames),
+    fields.length == 7 ? cronFieldValues(fields[6], 1970, 2199) : null,
   ];
 }
 
@@ -595,10 +595,12 @@ final class CronInput {
   bool _cellActive(int index, List<String> cells) =>
       profile != CronProfile.quartz || index < 6 || cells[index].isNotEmpty;
 
-  /// Grapheme budget for edits inside cell [index]: the assembled-expression
-  /// limit minus the other active cells and the separators between them, so a
-  /// cell edit can never push the draft past [cronMaxExpressionLength]
-  /// without the submit-time check.
+  /// UTF-16 code-unit budget for edits inside cell [index]: the
+  /// assembled-expression limit minus the other active cells and the
+  /// separators between them, so a cell edit can never push the draft past
+  /// [cronMaxExpressionLength] without the submit-time check. The budget is
+  /// enforced on UTF-16 code units (not grapheme clusters) so astral
+  /// characters cannot slip past the bound.
   int _cellLimit(List<String> cells, int index) {
     var others = 0;
     var activeOthers = 0;
@@ -709,10 +711,8 @@ final class CronInput {
       // UTF-16 bound (astral characters count once as graphemes but twice
       // as code units, so the grapheme budget alone is not sufficient).
       final probe = List<String>.of(cells)..[index] = cellText;
-      final active = profile == CronProfile.quartz && probe[6].isEmpty
-          ? probe.sublist(0, 6)
-          : probe;
-      if (active.join(' ').length + payload.length > cronMaxExpressionLength) {
+      if (cronActiveCells(profile, probe).join(' ').length + payload.length >
+          cronMaxExpressionLength) {
         return (
           notice:
               'Paste rejected: the assembled expression would exceed '
@@ -841,12 +841,7 @@ final class CronInput {
       );
     }
 
-    String draftText() {
-      final active = profile == CronProfile.quartz && cells[6].isEmpty
-          ? cells.sublist(0, 6)
-          : cells;
-      return active.join(' ');
-    }
+    String draftText() => cronActiveCells(profile, cells).join(' ');
 
     String cue() => focus < schema.length
         ? '${profile.name} · ${schema[focus].position}/${schema[focus].total} '
@@ -877,22 +872,65 @@ final class CronInput {
       return tail.join();
     }
 
-    /// Windows [inner] to [innerBudget] cells around its end — where the cell
-    /// caret rests after focus entry — marking the hidden head with an
+    /// Windows [inner] to [innerBudget] cells around the caret boundary at
+    /// grapheme offset [caretGrapheme] (-1 anchors at the end, where the cell
+    /// caret rests after focus entry), marking each hidden side with an
     /// ellipsis. Only a single cell wider than the row ever reaches this.
-    String fitInner(String inner, int innerBudget) {
+    String fitInner(String inner, int innerBudget, int caretGrapheme) {
       final map = TextDisplayMap(inner);
       if (map.cellWidth <= innerBudget) return inner;
       if (innerBudget <= 0) return '';
       final ellipsis = spine.ascii ? '...' : '…';
       final ellipsisCells = TextDisplayMap(ellipsis).cellWidth;
       if (ellipsisCells >= innerBudget) return tailWithin(map, innerBudget);
-      return ellipsis + tailWithin(map, innerBudget - ellipsisCells);
+      // Too narrow for a marker on both sides: keep the single-marker tail
+      // window rather than reserve more than the row can hold.
+      if (2 * ellipsisCells > innerBudget) {
+        return ellipsis + tailWithin(map, innerBudget - ellipsisCells);
+      }
+      final caret = caretGrapheme < 0
+          ? map.entries.length
+          : caretGrapheme.clamp(0, map.entries.length);
+      // Reserve an ellipsis only for sides that actually hide content. Each
+      // pass recomputes the window with the markers the previous pass
+      // implies, which converges within a few rounds.
+      var markLeft = true;
+      var markRight = true;
+      for (var pass = 0; pass < 3; pass++) {
+        final reserve =
+            (markLeft ? ellipsisCells : 0) + (markRight ? ellipsisCells : 0);
+        final budget = innerBudget - reserve;
+        // Mirror the editable row's windowing: satisfy the cells before the
+        // caret first, then extend the window past it.
+        var used = map.caretCells(caret);
+        var start = 0;
+        while (start < caret && used > budget) {
+          used -= map.entries[start].cellWidth;
+          start++;
+        }
+        var end = caret;
+        while (end < map.entries.length &&
+            used + map.entries[end].cellWidth <= budget) {
+          used += map.entries[end].cellWidth;
+          end++;
+        }
+        final hidesLeft = start > 0;
+        final hidesRight = end < map.entries.length;
+        if (hidesLeft == markLeft && hidesRight == markRight) {
+          return '${hidesLeft ? ellipsis : ''}'
+              '${map.entries.sublist(start, end).map((entry) => entry.original).join()}'
+              '${hidesRight ? ellipsis : ''}';
+        }
+        markLeft = hidesLeft;
+        markRight = hidesRight;
+      }
+      return tailWithin(map, innerBudget);
     }
 
     /// One row item: a field cell or the trailing stage action, windowed to
-    /// the spine's body width when it alone would overflow.
-    String rowToken(String inner, {required bool focused}) {
+    /// the spine's body width when it alone would overflow. [caret] is the
+    /// cell's last reported caret grapheme offset (-1 anchors at the end).
+    String rowToken(String inner, {required bool focused, int caret = -1}) {
       final frame = rowFrame(focused: focused);
       final budget = spine.bodyWriteWidth;
       if (budget == null) return '${frame.open}$inner${frame.close}';
@@ -902,8 +940,12 @@ final class CronInput {
       if (fixed + TextDisplayMap(inner).cellWidth <= budget) {
         return '${frame.open}$inner${frame.close}';
       }
-      return '${frame.open}${fitInner(inner, budget - fixed)}${frame.close}';
+      return '${frame.open}${fitInner(inner, budget - fixed, caret)}${frame.close}';
     }
+
+    // Last caret grapheme offset reported inside each cell's editor; -1
+    // anchors the window at the end until a cell is edited.
+    final cellCarets = List<int>.filled(cells.length, -1);
 
     /// The row of field cells plus the trailing action. Cells wrap whole onto
     /// continuation lines inside the active structure; a token is never split
@@ -911,7 +953,11 @@ final class CronInput {
     void writeCellRow() {
       final tokens = <String>[
         for (var i = 0; i < schema.length; i++)
-          rowToken(cells[i].isEmpty ? ' ' : cells[i], focused: i == focus),
+          rowToken(
+            cells[i].isEmpty ? ' ' : cells[i],
+            focused: i == focus,
+            caret: cellCarets[i],
+          ),
         rowToken(actionName, focused: focus == schema.length),
       ];
       final budget = spine.bodyWriteWidth;
@@ -1054,11 +1100,13 @@ final class CronInput {
         }
         final index = focus;
         final cell = schema[index];
+        final cellLimit = _cellLimit(cells, index);
         final edit = await _edit(
           inputKeys,
           cells[index],
           out,
-          maxLength: _cellLimit(cells, index),
+          maxLength: cellLimit,
+          maxUtf16Length: cellLimit,
           transientHelp:
               stageProfile.alternateScreen == CapabilitySupport.supported,
           helpText: _cellHelp(cell),
@@ -1068,6 +1116,7 @@ final class CronInput {
           resizeObserver: stageObserver,
           session: session,
           onHelpVisibilityChanged: (visible) => stageHelpOpen = visible,
+          onCaretChanged: (caret) => cellCarets[index] = caret,
           intercept: (key, text) {
             if (key == ' ') {
               notice(
@@ -1111,6 +1160,8 @@ final class CronInput {
           for (var i = 0; i < cells.length; i++) {
             cells[i] = i < pasted.length ? pasted[i] : '';
           }
+          // Every pasted draft is fresh; carets anchor at the end.
+          cellCarets.fillRange(0, cellCarets.length, -1);
           focus = pastedFocus;
           continue;
         }

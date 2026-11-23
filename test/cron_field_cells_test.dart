@@ -47,6 +47,11 @@ void main() {
     test('unix cells accept their grammar and reject out-of-range tokens', () {
       expect(cronFieldCellError(CronProfile.unix, 0, '*/15'), isNull);
       expect(cronFieldCellError(CronProfile.unix, 0, '0-30/5'), isNull);
+      // A bare `N/step` item (no range) is rejected for unix, matching the
+      // pre-cell free-form validator exactly: Cronie's `N-max/step` shorthand
+      // was never part of the unix accept surface. The shared quartz grammar
+      // does accept it (see the quartz group below).
+      expect(cronFieldCellError(CronProfile.unix, 0, '5/15'), isNotNull);
       expect(cronFieldCellError(CronProfile.unix, 1, '23'), isNull);
       expect(cronFieldCellError(CronProfile.unix, 3, 'JAN-MAR'), isNull);
       expect(cronFieldCellError(CronProfile.unix, 3, 'feb'), isNull);
@@ -92,6 +97,9 @@ void main() {
         cronFieldCellError(CronProfile.quartz, 4, 'JANUARY'),
         contains('month'),
       );
+      // The shared field grammar keeps the Cronie `N/step` shorthand
+      // (`5/15` means `5-max/15`), as the pre-cell quartz validator did.
+      expect(cronFieldCellError(CronProfile.quartz, 1, '5/15'), isNull);
     });
 
     test('quartz day-of-month accepts ?, L, LW, L-n, L-nW and nW', () {
