@@ -25,6 +25,7 @@ import 'state_help_presentation.dart'
         ChoiceRestriction,
         DisclosureState,
         renderChoiceRow;
+import 'cron_field_cells.dart';
 import 'shared_terminal.dart';
 import 'terminal_io.dart';
 import 'text_measurement.dart';
@@ -1420,6 +1421,26 @@ final class _StructureSpine {
   /// The width a hint or compact event outside the frame may use.
   int get _outsideWidth => (_frameWidth - 2).clamp(1, _frameWidth);
 
+  /// The width [write] gives one plain body row of this stage.
+  ///
+  /// A component that packs its own rows — such as the cron field-cell row,
+  /// which must wrap between whole cells — measures against this so its
+  /// packing matches the spine's geometry rules instead of restating them.
+  /// Null means the stage does not wrap.
+  int? get bodyWriteWidth {
+    if (_encloses) return _contentWidth;
+    if (_heading != null) {
+      final stageWidth = _headingWidth;
+      if (stageWidth == null) return null;
+      return (stageWidth - _heading!.bodyIndentCells).clamp(1, stageWidth);
+    }
+    if (width == null) return null;
+    return (width! - structurePrefixCells(structure, ascii: ascii)).clamp(
+      1,
+      width!,
+    );
+  }
+
   void _emit(StringSink output, String line, TerminalColor foreground) {
     if (line.isEmpty) return;
     output.writeln(_colorText(line, foreground, background, outputProfile));
@@ -2572,6 +2593,9 @@ final class TextInput {
     _Keys? keys,
     TerminalSession? session,
     PresentationPreferences? presentation,
+    String? helpText,
+    String? linearHelpText,
+    bool? clearHelpCommand,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -2649,9 +2673,11 @@ final class TextInput {
           maxLength: maxLength,
           exemptCommandsFromLimit: mode == PromptMode.linear,
           required: required,
-          clearHelpCommand: resolved?.screenReader == true,
+          clearHelpCommand: clearHelpCommand ?? resolved?.screenReader == true,
           allowCommandPrefixes: resolved?.screenReader == true,
           supplementaryHelp: supplementaryHelp,
+          helpText: helpText,
+          linearHelpText: linearHelpText,
           onChanged: rich ? null : _onChanged,
           livePreview: rich ? _livePreview : null,
           transcript: scripted.transcript,
@@ -2755,6 +2781,7 @@ Future<({String action, String value})> _edit(
   bool clearHelpCommand = false,
   bool allowCommandPrefixes = false,
   int? maxLength,
+  int? maxUtf16Length,
   bool exemptCommandsFromLimit = false,
   bool required = false,
   List<String> supplementaryHelp = const [],
@@ -2764,6 +2791,7 @@ Future<({String action, String value})> _edit(
   String Function()? liveLinearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  void Function(int caret)? onCaretChanged,
   void Function(bool belowEditableRow)? onEditableRowBoundary,
   String? Function(String draft)? livePreview,
   void Function()? onHelpDismissed,
@@ -2928,6 +2956,21 @@ Future<({String action, String value})> _edit(
       return;
     }
     final added = data.characters.toList();
+    // [maxLength] budgets grapheme clusters; [maxUtf16Length] budgets UTF-16
+    // code units, which differ for astral characters and combined clusters.
+    // The synthetic command prefix is excluded from both counts.
+    final unitCount =
+        candidate.length - (synthetic >= 0 ? chars[synthetic].length : 0);
+    if (maxUtf16Length != null &&
+        unitCount > maxUtf16Length &&
+        !commandPrefix) {
+      notice(
+        'Insertion rejected: character limit is $maxUtf16Length UTF-16 '
+        'code units.',
+        event: StageEvent.warning,
+      );
+      return;
+    }
     chars.insertAll(pos, added);
     if (synthetic >= pos) synthetic += added.length;
     provenance.insertAll(pos, List<bool>.filled(added.length, isPaste));
@@ -2955,6 +2998,7 @@ Future<({String action, String value})> _edit(
   }
 
   void display() {
+    onCaretChanged?.call(pos);
     void writePrompt(void Function() action) {
       final activeSession = session;
       if (activeSession == null) {

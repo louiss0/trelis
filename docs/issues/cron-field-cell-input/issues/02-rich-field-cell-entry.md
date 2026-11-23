@@ -1,0 +1,30 @@
+# 02 Rich field-cell entry stage
+
+Status: resolved
+
+**Blocked by:** [01](01-field-cell-model-and-validation.md)
+
+**What to build:** The rich-interaction entry stage of `CronInput`: a row of inline field cells with a focus ring `cell 0 -> ... -> cell N-1 -> trailing action -> cell 0` (N = 5 unix, 7 quartz; trailing action is `Submit` when `preview == null`, `Review` when configured). `Tab` advances, `Shift+Tab` and `Ctrl+B` move backward; entering a cell places the caret at end of its grapheme content. `Enter` from any cell or the trailing stop runs full-draft validation: empty mandatory cells fail naming the field and focus the first empty cell; the first invalid cell gets focus with a field-specific error; quartz `?` violations focus the day-of-month cell. All drafts survive failures. Printable characters (including literal `-` and `+`) insert at the caret; `Left`/`Right`/`Home`/`End`/`Backspace`/`Delete` are grapheme-aware and strictly bounded within the focused cell; `Up`/`Down` are no-ops; ASCII `Space` never inserts or advances and shows a brief notice to use `Tab`. `Tab` out of empty/invalid cells is always allowed while composing. Reuse the shared editor machinery in `lib/src/text_input.dart` (`_edit`, `_Keys`, help/escape plumbing) where it fits; new cell-state code belongs in the part file from ticket 01 or a sibling part file. See the [spec](../spec.md) Implementation Decisions: rich interaction focus ring and keyboard model, validation timing and targeted error recovery.
+
+## Acceptance criteria
+
+- [x] Rich mode renders and edits per-cell drafts with the specified focus ring and wraparound through the trailing Submit/Review stop.
+- [x] `Enter` from any cell validates the whole draft and either accepts or enters Review per `preview == null`; failures retain all drafts and focus the first offending cell.
+- [x] Intra-cell editing is grapheme-bounded; `Space` is rejected with the Tab-guidance notice; `Up`/`Down` are no-ops; `-`/`+` insert literally.
+- [x] Tests drive `theme.cronInput(...).prompt()` through `TerminalEnvironment.scripted`/`custom` across representative structural themes, asserting observable focus indicators, notices, and `PromptResult<CronExpression>` outcomes — unix 5-cell and quartz 6/7-cell flows, empty-cell rejection, invalid-cell focus recovery.
+
+**Resolution notes (ticket 02):**
+
+- Rich entry now runs `_fieldCells` in `lib/src/cron_input.dart`: one `_edit` call per focused cell keeps all grapheme caret/edit semantics in the shared machinery; a persistent `List<String>` of cell drafts survives validation failures and Review `Edit` round-trips. The focus ring is `cell 0 -> ... -> cell N-1 -> trailing action -> cell 0` with `Submit`/`Review` chosen by `preview == null`.
+- Validation delegates to the ticket-01 model (`cronFieldCellsError` + `cronAssembleExpression`); failures write a field-naming notice and move focus to `error.index`, so empty mandatory cells, first-invalid-cell recovery and the Quartz day-of-month `?` focus all come from the shared ordered check.
+- Merge with ticket 07 (already on integration): `_run` keeps ticket 07's delegation for `SuppliedAnswer`, non-scripted sources without a preview, and linear entry without a preview (now with `helpText`/`linearHelpText`/`clearHelpCommand`), while rich `ScriptedInput` always runs field cells — including `preview == null`, where the trailing `Submit` stop accepts directly per this ticket's contract. The printable-only `/cancel`-during-preview tracking was ported into the shared `_reviewStage`, and the duplicate help getters were disambiguated (`_submitHelp` = ticket-07 entry help, `_submitStopHelp` = trailing-stop help).
+- Rendering is deliberately minimal but structure-correct: the stage paints through `_StructureSpine` (`opening` + cell row + `<profile> · i/N <field> (<range-cue>)` cue + compact hint), cells render as tight `[x]`/`[]`/`[>x<]` tokens so bare heading grammars never see a `[ ` line start, and warnings restart the line at column zero (`\r\x1b[2K`) so they cannot inherit the mid-row caret column and overflow narrow geometry.
+- Suite migration overlap with ticket 08: this ticket already moved every suite ticket 07's resolution notes listed to the cell `Tab` workflow (15 theme acceptance matrices, `theme_matrix_cases`, four framing suites, `theme_formatted_components_test`, `component_acceptance_matrix_test`, `cron_input_test`, `cron_interaction_conformance_test`, `cron_workflow_migration_test`, and `cron_linear_parity_test`'s rich leg) because the branch could not merge red. Ticket 08 still owns the final coverage pass (paste/help/review/narrow/ASCII-Unicode markers) after tickets 03-06 land.
+
+## Answer
+
+Rich field-cell entry stage implemented in `lib/src/cron_input.dart` (`_fieldCells`, `_cellHelp`, `_cellLimit`, `_submitStopHelp`, `_reviewStage` extraction) on top of the ticket-01 model in `lib/src/cron_field_cells.dart`; no public API changed and linear mode keeps the shared `TextInput` contract.
+
+- `test/cron_field_cells_entry_test.dart` (16 tests): unix left-to-right Tab entry, wraparound through Submit/Review, Shift+Tab and Ctrl+B reverse, Enter validation from a middle cell, invalid-minute recovery with drafts preserved, quartz 6- and 7-field assembly (blank year omitted), Quartz `?` exclusivity focusing day-of-month, space rejection with Tab guidance, Up/Down no-ops, literal `-`/`+` insertion, grapheme-bounded caret editing, `initialValue` cell split, cancel/interrupt/input-end outcomes, preview Review `Edit` round-trip, and multi-token paste rejection.
+- Legacy suites migrated to the cell workflow (see Resolution notes): all previously single-line rich cron scripts now drive `Tab`-separated cells; the idle-resize repaint assertion checks the focused cell's editable row since only the editor line repaints on resize.
+- Verified: `dart pub get`, `dart analyze` clean, `dart format` clean on touched files, full `dart test` green (5600+ tests including all cron suites, linear parity, theme matrices and framing suites).

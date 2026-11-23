@@ -458,7 +458,7 @@ void main() {
           preview: config,
         ).prompt(
           source: ScriptedInput(
-            Stream.value('* * * * *\r\t\r\t\r'),
+            Stream.value('*\t*\t*\t*\t*\r\t\r\t\r'),
             output,
             outputProfile: _richProfile,
           ),

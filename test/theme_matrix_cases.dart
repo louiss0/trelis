@@ -366,7 +366,7 @@ List<ThemeMatrixCase> themeMatrixCases({
       profile: CronProfile.unix,
       structure: structure,
     ).prompt(source: input, mode: mode),
-    richAnswer: '* * * * *\r\t\r\t\r',
+    richAnswer: '*\t*\t*\t*\t*\r',
   ),
   ThemeMatrixCase(
     'PathInput',

@@ -319,7 +319,7 @@ List<_Case> _cases() => [
       'Schedule',
       profile: CronProfile.unix,
     ).prompt(source: input, mode: mode),
-    richAnswer: '* * * * *\r\t\r\t\r',
+    richAnswer: '*\t*\t*\t*\t*\r',
   ),
   _Case(
     'PathInput',

@@ -152,7 +152,7 @@ void main() {
             ),
             mode: PromptMode.rich,
           );
-      input.add('0 0 31 2 *\r\t\r');
+      input.add('0\t0\t31\t2\t*\r\t\r');
       await Future<void>.delayed(const Duration(milliseconds: 40));
       expect(output.toString(), contains('Calculating preview'));
       input.add('\x1b');
@@ -203,7 +203,7 @@ void main() {
           preview: config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('* * * * *\r\x03'),
+            Stream.value('*\t*\t*\t*\t*\r\x03'),
             StringBuffer(),
             outputProfile: _richProfile,
           ),
