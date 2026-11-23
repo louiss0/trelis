@@ -49,6 +49,14 @@ A fixed span of time whose units can be converted without a calendar, anchor dat
 **Calendar period**:
 Unapplied calendar components, optionally accompanied by elapsed sub-day components. Its endpoint or elapsed total requires application context and is not implied by entry.
 
+**Cron field**:
+One positional calendar or clock selector in a cron expression whose unit and accepted tokens are governed by the declared cron profile. It is neither restricted to a single integer nor an instant.
+_Avoid_: Cron number
+
+**Field cell**:
+An individually focusable inline container presenting one field of a segmented prompt in rich interaction. It is distinct from an enclosing structural theme.
+_Avoid_: Box (conflicts with BoxTheme and enclosing structural themes)
+
 **Cron matching preview**:
 A bounded set of matching instants under a declared expression profile and time context, not a promise that a scheduler will execute jobs then.
 
