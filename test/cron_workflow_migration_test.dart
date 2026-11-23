@@ -230,7 +230,8 @@ void main() {
         );
     expect(result, isA<Interrupted<CronExpression>>());
     final text = _unwrapped(output.toString());
-    expect(text, contains('Help: Entering the expression'));
+    // Stage-led help leads with the focused field cell, then the dialect.
+    expect(text, contains('Help: Editing the minute field cell 1/5'));
     expect(text, contains('five fields'));
     expect(text, contains('4096 UTF-16 code units'));
     expect(text, contains('Ctrl+T opens help'));

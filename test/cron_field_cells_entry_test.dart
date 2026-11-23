@@ -360,7 +360,9 @@ void main() {
       final result = await CronInput('Schedule', profile: CronProfile.unix)
           .prompt(
             source: ScriptedInput(
-              Stream.value('\x1b[200~1 2 3 4 5\x1b[201~*\t*\t*\t*\t*\r'),
+              // Six tokens is the wrong count for the unix profile, so the
+              // paste is rejected and every cell draft stays untouched.
+              Stream.value('\x1b[200~1 2 3 4 5 6\x1b[201~*\t*\t*\t*\t*\r'),
               output,
               outputProfile: _richProfile,
             ),
