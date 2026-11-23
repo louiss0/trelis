@@ -1,6 +1,6 @@
 # 02 Rich field-cell entry stage
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [01](01-field-cell-model-and-validation.md)
 
