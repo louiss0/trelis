@@ -1,6 +1,6 @@
 # 06 Preview Review stage on field cells
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-rich-field-cell-entry.md), [05](05-component-help-and-escape.md)
 
