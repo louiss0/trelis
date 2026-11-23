@@ -86,12 +86,14 @@ void main() {
       expect(text, contains('quartz requires ?'));
     });
 
-    test('Ctrl+T on the trailing Submit stop describes its controls', () async {
+    test('Ctrl+T on the last cell leads with that field', () async {
       final output = StringBuffer();
       final result = await CronInput('Schedule', profile: CronProfile.unix)
           .prompt(
             source: ScriptedInput(
-              Stream.value('*\t*\t*\t*\t*\t\x14\x1b\r'),
+              // The fifth star lands in the last cell (day-of-week); open
+              // and dismiss help there, then submit the retained draft.
+              Stream.value('*\t*\t*\t*\t*\x14\x1b\r'),
               output,
               outputProfile: _richProfile,
             ),
@@ -102,13 +104,12 @@ void main() {
         '* * * * *',
       );
       final text = _unwrapped(output.toString());
-      expect(text, contains('Submit stop'));
+      expect(text, contains('day-of-week field cell 5/5'));
       expect(text, contains('Field order:'));
       expect(text, contains('No matching preview'));
     });
 
-    test('Ctrl+T on the trailing Review stop and inside Review describes the '
-        'stage controls', () async {
+    test('Ctrl+T inside Review describes the stage controls', () async {
       final output = StringBuffer();
       final result =
           await CronInput(
@@ -117,9 +118,9 @@ void main() {
             preview: _config(),
           ).prompt(
             source: ScriptedInput(
-              // Review stop help, dismiss, Enter opens Review; Review-stage
-              // help, dismiss, then Tab to Submit and Enter accepts.
-              Stream.value('*\t*\t*\t*\t*\t\x14\x1b\r\x14\x1b\t\t\r'),
+              // Enter opens Review; Review-stage help, dismiss, then Tab to
+              // Submit and Enter accepts.
+              Stream.value('*\t*\t*\t*\t*\r\x14\x1b\t\t\r'),
               output,
               outputProfile: _richProfile,
             ),
@@ -130,8 +131,7 @@ void main() {
         '* * * * *',
       );
       final text = _unwrapped(output.toString());
-      expect(text, contains('Review stop'));
-      expect(text, contains('review stage'));
+      expect(text, contains('Reviewing the retained expression'));
       expect(text, contains('Edit, Preview and Submit'));
       expect(text, contains('Etc/UTC'));
     });

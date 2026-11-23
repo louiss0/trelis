@@ -31,6 +31,7 @@ import 'text_input.dart'
         Choice,
         CivilDate,
         ColorValue,
+        CronCellFrame,
         CronExpression,
         CronPreviewConfig,
         CronProfile,
@@ -791,6 +792,7 @@ abstract class StructuralTheme {
     CronPreviewConfig? preview,
     ComponentColors colors = const ComponentColors(),
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    CronCellFrame cellFrame = CronCellFrame.square,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
     ThemeFormattedPrompt.cron(
@@ -803,6 +805,7 @@ abstract class StructuralTheme {
       preview: preview,
       colors: colors,
       instructions: instructions,
+      cellFrame: cellFrame,
       supplementaryHelp: supplementaryHelp,
     ).prompt,
   );

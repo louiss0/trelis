@@ -21,6 +21,8 @@ final class CronFieldCell {
     required this.total,
     required this.rangeCue,
     required this.optional,
+    required this.min,
+    required this.max,
   });
 
   /// 0-based position in the cell list and in the assembled expression.
@@ -40,6 +42,12 @@ final class CronFieldCell {
 
   /// Whether the cell may stay empty (only the Quartz `year` cell).
   final bool optional;
+
+  /// Lowest value a bare numeric cell draft may take (Up/Down stepping).
+  final int min;
+
+  /// Highest value a bare numeric cell draft may take (Up/Down stepping).
+  final int max;
 }
 
 const _unixCells = [
@@ -50,6 +58,8 @@ const _unixCells = [
     total: 5,
     rangeCue: '0-59',
     optional: false,
+    min: 0,
+    max: 59,
   ),
   CronFieldCell(
     name: 'hour',
@@ -58,6 +68,8 @@ const _unixCells = [
     total: 5,
     rangeCue: '0-23',
     optional: false,
+    min: 0,
+    max: 23,
   ),
   CronFieldCell(
     name: 'day-of-month',
@@ -66,6 +78,8 @@ const _unixCells = [
     total: 5,
     rangeCue: '1-31',
     optional: false,
+    min: 1,
+    max: 31,
   ),
   CronFieldCell(
     name: 'month',
@@ -74,6 +88,8 @@ const _unixCells = [
     total: 5,
     rangeCue: '1-12 or JAN-DEC',
     optional: false,
+    min: 1,
+    max: 12,
   ),
   CronFieldCell(
     name: 'day-of-week',
@@ -82,6 +98,8 @@ const _unixCells = [
     total: 5,
     rangeCue: '0-7 or SUN-SAT (0 and 7 are Sunday)',
     optional: false,
+    min: 0,
+    max: 7,
   ),
 ];
 
@@ -93,6 +111,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '0-59',
     optional: false,
+    min: 0,
+    max: 59,
   ),
   CronFieldCell(
     name: 'minute',
@@ -101,6 +121,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '0-59',
     optional: false,
+    min: 0,
+    max: 59,
   ),
   CronFieldCell(
     name: 'hour',
@@ -109,6 +131,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '0-23',
     optional: false,
+    min: 0,
+    max: 23,
   ),
   CronFieldCell(
     name: 'day-of-month',
@@ -117,6 +141,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '1-31, ?, L, LW, L-n, L-nW or nW',
     optional: false,
+    min: 1,
+    max: 31,
   ),
   CronFieldCell(
     name: 'month',
@@ -125,6 +151,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '1-12 or JAN-DEC',
     optional: false,
+    min: 1,
+    max: 12,
   ),
   CronFieldCell(
     name: 'day-of-week',
@@ -133,6 +161,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '1-7, ?, L, dL or d#n',
     optional: false,
+    min: 1,
+    max: 7,
   ),
   CronFieldCell(
     name: 'year',
@@ -141,6 +171,8 @@ const _quartzCells = [
     total: 7,
     rangeCue: '1970-2199',
     optional: true,
+    min: 1970,
+    max: 2199,
   ),
 ];
 
