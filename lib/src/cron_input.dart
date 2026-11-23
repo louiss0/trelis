@@ -582,7 +582,7 @@ final class CronInput {
         : 'The actions are Edit, Preview and Submit; Tab or Shift-Tab changes the focused action, Enter activates it and the focused action is announced after every change. Preview is interruptible with Ctrl+C; Escape cancels an active preview first, then the prompt, and Ctrl+C interrupts from any layer.';
     return _withSupplementary(
       'Help: Reviewing the retained expression for the ${profile.name} '
-      'profile, $_fieldShape. Field order: $_fieldMap. $controls $_dayRules '
+      'profile, $_fieldShape. $controls Field order: $_fieldMap. $_dayRules '
       '$_syntaxNote $_previewNote',
     );
   }
@@ -709,12 +709,10 @@ final class CronInput {
       // UTF-16 bound (astral characters count once as graphemes but twice
       // as code units, so the grapheme budget alone is not sufficient).
       final probe = List<String>.of(cells)..[index] = cellText;
-      final active =
-          profile == CronProfile.quartz && probe[6].isEmpty
+      final active = profile == CronProfile.quartz && probe[6].isEmpty
           ? probe.sublist(0, 6)
           : probe;
-      if (active.join(' ').length + payload.length >
-          cronMaxExpressionLength) {
+      if (active.join(' ').length + payload.length > cronMaxExpressionLength) {
         return (
           notice:
               'Paste rejected: the assembled expression would exceed '
@@ -768,11 +766,7 @@ final class CronInput {
         focus: index,
       );
     }
-    return (
-      notice: null,
-      cells: distributed,
-      focus: tokens.length - 1,
-    );
+    return (notice: null, cells: distributed, focus: tokens.length - 1);
   }
 
   /// Rich-interaction field-cell entry stage.
