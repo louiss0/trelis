@@ -150,8 +150,16 @@ List<CronFieldCell> cronFieldCells(CronProfile profile) => switch (profile) {
   CronProfile.quartz => _quartzCells,
 };
 
+/// The cell drafts that take part in the assembled expression: every cell
+/// except an empty Quartz `year` cell (index 6), which is omitted so a
+/// six-field Quartz draft stays clean. [cells] must have the schema length.
+List<String> cronActiveCells(CronProfile profile, List<String> cells) =>
+    profile == CronProfile.quartz && cells[6].isEmpty
+    ? cells.sublist(0, 6)
+    : cells;
+
 /// Month and weekday names shared by the unix and quartz field grammars.
-const quartzCronMonths = [
+const cronMonthNames = [
   'JAN',
   'FEB',
   'MAR',
@@ -166,12 +174,13 @@ const quartzCronMonths = [
   'DEC',
 ];
 
-const quartzCronWeekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const cronWeekdayNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 /// The shared `*`/number/range/list/step field grammar used by every
-/// non-special cron field. Returns the matched value set, or null when the
-/// field text is not a valid expression for the given bounds.
-Set<int>? quartzCronField(
+/// non-special cron field in either profile. Returns the matched value set,
+/// or null when the field text is not a valid expression for the given
+/// bounds.
+Set<int>? cronFieldValues(
   String field,
   int min,
   int max, [
@@ -216,15 +225,21 @@ Set<int>? quartzCronField(
 
 /// Unix field grammar for the field at [index] (0 minute .. 4 day-of-week),
 /// mirroring the per-field checks of the free-form expression validator.
+///
+/// A bare `N/step` item (no `-` range, e.g. `5/15`) is rejected, matching the
+/// pre-cell free-form validator exactly: Cronie's `N-max/step` shorthand was
+/// never part of the unix accept surface, so cell entry keeps the same
+/// accept/reject semantics. The shared [cronFieldValues] grammar used by the
+/// quartz profile does accept the shorthand, as its validator always did.
 bool unixCronFieldValid(String field, int index) {
   const min = [0, 0, 1, 1, 0];
   const max = [59, 23, 31, 12, 7];
   int? number(String text) {
-    if (index == 3 && quartzCronMonths.contains(text.toUpperCase())) {
-      return quartzCronMonths.indexOf(text.toUpperCase()) + 1;
+    if (index == 3 && cronMonthNames.contains(text.toUpperCase())) {
+      return cronMonthNames.indexOf(text.toUpperCase()) + 1;
     }
-    if (index == 4 && quartzCronWeekdays.contains(text.toUpperCase())) {
-      return quartzCronWeekdays.indexOf(text.toUpperCase());
+    if (index == 4 && cronWeekdayNames.contains(text.toUpperCase())) {
+      return cronWeekdayNames.indexOf(text.toUpperCase());
     }
     if (!RegExp(r'^[0-9]+$').hasMatch(text)) return null;
     return int.tryParse(text);
@@ -270,7 +285,7 @@ bool quartzCronDayOfMonthValid(String field) {
       field == 'LW' ||
       (offset != null && offset >= 1 && offset <= 30) ||
       (weekdayDay != null && weekdayDay >= 1 && weekdayDay <= 31) ||
-      quartzCronField(field, 1, 31) != null;
+      cronFieldValues(field, 1, 31) != null;
 }
 
 /// Quartz `day-of-week` specials: `?`, `L`, `dL` and `d#n`, or an ordinary
@@ -287,7 +302,7 @@ bool quartzCronDayOfWeekValid(String field) {
   ).hasMatch(field);
   return nthWeekday ||
       lastWeekday ||
-      quartzCronField(field, 1, 7, quartzCronWeekdays) != null;
+      cronFieldValues(field, 1, 7, cronWeekdayNames) != null;
 }
 
 /// Field-specific validation error for one cell draft, or null when the
@@ -303,13 +318,13 @@ String? cronFieldCellError(CronProfile profile, int cellIndex, String draft) {
   final valid = switch (profile) {
     CronProfile.unix => unixCronFieldValid(draft, cellIndex),
     CronProfile.quartz => switch (cellIndex) {
-      0 => quartzCronField(draft, 0, 59) != null,
-      1 => quartzCronField(draft, 0, 59) != null,
-      2 => quartzCronField(draft, 0, 23) != null,
+      0 => cronFieldValues(draft, 0, 59) != null,
+      1 => cronFieldValues(draft, 0, 59) != null,
+      2 => cronFieldValues(draft, 0, 23) != null,
       3 => quartzCronDayOfMonthValid(draft),
-      4 => quartzCronField(draft, 1, 12, quartzCronMonths) != null,
+      4 => cronFieldValues(draft, 1, 12, cronMonthNames) != null,
       5 => quartzCronDayOfWeekValid(draft),
-      _ => quartzCronField(draft, 1970, 2199) != null,
+      _ => cronFieldValues(draft, 1970, 2199) != null,
     },
   };
   return valid ? null : "'${cell.name}' is invalid; expected ${cell.rangeCue}.";
@@ -352,10 +367,8 @@ String? _quartzDayExclusivityMessage(String dayOfMonth, String dayOfWeek) =>
     final message = _quartzDayExclusivityMessage(cells[3], cells[5]);
     if (message != null) return (index: 3, message: message);
   }
-  final active = profile == CronProfile.quartz && cells[6].isEmpty
-      ? cells.sublist(0, 6)
-      : cells;
-  if (active.join(' ').length > cronMaxExpressionLength) {
+  if (cronActiveCells(profile, cells).join(' ').length >
+      cronMaxExpressionLength) {
     return (
       index: cells.length - 1,
       message:
@@ -380,10 +393,7 @@ String cronAssembleExpression(CronProfile profile, List<String> cells) {
       'expected ${schema.length} field cells for the ${profile.name} profile',
     );
   }
-  final active = profile == CronProfile.quartz && cells[6].isEmpty
-      ? cells.sublist(0, 6)
-      : cells;
-  final expression = active.join(' ');
+  final expression = cronActiveCells(profile, cells).join(' ');
   if (expression.length > cronMaxExpressionLength) {
     throw ArgumentError.value(
       expression.length,

@@ -28,3 +28,5 @@ Implemented the internal field-cell model in a new standalone src library `lib/s
 - Tests: `test/cron_field_cells_test.dart` (30 tests) covers schemas, per-field errors, `?` exclusivity ordering, verbatim 5/6/7-field assembly, the length bound, initialValue accept/reject/split, and per-invocation prompt reset.
 
 `dart analyze` clean; `dart test` on the new file plus all six existing cron suites passes (102 tests total across the run).
+
+Review follow-up (ticket/cron-review-fixes): a code review flagged that `unixCronFieldValid` rejects a bare `N/step` item such as `5/15` while the shared `cronFieldValues` grammar accepts it for quartz. Verified against `git show main:lib/src/cron_input.dart`: the pre-change free-form unix validator rejected `N/step` identically (`step.length == 2 && range.length != 2 -> false`), so this is not a regression — Cronie's `N-max/step` shorthand was never part of the unix accept surface, and cell entry preserves the same accept/reject semantics per profile. Quartz kept accepting it, also unchanged. Documented in the `unixCronFieldValid` doc comment and pinned by tests in `test/cron_field_cells_test.dart`.
