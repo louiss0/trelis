@@ -410,12 +410,12 @@ void main() {
       await pumpEventQueue();
 
       // A resize is a repaint only: the retained draft stays in the prompt and
-      // the editable line is redrawn inside the observed width. Field cells
+      // the field-cell row is redrawn inside the observed width. Field cells
       // keep their drafts across the repaint, which the accepted expression
       // below proves.
       expect(output.length, greaterThan(beforeResize));
       final tail = _visibleLines(output.toString().substring(beforeResize));
-      expect(tail.join(), contains('> *'));
+      expect(tail.join(), contains('[ * ]'));
       for (final line in tail) {
         expect(line.length, lessThanOrEqualTo(14));
       }

@@ -794,11 +794,6 @@ final class CronInput {
     // cell drafts.
     var stageProfile = effectiveProfile;
     var stageHelpOpen = false;
-    // Set when the cell intercept accepts a multi-token paste; applied to
-    // every cell once that cell's `_edit` returns so the staged drafts and
-    // the focus ring move together.
-    List<String>? pastedCells;
-    var pastedFocus = 0;
     final spine = _structureSpine(
       stageProfile,
       structure: structure,
@@ -859,38 +854,64 @@ final class CronInput {
           : (open: '[→', close: '←]');
     }
 
-    /// The tail of [map] that fits [budget] cells, kept whole-grapheme.
-    String tailWithin(TextDisplayMap map, int budget) {
+    /// The tail of [map] that fits [budget] cells, kept whole-grapheme, and
+    /// the entry index the window starts at.
+    ({String text, int start}) tailWindow(TextDisplayMap map, int budget) {
       var used = 0;
       final tail = <String>[];
+      var start = map.entries.length;
       for (var i = map.entries.length - 1; i >= 0; i--) {
         final entry = map.entries[i];
         if (used + entry.cellWidth > budget) break;
         used += entry.cellWidth;
         tail.insert(0, entry.original);
+        start = i;
       }
-      return tail.join();
+      return (text: tail.join(), start: start);
     }
 
     /// Windows [inner] to [innerBudget] cells around the caret boundary at
     /// grapheme offset [caretGrapheme] (-1 anchors at the end, where the cell
     /// caret rests after focus entry), marking each hidden side with an
     /// ellipsis. Only a single cell wider than the row ever reaches this.
-    String fitInner(String inner, int innerBudget, int caretGrapheme) {
+    /// Returns the shown text and the display cells before the caret inside
+    /// it, so the physical caret can be placed on the focused token.
+    ({String text, int caretCells}) fitInner(
+      String inner,
+      int innerBudget,
+      int caretGrapheme,
+    ) {
       final map = TextDisplayMap(inner);
-      if (map.cellWidth <= innerBudget) return inner;
-      if (innerBudget <= 0) return '';
+      int caretIndex() => caretGrapheme < 0
+          ? map.entries.length
+          : caretGrapheme.clamp(0, map.entries.length);
+
+      /// Cells before [caret] inside a tail window starting at [start].
+      int windowCaret(int caret, int start) => caret <= start
+          ? 0
+          : map.caretCells(caret.clamp(start, map.entries.length)) -
+                map.caretCells(start);
+
+      if (map.cellWidth <= innerBudget) {
+        return (text: inner, caretCells: map.caretCells(caretIndex()));
+      }
+      if (innerBudget <= 0) return (text: '', caretCells: 0);
       final ellipsis = spine.ascii ? '...' : '…';
       final ellipsisCells = TextDisplayMap(ellipsis).cellWidth;
-      if (ellipsisCells >= innerBudget) return tailWithin(map, innerBudget);
+      final caret = caretIndex();
+      if (ellipsisCells >= innerBudget) {
+        final tail = tailWindow(map, innerBudget);
+        return (text: tail.text, caretCells: windowCaret(caret, tail.start));
+      }
       // Too narrow for a marker on both sides: keep the single-marker tail
       // window rather than reserve more than the row can hold.
       if (2 * ellipsisCells > innerBudget) {
-        return ellipsis + tailWithin(map, innerBudget - ellipsisCells);
+        final tail = tailWindow(map, innerBudget - ellipsisCells);
+        return (
+          text: '$ellipsis${tail.text}',
+          caretCells: ellipsisCells + windowCaret(caret, tail.start),
+        );
       }
-      final caret = caretGrapheme < 0
-          ? map.entries.length
-          : caretGrapheme.clamp(0, map.entries.length);
       // Reserve an ellipsis only for sides that actually hide content. Each
       // pass recomputes the window with the markers the previous pass
       // implies, which converges within a few rounds.
@@ -917,83 +938,253 @@ final class CronInput {
         final hidesLeft = start > 0;
         final hidesRight = end < map.entries.length;
         if (hidesLeft == markLeft && hidesRight == markRight) {
-          return '${hidesLeft ? ellipsis : ''}'
+          final shown =
+              '${hidesLeft ? ellipsis : ''}'
               '${map.entries.sublist(start, end).map((entry) => entry.original).join()}'
               '${hidesRight ? ellipsis : ''}';
+          return (
+            text: shown,
+            caretCells:
+                (hidesLeft ? ellipsisCells : 0) +
+                (caret < start
+                    ? 0
+                    : map.caretCells(caret.clamp(start, end)) -
+                          map.caretCells(start)),
+          );
         }
         markLeft = hidesLeft;
         markRight = hidesRight;
       }
-      return tailWithin(map, innerBudget);
+      final tail = tailWindow(map, innerBudget);
+      return (text: tail.text, caretCells: windowCaret(caret, tail.start));
     }
 
     /// One row item: a field cell or the trailing stage action, windowed to
     /// the spine's body width when it alone would overflow. [caret] is the
-    /// cell's last reported caret grapheme offset (-1 anchors at the end).
-    String rowToken(String inner, {required bool focused, int caret = -1}) {
+    /// cell's caret grapheme offset (-1 anchors at the end and rests the
+    /// caret before the closing delimiter). Returns the token text and the
+    /// display cells before the caret inside it.
+    ({String text, int caretCells}) rowToken(
+      String inner, {
+      required bool focused,
+      int caret = -1,
+    }) {
       final frame = rowFrame(focused: focused);
+      final openCells = TextDisplayMap(frame.open).cellWidth;
       final budget = spine.bodyWriteWidth;
-      if (budget == null) return '${frame.open}$inner${frame.close}';
-      final fixed =
-          TextDisplayMap(frame.open).cellWidth +
-          TextDisplayMap(frame.close).cellWidth;
-      if (fixed + TextDisplayMap(inner).cellWidth <= budget) {
-        return '${frame.open}$inner${frame.close}';
+      String shown;
+      int innerCaret;
+      if (budget == null) {
+        shown = inner;
+        final map = TextDisplayMap(inner);
+        innerCaret = caret < 0
+            ? map.cellWidth
+            : map.caretCells(caret.clamp(0, map.entries.length));
+      } else {
+        final fixed = openCells + TextDisplayMap(frame.close).cellWidth;
+        final map = TextDisplayMap(inner);
+        if (fixed + map.cellWidth <= budget) {
+          shown = inner;
+          innerCaret = caret < 0
+              ? map.cellWidth
+              : map.caretCells(caret.clamp(0, map.entries.length));
+        } else {
+          final fit = fitInner(inner, budget - fixed, caret);
+          shown = fit.text;
+          innerCaret = fit.caretCells;
+        }
       }
-      return '${frame.open}${fitInner(inner, budget - fixed, caret)}${frame.close}';
+      return (
+        text: '${frame.open}$shown${frame.close}',
+        caretCells: openCells + innerCaret,
+      );
     }
 
-    // Last caret grapheme offset reported inside each cell's editor; -1
-    // anchors the window at the end until a cell is edited.
-    final cellCarets = List<int>.filled(cells.length, -1);
+    // Per-cell caret as a grapheme-cluster offset into that cell's draft.
+    // Tab, Shift-Tab, Ctrl+B and validation refocuses rest the caret at the
+    // end of the entered cell's grapheme content.
+    final carets = [for (final cell in cells) cell.characters.length];
 
-    /// The row of field cells plus the trailing action. Cells wrap whole onto
-    /// continuation lines inside the active structure; a token is never split
-    /// unless it alone exceeds the inner line width, which [rowToken] windows.
-    void writeCellRow() {
-      final tokens = <String>[
+    void caretToEnd(int index) =>
+        carets[index] = cells[index].characters.length;
+
+    /// Display cells the structure's row prefix occupies, so the physical
+    /// caret lands inside the framed content column.
+    int rowPrefixCells() => structurePrefixCells(structure, ascii: spine.ascii);
+
+    /// Lays out every field token plus the trailing action into wrapped row
+    /// lines, reporting the focused token's packed line and emitted column.
+    /// A token is never split unless it alone exceeds the inner line width,
+    /// which [rowToken] windows around the caret.
+    ({List<String> lines, List<String> tokens, int caretLine, int caretColumn})
+    layoutCellRows() {
+      final tokens = <({String text, int caretCells})>[
         for (var i = 0; i < schema.length; i++)
           rowToken(
             cells[i].isEmpty ? ' ' : cells[i],
             focused: i == focus,
-            caret: cellCarets[i],
+            caret: carets[i],
           ),
         rowToken(actionName, focused: focus == schema.length),
       ];
+      final tokenTexts = [for (final token in tokens) token.text];
       final budget = spine.bodyWriteWidth;
       if (budget == null) {
-        write(tokens.join(' '));
-        return;
+        var column = 0;
+        var caretColumn = 0;
+        for (var t = 0; t < tokens.length; t++) {
+          if (t == focus) caretColumn = column + tokens[t].caretCells;
+          column += TextDisplayMap(tokens[t].text).cellWidth + (t == 0 ? 0 : 1);
+        }
+        return (
+          lines: [tokenTexts.join(' ')],
+          tokens: tokenTexts,
+          caretLine: 0,
+          caretColumn: rowPrefixCells() + caretColumn,
+        );
       }
       final lines = <String>[];
       final line = StringBuffer();
       var used = 0;
       var started = false;
-      for (final token in tokens) {
-        final tokenCells = TextDisplayMap(token).cellWidth;
+      var lineIndex = 0;
+      var caretLine = 0;
+      var caretColumn = 0;
+      for (var t = 0; t < tokens.length; t++) {
+        final token = tokens[t];
+        final tokenCells = TextDisplayMap(token.text).cellWidth;
         if (started && used + 1 + tokenCells > budget) {
           lines.add(line.toString());
           line.clear();
           used = 0;
           started = false;
+          lineIndex++;
+        }
+        final startColumn = started ? used + 1 : 0;
+        if (t == focus) {
+          caretLine = lineIndex;
+          caretColumn = startColumn + token.caretCells;
         }
         if (started) {
           line.write(' ');
           used += 1;
         }
-        line.write(token);
+        line.write(token.text);
         used += tokenCells;
         started = true;
       }
       if (started) lines.add(line.toString());
-      for (final row in lines) {
-        write(row, atomicText: tokens);
-      }
+      return (
+        lines: lines,
+        tokens: tokenTexts,
+        caretLine: caretLine,
+        caretColumn: rowPrefixCells() + caretColumn,
+      );
     }
 
-    void show() {
-      spine.reset(out);
+    /// Renders the editable region — the wrapped cell row, the active-format
+    /// cue and the compact hint — through the spine into display lines,
+    /// exactly as [show] paints them, plus the focused caret's emitted line
+    /// and column for in-place caret placement.
+    ({List<String> lines, int caretLine, int caretColumn}) renderRegion() {
+      final layout = layoutCellRows();
+      final buffer = StringBuffer();
+      final savedLines = spine._lines;
+      final savedOpen = spine._open;
+      final savedClosed = spine._closed;
+      final savedPendingClose = spine._pendingClose;
+      spine._open = true;
+      spine._closed = false;
+      spine._pendingClose = false;
+      try {
+        for (final row in layout.lines) {
+          spine.write(
+            buffer,
+            row,
+            foreground: colors.foreground,
+            atomicText: layout.tokens,
+          );
+        }
+        spine.write(buffer, cue(), foreground: colors.foreground);
+        // The cue is protected content and stays visible when optional
+        // instructions are hidden; the hint keeps only the primary action and
+        // help route, matching the shared text contract's hidden floor.
+        spine.hint(
+          buffer,
+          _resolvedInstructions(instructions) == InstructionDisplay.hidden
+              ? 'Enter ${preview == null ? 'submits' : 'reviews'}; '
+                    'Ctrl+T opens help.'
+              : 'Tab/Shift-Tab move; Enter '
+                    '${preview == null ? 'submits' : 'reviews'}; '
+                    'Ctrl+T help; Esc cancels.',
+          foreground: colors.foreground,
+        );
+      } finally {
+        spine._lines = savedLines;
+        spine._open = savedOpen;
+        spine._closed = savedClosed;
+        spine._pendingClose = savedPendingClose;
+      }
+      final rendered = buffer.toString().split('\n');
+      if (rendered.isNotEmpty && rendered.last.isEmpty) rendered.removeLast();
+      return (
+        lines: rendered,
+        caretLine: layout.caretLine,
+        caretColumn: layout.caretColumn,
+      );
+    }
+
+    /// Physical cursor row relative to the stage's first row. Region repaints
+    /// move the cursor with absolute row deltas, so every write path below
+    /// keeps this value in step with the bytes it emits.
+    var cursorBelowTop = 0;
+
+    /// Spine-counted row where the editable region begins, its last rendered
+    /// height, and the caret's position inside it.
+    var regionTop = 0;
+    var regionRows = 0;
+    var caretRegionRow = 0;
+    var caretColumn = 0;
+
+    /// Session transcript rows already accounted for by [sessionRepaint].
+    var lastPendingRows = 0;
+
+    /// Session transcript rows recorded below the spine's counted rows; the
+    /// physical bottom of the stage sits this far below [spine._lines].
+    int bottomRow() => spine._lines + (session?._promptTranscriptRowCount ?? 0);
+
+    /// Moves the cursor to [row] (relative to the stage's first row) at
+    /// column zero.
+    void moveCursorTo(int row) {
+      final delta = row - cursorBelowTop;
+      if (delta > 0) {
+        out.write('\x1b[${delta}B');
+      } else if (delta < 0) {
+        out.write('\x1b[${-delta}A');
+      }
+      out.write('\r');
+      cursorBelowTop = row;
+    }
+
+    /// Parks the cursor at the stage's bottom row, column zero.
+    void parkBelowRegion() => moveCursorTo(bottomRow());
+
+    /// Places the physical caret at the focused cell's caret: the packed row
+    /// line plus the structure prefix and the caret's column inside the
+    /// framed token.
+    void positionCaret() {
+      moveCursorTo(regionTop + caretRegionRow);
+      if (caretColumn > 0) out.write('\x1b[${caretColumn}C');
+    }
+
+    void showNow() {
       session?._setPromptGeometry(stageProfile.geometry);
+      // The cursor must sit one row below every row the spine counted —
+      // including transcript rows the session recorded below the frame —
+      // before the rewind repaint. Nothing has been drawn yet on the first
+      // paint, so there is no bottom to move to.
+      if (cursorBelowTop > 0 || bottomRow() > 0) moveCursorTo(bottomRow());
+      spine.reset(out);
       spine.opening(
         out,
         title: '$label.',
@@ -1001,20 +1192,71 @@ final class CronInput {
         foreground: colors.foreground,
         bodyForeground: colors.foreground,
       );
-      writeCellRow();
-      write(cue());
-      // The cue is protected content and stays visible when optional
-      // instructions are hidden; the hint keeps only the primary action and
-      // help route, matching the shared text contract's hidden floor.
-      spine.hint(
-        out,
-        _resolvedInstructions(instructions) == InstructionDisplay.hidden
-            ? 'Enter ${preview == null ? 'submits' : 'reviews'}; '
-                  'Ctrl+T opens help.'
-            : 'Tab/Shift-Tab move; Enter ${preview == null ? 'submits' : 'reviews'}; '
-                  'Ctrl+T help; Esc cancels.',
-        foreground: colors.foreground,
-      );
+      regionTop = spine._lines;
+      final region = renderRegion();
+      out.write('${region.lines.join('\n')}\n');
+      spine.countRows(region.lines.length);
+      regionRows = region.lines.length;
+      caretRegionRow = region.caretLine;
+      caretColumn = region.caretColumn;
+      cursorBelowTop = regionTop + region.lines.length;
+      out.write('\r');
+      positionCaret();
+    }
+
+    void show() {
+      final sessionRef = session;
+      if (sessionRef == null) {
+        showNow();
+      } else {
+        sessionRef._writeShared(showNow);
+      }
+    }
+
+    /// Repaints only the editable region in place: the wrapped cell rows,
+    /// cue and hint are rewritten row by row and any rows a taller previous
+    /// render left behind are cleared, without touching the frame above or
+    /// the notices and help below.
+    void repaintRegionNow() {
+      final region = renderRegion();
+      final count = region.lines.length;
+      moveCursorTo(regionTop);
+      final buffer = StringBuffer();
+      for (var i = 0; i < count; i++) {
+        buffer.write('\x1b[2K${region.lines[i]}');
+        if (i < count - 1) buffer.write('\n\r');
+      }
+      for (var row = count; row < regionRows; row++) {
+        buffer.write('\n\r\x1b[2K');
+      }
+      out.write(buffer.toString());
+      cursorBelowTop =
+          regionTop + (count > regionRows ? count : regionRows) - 1;
+      out.write('\r');
+      regionRows = count;
+      caretRegionRow = region.caretLine;
+      caretColumn = region.caretColumn;
+      positionCaret();
+    }
+
+    void repaintRegion() {
+      final sessionRef = session;
+      if (sessionRef == null) {
+        repaintRegionNow();
+      } else {
+        sessionRef._writeShared(repaintRegionNow);
+      }
+    }
+
+    /// The session's repaint hook: feedback writes transcript rows below the
+    /// region and then asks for a repaint. The cursor advanced by exactly the
+    /// newly recorded rows, so the tracked position stays exact.
+    void sessionRepaint() {
+      final pending = session?._promptTranscriptRowCount ?? 0;
+      cursorBelowTop += pending - lastPendingRows;
+      if (cursorBelowTop < 0) cursorBelowTop = 0;
+      lastPendingRows = pending;
+      repaintRegionNow();
     }
 
     final stopWatchingResize = _watchIdleResize(
@@ -1029,12 +1271,104 @@ final class CronInput {
       helpOpen: () => stageHelpOpen,
     );
 
-    // Notices can be emitted while the caret still sits mid-row inside the
-    // cell editor; restart the line at column zero so the wrapped notice
-    // never inherits the caret column and overflows the declared width.
+    /// Emits a structural notice below the stage. The caret may sit inside
+    /// the editable region, so the cursor first parks at the stage's bottom
+    /// row before the notice is written; the caller repaints the region
+    /// afterwards so the notice never corrupts it.
     void notice(String text) {
-      out.write('\r\x1b[2K');
+      moveCursorTo(bottomRow());
+      out.write('\x1b[2K');
       write(text, closes: true, event: StageEvent.warning);
+      cursorBelowTop = bottomRow();
+    }
+
+    /// Whether the currently open help owns the alternate screen; the exit
+    /// path uses it to leave help the way it was entered.
+    var helpUsedAltScreen = false;
+
+    String helpTextForFocus() => focus < schema.length
+        ? _cellHelp(schema[focus])
+        : (preview == null ? _submitStopHelp : _reviewStopHelp);
+
+    /// Writes stage help through a fresh spine, matching the shared event
+    /// writer: muted content wrapped as its own structural block. The
+    /// alternate-screen path uses this because those rows live on the other
+    /// screen and must not count toward the stage's rewind.
+    void writeHelpEvent(String text) {
+      final profile = stageProfile;
+      _StructureSpine(
+        structure: structure,
+        ascii: _structureAscii(profile),
+        width: _textInputWidth(profile),
+        background: colors.background,
+        border: colors.border,
+        outputProfile: profile,
+      ).write(out, text, foreground: colors.muted, closes: true);
+    }
+
+    /// Opens the stage help screen for the current focus. While it is open
+    /// every key is swallowed except Escape (dismiss), Ctrl+C (interrupt)
+    /// and EOF; the drafts, carets and focus cannot change underneath it.
+    void openHelp() {
+      stageHelpOpen = true;
+      helpUsedAltScreen =
+          stageProfile.alternateScreen == CapabilitySupport.supported;
+      final text = helpTextForFocus();
+      final sessionRef = session;
+      if (sessionRef != null) {
+        sessionRef._openModalHelp(useAlternateScreen: helpUsedAltScreen);
+        if (helpUsedAltScreen) {
+          writeHelpEvent(text);
+        } else {
+          // Transcript help appends below the stage through the stage spine
+          // so its rows stay inside the rewind count; the cursor parks at
+          // the bottom row first, exactly as the shared editor's finished
+          // editable row did.
+          moveCursorTo(bottomRow());
+          out.write('\x1b[2K');
+          spine.write(out, text, foreground: colors.muted, closes: true);
+          cursorBelowTop = bottomRow();
+        }
+      } else if (helpUsedAltScreen) {
+        out.write('\x1b[?1049h\x1b[H');
+        writeHelpEvent(text);
+      } else {
+        moveCursorTo(bottomRow());
+        out.write('\x1b[2K');
+        spine.write(out, text, foreground: colors.muted, closes: true);
+        cursorBelowTop = bottomRow();
+      }
+    }
+
+    /// Dismisses stage help and repaints the editable region. The alternate
+    /// screen restores the saved cursor by itself; the transcript path leaves
+    /// a dismissal row below the help and repaints over the region.
+    void dismissHelp() {
+      stageHelpOpen = false;
+      final sessionRef = session;
+      if (sessionRef != null) {
+        final alt = helpUsedAltScreen;
+        sessionRef._dismissModalHelp(
+          showTranscriptDismissal: !alt,
+          repaintPrompt: () {
+            if (!alt) {
+              // 'Help dismissed.' and any deferred transcript rows sit below
+              // the spine's counted rows.
+              cursorBelowTop = bottomRow();
+            }
+            repaintRegionNow();
+          },
+        );
+      } else if (helpUsedAltScreen) {
+        out.write('\x1b[?1049l');
+        // The saved cursor returns to the focused cell's caret; the region
+        // on the main screen was never touched.
+      } else {
+        out.writeln('Help dismissed.');
+        spine.countWrappedRow('Help dismissed.');
+        cursorBelowTop = bottomRow();
+        repaintRegion();
+      }
     }
 
     // A valid draft returns null so the caller can assemble the expression
@@ -1051,139 +1385,184 @@ final class CronInput {
     ({int index, String message})? failure() =>
         cronFieldCellsError(profile, cells);
 
-    try {
-      while (true) {
-        show();
-        if (focus == schema.length) {
-          final stop = await _edit(
-            inputKeys,
-            '',
-            out,
-            transientHelp:
-                stageProfile.alternateScreen == CapabilitySupport.supported,
-            helpText: preview == null ? _submitStopHelp : _reviewStopHelp,
-            outputProfile: stageProfile,
-            structure: structure,
-            resizeObserver: stageObserver,
-            session: session,
-            onHelpVisibilityChanged: (visible) => stageHelpOpen = visible,
-            intercept: (key, text) {
-              if (key == '\t') return 'next';
-              if (key == '\x1b[Z' || key == '\x02') return 'previous';
-              if ((key == '\r' || key == '\n') && text.isEmpty) {
-                return 'activate';
-              }
-              // The action stop takes no draft text.
-              if (key.startsWith('\x1b[200~')) return 'handled';
-              if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
-                return 'handled';
-              }
-              return null;
-            },
-          );
-          stageHelpOpen = false;
-          if (stop.action == 'cancel') return Cancelled();
-          if (stop.action == 'interrupt') return Interrupted();
-          if (stop.action == 'eof') return InputEnded();
-          _finishFieldLine(out, stop.action);
-          if (stop.action == 'activate' || stop.action == 'submit') {
-            final error = failure();
-            if (error != null) {
-              notice(error.message);
-              focus = error.index;
-              continue;
-            }
-            return finish();
-          }
-          focus = stop.action == 'next' ? 0 : schema.length - 1;
-          continue;
-        }
-        final index = focus;
-        final cell = schema[index];
-        final cellLimit = _cellLimit(cells, index);
-        final edit = await _edit(
-          inputKeys,
-          cells[index],
-          out,
-          maxLength: cellLimit,
-          maxUtf16Length: cellLimit,
-          transientHelp:
-              stageProfile.alternateScreen == CapabilitySupport.supported,
-          helpText: _cellHelp(cell),
-          liveHelpText: () => _cellHelp(cell),
-          outputProfile: stageProfile,
-          structure: structure,
-          resizeObserver: stageObserver,
-          session: session,
-          onHelpVisibilityChanged: (visible) => stageHelpOpen = visible,
-          onCaretChanged: (caret) => cellCarets[index] = caret,
-          intercept: (key, text) {
-            if (key == ' ') {
-              notice(
-                'Space does not insert into a field cell; press Tab to move '
-                'to the next field.',
-              );
-              return 'handled';
-            }
-            if (key == '\t') return 'next';
-            if (key == '\x1b[Z' || key == '\x02') return 'previous';
-            if (key.startsWith('\x1b[200~')) {
-              final payload = key.length >= 12
-                  ? key.substring(6, key.length - 6)
-                  : '';
-              final paste = _fieldCellPaste(payload, cells, index, text);
-              if (paste.notice != null) {
-                notice(paste.notice!);
-                return 'handled';
-              }
-              if (paste.cells != null) {
-                pastedCells = paste.cells;
-                pastedFocus = paste.focus;
-                return 'paste-fields';
-              }
-              // A single whitespace-free token falls through to the editor's
-              // own paste handling, which filters control characters and
-              // inserts it at the caret.
-            }
-            return null;
-          },
+    /// Inserts [data] into cell [index]'s draft at its caret, honouring the
+    /// same grapheme and UTF-16 budgets the shared editor applied: both
+    /// limits are the cell's assembled-expression allowance.
+    void insertIntoCell(int index, String data) {
+      final limit = _cellLimit(cells, index);
+      final graphemes = cells[index].characters.toList();
+      final before = graphemes.take(carets[index]).join();
+      final after = graphemes.skip(carets[index]).join();
+      final candidate = before + data + after;
+      if (candidate.characters.length > limit) {
+        notice('Insertion rejected: character limit is $limit graphemes.');
+        return;
+      }
+      if (candidate.length > limit) {
+        notice(
+          'Insertion rejected: character limit is $limit UTF-16 code units.',
         );
-        stageHelpOpen = false;
-        if (edit.action == 'cancel') return Cancelled();
-        if (edit.action == 'interrupt') return Interrupted();
-        if (edit.action == 'eof') return InputEnded();
-        _finishFieldLine(out, edit.action);
-        cells[index] = edit.value;
-        if (edit.action == 'paste-fields' && pastedCells != null) {
-          final pasted = pastedCells!;
-          pastedCells = null;
-          for (var i = 0; i < cells.length; i++) {
-            cells[i] = i < pasted.length ? pasted[i] : '';
-          }
-          // Every pasted draft is fresh; carets anchor at the end.
-          cellCarets.fillRange(0, cellCarets.length, -1);
-          focus = pastedFocus;
+        return;
+      }
+      cells[index] = candidate;
+      carets[index] = (before + data).characters.length;
+    }
+
+    try {
+      show();
+      session?._setPromptRepaint(sessionRepaint);
+      while (true) {
+        final key = await inputKeys.next();
+        if (key == null || key == '\x1a') {
+          parkBelowRegion();
+          return InputEnded();
+        }
+        if (key == '\x03') {
+          parkBelowRegion();
+          return Interrupted();
+        }
+        if (stageHelpOpen) {
+          // Help owns the screen: only Escape dismisses it; Ctrl+C and EOF
+          // were already handled above. Every other key is swallowed so the
+          // drafts, carets and focus cannot change underneath it.
+          if (key == '\x1b') dismissHelp();
           continue;
         }
-        if (edit.action == 'next') {
-          focus = (focus + 1) % stops;
+        if (key == '\x14') {
+          openHelp();
           continue;
         }
-        if (edit.action == 'previous') {
-          focus = (focus + stops - 1) % stops;
+        if (key == '\x1b') {
+          parkBelowRegion();
+          return Cancelled();
+        }
+        if (key == '\x1b[999~') {
+          notice('Paste rejected: exceeds 4096 UTF-16 code units.');
+          repaintRegion();
           continue;
         }
-        if (edit.action == 'submit') {
+        if (key == '\r' || key == '\n') {
           final error = failure();
           if (error != null) {
             notice(error.message);
             focus = error.index;
+            caretToEnd(focus);
+            repaintRegion();
             continue;
           }
+          parkBelowRegion();
           return finish();
         }
+        if (key == '\t') {
+          focus = (focus + 1) % stops;
+          if (focus < schema.length) caretToEnd(focus);
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x1b[Z' || key == '\x02') {
+          focus = (focus + stops - 1) % stops;
+          if (focus < schema.length) caretToEnd(focus);
+          repaintRegion();
+          continue;
+        }
+        if (focus == schema.length) {
+          // The trailing action stop takes no draft text: editing keys and
+          // identified pastes are swallowed, matching the old intercept.
+          repaintRegion();
+          continue;
+        }
+        final index = focus;
+        if (key == ' ') {
+          notice(
+            'Space does not insert into a field cell; press Tab to move '
+            'to the next field.',
+          );
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x1b[D') {
+          if (carets[index] > 0) carets[index]--;
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x1b[C') {
+          final length = cells[index].characters.length;
+          if (carets[index] < length) carets[index]++;
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x1b[H' || key == '\x01') {
+          carets[index] = 0;
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x1b[F' || key == '\x05') {
+          carets[index] = cells[index].characters.length;
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x7f' || key == '\x08') {
+          if (carets[index] > 0) {
+            final graphemes = cells[index].characters.toList()
+              ..removeAt(carets[index] - 1);
+            cells[index] = graphemes.join();
+            carets[index]--;
+          }
+          repaintRegion();
+          continue;
+        }
+        if (key == '\x1b[3~') {
+          final length = cells[index].characters.length;
+          if (carets[index] < length) {
+            final graphemes = cells[index].characters.toList()
+              ..removeAt(carets[index]);
+            cells[index] = graphemes.join();
+          }
+          repaintRegion();
+          continue;
+        }
+        if (key.startsWith('\x1b[200~')) {
+          final payload = key.length >= 12
+              ? key.substring(6, key.length - 6)
+              : '';
+          final paste = _fieldCellPaste(payload, cells, index, cells[index]);
+          if (paste.notice != null) {
+            notice(paste.notice!);
+          } else if (paste.cells != null) {
+            final pasted = paste.cells!;
+            for (var i = 0; i < cells.length; i++) {
+              cells[i] = i < pasted.length ? pasted[i] : '';
+            }
+            // Every pasted draft is fresh; carets rest at the end.
+            for (var i = 0; i < carets.length; i++) {
+              caretToEnd(i);
+            }
+            focus = paste.focus;
+          } else if (payload.runes.any((r) => r < 32 || r == 127)) {
+            notice('Paste rejected: single-line printable text only.');
+          } else {
+            insertIntoCell(index, payload);
+          }
+          repaintRegion();
+          continue;
+        }
+        if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
+          insertIntoCell(index, key);
+          repaintRegion();
+          continue;
+        }
+        // Up/Down and every other escape sequence are no-ops inside a cell.
+        repaintRegion();
       }
     } finally {
+      session?._setPromptRepaint(null);
+      if (stageHelpOpen) {
+        if (session != null) {
+          session._abortModalHelp();
+        } else if (helpUsedAltScreen) {
+          out.write('\x1b[?1049l');
+        }
+      }
       stopWatchingResize();
       await resizeForward?.cancel();
       await resizeEvents?.close();
