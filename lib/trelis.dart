@@ -72,6 +72,7 @@ export 'src/text_input.dart'
         Choice,
         CivilDate,
         ColorValue,
+        CronCellFrame,
         CronExpression,
         CronPreview,
         CronPreviewConfig,

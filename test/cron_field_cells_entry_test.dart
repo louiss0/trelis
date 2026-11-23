@@ -35,11 +35,12 @@ void main() {
     // The active-format cue names the focused field cell as focus moves.
     expect(text, contains('unix · 1/5 minute (0-59)'));
     expect(text, contains('unix · 5/5 day-of-week'));
-    // The trailing Submit stop joins the focus ring.
-    expect(text, contains('[ Submit ]'));
+    // There is no trailing action stop: the row holds only field cells.
+    expect(text, isNot(contains('Focus:')));
+    expect(text, isNot(contains('[ Submit ]')));
   });
 
-  test('Tab wraps from the last cell through Submit back to cell 0', () async {
+  test('Tab wraps from the last cell straight back to cell 0', () async {
     final output = StringBuffer();
     final result = await CronInput('Schedule', profile: CronProfile.unix)
         .prompt(
@@ -51,7 +52,8 @@ void main() {
           mode: PromptMode.rich,
         );
     expect((result as Accepted<CronExpression>).value.expression, '* * * * *');
-    expect(output.toString(), contains('unix · Focus: Submit'));
+    // The wrap lands back on the first cell, not past it.
+    expect(output.toString(), contains('unix · 1/5 minute'));
   });
 
   test('Shift-Tab and Ctrl+B move focus backward across the ring', () async {
@@ -71,7 +73,7 @@ void main() {
     final ctrlOutput = StringBuffer();
     final ctrl = await CronInput('Schedule', profile: CronProfile.unix).prompt(
       source: ScriptedInput(
-        // cell1 --Ctrl+B--> cell0 --Ctrl+B--> Submit --Tab--> cell0.
+        // cell1 --Ctrl+B--> cell0 --Ctrl+B--> cell4 --Tab--> cell0.
         Stream.value('5\t\x02\x02\t\t*\t*\t*\t*\r'),
         ctrlOutput,
         outputProfile: _richProfile,
@@ -79,7 +81,8 @@ void main() {
       mode: PromptMode.rich,
     );
     expect((ctrl as Accepted<CronExpression>).value.expression, '5 * * * *');
-    expect(ctrlOutput.toString(), contains('unix · Focus: Submit'));
+    // The backward wrap passed through the last cell (day-of-week).
+    expect(ctrlOutput.toString(), contains('unix · 5/5 day-of-week'));
   });
 
   test('Enter from a middle cell validates the whole draft', () async {
@@ -200,17 +203,78 @@ void main() {
     expect(output.toString(), contains('press Tab'));
   });
 
-  test('Up and Down are no-ops inside a field cell', () async {
+  test('Up and Down step a numeric cell inside its field bounds', () async {
+    // '05' + Up -> '6'; '6' + Down -> '5'.
     final result = await CronInput('Schedule', profile: CronProfile.unix)
         .prompt(
           source: ScriptedInput(
-            Stream.value('\x1b[A\x1b[B5\t*\t*\t*\t*\r'),
+            Stream.value('05\x1b[A\x1b[B\t*\t*\t*\t*\r'),
             StringBuffer(),
             outputProfile: _richProfile,
           ),
           mode: PromptMode.rich,
         );
     expect((result as Accepted<CronExpression>).value.expression, '5 * * * *');
+  });
+
+  test('Up clamps at the field maximum and Down at the minimum', () async {
+    final result = await CronInput('Schedule', profile: CronProfile.unix)
+        .prompt(
+          source: ScriptedInput(
+            // minute '59' + Up stays '59'; hour '0' + Down stays '0';
+            // day-of-month '1' + Down stays '1'; month '12' + Up stays '12';
+            // day-of-week '7' + Up stays '7'.
+            Stream.value('59\x1b[A\t0\x1b[B\t1\x1b[B\t12\x1b[A\t7\x1b[A\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect(
+      (result as Accepted<CronExpression>).value.expression,
+      '59 0 1 12 7',
+    );
+  });
+
+  test('Up and Down are silent no-ops on non-numeric cells', () async {
+    final result = await CronInput('Schedule', profile: CronProfile.unix)
+        .prompt(
+          source: ScriptedInput(
+            // '*', '1-5', 'JAN' and 'MON' all ignore Up/Down.
+            Stream.value(
+              '\x1b[A\x1b[B*\x1b[A\x1b[B\t1-5\x1b[A\x1b[B\t15\t'
+              'JAN\x1b[A\x1b[B\tMON\x1b[A\x1b[B\r',
+            ),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect(
+      (result as Accepted<CronExpression>).value.expression,
+      '* 1-5 15 JAN MON',
+    );
+  });
+
+  test('quartz Up and Down step second and year bounds', () async {
+    final result = await CronInput('Schedule', profile: CronProfile.quartz)
+        .prompt(
+          source: ScriptedInput(
+            // second '59' + Up clamps at 59; year '2199' + Up clamps at
+            // 2199; a fresh '1970' + Down clamps at 1970.
+            Stream.value(
+              '59\x1b[A\t0\t0\t?\t*\t*\t2199\x1b[A\x7f\x7f\x7f\x7f'
+              '1970\x1b[B\r',
+            ),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect(
+      (result as Accepted<CronExpression>).value.expression,
+      '59 0 0 ? * * 1970',
+    );
   });
 
   test('dash and plus insert literally inside a field cell', () async {
@@ -362,10 +426,10 @@ void main() {
             preview: _config(),
           ).prompt(
             source: ScriptedInput(
-              // Tab onto the trailing Review stop (its cue is observable),
-              // Enter opens the Review stage; Edit returns to cell 0 with every
-              // cell draft preserved, then the draft is submitted and reviewed
-              // again before Submit.
+              // Tab wraps from the last cell to cell 0; Enter opens the
+              // Review stage; Edit returns to cell 0 with every cell draft
+              // preserved, then the draft is submitted and reviewed again
+              // before Submit.
               Stream.value('*\t*\t*\t*\t*\t\r\r\r\t\r\t\r'),
               output,
               outputProfile: _richProfile,
@@ -378,39 +442,35 @@ void main() {
       );
       final text = output.toString();
       expect(text, contains('Review action: Edit.'));
-      expect(text, contains('unix · Focus: Review'));
+      expect(text, isNot(contains('Focus:')));
       // Both review rounds announce the retained draft.
       expect('Review: * * * * *.'.allMatches(text).length, 2);
       expect(text, contains('2024-01-01 00:01:00.000Z'));
     },
   );
 
-  test(
-    'quartz Tab wraps through the year cell, Submit and back to cell 0',
-    () async {
-      final output = StringBuffer();
-      final result = await CronInput('Schedule', profile: CronProfile.quartz)
-          .prompt(
-            source: ScriptedInput(
-              // Fill all seven cells, Tab onto the trailing Submit stop, Tab
-              // once more to wrap back to cell 0, then Enter submits the
-              // seven-field draft from the first cell.
-              Stream.value('0\t0\t0\t?\t*\tMON\t2024\t\t\r'),
-              output,
-              outputProfile: _richProfile,
-            ),
-            mode: PromptMode.rich,
-          );
-      expect(
-        (result as Accepted<CronExpression>).value.expression,
-        '0 0 0 ? * MON 2024',
-      );
-      final text = output.toString();
-      expect(text, contains('quartz · Focus: Submit'));
-      // The wrap lands back on the first cell, not past it.
-      expect(text, contains('quartz · 1/7 second'));
-    },
-  );
+  test('quartz Tab wraps from the year cell back to cell 0', () async {
+    final output = StringBuffer();
+    final result = await CronInput('Schedule', profile: CronProfile.quartz)
+        .prompt(
+          source: ScriptedInput(
+            // Fill all seven cells, Tab once to wrap back to cell 0, then
+            // Enter submits the seven-field draft from the first cell.
+            Stream.value('0\t0\t0\t?\t*\tMON\t2024\t\r'),
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect(
+      (result as Accepted<CronExpression>).value.expression,
+      '0 0 0 ? * MON 2024',
+    );
+    final text = output.toString();
+    expect(text, isNot(contains('Focus:')));
+    // The wrap lands back on the first cell, not past it.
+    expect(text, contains('quartz · 1/7 second'));
+  });
 
   test(
     'rich cells reject a multi-token paste without touching drafts',

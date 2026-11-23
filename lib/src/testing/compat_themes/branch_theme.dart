@@ -526,6 +526,7 @@ abstract final class BranchTheme {
     CronPreviewConfig? preview,
     ColorTheme colors = ColorThemes.terminalDefault,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    CronCellFrame cellFrame = CronCellFrame.square,
     List<String> supplementaryHelp = const [],
   }) => CronInput(
     label,
@@ -536,6 +537,7 @@ abstract final class BranchTheme {
 
     colors: colors,
     instructions: instructions,
+    cellFrame: cellFrame,
     supplementaryHelp: supplementaryHelp,
   );
 

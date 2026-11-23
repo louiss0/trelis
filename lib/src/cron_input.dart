@@ -3,6 +3,15 @@ part of 'text_input.dart';
 /// Explicitly selected cron syntax profile.
 enum CronProfile { unix, quartz }
 
+/// Delimiter style for the rich field-cell editor's cells.
+enum CronCellFrame {
+  /// Square brackets: `[ value ]`, `[>value<]` focused.
+  square,
+
+  /// Round brackets: `( value )`, `(>value<)` focused.
+  circle,
+}
+
 /// The original expression and the profile used to interpret it.
 final class CronExpression {
   CronExpression._(this.expression, this.profile);
@@ -454,6 +463,7 @@ final class CronInput {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
+    this.cellFrame = CronCellFrame.square,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
     // A non-empty initialValue must be a valid expression for the selected
@@ -484,6 +494,9 @@ final class CronInput {
   final ColorTheme colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
+
+  /// Delimiter style for the rich field-cell editor's cells.
+  final CronCellFrame cellFrame;
   final List<String> supplementaryHelp;
   late final TextInput _input;
 
@@ -657,27 +670,6 @@ final class CronInput {
     );
   }
 
-  /// Help for the trailing Submit stop (only reached without a preview).
-  String get _submitStopHelp => _withSupplementary(
-    'Help: The Submit stop accepts the whole ${profile.name} profile '
-    'draft, $_fieldShape. Field order: $_fieldMap. $_dayRules '
-    '$_limitNote $_acceptanceNote $_syntaxNote $_unconfiguredPreviewNote '
-    'Tab or Shift-Tab moves between the field cells and this stop; Enter '
-    'activates Submit; Ctrl+T opens help; Escape dismisses help first, '
-    'then cancels; Ctrl+C interrupts.',
-  );
-
-  /// Help for the trailing Review stop (only reached with a configured
-  /// preview): it validates the draft and opens the review stage.
-  String get _reviewStopHelp => _withSupplementary(
-    'Help: The Review stop validates the whole ${profile.name} profile '
-    'draft and opens the review stage, $_fieldShape. Field order: '
-    '$_fieldMap. $_dayRules $_limitNote $_previewNote $_syntaxNote '
-    'Tab or Shift-Tab moves between the field cells and this stop; Enter '
-    'activates Review; Ctrl+T opens help; Escape dismisses help first, '
-    'then cancels; Ctrl+C interrupts.',
-  );
-
   // ---------------------------------------------------------------------
   // Field-cell paste handling.
   // ---------------------------------------------------------------------
@@ -771,8 +763,8 @@ final class CronInput {
 
   /// Rich-interaction field-cell entry stage.
   ///
-  /// Runs the focus ring `cell 0 -> ... -> cell N-1 -> trailing action ->
-  /// cell 0` until the draft validates. Returns the assembled expression when
+  /// Runs the focus ring `cell 0 -> ... -> cell N-1 -> cell 0` until the
+  /// draft validates. Returns the assembled expression when
   /// a preview review is configured, or the accepted result when it is not; a
   /// non-null `result` ends the prompt (cancel, interrupt or input end).
   /// [cells] is mutated in place so a Review `Edit` action can re-enter with
@@ -786,8 +778,6 @@ final class CronInput {
     List<String> cells,
   ) async {
     final schema = cronFieldCells(profile);
-    final actionName = preview == null ? 'Submit' : 'Review';
-    final stops = schema.length + 1;
     var focus = 0;
     // The stage repaints against live geometry: resize hints update
     // [stageProfile] and the spine's measured width without touching the
@@ -836,22 +826,27 @@ final class CronInput {
       );
     }
 
-    String draftText() => cronActiveCells(profile, cells).join(' ');
-
-    String cue() => focus < schema.length
-        ? '${profile.name} · ${schema[focus].position}/${schema[focus].total} '
-              '${schema[focus].name} (${schema[focus].rangeCue}'
-              '${schema[focus].optional ? ', optional' : ''})'
-        : '${profile.name} · Focus: $actionName · draft: ${draftText()}';
+    /// The active-format cue always describes the focused field cell.
+    String cue() =>
+        '${profile.name} · ${schema[focus].position}/'
+        '${schema[focus].total} ${schema[focus].name} '
+        '(${schema[focus].rangeCue}'
+        '${schema[focus].optional ? ', optional' : ''})';
 
     /// The delimiters around one row item. Unfocused items keep symmetric
     /// padding (`[ value ]`, `[   ]` empty); the focused item swaps the inner
-    /// padding for the profile's explicit non-colour focus markers.
+    /// padding for the profile's explicit non-colour focus markers. The
+    /// [CronInput.cellFrame] option switches the brackets to round parens.
     ({String open, String close}) rowFrame({required bool focused}) {
-      if (!focused) return (open: '[ ', close: ' ]');
-      return spine.ascii
-          ? (open: '[>', close: '<]')
-          : (open: '[→', close: '←]');
+      final square = cellFrame == CronCellFrame.square;
+      if (!focused) {
+        return (open: square ? '[ ' : '( ', close: square ? ' ]' : ' )');
+      }
+      final markers = spine.ascii ? ('>', '<') : ('→', '←');
+      return (
+        open: '${square ? '[' : '('}${markers.$1}',
+        close: '${markers.$2}${square ? ']' : ')'}',
+      );
     }
 
     /// The tail of [map] that fits [budget] cells, kept whole-grapheme, and
@@ -959,7 +954,7 @@ final class CronInput {
       return (text: tail.text, caretCells: windowCaret(caret, tail.start));
     }
 
-    /// One row item: a field cell or the trailing stage action, windowed to
+    /// One row item: a field cell windowed to
     /// the spine's body width when it alone would overflow. [caret] is the
     /// cell's caret grapheme offset (-1 anchors at the end and rests the
     /// caret before the closing delimiter). Returns the token text and the
@@ -1012,7 +1007,7 @@ final class CronInput {
     /// caret lands inside the framed content column.
     int rowPrefixCells() => structurePrefixCells(structure, ascii: spine.ascii);
 
-    /// Lays out every field token plus the trailing action into wrapped row
+    /// Lays out every field token into wrapped row
     /// lines, reporting the focused token's packed line and emitted column.
     /// A token is never split unless it alone exceeds the inner line width,
     /// which [rowToken] windows around the caret.
@@ -1025,7 +1020,6 @@ final class CronInput {
             focused: i == focus,
             caret: carets[i],
           ),
-        rowToken(actionName, focused: focus == schema.length),
       ];
       final tokenTexts = [for (final token in tokens) token.text];
       final budget = spine.bodyWriteWidth;
@@ -1286,9 +1280,7 @@ final class CronInput {
     /// path uses it to leave help the way it was entered.
     var helpUsedAltScreen = false;
 
-    String helpTextForFocus() => focus < schema.length
-        ? _cellHelp(schema[focus])
-        : (preview == null ? _submitStopHelp : _reviewStopHelp);
+    String helpTextForFocus() => _cellHelp(schema[focus]);
 
     /// Writes stage help through a fresh spine, matching the shared event
     /// writer: muted content wrapped as its own structural block. The
@@ -1454,20 +1446,14 @@ final class CronInput {
           return finish();
         }
         if (key == '\t') {
-          focus = (focus + 1) % stops;
-          if (focus < schema.length) caretToEnd(focus);
+          focus = (focus + 1) % schema.length;
+          caretToEnd(focus);
           repaintRegion();
           continue;
         }
         if (key == '\x1b[Z' || key == '\x02') {
-          focus = (focus + stops - 1) % stops;
-          if (focus < schema.length) caretToEnd(focus);
-          repaintRegion();
-          continue;
-        }
-        if (focus == schema.length) {
-          // The trailing action stop takes no draft text: editing keys and
-          // identified pastes are swallowed, matching the old intercept.
+          focus = (focus + schema.length - 1) % schema.length;
+          caretToEnd(focus);
           repaintRegion();
           continue;
         }
@@ -1521,6 +1507,20 @@ final class CronInput {
           repaintRegion();
           continue;
         }
+        if (key == '\x1b[A' || key == '\x1b[B') {
+          // Up/Down step a bare numeric draft by one inside the field's
+          // declared bounds; every other cell content is a silent no-op.
+          final draft = cells[index];
+          if (RegExp(r'^[0-9]+$').hasMatch(draft)) {
+            final bounds = schema[index];
+            final stepped = (int.parse(draft) + (key == '\x1b[A' ? 1 : -1))
+                .clamp(bounds.min, bounds.max);
+            cells[index] = '$stepped';
+            caretToEnd(index);
+          }
+          repaintRegion();
+          continue;
+        }
         if (key.startsWith('\x1b[200~')) {
           final payload = key.length >= 12
               ? key.substring(6, key.length - 6)
@@ -1551,7 +1551,7 @@ final class CronInput {
           repaintRegion();
           continue;
         }
-        // Up/Down and every other escape sequence are no-ops inside a cell.
+        // Every other escape sequence is a no-op inside a cell.
         repaintRegion();
       }
     } finally {

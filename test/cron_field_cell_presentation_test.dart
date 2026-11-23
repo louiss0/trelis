@@ -76,11 +76,12 @@ void main() {
       // Symmetric cell delimiters: padded empty and filled cells.
       expect(text, contains('[   ]'));
       expect(text, contains('[ * ]'));
-      // The trailing stage action is part of the same cell row.
-      expect(text, contains('[ Submit ]'));
-      // The active-format cue tracks focus and names the trailing stop.
+      // There is no trailing action stop: the row holds only field cells.
+      expect(text, isNot(contains('[ Submit ]')));
+      expect(text, isNot(contains('Focus:')));
+      // The active-format cue tracks focus across the cells.
       expect(text, contains('unix · 1/5 minute (0-59)'));
-      expect(text, contains('unix · Focus: Submit · draft: * * * * *'));
+      expect(text, contains('unix · 5/5 day-of-week'));
       // The compact hint states the primary controls and the help route.
       expect(
         text,
@@ -105,10 +106,11 @@ void main() {
           mode: PromptMode.rich,
         );
     // The trailing Escape lands as the stream ends, so the prompt reports
-    // InputEnded after the Review stop's cue was emitted.
+    // InputEnded after the wrapped cue was emitted.
     expect(result, isA<InputEnded<CronExpression>>());
     final text = output.toString();
-    expect(text, contains('unix · Focus: Review · draft: * * * * *'));
+    expect(text, contains('unix · 1/5 minute (0-59)'));
+    expect(text, isNot(contains('Focus:')));
     expect(text, contains('Enter reviews; Ctrl+T help; Esc cancels'));
   });
 
@@ -181,6 +183,65 @@ void main() {
       expect(unicode, isNot(contains('[> <]')));
     },
   );
+
+  test(
+    'the circle cell frame renders round brackets in ascii and unicode',
+    () async {
+      Future<String> run(GlyphSet glyphs) async {
+        final output = StringBuffer();
+        await CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          cellFrame: CronCellFrame.circle,
+        ).prompt(
+          source: ScriptedInput(
+            // '*' fills cell0; Tab moves focus to the empty cell1.
+            Stream.value('*\t'),
+            output,
+            outputProfile: _profile(glyphs: glyphs),
+          ),
+          mode: PromptMode.rich,
+        );
+        return output.toString();
+      }
+
+      final ascii = await run(GlyphSet.ascii);
+      // Unfocused cells keep symmetric padding; the focused cell swaps the
+      // inner padding for the ASCII focus markers inside round brackets.
+      expect(ascii, contains('( * )'));
+      expect(ascii, contains('(> <)'));
+      expect(ascii, contains('(   )'));
+      expect(ascii, isNot(contains('[ * ]')));
+      expect(ascii, isNot(contains('[> <]')));
+      expect(ascii, isNot(contains('→')));
+
+      final unicode = await run(GlyphSet.unicode);
+      expect(unicode, contains('( * )'));
+      expect(unicode, contains('(→ ←)'));
+      expect(unicode, isNot(contains('(> <)')));
+      expect(unicode, isNot(contains('[→ ←]')));
+    },
+  );
+
+  test('the circle frame reaches the theme cronInput seam', () async {
+    final output = StringBuffer();
+    final result =
+        await PlainTheme.cronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          cellFrame: CronCellFrame.circle,
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('*\t*\t*\t*\t*\t\r'),
+            output,
+            outputProfile: _profile(),
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<CronExpression>).value.expression, '* * * * *');
+    expect(output.toString(), contains('( * )'));
+    expect(output.toString(), isNot(contains('[ * ]')));
+  });
 
   test('narrow geometry wraps between whole cells without overflow', () async {
     final output = StringBuffer();
@@ -284,8 +345,9 @@ void main() {
           .prompt(
             source: ScriptedInput(
               // Paste the wide draft, move the caret to the head with Home,
-              // then leave the cell so the stage row repaints.
-              Stream.value('\x1b[200~$wide\x1b[201~\x1b[H\t*\t*\t*\t*\t\r'),
+              // leave the cell and fill the rest so the wide cell repaints
+              // unfocused with its caret still at the head.
+              Stream.value('\x1b[200~$wide\x1b[201~\x1b[H\t*\t*\t*\t*\r'),
               output,
               outputProfile: _profile(columns: 36),
             ),

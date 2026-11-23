@@ -501,6 +501,7 @@ abstract final class MinimalTheme {
     CronPreviewConfig? preview,
     ColorTheme colors = ColorThemes.terminalDefault,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    CronCellFrame cellFrame = CronCellFrame.square,
     List<String> supplementaryHelp = const [],
   }) => CronInput(
     label,
@@ -510,6 +511,7 @@ abstract final class MinimalTheme {
     structure: PromptStructure.minimal,
     colors: colors,
     instructions: instructions,
+    cellFrame: cellFrame,
     supplementaryHelp: supplementaryHelp,
   );
 
