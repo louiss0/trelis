@@ -487,6 +487,15 @@ final class CronInput {
   String get _limitNote =>
       'A valid expression is at most $maxExpressionLength UTF-16 code units, carries no leading or trailing space, and is validated for the selected profile before review; a rejected draft stays available for correction and later submission.';
 
+  /// The acceptance-stage counterpart of [_limitNote] for entry without a
+  /// configured preview, where a valid draft is accepted directly.
+  String get _acceptanceNote =>
+      'A valid expression is at most $maxExpressionLength UTF-16 code units, carries no leading or trailing space, and is validated for the selected profile before acceptance; a rejected draft stays available for correction and later submission.';
+
+  /// Preview note for entry without a configured preview.
+  String get _unconfiguredPreviewNote =>
+      'No matching preview is configured, so a valid expression is accepted when it is submitted.';
+
   String get _previewNote {
     final config = preview;
     if (config == null) {
@@ -500,6 +509,15 @@ final class CronInput {
         ? r'Type the expression and press Enter to review it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter reviews the draft. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
     return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_limitNote $_syntaxNote $_previewNote';
+  }
+
+  /// Entry help for the direct path (no configured preview), where a valid
+  /// expression is accepted on submit instead of entering review.
+  String _submitHelp({required bool linear}) {
+    final controls = linear
+        ? r'Type the complete space-separated expression and press Enter to submit it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits the expression. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+    return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_acceptanceNote $_syntaxNote $_unconfiguredPreviewNote';
   }
 
   String _reviewHelp({required bool linear}) {
@@ -612,7 +630,8 @@ final class CronInput {
     if (config == null || source is SuppliedAnswer) {
       // Without a configured preview the entry and review stages are the
       // shared text contract, so the existing TextInput flow is reused rather
-      // than restated here.
+      // than restated here. The component help still describes the cron
+      // dialect and clears an executed /help command like the preview path.
       return _asCron(
         await _input._run(
           source,
@@ -620,6 +639,9 @@ final class CronInput {
           outputProfile: outputProfile,
           keys: keys,
           session: session,
+          helpText: _submitHelp(linear: false),
+          linearHelpText: _submitHelp(linear: true),
+          clearHelpCommand: true,
         ),
       );
     }
@@ -677,6 +699,7 @@ final class CronInput {
           linear: linear,
           sequential: linear,
           maxLength: maxExpressionLength,
+          exemptCommandsFromLimit: linear,
           clearHelpCommand: true,
           helpText: _entryHelp(linear: linear),
           linearHelpText: _entryHelp(linear: true),
@@ -760,8 +783,15 @@ final class CronInput {
                 if (key == '\r' || key == '\n') {
                   if (line == '/cancel') cancelled = true;
                   line = '';
-                } else if (line.length < 16) {
+                } else if (key.length == 1 &&
+                    key.codeUnitAt(0) >= 32 &&
+                    line.length < '/cancel'.length) {
+                  // Only printable characters can extend a /cancel command;
+                  // control keys, escape sequences and paste payloads reset
+                  // the tracked line instead of corrupting it.
                   line += key;
+                } else {
+                  line = '';
                 }
                 // While a linear preview is active, only /cancel is meaningful.
                 // Do not leak the cancelled command or other keystrokes into

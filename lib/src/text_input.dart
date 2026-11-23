@@ -2573,6 +2573,9 @@ final class TextInput {
     _Keys? keys,
     TerminalSession? session,
     PresentationPreferences? presentation,
+    String? helpText,
+    String? linearHelpText,
+    bool? clearHelpCommand,
   }) async {
     if (source is SuppliedAnswer) {
       final value = source.value;
@@ -2650,9 +2653,12 @@ final class TextInput {
           maxLength: maxLength,
           exemptCommandsFromLimit: mode == PromptMode.linear,
           required: required,
-          clearHelpCommand: resolved?.screenReader == true,
+          clearHelpCommand:
+              clearHelpCommand ?? resolved?.screenReader == true,
           allowCommandPrefixes: resolved?.screenReader == true,
           supplementaryHelp: supplementaryHelp,
+          helpText: helpText,
+          linearHelpText: linearHelpText,
           onChanged: rich ? null : _onChanged,
           livePreview: rich ? _livePreview : null,
           transcript: scripted.transcript,
