@@ -502,6 +502,17 @@ final class TerminalSession {
   /// transcript still owes the reader.
   final Map<int, _DeferredFeedbackLine> _deferredFeedback = {};
 
+  /// Transcript rows the session wrote below the active rich prompt, with
+  /// the visual rows each occupies.
+  ///
+  /// A feedback or informational write lands under the live frame rather than
+  /// inside it, so the frame's spine cannot see those rows: without accounting
+  /// for them the next rewind stops short and earlier frame rows survive as
+  /// duplicates. A spine repaint consumes this list, rewinds over the rows and
+  /// re-emits them above the frame, where they become ordinary transcript.
+  final List<String> _promptTranscriptRows = [];
+  int _promptTranscriptRowCount = 0;
+
   /// Meaningful notices that arrived while help owned painting, in arrival
   /// order.
   ///
@@ -560,6 +571,7 @@ final class TerminalSession {
     _modalUsesAlternateScreen = false;
     _promptRepaint = null;
     _promptGeometry = null;
+    _clearPromptTranscriptRows();
     for (final region in _feedback) {
       region._retired = true;
     }
@@ -705,10 +717,68 @@ final class TerminalSession {
     return line;
   }
 
+  /// CSI sequences inside styled feedback text; they occupy no cells.
+  static final RegExp _ansiEscape = RegExp(r'\x1b\[[0-9;?]*[ -/]*[@-~]');
+
+  /// The visual rows [text] occupies when written at the prompt width.
+  int _transcriptVisualRows(String text) {
+    final plain = text.replaceAll(_ansiEscape, '');
+    final columns = _promptGeometry?.columns;
+    if (columns == null || columns <= 0) {
+      return plain.split('\n').length;
+    }
+    var rows = 0;
+    for (final segment in plain.split('\n')) {
+      if (segment.isEmpty) {
+        rows++;
+      } else {
+        rows += (TextDisplayMap(segment).cellWidth / columns).ceil();
+      }
+    }
+    return rows;
+  }
+
+  /// Records one transcript row written below the active rich prompt.
+  ///
+  /// Linear output and prompts without a registered repaint keep ordinary
+  /// sequential writes, so only a live rich repaint needs the accounting.
+  void _recordPromptTranscriptRow(String text) {
+    if (_promptRepaint == null || !_feedbackRich) return;
+    _promptTranscriptRows.add(text);
+    _promptTranscriptRowCount += _transcriptVisualRows(text);
+  }
+
+  /// Writes one transcript line and records it for the active rich prompt.
+  void _transcriptWriteln(String text) {
+    _recordPromptTranscriptRow(text);
+    _output.writeln(text);
+  }
+
+  /// Takes the recorded transcript rows for the next spine repaint.
+  ///
+  /// The returned rows are removed from the pending list: the spine rewinds
+  /// over their physical rows and re-emits them above the frame, so they must
+  /// not be emitted a second time by a later repaint.
+  ({int rows, List<String> texts})? _takePromptTranscriptRows() {
+    if (_promptTranscriptRows.isEmpty) return null;
+    final taken = (
+      rows: _promptTranscriptRowCount,
+      texts: List<String>.of(_promptTranscriptRows),
+    );
+    _promptTranscriptRows.clear();
+    _promptTranscriptRowCount = 0;
+    return taken;
+  }
+
+  void _clearPromptTranscriptRows() {
+    _promptTranscriptRows.clear();
+    _promptTranscriptRowCount = 0;
+  }
+
   void _paintCompactFeedback() {
     _writeShared(() {
       if (_promptRepaint != null && _feedbackRich) _output.write('\r\x1b[2K');
-      _output.writeln('[status] ${_compactFeedbackLine()}');
+      _transcriptWriteln('[status] ${_compactFeedbackLine()}');
     });
   }
 
@@ -741,7 +811,7 @@ final class TerminalSession {
           if (_promptRepaint != null && _feedbackRich) {
             _output.write('\r\x1b[2K');
           }
-          _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+          _transcriptWriteln('${_feedbackRich ? '[status] ' : ''}$line');
         });
       }
       _paintCompactFeedback();
@@ -750,7 +820,7 @@ final class TerminalSession {
         if (_promptRepaint != null && _feedbackRich) {
           _output.write('\r\x1b[2K');
         }
-        _output.writeln('${_feedbackRich ? '[status] ' : ''}$line');
+        _transcriptWriteln('${_feedbackRich ? '[status] ' : ''}$line');
       });
     }
     _writeShared(() => _promptRepaint?.call());
@@ -794,7 +864,7 @@ final class TerminalSession {
             _output.write('\r\x1b[2K');
           }
           for (final notice in notices) {
-            _output.writeln(
+            _transcriptWriteln(
               '${_feedbackRich ? '[status] ' : ''}${notice.line}',
             );
           }
@@ -806,7 +876,9 @@ final class TerminalSession {
     if (restore.isEmpty) return;
     _writeShared(() {
       for (final deferred in restore) {
-        _output.writeln('${_feedbackRich ? '[status] ' : ''}${deferred.line}');
+        _transcriptWriteln(
+          '${_feedbackRich ? '[status] ' : ''}${deferred.line}',
+        );
       }
     });
   }
@@ -823,7 +895,7 @@ final class TerminalSession {
     _modalHelp = false;
     _modalUsesAlternateScreen = false;
     if (showTranscriptDismissal && !usedAlternateScreen) {
-      _writeShared(() => _output.writeln('Help dismissed.'));
+      _writeShared(() => _transcriptWriteln('Help dismissed.'));
     }
     _restoreLatestComposite();
     _writeShared(repaintPrompt);
@@ -854,6 +926,12 @@ final class TerminalSession {
   }
 
   void _setPromptRepaint(void Function()? repaint) {
+    if (repaint == null || _promptRepaint == null) {
+      // A released or freshly registered repaint starts a new transcript
+      // region: rows recorded below the previous frame are already committed
+      // output and must not be re-emitted by the next frame.
+      _clearPromptTranscriptRows();
+    }
     _promptRepaint = repaint;
     if (repaint == null) {
       _promptGeometry = null;
@@ -993,6 +1071,7 @@ final class TerminalSession {
     _closed = true;
     _promptRepaint = null;
     _promptGeometry = null;
+    _clearPromptTranscriptRows();
     for (final region in _feedback) {
       region._retired = true;
     }
@@ -1243,6 +1322,7 @@ final class _StructureSpine {
     required this.border,
     required this.outputProfile,
     this.rich = false,
+    this.session,
   });
 
   final PromptStructure structure;
@@ -1252,6 +1332,13 @@ final class _StructureSpine {
   final TerminalColor border;
   final OutputProfile? outputProfile;
   final bool rich;
+
+  /// The owning session, when this spine presents an interactive prompt.
+  ///
+  /// Session feedback writes transcript rows below the live frame; the spine
+  /// cannot see those writes, so [reset] asks the session for them, rewinds
+  /// over their rows and re-emits them above the frame.
+  final TerminalSession? session;
   int _lines = 0;
   bool _open = false;
   bool _closed = false;
@@ -1862,9 +1949,16 @@ final class _StructureSpine {
   /// output stays sequential and keeps the deferred bottom-rule behaviour.
   void reset(StringSink output) {
     if (rich) {
+      final transcript = session?._takePromptTranscriptRows();
+      if (transcript != null) _lines += transcript.rows;
       if (_lines > 0) {
         output.write('\x1b[${_lines}A\x1b[J');
         _lines = 0;
+      }
+      if (transcript != null) {
+        for (final row in transcript.texts) {
+          output.writeln(row);
+        }
       }
       _pendingClose = false;
     } else if (_encloses && _open) {
@@ -1883,6 +1977,7 @@ _StructureSpine _structureSpine(
   required TerminalColor background,
   TerminalColor border = const TerminalColor.terminalDefault(),
   bool rich = false,
+  TerminalSession? session,
 }) => _StructureSpine(
   structure: structure,
   ascii: _structureAscii(outputProfile),
@@ -1891,6 +1986,7 @@ _StructureSpine _structureSpine(
   border: border,
   outputProfile: outputProfile,
   rich: rich,
+  session: session,
 );
 
 /// Splits [text] into the display lines that fit [width] cells.
@@ -3925,6 +4021,7 @@ final class Password {
       width: width,
       background: colors.background,
       border: colors.border,
+      session: session,
     );
     void write(
       String text,
@@ -4265,6 +4362,7 @@ abstract class _BooleanPrompt {
       width: width,
       background: colors.background,
       border: colors.border,
+      session: session,
     );
 
     // Measure and escape application text before adding terminal controls;
@@ -4561,6 +4659,7 @@ final class Multiline {
       width: width,
       background: colors.background,
       border: colors.border,
+      session: session,
     );
     void write(
       String text,
@@ -5594,6 +5693,7 @@ abstract class _SingleChoice<T> {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     void write(
       String text,
@@ -6016,6 +6116,7 @@ final class MultiSelect<T> {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     void write(
       String text,
@@ -6530,6 +6631,7 @@ final class TimeInput {
       width: width,
       background: colors.background,
       border: colors.border,
+      session: session,
     );
     void write(
       String text, {
@@ -6636,6 +6738,7 @@ final class TimeInput {
       background: colors.background,
       border: colors.border,
       rich: true,
+      session: session,
     );
     void write(
       String text, {
@@ -7041,6 +7144,7 @@ final class TagInput {
       width: width,
       background: colors.background,
       border: colors.border,
+      session: session,
     );
     void write(
       String text, {

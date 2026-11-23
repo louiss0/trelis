@@ -230,6 +230,7 @@ final class Slider {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.
@@ -677,6 +678,7 @@ final class RangeSlider {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     // Guidance follows the current output geometry, so a resize repaint wraps
     // to the observed width instead of the invocation width.

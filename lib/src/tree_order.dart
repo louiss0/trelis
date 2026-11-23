@@ -292,6 +292,7 @@ final class TreeSelect<T> {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     void write(
       String text,
@@ -845,6 +846,7 @@ final class SortableSelect<T> {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     void write(
       String text,

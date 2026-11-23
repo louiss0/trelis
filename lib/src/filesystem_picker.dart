@@ -274,6 +274,7 @@ final class _FilesystemPicker {
       background: colors.background,
       border: colors.border,
       rich: mode == PromptMode.rich,
+      session: session,
     );
     void write(
       String text,

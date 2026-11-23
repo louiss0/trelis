@@ -571,6 +571,7 @@ final class DateInput {
       background: colors.background,
       border: colors.border,
       rich: rich,
+      session: session,
     );
     void write(
       String text, {

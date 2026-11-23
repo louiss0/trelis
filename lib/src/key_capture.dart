@@ -256,6 +256,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
       background: colors.background,
       border: colors.border,
       rich: selected == PromptMode.rich,
+      session: promptSession,
     );
     void write(
       String text,

@@ -131,4 +131,61 @@ void main() {
       );
     },
   );
+
+  test(
+    'rich palette keeps one frame while session feedback reports progress',
+    () async {
+      final out = StringBuffer();
+      final input = StreamController<String>();
+      await TerminalSession.run(
+        (session) async {
+          final spinner = Spinner('Sync');
+          spinner.start(session: session);
+          final prompt = CommandPalette('Commands', [
+            Choice('save', 'Save'),
+            Choice('edit', 'Edit'),
+          ], structure: PromptStructure.chevron).prompt(session: session);
+          await Future<void>.delayed(Duration.zero);
+          spinner.update('fetching');
+          await Future<void>.delayed(Duration.zero);
+          input.add('s');
+          await Future<void>.delayed(Duration.zero);
+          spinner.update('merging');
+          await Future<void>.delayed(Duration.zero);
+          input.add('av\r\r');
+          await Future<void>.delayed(Duration.zero);
+          spinner.finish(FeedbackOutcome.completed);
+          await input.close();
+          return (await prompt as Accepted<String>).value;
+        },
+        source: ScriptedInput(
+          input.stream,
+          out,
+          supportsRich: true,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+
+      final rows = _visibleRows(out.toString());
+      // Feedback rows are transcript: they commit above the frame instead of
+      // accumulating inside the repaint region or duplicating the heading.
+      expect(
+        rows.where((line) => line.contains('CommandPalette:')),
+        hasLength(1),
+      );
+      expect(
+        rows.where((line) => line.contains('[status] Sync: fetching')),
+        hasLength(1),
+      );
+      expect(
+        rows.where((line) => line.contains('[status] Sync: merging')),
+        hasLength(1),
+      );
+      expect(
+        rows.where((line) => line.contains('[status] Sync: completed')),
+        hasLength(1),
+      );
+    },
+  );
 }
