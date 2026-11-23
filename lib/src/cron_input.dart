@@ -420,6 +420,26 @@ final class CronPreview {
   final CronPreviewStatus status;
 }
 
+/// Fan-out resize observation for the field-cell stage.
+///
+/// The stage watcher and every `_edit` call each need resize notifications,
+/// but a [TerminalResizeObserver] may expose a single-subscription stream.
+/// This adapter subscribes once and republishes the hints on a broadcast
+/// stream while delegating dimension reads to the source observer.
+final class _ForwardedResizeObserver implements TerminalResizeObserver {
+  _ForwardedResizeObserver(this.notifications, this._source);
+
+  @override
+  final Stream<void> notifications;
+  final TerminalResizeObserver _source;
+
+  @override
+  ({int columns, int rows})? readDimensions() => _source.readDimensions();
+
+  @override
+  Duration get fallbackInterval => _source.fallbackInterval;
+}
+
 /// Cron expression entry with explicitly configured optional matching preview.
 /// Quartz syntax and provider behavior are not yet fully qualified.
 final class CronInput {
@@ -769,15 +789,20 @@ final class CronInput {
     final actionName = preview == null ? 'Submit' : 'Review';
     final stops = schema.length + 1;
     var focus = 0;
+    // The stage repaints against live geometry: resize hints update
+    // [stageProfile] and the spine's measured width without touching the
+    // cell drafts.
+    var stageProfile = effectiveProfile;
+    var stageHelpOpen = false;
     // Set when the cell intercept accepts a multi-token paste; applied to
     // every cell once that cell's `_edit` returns so the staged drafts and
     // the focus ring move together.
     List<String>? pastedCells;
     var pastedFocus = 0;
     final spine = _structureSpine(
-      effectiveProfile,
+      stageProfile,
       structure: structure,
-      width: _textInputWidth(effectiveProfile),
+      width: _textInputWidth(stageProfile),
       background: colors.background,
       border: colors.border,
       rich: true,
@@ -787,13 +812,34 @@ final class CronInput {
       String text, {
       bool closes = false,
       StageEvent event = StageEvent.body,
+      Iterable<String> atomicText = const [],
     }) => spine.write(
       out,
       text,
       foreground: colors.foreground,
       closes: closes,
       event: event,
+      atomicText: atomicText,
     );
+
+    // A resize observer may expose a single-subscription notification stream,
+    // but the stage watcher and every `_edit` call each need the hints. One
+    // subscription forwards them onto a broadcast stream both sides share.
+    TerminalResizeObserver? stageObserver;
+    StreamController<void>? resizeEvents;
+    StreamSubscription<void>? resizeForward;
+    if (resizeObserver != null) {
+      resizeEvents = StreamController<void>.broadcast();
+      resizeForward = resizeObserver.notifications.listen(
+        (_) => resizeEvents!.add(null),
+        onError: (_, _) {},
+        onDone: resizeEvents.close,
+      );
+      stageObserver = _ForwardedResizeObserver(
+        resizeEvents.stream,
+        resizeObserver,
+      );
+    }
 
     String draftText() {
       final active = profile == CronProfile.quartz && cells[6].isEmpty
@@ -802,50 +848,140 @@ final class CronInput {
       return active.join(' ');
     }
 
-    String focusName() =>
-        focus < schema.length ? schema[focus].name : actionName;
-
     String cue() => focus < schema.length
         ? '${profile.name} · ${schema[focus].position}/${schema[focus].total} '
               '${schema[focus].name} (${schema[focus].rangeCue}'
               '${schema[focus].optional ? ', optional' : ''})'
         : '${profile.name} · Focus: $actionName · draft: ${draftText()}';
 
-    String cellToken(int index) {
-      // Brackets stay tight (`[x]`, `[]`) so the row never opens a line with
-      // the `[ ` marker sequence bare heading grammars reserve.
-      if (index == focus) {
-        return '[>${cells[index].isEmpty ? ' ' : cells[index]}<]';
+    /// The delimiters around one row item. Unfocused items keep symmetric
+    /// padding (`[ value ]`, `[   ]` empty); the focused item swaps the inner
+    /// padding for the profile's explicit non-colour focus markers.
+    ({String open, String close}) rowFrame({required bool focused}) {
+      if (!focused) return (open: '[ ', close: ' ]');
+      return spine.ascii
+          ? (open: '[>', close: '<]')
+          : (open: '[→', close: '←]');
+    }
+
+    /// The tail of [map] that fits [budget] cells, kept whole-grapheme.
+    String tailWithin(TextDisplayMap map, int budget) {
+      var used = 0;
+      final tail = <String>[];
+      for (var i = map.entries.length - 1; i >= 0; i--) {
+        final entry = map.entries[i];
+        if (used + entry.cellWidth > budget) break;
+        used += entry.cellWidth;
+        tail.insert(0, entry.original);
       }
-      return cells[index].isEmpty ? '[]' : '[${cells[index]}]';
+      return tail.join();
+    }
+
+    /// Windows [inner] to [innerBudget] cells around its end — where the cell
+    /// caret rests after focus entry — marking the hidden head with an
+    /// ellipsis. Only a single cell wider than the row ever reaches this.
+    String fitInner(String inner, int innerBudget) {
+      final map = TextDisplayMap(inner);
+      if (map.cellWidth <= innerBudget) return inner;
+      if (innerBudget <= 0) return '';
+      final ellipsis = spine.ascii ? '...' : '…';
+      final ellipsisCells = TextDisplayMap(ellipsis).cellWidth;
+      if (ellipsisCells >= innerBudget) return tailWithin(map, innerBudget);
+      return ellipsis + tailWithin(map, innerBudget - ellipsisCells);
+    }
+
+    /// One row item: a field cell or the trailing stage action, windowed to
+    /// the spine's body width when it alone would overflow.
+    String rowToken(String inner, {required bool focused}) {
+      final frame = rowFrame(focused: focused);
+      final budget = spine.bodyWriteWidth;
+      if (budget == null) return '${frame.open}$inner${frame.close}';
+      final fixed =
+          TextDisplayMap(frame.open).cellWidth +
+          TextDisplayMap(frame.close).cellWidth;
+      if (fixed + TextDisplayMap(inner).cellWidth <= budget) {
+        return '${frame.open}$inner${frame.close}';
+      }
+      return '${frame.open}${fitInner(inner, budget - fixed)}${frame.close}';
+    }
+
+    /// The row of field cells plus the trailing action. Cells wrap whole onto
+    /// continuation lines inside the active structure; a token is never split
+    /// unless it alone exceeds the inner line width, which [rowToken] windows.
+    void writeCellRow() {
+      final tokens = <String>[
+        for (var i = 0; i < schema.length; i++)
+          rowToken(cells[i].isEmpty ? ' ' : cells[i], focused: i == focus),
+        rowToken(actionName, focused: focus == schema.length),
+      ];
+      final budget = spine.bodyWriteWidth;
+      if (budget == null) {
+        write(tokens.join(' '));
+        return;
+      }
+      final lines = <String>[];
+      final line = StringBuffer();
+      var used = 0;
+      var started = false;
+      for (final token in tokens) {
+        final tokenCells = TextDisplayMap(token).cellWidth;
+        if (started && used + 1 + tokenCells > budget) {
+          lines.add(line.toString());
+          line.clear();
+          used = 0;
+          started = false;
+        }
+        if (started) {
+          line.write(' ');
+          used += 1;
+        }
+        line.write(token);
+        used += tokenCells;
+        started = true;
+      }
+      if (started) lines.add(line.toString());
+      for (final row in lines) {
+        write(row, atomicText: tokens);
+      }
     }
 
     void show() {
       spine.reset(out);
+      session?._setPromptGeometry(stageProfile.geometry);
       spine.opening(
         out,
         title: '$label.',
-        body:
-            '${profile.name} profile. Expression limit '
-            '$maxExpressionLength UTF-16 code units; draft: ${draftText()}.',
+        body: '',
         foreground: colors.foreground,
         bodyForeground: colors.foreground,
       );
-      write(
-        '${List.generate(schema.length, cellToken).join(' ')} '
-        '[${focus == schema.length ? '>$actionName<' : actionName}]',
-      );
+      writeCellRow();
       write(cue());
-      if (_resolvedInstructions(instructions) != InstructionDisplay.hidden) {
-        spine.hint(
-          out,
-          'Focus: ${focusName()}. Tab moves right; Shift-Tab or Ctrl+B moves left; '
-          'Enter ${preview == null ? 'submits' : 'reviews'}; Ctrl+T opens '
-          'help; Escape cancels; Ctrl+C interrupts.',
-          foreground: colors.foreground,
-        );
-      }
+      // The cue is protected content and stays visible when optional
+      // instructions are hidden; the hint keeps only the primary action and
+      // help route, matching the shared text contract's hidden floor.
+      spine.hint(
+        out,
+        _resolvedInstructions(instructions) == InstructionDisplay.hidden
+            ? 'Enter ${preview == null ? 'submits' : 'reviews'}; '
+                  'Ctrl+T opens help.'
+            : 'Tab/Shift-Tab move; Enter ${preview == null ? 'submits' : 'reviews'}; '
+                  'Ctrl+T help; Esc cancels.',
+        foreground: colors.foreground,
+      );
     }
+
+    final stopWatchingResize = _watchIdleResize(
+      observer: stageObserver,
+      profile: () => stageProfile,
+      onGeometry: (resized) {
+        stageProfile = resized;
+        spine.width = _textInputWidth(resized);
+      },
+      repaint: show,
+      keys: inputKeys,
+      helpOpen: () => stageHelpOpen,
+    );
 
     // Notices can be emitted while the caret still sits mid-row inside the
     // cell editor; restart the line at column zero so the wrapped notice
@@ -869,39 +1005,124 @@ final class CronInput {
     ({int index, String message})? failure() =>
         cronFieldCellsError(profile, cells);
 
-    while (true) {
-      show();
-      if (focus == schema.length) {
-        final stop = await _edit(
+    try {
+      while (true) {
+        show();
+        if (focus == schema.length) {
+          final stop = await _edit(
+            inputKeys,
+            '',
+            out,
+            transientHelp:
+                stageProfile.alternateScreen == CapabilitySupport.supported,
+            helpText: preview == null ? _submitStopHelp : _reviewStopHelp,
+            outputProfile: stageProfile,
+            structure: structure,
+            resizeObserver: stageObserver,
+            session: session,
+            onHelpVisibilityChanged: (visible) => stageHelpOpen = visible,
+            intercept: (key, text) {
+              if (key == '\t') return 'next';
+              if (key == '\x1b[Z' || key == '\x02') return 'previous';
+              if ((key == '\r' || key == '\n') && text.isEmpty) {
+                return 'activate';
+              }
+              // The action stop takes no draft text.
+              if (key.startsWith('\x1b[200~')) return 'handled';
+              if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
+                return 'handled';
+              }
+              return null;
+            },
+          );
+          stageHelpOpen = false;
+          if (stop.action == 'cancel') return Cancelled();
+          if (stop.action == 'interrupt') return Interrupted();
+          if (stop.action == 'eof') return InputEnded();
+          _finishFieldLine(out, stop.action);
+          if (stop.action == 'activate' || stop.action == 'submit') {
+            final error = failure();
+            if (error != null) {
+              notice(error.message);
+              focus = error.index;
+              continue;
+            }
+            return finish();
+          }
+          focus = stop.action == 'next' ? 0 : schema.length - 1;
+          continue;
+        }
+        final index = focus;
+        final cell = schema[index];
+        final edit = await _edit(
           inputKeys,
-          '',
+          cells[index],
           out,
+          maxLength: _cellLimit(cells, index),
           transientHelp:
-              effectiveProfile.alternateScreen == CapabilitySupport.supported,
-          helpText: preview == null ? _submitStopHelp : _reviewStopHelp,
-          outputProfile: effectiveProfile,
+              stageProfile.alternateScreen == CapabilitySupport.supported,
+          helpText: _cellHelp(cell),
+          liveHelpText: () => _cellHelp(cell),
+          outputProfile: stageProfile,
           structure: structure,
-          resizeObserver: resizeObserver,
+          resizeObserver: stageObserver,
           session: session,
+          onHelpVisibilityChanged: (visible) => stageHelpOpen = visible,
           intercept: (key, text) {
+            if (key == ' ') {
+              notice(
+                'Space does not insert into a field cell; press Tab to move '
+                'to the next field.',
+              );
+              return 'handled';
+            }
             if (key == '\t') return 'next';
             if (key == '\x1b[Z' || key == '\x02') return 'previous';
-            if ((key == '\r' || key == '\n') && text.isEmpty) {
-              return 'activate';
-            }
-            // The action stop takes no draft text.
-            if (key.startsWith('\x1b[200~')) return 'handled';
-            if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
-              return 'handled';
+            if (key.startsWith('\x1b[200~')) {
+              final payload = key.length >= 12
+                  ? key.substring(6, key.length - 6)
+                  : '';
+              final paste = _fieldCellPaste(payload, cells, index, text);
+              if (paste.notice != null) {
+                notice(paste.notice!);
+                return 'handled';
+              }
+              if (paste.cells != null) {
+                pastedCells = paste.cells;
+                pastedFocus = paste.focus;
+                return 'paste-fields';
+              }
+              // A single whitespace-free token falls through to the editor's
+              // own paste handling, which filters control characters and
+              // inserts it at the caret.
             }
             return null;
           },
         );
-        if (stop.action == 'cancel') return Cancelled();
-        if (stop.action == 'interrupt') return Interrupted();
-        if (stop.action == 'eof') return InputEnded();
-        _finishFieldLine(out, stop.action);
-        if (stop.action == 'activate' || stop.action == 'submit') {
+        stageHelpOpen = false;
+        if (edit.action == 'cancel') return Cancelled();
+        if (edit.action == 'interrupt') return Interrupted();
+        if (edit.action == 'eof') return InputEnded();
+        _finishFieldLine(out, edit.action);
+        cells[index] = edit.value;
+        if (edit.action == 'paste-fields' && pastedCells != null) {
+          final pasted = pastedCells!;
+          pastedCells = null;
+          for (var i = 0; i < cells.length; i++) {
+            cells[i] = i < pasted.length ? pasted[i] : '';
+          }
+          focus = pastedFocus;
+          continue;
+        }
+        if (edit.action == 'next') {
+          focus = (focus + 1) % stops;
+          continue;
+        }
+        if (edit.action == 'previous') {
+          focus = (focus + stops - 1) % stops;
+          continue;
+        }
+        if (edit.action == 'submit') {
           final error = failure();
           if (error != null) {
             notice(error.message);
@@ -910,86 +1131,11 @@ final class CronInput {
           }
           return finish();
         }
-        focus = stop.action == 'next' ? 0 : schema.length - 1;
-        continue;
       }
-      final index = focus;
-      final cell = schema[index];
-      final edit = await _edit(
-        inputKeys,
-        cells[index],
-        out,
-        maxLength: _cellLimit(cells, index),
-        transientHelp:
-            effectiveProfile.alternateScreen == CapabilitySupport.supported,
-        helpText: _cellHelp(cell),
-        liveHelpText: () => _cellHelp(cell),
-        outputProfile: effectiveProfile,
-        structure: structure,
-        resizeObserver: resizeObserver,
-        session: session,
-        intercept: (key, text) {
-          if (key == ' ') {
-            notice(
-              'Space does not insert into a field cell; press Tab to move '
-              'to the next field.',
-            );
-            return 'handled';
-          }
-          if (key == '\t') return 'next';
-          if (key == '\x1b[Z' || key == '\x02') return 'previous';
-          if (key.startsWith('\x1b[200~')) {
-            final payload = key.length >= 12
-                ? key.substring(6, key.length - 6)
-                : '';
-            final paste = _fieldCellPaste(payload, cells, index, text);
-            if (paste.notice != null) {
-              notice(paste.notice!);
-              return 'handled';
-            }
-            if (paste.cells != null) {
-              pastedCells = paste.cells;
-              pastedFocus = paste.focus;
-              return 'paste-fields';
-            }
-            // A single whitespace-free token falls through to the editor's
-            // own paste handling, which filters control characters and
-            // inserts it at the caret.
-          }
-          return null;
-        },
-      );
-      if (edit.action == 'cancel') return Cancelled();
-      if (edit.action == 'interrupt') return Interrupted();
-      if (edit.action == 'eof') return InputEnded();
-      _finishFieldLine(out, edit.action);
-      cells[index] = edit.value;
-      if (edit.action == 'paste-fields' && pastedCells != null) {
-        final pasted = pastedCells!;
-        pastedCells = null;
-        for (var i = 0; i < cells.length; i++) {
-          cells[i] = i < pasted.length ? pasted[i] : '';
-        }
-        focus = pastedFocus;
-        continue;
-      }
-      if (edit.action == 'next') {
-        focus = (focus + 1) % stops;
-        continue;
-      }
-      if (edit.action == 'previous') {
-        focus = (focus + stops - 1) % stops;
-        continue;
-      }
-      if (edit.action == 'submit') {
-        final error = failure();
-        if (error != null) {
-          notice(error.message);
-          focus = error.index;
-          continue;
-        }
-        return finish();
-      }
+    } finally {
+      stopWatchingResize();
+      await resizeForward?.cancel();
+      await resizeEvents?.close();
     }
   }
 

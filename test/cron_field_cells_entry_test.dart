@@ -36,7 +36,7 @@ void main() {
     expect(text, contains('unix · 1/5 minute (0-59)'));
     expect(text, contains('unix · 5/5 day-of-week'));
     // The trailing Submit stop joins the focus ring.
-    expect(text, contains('[Submit]'));
+    expect(text, contains('[ Submit ]'));
   });
 
   test('Tab wraps from the last cell through Submit back to cell 0', () async {

@@ -1421,6 +1421,26 @@ final class _StructureSpine {
   /// The width a hint or compact event outside the frame may use.
   int get _outsideWidth => (_frameWidth - 2).clamp(1, _frameWidth);
 
+  /// The width [write] gives one plain body row of this stage.
+  ///
+  /// A component that packs its own rows — such as the cron field-cell row,
+  /// which must wrap between whole cells — measures against this so its
+  /// packing matches the spine's geometry rules instead of restating them.
+  /// Null means the stage does not wrap.
+  int? get bodyWriteWidth {
+    if (_encloses) return _contentWidth;
+    if (_heading != null) {
+      final stageWidth = _headingWidth;
+      if (stageWidth == null) return null;
+      return (stageWidth - _heading!.bodyIndentCells).clamp(1, stageWidth);
+    }
+    if (width == null) return null;
+    return (width! - structurePrefixCells(structure, ascii: ascii)).clamp(
+      1,
+      width!,
+    );
+  }
+
   void _emit(StringSink output, String line, TerminalColor foreground) {
     if (line.isEmpty) return;
     output.writeln(_colorText(line, foreground, background, outputProfile));

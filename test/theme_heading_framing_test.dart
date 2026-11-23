@@ -73,6 +73,7 @@ class _Case {
     this.run, {
     this.richAnswer,
     this.outcome,
+    this.allowedBareMarkers = const {},
   });
 
   final String name;
@@ -83,6 +84,14 @@ class _Case {
   /// A reported outcome or notice that must be presented outside a closed
   /// frame, never swallowed as a body row of a frame left open.
   final String? outcome;
+
+  /// Line prefixes the component's own content may legitimately start with.
+  ///
+  /// The bare-grammar check bans structural markers a theme must not invent;
+  /// a component whose vocabulary genuinely opens a line — the cron field
+  /// cells' `[ ` delimiters — declares those prefixes here instead of
+  /// weakening the check for every other component.
+  final Set<String> allowedBareMarkers;
   final Future<Object?> Function(
     PromptMode mode,
     ScriptedInput input,
@@ -411,6 +420,7 @@ List<_Case> _cases() => [
       structure: structure,
     ).prompt(source: input, mode: mode),
     richAnswer: '*\t*\t*\t*\t*\r',
+    allowedBareMarkers: const {'[ '},
   ),
   _Case(
     'PathInput',
@@ -531,6 +541,7 @@ void _expectHeaded(
   required String label,
   required int columns,
   String? outcome,
+  Set<String> allowedBareMarkers = const {},
 }) {
   final glyphs = _heading(structure, ascii: ascii);
   final lines = [
@@ -600,6 +611,7 @@ void _expectHeaded(
       reason: 'the bare heading starts at the reference column',
     );
     for (final marker in ['? ', '[ ', '❯ ', '↳ ', '» ', '› ']) {
+      if (allowedBareMarkers.contains(marker)) continue;
       expect(
         lines.where((line) => line.startsWith(marker)),
         isEmpty,
@@ -665,6 +677,7 @@ void main() {
               label: testCase.label,
               columns: 72,
               outcome: testCase.outcome,
+              allowedBareMarkers: testCase.allowedBareMarkers,
             );
           });
         }
