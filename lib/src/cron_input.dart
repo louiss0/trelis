@@ -167,81 +167,21 @@ Future<({timezone.Location? location, CronPreviewStatus status})> _loadCronZone(
   }
 }
 
-const _quartzMonths = [
-  'JAN',
-  'FEB',
-  'MAR',
-  'APR',
-  'MAY',
-  'JUN',
-  'JUL',
-  'AUG',
-  'SEP',
-  'OCT',
-  'NOV',
-  'DEC',
-];
-
-const _quartzWeekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-
-Set<int>? _quartzField(
-  String field,
-  int min,
-  int max, [
-  List<String> names = const [],
-]) {
-  int? number(String text) {
-    final name = names.indexOf(text.toUpperCase());
-    if (name >= 0) return min + name;
-    if (!RegExp(r'^[0-9]+$').hasMatch(text)) return null;
-    final value = int.tryParse(text);
-    return value != null && value >= min && value <= max ? value : null;
-  }
-
-  final values = <int>{};
-  for (final item in field.split(',')) {
-    final parts = item.split('/');
-    if (parts.length > 2 || parts.any((part) => part.isEmpty)) return null;
-    final increment = parts.length == 2 ? int.tryParse(parts[1]) : 1;
-    if (increment == null ||
-        increment <= 0 ||
-        increment > max - min + 1 ||
-        (parts.length == 2 && !RegExp(r'^[0-9]+$').hasMatch(parts[1]))) {
-      return null;
-    }
-    final range = parts[0].split('-');
-    if (range.length > 2) return null;
-    final first = range[0] == '*' ? min : number(range[0]);
-    if (first == null || (range[0] == '*' && range.length > 1)) return null;
-    final last = range.length == 2
-        ? number(range[1])
-        : parts.length == 2 || range[0] == '*'
-        ? max
-        : first;
-    if (last == null) return null;
-    final length = (last - first) % (max - min + 1);
-    for (var offset = 0; offset <= length; offset += increment) {
-      values.add(min + (first - min + offset) % (max - min + 1));
-    }
-  }
-  return values.isEmpty ? null : values;
-}
-
 List<Set<int>?> _compileQuartzFields(List<String> fields) {
   final dom = fields[3];
   final dow = fields[5].toUpperCase();
   return [
-    _quartzField(fields[0], 0, 59),
-    _quartzField(fields[1], 0, 59),
-    _quartzField(fields[2], 0, 23),
+    quartzCronField(fields[0], 0, 59),
+    quartzCronField(fields[1], 0, 59),
+    quartzCronField(fields[2], 0, 23),
     dom == '?' || dom.startsWith('L') || dom.endsWith('W')
         ? null
-        : _quartzField(dom, 1, 31),
-    _quartzField(fields[4], 1, 12, _quartzMonths),
+        : quartzCronField(dom, 1, 31),
+    quartzCronField(fields[4], 1, 12, quartzCronMonths),
     dow == '?' || dow.contains('#') || dow.endsWith('L')
         ? null
-        : _quartzField(dow, 1, 7, _quartzWeekdays),
-    fields.length == 7 ? _quartzField(fields[6], 1970, 2199) : null,
+        : quartzCronField(dow, 1, 7, quartzCronWeekdays),
+    fields.length == 7 ? quartzCronField(fields[6], 1970, 2199) : null,
   ];
 }
 
@@ -484,7 +424,7 @@ final class CronPreview {
 /// Quartz syntax and provider behavior are not yet fully qualified.
 final class CronInput {
   /// Maximum expression length in UTF-16 code units.
-  static const maxExpressionLength = 4096;
+  static const maxExpressionLength = cronMaxExpressionLength;
 
   CronInput(
     this.label, {
@@ -496,9 +436,16 @@ final class CronInput {
     this.instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) : supplementaryHelp = List.unmodifiable(supplementaryHelp) {
+    // A non-empty initialValue must be a valid expression for the selected
+    // profile; valid values split into the initial field cells that every
+    // prompt run resets to.
+    _initialFieldCells = cronInitialFieldCells(profile, initialValue);
+    _initialDraft = _initialFieldCells.every((cell) => cell.isEmpty)
+        ? ''
+        : cronAssembleExpression(profile, _initialFieldCells);
     _input = TextInput(
       '$label (${profile.name} profile; expression limit $maxExpressionLength UTF-16 code units; matching preview is not configured)',
-      initialValue: initialValue,
+      initialValue: _initialDraft,
       required: true,
       maxLength: maxExpressionLength,
       validate: (value) => _valid(value)
@@ -519,6 +466,13 @@ final class CronInput {
   final InstructionDisplay instructions;
   final List<String> supplementaryHelp;
   late final TextInput _input;
+
+  /// Initial field-cell drafts split from [initialValue]; every prompt run
+  /// resets the cells to these values.
+  late final List<String> _initialFieldCells;
+
+  /// The single-space-joined initial draft seeded into each prompt run.
+  late final String _initialDraft;
   bool _active = false;
 
   /// Minimal active-format cue: the field shape of the declared dialect.
@@ -555,111 +509,7 @@ final class CronInput {
     return 'Help: Reviewing the retained expression for the ${profile.name} profile, $_fieldShape. $controls $_syntaxNote $_previewNote';
   }
 
-  bool _valid(String value) {
-    if (value.length > maxExpressionLength || value.trim() != value) {
-      return false;
-    }
-    if (profile == CronProfile.quartz) {
-      final fields = value.split(RegExp(r' +'));
-      if (fields.length != 6 && fields.length != 7) return false;
-      if ((fields[3] == '?') == (fields[5] == '?')) return false;
-      if (_quartzField(fields[0], 0, 59) == null ||
-          _quartzField(fields[1], 0, 59) == null ||
-          _quartzField(fields[2], 0, 23) == null ||
-          _quartzField(fields[4], 1, 12, _quartzMonths) == null ||
-          (fields.length == 7 && _quartzField(fields[6], 1970, 2199) == null)) {
-        return false;
-      }
-      final nearestWeekday = RegExp(r'^([0-9]+)W$').firstMatch(fields[3]);
-      final weekdayDay = nearestWeekday == null
-          ? null
-          : int.tryParse(nearestWeekday.group(1)!);
-      final lastOffset = RegExp(r'^L-([0-9]+)W?$').firstMatch(fields[3]);
-      final offset = lastOffset == null
-          ? null
-          : int.tryParse(lastOffset.group(1)!);
-      if (fields[3] != '?' &&
-          !(offset != null && offset >= 1 && offset <= 30) &&
-          fields[3] != 'L' &&
-          fields[3] != 'LW' &&
-          !(weekdayDay != null && weekdayDay >= 1 && weekdayDay <= 31) &&
-          _quartzField(fields[3], 1, 31) == null) {
-        return false;
-      }
-      final nthWeekday = RegExp(
-        r'^(?:[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)#[1-5]$',
-        caseSensitive: false,
-      ).hasMatch(fields[5]);
-      final lastWeekday = RegExp(
-        r'^(?:[1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)L$',
-        caseSensitive: false,
-      ).hasMatch(fields[5]);
-      if (fields[5] != '?' &&
-          fields[5] != 'L' &&
-          !nthWeekday &&
-          !lastWeekday &&
-          _quartzField(fields[5], 1, 7, _quartzWeekdays) == null) {
-        return false;
-      }
-      return true;
-    }
-    final fields = value.split(RegExp(r' +'));
-    if (fields.length != 5) return false;
-    const min = [0, 0, 1, 1, 0];
-    const max = [59, 23, 31, 12, 7];
-    const months = [
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MAY',
-      'JUN',
-      'JUL',
-      'AUG',
-      'SEP',
-      'OCT',
-      'NOV',
-      'DEC',
-    ];
-    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    int? number(String text, int index) {
-      if (index == 3 && months.contains(text.toUpperCase())) {
-        return months.indexOf(text.toUpperCase()) + 1;
-      }
-      if (index == 4 && days.contains(text.toUpperCase())) {
-        return days.indexOf(text.toUpperCase());
-      }
-      if (!RegExp(r'^[0-9]+$').hasMatch(text)) return null;
-      return int.tryParse(text);
-    }
-
-    for (var i = 0; i < fields.length; i++) {
-      for (final item in fields[i].split(',')) {
-        final step = item.split('/');
-        if (step.length > 2 ||
-            (step.length == 2 &&
-                (!RegExp(r'^[0-9]+$').hasMatch(step[1]) ||
-                    (int.tryParse(step[1]) ?? 0) <= 0))) {
-          return false;
-        }
-        if (step[0] == '*') continue;
-        final range = step[0].split('-');
-        if (range.length > 2 || (step.length == 2 && range.length != 2)) {
-          return false;
-        }
-        final first = number(range[0], i);
-        final last = range.length == 2 ? number(range[1], i) : first;
-        if (first == null ||
-            last == null ||
-            first < min[i] ||
-            last > max[i] ||
-            first > last) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
+  bool _valid(String value) => cronExpressionError(profile, value) == null;
 
   Future<PromptResult<CronExpression>> prompt({
     PromptSource? source,
@@ -811,7 +661,7 @@ final class CronInput {
       ).hint(out, text, foreground: colors.foreground);
     }
 
-    var draft = initialValue;
+    var draft = _initialDraft;
     writeNotice(
       '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units.',
     );
