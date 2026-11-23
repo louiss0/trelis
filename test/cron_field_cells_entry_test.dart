@@ -242,7 +242,7 @@ void main() {
           source: ScriptedInput(
             // '*', '1-5', 'JAN' and 'MON' all ignore Up/Down.
             Stream.value(
-              '\x1b[A\x1b[B*\x1b[A\x1b[B\t1-5\x1b[A\x1b[B\t15\t'
+              '*\x1b[A\x1b[B\t1-5\x1b[A\x1b[B\t15\t'
               'JAN\x1b[A\x1b[B\tMON\x1b[A\x1b[B\r',
             ),
             StringBuffer(),
@@ -254,6 +254,22 @@ void main() {
       (result as Accepted<CronExpression>).value.expression,
       '* 1-5 15 JAN MON',
     );
+  });
+
+  test('Up and Down seed an empty cell at zero before stepping', () async {
+    // Empty minute cell + Up twice -> '1'; empty hour cell + Down -> '0';
+    // empty day-of-month cell + Down clamps the zero baseline into range
+    // at '1'.
+    final result = await CronInput('Schedule', profile: CronProfile.unix)
+        .prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[A\x1b[A\t\x1b[B\t\x1b[B\t*\t*\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<CronExpression>).value.expression, '1 0 1 * *');
   });
 
   test('quartz Up and Down step second and year bounds', () async {

@@ -1509,10 +1509,15 @@ final class CronInput {
         }
         if (key == '\x1b[A' || key == '\x1b[B') {
           // Up/Down step a bare numeric draft by one inside the field's
-          // declared bounds; every other cell content is a silent no-op.
+          // declared bounds; an empty cell starts at zero (clamped into
+          // range) so stepping works before anything is typed. Every other
+          // cell content is a silent no-op.
           final draft = cells[index];
-          if (RegExp(r'^[0-9]+$').hasMatch(draft)) {
-            final bounds = schema[index];
+          final bounds = schema[index];
+          if (draft.isEmpty) {
+            cells[index] = '${0.clamp(bounds.min, bounds.max)}';
+            caretToEnd(index);
+          } else if (RegExp(r'^[0-9]+$').hasMatch(draft)) {
             final stepped = (int.parse(draft) + (key == '\x1b[A' ? 1 : -1))
                 .clamp(bounds.min, bounds.max);
             cells[index] = '$stepped';
