@@ -452,7 +452,7 @@ void main() {
               mode,
               Stream.value(
                 mode == PromptMode.rich
-                    ? '* * * * *\r\t\r\t\r'
+                    ? '*\t*\t*\t*\t*\r'
                     : '* * * * *\r/submit\r',
               ),
               StringBuffer(),

@@ -511,6 +511,420 @@ final class CronInput {
 
   bool _valid(String value) => cronExpressionError(profile, value) == null;
 
+  /// Whether cell [index] takes part in the assembled expression. Every Unix
+  /// cell is mandatory; in Quartz the optional `year` cell (index 6) joins the
+  /// expression only when it holds a draft.
+  bool _cellActive(int index, List<String> cells) =>
+      profile != CronProfile.quartz || index < 6 || cells[index].isNotEmpty;
+
+  /// Grapheme budget for edits inside cell [index]: the assembled-expression
+  /// limit minus the other active cells and the separators between them, so a
+  /// cell edit can never push the draft past [cronMaxExpressionLength]
+  /// without the submit-time check.
+  int _cellLimit(List<String> cells, int index) {
+    var others = 0;
+    var activeOthers = 0;
+    for (var j = 0; j < cells.length; j++) {
+      if (j == index || !_cellActive(j, cells)) continue;
+      others += cells[j].length;
+      activeOthers++;
+    }
+    // Editing a cell always makes it active, so it counts toward the total.
+    final active = activeOthers + 1;
+    return cronMaxExpressionLength - others - (active - 1);
+  }
+
+  /// Stage-led help for one field cell: the dialect summary first, then the
+  /// focused cell's own syntax.
+  String _cellHelp(CronFieldCell cell) {
+    final optional = cell.optional ? ', optional' : '';
+    return 'Help: Entering the expression for the ${profile.name} profile, '
+        '$_fieldShape. Editing the ${cell.name} field cell '
+        '${cell.position}/${cell.total} (${cell.rangeCue}$optional). '
+        'Tab or Shift-Tab moves between field cells; Enter validates the whole '
+        'draft${preview == null ? ' and submits it' : ' and opens the review stage'}; '
+        'Ctrl+T opens help; Escape cancels; Ctrl+C interrupts. '
+        '$_limitNote $_syntaxNote $_previewNote';
+  }
+
+  /// Help for the trailing Submit stop (only reached without a preview).
+  String get _submitHelp =>
+      'Help: The Submit stop accepts the whole ${profile.name} profile draft, '
+      '$_fieldShape. Tab or Shift-Tab moves between the field cells and this '
+      'stop; Enter activates Submit; Ctrl+T opens help; Escape cancels; '
+      'Ctrl+C interrupts. $_limitNote $_syntaxNote $_previewNote';
+
+  /// Rich-interaction field-cell entry stage.
+  ///
+  /// Runs the focus ring `cell 0 -> ... -> cell N-1 -> trailing action ->
+  /// cell 0` until the draft validates. Returns the assembled expression when
+  /// a preview review is configured, or the accepted result when it is not; a
+  /// non-null `result` ends the prompt (cancel, interrupt or input end).
+  /// [cells] is mutated in place so a Review `Edit` action can re-enter with
+  /// every cell draft preserved.
+  Future<PromptResult<CronExpression>?> _fieldCells(
+    _Keys inputKeys,
+    StringSink out,
+    OutputProfile effectiveProfile,
+    TerminalSession? session,
+    TerminalResizeObserver? resizeObserver,
+    List<String> cells,
+  ) async {
+    final schema = cronFieldCells(profile);
+    final actionName = preview == null ? 'Submit' : 'Review';
+    final stops = schema.length + 1;
+    var focus = 0;
+    final spine = _structureSpine(
+      effectiveProfile,
+      structure: structure,
+      width: _textInputWidth(effectiveProfile),
+      background: colors.background,
+      border: colors.border,
+      rich: true,
+      session: session,
+    );
+    void write(
+      String text, {
+      bool closes = false,
+      StageEvent event = StageEvent.body,
+    }) => spine.write(
+      out,
+      text,
+      foreground: colors.foreground,
+      closes: closes,
+      event: event,
+    );
+
+    String draftText() {
+      final active = profile == CronProfile.quartz && cells[6].isEmpty
+          ? cells.sublist(0, 6)
+          : cells;
+      return active.join(' ');
+    }
+
+    String focusName() =>
+        focus < schema.length ? schema[focus].name : actionName;
+
+    String cue() => focus < schema.length
+        ? '${profile.name} · ${schema[focus].position}/${schema[focus].total} '
+              '${schema[focus].name} (${schema[focus].rangeCue}'
+              '${schema[focus].optional ? ', optional' : ''})'
+        : '${profile.name} · Focus: $actionName · draft: ${draftText()}';
+
+    String cellToken(int index) {
+      final inner = cells[index].isEmpty ? ' ' : cells[index];
+      return index == focus ? '[>$inner<]' : '[ $inner ]';
+    }
+
+    void show() {
+      spine.reset(out);
+      spine.opening(
+        out,
+        title: '$label.',
+        body: '${profile.name} profile; draft: ${draftText()}.',
+        foreground: colors.foreground,
+        bodyForeground: colors.foreground,
+      );
+      write(
+        '${List.generate(schema.length, cellToken).join(' ')} '
+        '[${focus == schema.length ? '>$actionName<' : ' $actionName '}]',
+      );
+      write(cue());
+      if (_resolvedInstructions(instructions) != InstructionDisplay.hidden) {
+        spine.hint(
+          out,
+          'Focus: ${focusName()}. Tab moves right; Shift-Tab or Ctrl+B moves left; '
+          'Enter ${preview == null ? 'submits' : 'reviews'}; Ctrl+T opens '
+          'help; Escape cancels; Ctrl+C interrupts.',
+          foreground: colors.foreground,
+        );
+      }
+    }
+
+    // Notices can be emitted while the caret still sits mid-row inside the
+    // cell editor; restart the line at column zero so the wrapped notice
+    // never inherits the caret column and overflows the declared width.
+    void notice(String text) {
+      out.write('\r\x1b[2K');
+      write(text, closes: true, event: StageEvent.warning);
+    }
+
+    // A valid draft returns null so the caller can assemble the expression
+    // and enter the review stage; without a configured preview it is
+    // accepted directly.
+    PromptResult<CronExpression>? finish() {
+      final draft = cronAssembleExpression(profile, cells);
+      if (preview == null) {
+        return Accepted(CronExpression._(draft, profile));
+      }
+      return null;
+    }
+
+    ({int index, String message})? failure() =>
+        cronFieldCellsError(profile, cells);
+
+    while (true) {
+      show();
+      if (focus == schema.length) {
+        final stop = await _edit(
+          inputKeys,
+          '',
+          out,
+          transientHelp:
+              effectiveProfile.alternateScreen == CapabilitySupport.supported,
+          helpText: preview == null ? _submitHelp : _reviewHelp(linear: false),
+          outputProfile: effectiveProfile,
+          structure: structure,
+          resizeObserver: resizeObserver,
+          session: session,
+          intercept: (key, text) {
+            if (key == '\t') return 'next';
+            if (key == '\x1b[Z' || key == '\x02') return 'previous';
+            if ((key == '\r' || key == '\n') && text.isEmpty) {
+              return 'activate';
+            }
+            // The action stop takes no draft text.
+            if (key.startsWith('\x1b[200~')) return 'handled';
+            if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
+              return 'handled';
+            }
+            return null;
+          },
+        );
+        if (stop.action == 'cancel') return Cancelled();
+        if (stop.action == 'interrupt') return Interrupted();
+        if (stop.action == 'eof') return InputEnded();
+        _finishFieldLine(out, stop.action);
+        if (stop.action == 'activate' || stop.action == 'submit') {
+          final error = failure();
+          if (error != null) {
+            notice(error.message);
+            focus = error.index;
+            continue;
+          }
+          return finish();
+        }
+        focus = stop.action == 'next' ? 0 : schema.length - 1;
+        continue;
+      }
+      final index = focus;
+      final cell = schema[index];
+      final edit = await _edit(
+        inputKeys,
+        cells[index],
+        out,
+        maxLength: _cellLimit(cells, index),
+        transientHelp:
+            effectiveProfile.alternateScreen == CapabilitySupport.supported,
+        helpText: _cellHelp(cell),
+        liveHelpText: () => _cellHelp(cell),
+        outputProfile: effectiveProfile,
+        structure: structure,
+        resizeObserver: resizeObserver,
+        session: session,
+        intercept: (key, text) {
+          if (key == ' ') {
+            notice(
+              'Space does not insert into a field cell; press Tab to move '
+              'to the next field.',
+            );
+            return 'handled';
+          }
+          if (key == '\t') return 'next';
+          if (key == '\x1b[Z' || key == '\x02') return 'previous';
+          if (key.startsWith('\x1b[200~')) {
+            final payload = key.length >= 12
+                ? key.substring(6, key.length - 6)
+                : '';
+            if (payload.contains(' ') ||
+                payload.contains('\t') ||
+                payload.contains('\n') ||
+                payload.contains('\r')) {
+              notice(
+                'Paste rejected: a paste must fit inside one field cell; '
+                'use Tab between fields.',
+              );
+              return 'handled';
+            }
+            // A single-token paste falls through to the editor's own paste
+            // handling, which inserts it at the caret.
+          }
+          return null;
+        },
+      );
+      if (edit.action == 'cancel') return Cancelled();
+      if (edit.action == 'interrupt') return Interrupted();
+      if (edit.action == 'eof') return InputEnded();
+      _finishFieldLine(out, edit.action);
+      cells[index] = edit.value;
+      if (edit.action == 'next') {
+        focus = (focus + 1) % stops;
+        continue;
+      }
+      if (edit.action == 'previous') {
+        focus = (focus + stops - 1) % stops;
+        continue;
+      }
+      if (edit.action == 'submit') {
+        final error = failure();
+        if (error != null) {
+          notice(error.message);
+          focus = error.index;
+          continue;
+        }
+        return finish();
+      }
+    }
+  }
+
+  /// The Review interaction stage shared by the linear and field-cell entry
+  /// stages. Returns null when the user chooses `Edit`, which re-enters the
+  /// entry stage; every other outcome is the prompt's final result.
+  Future<PromptResult<CronExpression>?> _reviewStage(
+    _Keys inputKeys,
+    StringSink out,
+    OutputProfile effectiveProfile,
+    int? width,
+    String draft,
+    bool linear,
+    TerminalSession? session,
+    void Function(String text) writeNotice,
+    TerminalResizeObserver? resizeObserver,
+  ) async {
+    final config = preview;
+    if (config == null) {
+      throw StateError('The review stage requires a configured preview.');
+    }
+    writeNotice(
+      'Review: $draft. /preview, /edit, or /submit${linear ? '; /help opens help or /cancel cancels' : ''}.',
+    );
+    var focus = 0;
+    const actions = ['Edit', 'Preview', 'Submit'];
+    if (!linear) {
+      writeNotice(
+        'Review action: Edit. Tab or Shift-Tab changes action; Enter activates; Ctrl+T opens help.',
+      );
+    }
+    while (true) {
+      final action = await _edit(
+        inputKeys,
+        '',
+        out,
+        linear: true,
+        sequential: linear,
+        extraCommands: const {'/preview', '/edit', '/submit'},
+        helpText: _reviewHelp(linear: linear),
+        linearHelpText: _reviewHelp(linear: true),
+        outputProfile: effectiveProfile,
+        structure: structure,
+        session: session,
+        resizeObserver: linear ? null : resizeObserver,
+        intercept: linear
+            ? null
+            : (key, text) {
+                if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
+                  focus = (focus + (key == '\t' ? 1 : 2)) % actions.length;
+                  writeNotice('Review action: ${actions[focus]}.');
+                  return 'handled';
+                }
+                if ((key == '\r' || key == '\n') && text.isEmpty) {
+                  return 'review-${actions[focus].toLowerCase()}';
+                }
+                return null;
+              },
+      );
+      if (action.action == 'cancel') return Cancelled();
+      if (action.action == 'interrupt') return Interrupted();
+      if (action.action == 'eof') return InputEnded();
+      if (action.action == 'review-edit' ||
+          (action.action == 'command' && action.value == '/edit')) {
+        return null;
+      }
+      if (action.action == 'review-submit' ||
+          (action.action == 'command' && action.value == '/submit')) {
+        return Accepted(CronExpression._(draft, profile));
+      }
+      if (action.action == 'review-preview' ||
+          (action.action == 'command' && action.value == '/preview')) {
+        var interrupted = false;
+        var cancelled = false;
+        var line = '';
+        inputKeys.onKey = (key) {
+          if (key == '\x03') {
+            interrupted = true;
+            return true;
+          }
+          if (!linear && key == '\x1b') {
+            cancelled = true;
+            return true;
+          }
+          if (linear) {
+            if (key == '\r' || key == '\n') {
+              if (line == '/cancel') cancelled = true;
+              line = '';
+            } else if (line.length < 16) {
+              line += key;
+            }
+            // While a linear preview is active, only /cancel is meaningful.
+            // Do not leak the cancelled command or other keystrokes into
+            // the review editor that resumes after the preview.
+            return true;
+          }
+          return false;
+        };
+        writeNotice(
+          'Calculating preview; Ctrl+C interrupts${linear ? ', /cancel cancels' : ', Escape cancels'}.',
+        );
+        final cancellable = CronPreviewConfig(
+          zone: config.zone,
+          reference: config.reference,
+          start: config.start,
+          end: config.end,
+          count: config.count,
+          budget: config.budget,
+          providerTimeout: config.providerTimeout,
+          providerInitializer: config.providerInitializer,
+          isCancelled: () =>
+              interrupted || cancelled || config.isCancelled(),
+        );
+        late final CronPreview result;
+        try {
+          result = await CronExpression._(
+            draft,
+            profile,
+          ).preview(cancellable);
+        } finally {
+          inputKeys.onKey = null;
+        }
+        if (interrupted) return Interrupted();
+        writeNotice(
+          'Matching preview: ${result.status.name}; zone ${config.zone}; qualified provider snapshot timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
+        );
+        for (final instant in result.instants) {
+          _structureSpine(
+            effectiveProfile,
+            structure: structure,
+            width: width,
+            background: colors.background,
+            border: colors.border,
+          ).write(
+            out,
+            instant.toString(),
+            foreground: colors.foreground,
+            closes: true,
+          );
+        }
+        if (!linear) {
+          // Review state must never be implicit after a preview round: keep
+          // the reviewer's action position and announce it again.
+          writeNotice('Review action: ${actions[focus]}.');
+        }
+        continue;
+      }
+      writeNotice('Use /preview, /edit, or /submit.');
+    }
+  }
+
   Future<PromptResult<CronExpression>> prompt({
     PromptSource? source,
     PromptMode? mode,
@@ -609,10 +1023,40 @@ final class CronInput {
     void Function()? beforeClose,
   }) async {
     final config = preview;
-    if (config == null || source is SuppliedAnswer) {
-      // Without a configured preview the entry and review stages are the
-      // shared text contract, so the existing TextInput flow is reused rather
-      // than restated here.
+    if (source is! ScriptedInput) {
+      if (config == null || source is SuppliedAnswer) {
+        // Without a configured preview the entry and review stages are the
+        // shared text contract, so the existing TextInput flow is reused
+        // rather than restated here; supplied answers bypass interaction.
+        return _asCron(
+          await _input._run(
+            source,
+            mode,
+            outputProfile: outputProfile,
+            keys: keys,
+            session: session,
+          ),
+        );
+      }
+      return Unavailable('Unsupported cron input source.');
+    }
+    final effectiveProfile = _effectiveOutputProfile(source, outputProfile);
+    var resolved = mode;
+    if (resolved == PromptMode.automatic) {
+      resolved = effectiveProfile.supportsRichInteraction
+          ? PromptMode.rich
+          : PromptMode.linear;
+    }
+    if (resolved == PromptMode.rich &&
+        !effectiveProfile.supportsRichInteraction) {
+      return Unavailable(
+        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
+      );
+    }
+    final linear = resolved == PromptMode.linear;
+    if (linear && config == null) {
+      // Linear entry without a configured preview stays on the shared
+      // single-line text contract.
       return _asCron(
         await _input._run(
           source,
@@ -623,21 +1067,6 @@ final class CronInput {
         ),
       );
     }
-    if (source is! ScriptedInput) {
-      return Unavailable('Unsupported cron input source.');
-    }
-    final effectiveProfile = _effectiveOutputProfile(source, outputProfile);
-    if (mode == PromptMode.rich && !effectiveProfile.supportsRichInteraction) {
-      return Unavailable(
-        'Rich interaction unavailable; declare cursor support and positive geometry, or use linear or automatic mode.',
-      );
-    }
-    if (mode == PromptMode.automatic) {
-      mode = effectiveProfile.supportsRichInteraction
-          ? PromptMode.rich
-          : PromptMode.linear;
-    }
-    final linear = mode == PromptMode.linear;
     final out = source.output;
     final width = _textInputWidth(effectiveProfile);
     final inputKeys = keys ?? _Keys(source.input.transform(utf8.encoder));
@@ -661,7 +1090,6 @@ final class CronInput {
       ).hint(out, text, foreground: colors.foreground);
     }
 
-    var draft = _initialDraft;
     writeNotice(
       '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units.',
     );
@@ -669,158 +1097,73 @@ final class CronInput {
       'Enter an expression, then /preview, /edit or /submit; /cancel cancels.${linear ? ' /help opens help.' : ' Ctrl+T opens help.'}',
     );
     try {
-      while (true) {
-        final entry = await _edit(
-          inputKeys,
-          draft,
-          out,
-          linear: linear,
-          sequential: linear,
-          maxLength: maxExpressionLength,
-          clearHelpCommand: true,
-          helpText: _entryHelp(linear: linear),
-          linearHelpText: _entryHelp(linear: true),
-          outputProfile: effectiveProfile,
-          structure: structure,
-          session: session,
-          resizeObserver: linear ? null : source.resizeObserver,
-        );
-        if (entry.action == 'cancel') return Cancelled();
-        if (entry.action == 'interrupt') return Interrupted();
-        if (entry.action != 'submit') return InputEnded();
-        draft = entry.value;
-        if (!_valid(draft)) {
-          writeNotice('Invalid cron expression. Correct the retained draft.');
-          continue;
-        }
-        writeNotice(
-          'Review: $draft. /preview, /edit, or /submit${linear ? '; /help opens help or /cancel cancels' : ''}.',
-        );
-        var focus = 0;
-        const actions = ['Edit', 'Preview', 'Submit'];
-        if (!linear) {
-          writeNotice(
-            'Review action: Edit. Tab or Shift-Tab changes action; Enter activates; Ctrl+T opens help.',
-          );
-        }
+      if (linear) {
+        var draft = _initialDraft;
         while (true) {
-          final action = await _edit(
+          final entry = await _edit(
             inputKeys,
-            '',
+            draft,
             out,
             linear: true,
-            sequential: linear,
-            extraCommands: const {'/preview', '/edit', '/submit'},
-            helpText: _reviewHelp(linear: linear),
-            linearHelpText: _reviewHelp(linear: true),
+            sequential: true,
+            maxLength: maxExpressionLength,
+            clearHelpCommand: true,
+            helpText: _entryHelp(linear: true),
+            linearHelpText: _entryHelp(linear: true),
             outputProfile: effectiveProfile,
             structure: structure,
             session: session,
-            resizeObserver: linear ? null : source.resizeObserver,
-            intercept: linear
-                ? null
-                : (key, text) {
-                    if (key == '\t' || key == '\x1b[Z' || key == '\x02') {
-                      focus = (focus + (key == '\t' ? 1 : 2)) % actions.length;
-                      writeNotice('Review action: ${actions[focus]}.');
-                      return 'handled';
-                    }
-                    if ((key == '\r' || key == '\n') && text.isEmpty) {
-                      return 'review-${actions[focus].toLowerCase()}';
-                    }
-                    return null;
-                  },
           );
-          if (action.action == 'cancel') return Cancelled();
-          if (action.action == 'interrupt') return Interrupted();
-          if (action.action == 'eof') return InputEnded();
-          if (action.action == 'review-edit' ||
-              (action.action == 'command' && action.value == '/edit')) {
-            break;
-          }
-          if (action.action == 'review-submit' ||
-              (action.action == 'command' && action.value == '/submit')) {
-            return Accepted(CronExpression._(draft, profile));
-          }
-          if (action.action == 'review-preview' ||
-              (action.action == 'command' && action.value == '/preview')) {
-            var interrupted = false;
-            var cancelled = false;
-            var line = '';
-            inputKeys.onKey = (key) {
-              if (key == '\x03') {
-                interrupted = true;
-                return true;
-              }
-              if (!linear && key == '\x1b') {
-                cancelled = true;
-                return true;
-              }
-              if (linear) {
-                if (key == '\r' || key == '\n') {
-                  if (line == '/cancel') cancelled = true;
-                  line = '';
-                } else if (line.length < 16) {
-                  line += key;
-                }
-                // While a linear preview is active, only /cancel is meaningful.
-                // Do not leak the cancelled command or other keystrokes into
-                // the review editor that resumes after the preview.
-                return true;
-              }
-              return false;
-            };
+          if (entry.action == 'cancel') return Cancelled();
+          if (entry.action == 'interrupt') return Interrupted();
+          if (entry.action != 'submit') return InputEnded();
+          draft = entry.value;
+          if (!_valid(draft)) {
             writeNotice(
-              'Calculating preview; Ctrl+C interrupts${linear ? ', /cancel cancels' : ', Escape cancels'}.',
+              'Invalid cron expression. Correct the retained draft.',
             );
-            final cancellable = CronPreviewConfig(
-              zone: config.zone,
-              reference: config.reference,
-              start: config.start,
-              end: config.end,
-              count: config.count,
-              budget: config.budget,
-              providerTimeout: config.providerTimeout,
-              providerInitializer: config.providerInitializer,
-              isCancelled: () =>
-                  interrupted || cancelled || config.isCancelled(),
-            );
-            late final CronPreview result;
-            try {
-              result = await CronExpression._(
-                draft,
-                profile,
-              ).preview(cancellable);
-            } finally {
-              inputKeys.onKey = null;
-            }
-            if (interrupted) return Interrupted();
-            writeNotice(
-              'Matching preview: ${result.status.name}; zone ${config.zone}; qualified provider snapshot timezone 0.11.2 / tzdata 2026e; strictly after ${config.reference.toIso8601String()}; bounds ${config.start.toIso8601String()} to ${config.end.toIso8601String()}; count ${config.count}; budget ${config.budget}; provider timeout ${config.providerTimeout}; gaps skipped, folds included; not scheduler execution.',
-            );
-            for (final instant in result.instants) {
-              _structureSpine(
-                effectiveProfile,
-                structure: structure,
-                width: width,
-                background: colors.background,
-                border: colors.border,
-              ).write(
-                out,
-                instant.toString(),
-                foreground: colors.foreground,
-                closes: true,
-              );
-            }
-            if (!linear) {
-              // Review state must never be implicit after a preview round: keep
-              // the reviewer's action position and announce it again.
-              writeNotice('Review action: ${actions[focus]}.');
-            }
             continue;
           }
-          writeNotice('Use /preview, /edit, or /submit.');
+          final review = await _reviewStage(
+            inputKeys,
+            out,
+            effectiveProfile,
+            width,
+            draft,
+            true,
+            session,
+            writeNotice,
+            source.resizeObserver,
+          );
+          if (review != null) return review;
         }
+      }
+      // Rich interaction edits one field cell at a time. The cell drafts are
+      // created once per run and survive validation failures and Review
+      // round-trips until the prompt ends.
+      final cells = List<String>.of(_initialFieldCells);
+      while (true) {
+        final result = await _fieldCells(
+          inputKeys,
+          out,
+          effectiveProfile,
+          session,
+          source.resizeObserver,
+          cells,
+        );
+        if (result != null) return result;
+        final review = await _reviewStage(
+          inputKeys,
+          out,
+          effectiveProfile,
+          width,
+          cronAssembleExpression(profile, cells),
+          false,
+          session,
+          writeNotice,
+          source.resizeObserver,
+        );
+        if (review != null) return review;
       }
     } finally {
       try {

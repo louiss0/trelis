@@ -416,7 +416,7 @@ List<_Case> _cases() => [
       profile: CronProfile.unix,
       structure: structure,
     ).prompt(source: input, mode: mode),
-    richAnswer: '* * * * *\r\t\r\t\r',
+    richAnswer: '*\t*\t*\t*\t*\r',
   ),
   _Case(
     'PathInput',

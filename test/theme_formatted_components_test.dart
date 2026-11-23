@@ -942,6 +942,7 @@ TerminalEnvironment _linearIo(String keys, StringSink output) =>
     );
 
 final _richKeys = <String, String>{
+  'CronInput': '\x14\x1b*\t*\t*\t*\t*\r',
   'MaskedInput': '\x14\x1b12\r',
   'TagInput': '\x14\x1bHello World\rSecond Tag\r\t\r',
 };
