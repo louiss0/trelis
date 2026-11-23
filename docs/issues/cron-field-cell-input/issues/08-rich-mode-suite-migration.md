@@ -1,6 +1,6 @@
 # 08 Migrate rich-mode cron suites to the field-cell workflow
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-rich-field-cell-entry.md), [03](03-field-cell-paste.md), [04](04-field-cell-presentation.md), [05](05-component-help-and-escape.md), [06](06-preview-review-stage.md)
 
