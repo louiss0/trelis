@@ -480,6 +480,34 @@ final class CronInput {
       ? 'five fields: minute hour day-of-month month day-of-week'
       : 'six fields: second minute hour day-of-month month day-of-week, plus an optional seventh year field (1970-2199)';
 
+  /// The profile's full ordered field map, shared by every help stage.
+  String get _fieldMap => cronFieldCells(profile)
+      .map(
+        (cell) =>
+            '${cell.position}. ${cell.name} (${cell.rangeCue}'
+            '${cell.optional ? ', optional' : ''})',
+      )
+      .join('; ');
+
+  /// Day-combination rule for the selected profile's matching semantics.
+  String get _dayRules => profile == CronProfile.unix
+      ? 'Day rule (unix): when neither day-of-month nor day-of-week begins '
+            'with *, a day matches when either field matches (OR); when '
+            'either begins with * — even a stepped wildcard such as */2 — '
+            'both day conditions must hold.'
+      : 'Day rule (quartz): quartz requires ? in exactly one of '
+            'day-of-month and day-of-week (not both and not neither); the '
+            'other carries the day constraint.';
+
+  /// Preview disclosure for stages that can run without a configured preview.
+  String get _stagePreviewNote =>
+      preview == null ? _unconfiguredPreviewNote : _previewNote;
+
+  /// Appends caller supplementary help to a component-help body.
+  String _withSupplementary(String help) => supplementaryHelp.isEmpty
+      ? help
+      : '$help\n${supplementaryHelp.join('\n')}';
+
   String get _syntaxNote => profile == CronProfile.unix
       ? 'Fields accept *, a number, an a-b range, an a,b list, a /n step, and JAN-DEC or SUN-SAT names; 0 and 7 both select Sunday, and a stepped wildcard day still pairs with the weekday field.'
       : 'Fields accept *, a number, an a-b range, an a,b list, a /n step and names; exactly one of day-of-month and day-of-week must be ?, and L, LW, L-n, nW, nth-weekday # and weekday L keep their documented meaning.';
@@ -508,7 +536,11 @@ final class CronInput {
     final controls = linear
         ? r'Type the expression and press Enter to review it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter reviews the draft. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
-    return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_limitNote $_syntaxNote $_previewNote';
+    return _withSupplementary(
+      'Help: Entering the expression for the ${profile.name} profile, '
+      '$_fieldShape. Field order: $_fieldMap. $controls $_dayRules '
+      '$_limitNote $_syntaxNote $_previewNote',
+    );
   }
 
   /// Entry help for the direct path (no configured preview), where a valid
@@ -517,14 +549,22 @@ final class CronInput {
     final controls = linear
         ? r'Type the complete space-separated expression and press Enter to submit it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits the expression. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
-    return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_acceptanceNote $_syntaxNote $_unconfiguredPreviewNote';
+    return _withSupplementary(
+      'Help: Entering the expression for the ${profile.name} profile, '
+      '$_fieldShape. Field order: $_fieldMap. $controls $_acceptanceNote '
+      '$_dayRules $_syntaxNote $_unconfiguredPreviewNote',
+    );
   }
 
   String _reviewHelp({required bool linear}) {
     final controls = linear
         ? r'/preview computes the bounded matching preview, /edit returns to the expression and /submit accepts the retained expression; a /cancel during a preview stops only that preview, and a second /cancel ends the prompt. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.'
-        : 'The actions are Edit, Preview and Submit; Tab or Shift-Tab changes the focused action, Enter activates it and the focused action is announced after every change. Preview is interruptible with Ctrl+C; Escape cancels the prompt and Ctrl+C interrupts it.';
-    return 'Help: Reviewing the retained expression for the ${profile.name} profile, $_fieldShape. $controls $_syntaxNote $_previewNote';
+        : 'The actions are Edit, Preview and Submit; Tab or Shift-Tab changes the focused action, Enter activates it and the focused action is announced after every change. Preview is interruptible with Ctrl+C; Escape cancels an active preview first, then the prompt, and Ctrl+C interrupts from any layer.';
+    return _withSupplementary(
+      'Help: Reviewing the retained expression for the ${profile.name} '
+      'profile, $_fieldShape. Field order: $_fieldMap. $controls $_dayRules '
+      '$_syntaxNote $_previewNote',
+    );
   }
 
   bool _valid(String value) => cronExpressionError(profile, value) == null;
@@ -552,25 +592,69 @@ final class CronInput {
     return cronMaxExpressionLength - others - (active - 1);
   }
 
-  /// Stage-led help for one field cell: the dialect summary first, then the
-  /// focused cell's own syntax.
+  /// Accepted token shapes for one field cell, beyond its numeric bounds.
+  String _cellAccepted(CronFieldCell cell) {
+    const core = '*, a number, an a-b range, an a,b list or a /n step';
+    return switch ((profile, cell.index)) {
+      (CronProfile.unix, 3) => '$core, or JAN-DEC names (any letter case)',
+      (CronProfile.unix, 4) =>
+        '$core, or SUN-SAT names (any letter case); 0 and 7 are Sunday',
+      (CronProfile.quartz, 3) =>
+        '?, L, LW, L-n, L-nW or nW day specials, or a standard field: '
+            '$core within 1-31',
+      (CronProfile.quartz, 4) => '$core, or JAN-DEC names (any letter case)',
+      (CronProfile.quartz, 5) =>
+        '?, L, dL or d#n weekday specials, or a standard field: '
+            '$core or SUN-SAT names within 1-7',
+      (CronProfile.quartz, 6) =>
+        '$core within 1970-2199; leave the cell blank to omit the '
+            'seventh field',
+      _ => '$core within ${cell.rangeCue}',
+    };
+  }
+
+  /// Stage-led help for one field cell: the focused field's own syntax
+  /// first, then the full field map, day rules, limits, preview disclosure
+  /// and supplementary help. Opening help never mutates the cell drafts,
+  /// the caret or the focused stop.
   String _cellHelp(CronFieldCell cell) {
-    final optional = cell.optional ? ', optional' : '';
-    return 'Help: Entering the expression for the ${profile.name} profile, '
-        '$_fieldShape. Editing the ${cell.name} field cell '
-        '${cell.position}/${cell.total} (${cell.rangeCue}$optional). '
-        'Tab or Shift-Tab moves between field cells; Enter validates the whole '
-        'draft${preview == null ? ' and submits it' : ' and opens the review stage'}; '
-        'Ctrl+T opens help; Escape cancels; Ctrl+C interrupts. '
-        '$_limitNote $_syntaxNote $_previewNote';
+    final optional = cell.optional
+        ? ' This cell is optional: leave it blank to omit the seventh field.'
+        : '';
+    return _withSupplementary(
+      'Help: Editing the ${cell.name} field cell '
+      '${cell.position}/${cell.total} for the ${profile.name} profile, '
+      '$_fieldShape. '
+      'Bounds: ${cell.rangeCue}. Accepted input: ${_cellAccepted(cell)}.'
+      '$optional Field order: $_fieldMap. $_dayRules $_limitNote '
+      '$_stagePreviewNote $_syntaxNote '
+      'Tab or Shift-Tab moves between field cells; Enter '
+      '${preview == null ? 'validates and submits the whole draft' : 'validates the whole draft and opens the review stage'}; '
+      'Ctrl+T opens help; Escape dismisses help first, then cancels; '
+      'Ctrl+C interrupts.',
+    );
   }
 
   /// Help for the trailing Submit stop (only reached without a preview).
-  String get _submitStopHelp =>
-      'Help: The Submit stop accepts the whole ${profile.name} profile draft, '
-      '$_fieldShape. Tab or Shift-Tab moves between the field cells and this '
-      'stop; Enter activates Submit; Ctrl+T opens help; Escape cancels; '
-      'Ctrl+C interrupts. $_limitNote $_syntaxNote $_previewNote';
+  String get _submitStopHelp => _withSupplementary(
+    'Help: The Submit stop accepts the whole ${profile.name} profile '
+    'draft, $_fieldShape. Field order: $_fieldMap. $_dayRules '
+    '$_limitNote $_acceptanceNote $_syntaxNote $_unconfiguredPreviewNote '
+    'Tab or Shift-Tab moves between the field cells and this stop; Enter '
+    'activates Submit; Ctrl+T opens help; Escape dismisses help first, '
+    'then cancels; Ctrl+C interrupts.',
+  );
+
+  /// Help for the trailing Review stop (only reached with a configured
+  /// preview): it validates the draft and opens the review stage.
+  String get _reviewStopHelp => _withSupplementary(
+    'Help: The Review stop validates the whole ${profile.name} profile '
+    'draft and opens the review stage, $_fieldShape. Field order: '
+    '$_fieldMap. $_dayRules $_limitNote $_previewNote $_syntaxNote '
+    'Tab or Shift-Tab moves between the field cells and this stop; Enter '
+    'activates Review; Ctrl+T opens help; Escape dismisses help first, '
+    'then cancels; Ctrl+C interrupts.',
+  );
 
   /// Rich-interaction field-cell entry stage.
   ///
@@ -696,9 +780,7 @@ final class CronInput {
           out,
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
-          helpText: preview == null
-              ? _submitStopHelp
-              : _reviewHelp(linear: false),
+          helpText: preview == null ? _submitStopHelp : _reviewStopHelp,
           outputProfile: effectiveProfile,
           structure: structure,
           resizeObserver: resizeObserver,
