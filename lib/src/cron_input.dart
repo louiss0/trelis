@@ -572,6 +572,105 @@ final class CronInput {
       'stop; Enter activates Submit; Ctrl+T opens help; Escape cancels; '
       'Ctrl+C interrupts. $_limitNote $_syntaxNote $_previewNote';
 
+  // ---------------------------------------------------------------------
+  // Field-cell paste handling.
+  // ---------------------------------------------------------------------
+
+  /// Classifies the payload of an identified paste (`ESC[200~...ESC[201~`)
+  /// for the rich field-cell stage.
+  ///
+  /// Returns a rejection notice for payloads that must leave every cell
+  /// draft and the focus ring untouched: wrong token count for the profile,
+  /// leading/trailing whitespace, control or newline characters, or an
+  /// assembled expression over [cronMaxExpressionLength] UTF-16 code units.
+  /// Returns the replacement cell drafts and the focus index for a valid
+  /// multi-token paste. Returns all-null fields for a single whitespace-free
+  /// token, which the cell editor inserts at the caret itself after its own
+  /// control-character filtering and length checks.
+  ({String? notice, List<String>? cells, int focus}) _fieldCellPaste(
+    String payload,
+    List<String> cells,
+    int index,
+    String cellText,
+  ) {
+    final hasWhitespace =
+        payload.contains(' ') ||
+        payload.contains('\t') ||
+        payload.contains('\n') ||
+        payload.contains('\r');
+    if (!hasWhitespace) {
+      // Single-token paste: `_edit` filters control characters, inserts at
+      // the caret and enforces the cell's grapheme budget. Reject only when
+      // even the unfiltered payload cannot fit the assembled-expression
+      // UTF-16 bound (astral characters count once as graphemes but twice
+      // as code units, so the grapheme budget alone is not sufficient).
+      final probe = List<String>.of(cells)..[index] = cellText;
+      final active =
+          profile == CronProfile.quartz && probe[6].isEmpty
+          ? probe.sublist(0, 6)
+          : probe;
+      if (active.join(' ').length + payload.length >
+          cronMaxExpressionLength) {
+        return (
+          notice:
+              'Paste rejected: the assembled expression would exceed '
+              '$cronMaxExpressionLength UTF-16 code units.',
+          cells: null,
+          focus: index,
+        );
+      }
+      return (notice: null, cells: null, focus: index);
+    }
+    // Multi-token candidate: printable single-line text with internal ASCII
+    // spaces only — no control characters and no leading/trailing
+    // whitespace.
+    if (payload.runes.any((r) => r < 32 || r == 127) ||
+        payload.trim() != payload) {
+      return (
+        notice:
+            'Paste rejected: a multi-field paste must be single-line text '
+            'with no control characters and no leading or trailing '
+            'whitespace.',
+        cells: null,
+        focus: index,
+      );
+    }
+    final tokens = payload.split(RegExp(r' +'));
+    final schema = cronFieldCells(profile);
+    final validCount = profile == CronProfile.unix
+        ? tokens.length == schema.length
+        : tokens.length == 6 || tokens.length == schema.length;
+    if (!validCount) {
+      return (
+        notice:
+            'Paste rejected: the ${profile.name} profile takes '
+            '${profile == CronProfile.unix ? 'exactly 5' : '6 or 7'} '
+            'space-separated fields; got ${tokens.length}.',
+        cells: null,
+        focus: index,
+      );
+    }
+    final distributed = List<String>.of(tokens);
+    if (profile == CronProfile.quartz && tokens.length == 6) {
+      // A six-field Quartz paste clears the optional year cell.
+      distributed.add('');
+    }
+    if (distributed.join(' ').length > cronMaxExpressionLength) {
+      return (
+        notice:
+            'Paste rejected: the assembled expression would exceed '
+            '$cronMaxExpressionLength UTF-16 code units.',
+        cells: null,
+        focus: index,
+      );
+    }
+    return (
+      notice: null,
+      cells: distributed,
+      focus: tokens.length - 1,
+    );
+  }
+
   /// Rich-interaction field-cell entry stage.
   ///
   /// Runs the focus ring `cell 0 -> ... -> cell N-1 -> trailing action ->
@@ -592,6 +691,11 @@ final class CronInput {
     final actionName = preview == null ? 'Submit' : 'Review';
     final stops = schema.length + 1;
     var focus = 0;
+    // Set when the cell intercept accepts a multi-token paste; applied to
+    // every cell once that cell's `_edit` returns so the staged drafts and
+    // the focus ring move together.
+    List<String>? pastedCells;
+    var pastedFocus = 0;
     final spine = _structureSpine(
       effectiveProfile,
       structure: structure,
@@ -762,18 +866,19 @@ final class CronInput {
             final payload = key.length >= 12
                 ? key.substring(6, key.length - 6)
                 : '';
-            if (payload.contains(' ') ||
-                payload.contains('\t') ||
-                payload.contains('\n') ||
-                payload.contains('\r')) {
-              notice(
-                'Paste rejected: a paste must fit inside one field cell; '
-                'use Tab between fields.',
-              );
+            final paste = _fieldCellPaste(payload, cells, index, text);
+            if (paste.notice != null) {
+              notice(paste.notice!);
               return 'handled';
             }
-            // A single-token paste falls through to the editor's own paste
-            // handling, which inserts it at the caret.
+            if (paste.cells != null) {
+              pastedCells = paste.cells;
+              pastedFocus = paste.focus;
+              return 'paste-fields';
+            }
+            // A single whitespace-free token falls through to the editor's
+            // own paste handling, which filters control characters and
+            // inserts it at the caret.
           }
           return null;
         },
@@ -783,6 +888,15 @@ final class CronInput {
       if (edit.action == 'eof') return InputEnded();
       _finishFieldLine(out, edit.action);
       cells[index] = edit.value;
+      if (edit.action == 'paste-fields' && pastedCells != null) {
+        final pasted = pastedCells!;
+        pastedCells = null;
+        for (var i = 0; i < cells.length; i++) {
+          cells[i] = i < pasted.length ? pasted[i] : '';
+        }
+        focus = pastedFocus;
+        continue;
+      }
       if (edit.action == 'next') {
         focus = (focus + 1) % stops;
         continue;
