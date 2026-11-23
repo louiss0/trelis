@@ -1,6 +1,6 @@
 # 01 Cron field-cell model and validation
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** none
 
