@@ -1,6 +1,6 @@
 # 03 Field-cell paste handling
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-rich-field-cell-entry.md)
 
