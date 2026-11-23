@@ -1,6 +1,6 @@
 # 07 Linear interaction parity and suite migration
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [01](01-field-cell-model-and-validation.md)
 
