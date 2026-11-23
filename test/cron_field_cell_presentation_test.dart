@@ -210,6 +210,50 @@ void main() {
     expect(lines.any((line) => RegExp(r'^\s*\]').hasMatch(line)), isFalse);
   });
 
+  test('narrow geometry wraps whole cells inside enclosing themes', () async {
+    // The spec calls out ~40-column profiles across enclosing and rail
+    // structural themes: the cell row must wrap between whole cells inside
+    // the theme chrome without overflowing the declared width.
+    final factories = <(String, CronInput Function(String))>[
+      ('rail', (l) => RailTheme.cronInput(l, profile: CronProfile.unix)),
+      ('box', (l) => BoxTheme.cronInput(l, profile: CronProfile.unix)),
+      ('round', (l) => RoundTheme.cronInput(l, profile: CronProfile.unix)),
+      ('double', (l) => DoubleTheme.cronInput(l, profile: CronProfile.unix)),
+    ];
+    for (final (name, factory) in factories) {
+      final output = StringBuffer();
+      final result = await factory('Schedule').prompt(
+        source: ScriptedInput(
+          Stream.value('*\t*/15\t1-5\tJAN-MAR\tMON-FRI\t\r'),
+          output,
+          outputProfile: _profile(columns: 40),
+        ),
+        mode: PromptMode.rich,
+      );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '* */15 1-5 JAN-MAR MON-FRI',
+        reason: name,
+      );
+      final lines = _visibleLines(output.toString()).toList();
+      for (final line in lines) {
+        expect(_cells(line), lessThanOrEqualTo(40), reason: '$name: $line');
+      }
+      // Whole-cell wrapping: at least one line carries two complete cells
+      // and no line begins inside a cell's closing delimiter.
+      expect(
+        lines.any((line) => RegExp(r'\[[^\]]*\] \[[^\]]*\]').hasMatch(line)),
+        isTrue,
+        reason: name,
+      );
+      expect(
+        lines.any((line) => RegExp(r'^\s*\]').hasMatch(line)),
+        isFalse,
+        reason: name,
+      );
+    }
+  });
+
   test('a single over-wide cell windows inside the declared width', () async {
     final output = StringBuffer();
     final wide = List.filled(20, '1-2').join(','); // 79 cells of content.
