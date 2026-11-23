@@ -30,16 +30,13 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '* * * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '* * * * *');
     final text = output.toString();
     // The active-format cue names the focused field cell as focus moves.
     expect(text, contains('unix · 1/5 minute (0-59)'));
     expect(text, contains('unix · 5/5 day-of-week'));
     // The trailing Submit stop joins the focus ring.
-    expect(text, contains('[ Submit ]'));
+    expect(text, contains('[Submit]'));
   });
 
   test('Tab wraps from the last cell through Submit back to cell 0', () async {
@@ -53,10 +50,7 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '* * * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '* * * * *');
     expect(output.toString(), contains('unix · Focus: Submit'));
   });
 
@@ -72,10 +66,7 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '50 * * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '50 * * * *');
 
     final ctrlOutput = StringBuffer();
     final ctrl = await CronInput('Schedule', profile: CronProfile.unix).prompt(
@@ -87,10 +78,7 @@ void main() {
       ),
       mode: PromptMode.rich,
     );
-    expect(
-      (ctrl as Accepted<CronExpression>).value.expression,
-      '5 * * * *',
-    );
+    expect((ctrl as Accepted<CronExpression>).value.expression, '5 * * * *');
     expect(ctrlOutput.toString(), contains('unix · Focus: Submit'));
   });
 
@@ -107,89 +95,89 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '0 0 * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '0 0 * * *');
     final text = output.toString();
     expect(text, contains("'day-of-month' is required."));
     expect(text, contains('unix · 3/5 day-of-month'));
   });
 
-  test('an invalid cell keeps every draft and refocuses the offender', () async {
+  test(
+    'an invalid cell keeps every draft and refocuses the offender',
+    () async {
+      final output = StringBuffer();
+      final result = await CronInput('Schedule', profile: CronProfile.unix)
+          .prompt(
+            source: ScriptedInput(
+              // Every cell is filled but '99' is out of range for minute; fix
+              // it in place and resubmit.
+              Stream.value('99\t*\t*\t*\t*\r\x7f\x7f5\r'),
+              output,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '5 * * * *',
+      );
+      final text = output.toString();
+      expect(text, contains("'minute' is invalid"));
+      expect(text, contains('unix · 1/5 minute'));
+    },
+  );
+
+  test('quartz omits a blank year cell for a six-field expression', () async {
     final output = StringBuffer();
-    final result = await CronInput('Schedule', profile: CronProfile.unix)
+    final result = await CronInput('Schedule', profile: CronProfile.quartz)
         .prompt(
           source: ScriptedInput(
-            // Every cell is filled but '99' is out of range for minute; fix
-            // it in place and resubmit.
-            Stream.value('99\t*\t*\t*\t*\r\x7f\x7f5\r'),
+            Stream.value('0\t0\t0\t?\t*\tMON\t\r'),
             output,
             outputProfile: _richProfile,
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '5 * * * *',
-    );
-    final text = output.toString();
-    expect(text, contains("'minute' is invalid"));
-    expect(text, contains('unix · 1/5 minute'));
-  });
-
-  test('quartz omits a blank year cell for a six-field expression', () async {
-    final output = StringBuffer();
-    final result = await CronInput(
-      'Schedule',
-      profile: CronProfile.quartz,
-    ).prompt(
-      source: ScriptedInput(
-        Stream.value('0\t0\t0\t?\t*\tMON\t\r'),
-        output,
-        outputProfile: _richProfile,
-      ),
-      mode: PromptMode.rich,
-    );
     final expression = (result as Accepted<CronExpression>).value;
     expect(expression.expression, '0 0 0 ? * MON');
     expect(expression.expression.split(' '), hasLength(6));
-    expect(output.toString(), contains('quartz · 7/7 year (1970-2199, optional)'));
+    expect(
+      output.toString(),
+      contains('quartz · 7/7 year (1970-2199, optional)'),
+    );
   });
 
-  test('quartz keeps a populated year cell as a seven-field expression', () async {
-    final result = await CronInput(
-      'Schedule',
-      profile: CronProfile.quartz,
-    ).prompt(
-      source: ScriptedInput(
-        Stream.value('0\t0\t0\t15\t*\t?\t2024\r'),
-        StringBuffer(),
-        outputProfile: _richProfile,
-      ),
-      mode: PromptMode.rich,
-    );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '0 0 0 15 * ? 2024',
-    );
-  });
+  test(
+    'quartz keeps a populated year cell as a seven-field expression',
+    () async {
+      final result = await CronInput('Schedule', profile: CronProfile.quartz)
+          .prompt(
+            source: ScriptedInput(
+              Stream.value('0\t0\t0\t15\t*\t?\t2024\r'),
+              StringBuffer(),
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '0 0 0 15 * ? 2024',
+      );
+    },
+  );
 
   test('quartz day exclusivity failure focuses day-of-month', () async {
     final output = StringBuffer();
-    final result = await CronInput(
-      'Schedule',
-      profile: CronProfile.quartz,
-    ).prompt(
-      source: ScriptedInput(
-        // Both day cells restricted: the ? exclusivity rule fails and focus
-        // lands on day-of-month (cell 3).
-        Stream.value('0\t0\t0\t*\t*\t*\t\r'),
-        output,
-        outputProfile: _richProfile,
-      ),
-      mode: PromptMode.rich,
-    );
+    final result = await CronInput('Schedule', profile: CronProfile.quartz)
+        .prompt(
+          source: ScriptedInput(
+            // Both day cells restricted: the ? exclusivity rule fails and focus
+            // lands on day-of-month (cell 3).
+            Stream.value('0\t0\t0\t*\t*\t*\t\r'),
+            output,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
     expect(result, isA<InputEnded<CronExpression>>());
     final text = output.toString();
     expect(text, contains('quartz requires ? in exactly one'));
@@ -208,10 +196,7 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '* * * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '* * * * *');
     expect(output.toString(), contains('press Tab'));
   });
 
@@ -225,10 +210,7 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '5 * * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '5 * * * *');
   });
 
   test('dash and plus insert literally inside a field cell', () async {
@@ -271,10 +253,7 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '23 * * * *',
-    );
+    expect((result as Accepted<CronExpression>).value.expression, '23 * * * *');
 
     // Home + Delete removes the first grapheme without touching cell1.
     final deleted = await CronInput('Schedule', profile: CronProfile.unix)
@@ -286,21 +265,23 @@ void main() {
           ),
           mode: PromptMode.rich,
         );
-    expect(
-      (deleted as Accepted<CronExpression>).value.expression,
-      '2 * * * *',
-    );
+    expect((deleted as Accepted<CronExpression>).value.expression, '2 * * * *');
   });
 
   test('a valid initialValue splits into editable cells', () async {
-    final result = await CronInput(
-      'Schedule',
-      profile: CronProfile.unix,
-      initialValue: '0 12 * * MON',
-    ).prompt(
-      source: ScriptedInput(Stream.value('\r'), StringBuffer(), outputProfile: _richProfile),
-      mode: PromptMode.rich,
-    );
+    final result =
+        await CronInput(
+          'Schedule',
+          profile: CronProfile.unix,
+          initialValue: '0 12 * * MON',
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
     expect(
       (result as Accepted<CronExpression>).value.expression,
       '0 12 * * MON',
@@ -309,15 +290,14 @@ void main() {
 
   test('rich cells keep cancel interrupt and input-end outcomes', () async {
     CronInput input() => CronInput('Schedule', profile: CronProfile.unix);
-    Future<PromptResult<CronExpression>> run(String keys) =>
-        input().prompt(
-          source: ScriptedInput(
-            Stream.value(keys),
-            StringBuffer(),
-            outputProfile: _richProfile,
-          ),
-          mode: PromptMode.rich,
-        );
+    Future<PromptResult<CronExpression>> run(String keys) => input().prompt(
+      source: ScriptedInput(
+        Stream.value(keys),
+        StringBuffer(),
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
 
     // A trailing bare Escape is indistinguishable from an unterminated
     // sequence once the stream closes, so cancellation is driven while the
@@ -339,54 +319,58 @@ void main() {
     expect(await run(''), isA<InputEnded<CronExpression>>());
   });
 
-  test('preview review Enter from a cell opens Review and Edit restores cells', () async {
-    final output = StringBuffer();
-    final result =
-        await CronInput(
-          'Schedule',
-          profile: CronProfile.unix,
-          preview: _config(),
-        ).prompt(
-          source: ScriptedInput(
-            // Tab onto the trailing Review stop (its cue is observable),
-            // Enter opens the Review stage; Edit returns to cell 0 with every
-            // cell draft preserved, then the draft is submitted and reviewed
-            // again before Submit.
-            Stream.value('*\t*\t*\t*\t*\t\r\r\r\t\r\t\r'),
-            output,
-            outputProfile: _richProfile,
-          ),
-          mode: PromptMode.rich,
-        );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '* * * * *',
-    );
-    final text = output.toString();
-    expect(text, contains('Review action: Edit.'));
-    expect(text, contains('unix · Focus: Review'));
-    // Both review rounds announce the retained draft.
-    expect('Review: * * * * *.'.allMatches(text).length, 2);
-    expect(text, contains('2024-01-01 00:01:00.000Z'));
-  });
-
-  test('rich cells reject a multi-token paste without touching drafts', () async {
-    final output = StringBuffer();
-    final result = await CronInput('Schedule', profile: CronProfile.unix)
-        .prompt(
-          source: ScriptedInput(
-            Stream.value(
-              '\x1b[200~1 2 3 4 5\x1b[201~*\t*\t*\t*\t*\r',
+  test(
+    'preview review Enter from a cell opens Review and Edit restores cells',
+    () async {
+      final output = StringBuffer();
+      final result =
+          await CronInput(
+            'Schedule',
+            profile: CronProfile.unix,
+            preview: _config(),
+          ).prompt(
+            source: ScriptedInput(
+              // Tab onto the trailing Review stop (its cue is observable),
+              // Enter opens the Review stage; Edit returns to cell 0 with every
+              // cell draft preserved, then the draft is submitted and reviewed
+              // again before Submit.
+              Stream.value('*\t*\t*\t*\t*\t\r\r\r\t\r\t\r'),
+              output,
+              outputProfile: _richProfile,
             ),
-            output,
-            outputProfile: _richProfile,
-          ),
-          mode: PromptMode.rich,
-        );
-    expect(
-      (result as Accepted<CronExpression>).value.expression,
-      '* * * * *',
-    );
-    expect(output.toString(), contains('Paste rejected'));
-  });
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '* * * * *',
+      );
+      final text = output.toString();
+      expect(text, contains('Review action: Edit.'));
+      expect(text, contains('unix · Focus: Review'));
+      // Both review rounds announce the retained draft.
+      expect('Review: * * * * *.'.allMatches(text).length, 2);
+      expect(text, contains('2024-01-01 00:01:00.000Z'));
+    },
+  );
+
+  test(
+    'rich cells reject a multi-token paste without touching drafts',
+    () async {
+      final output = StringBuffer();
+      final result = await CronInput('Schedule', profile: CronProfile.unix)
+          .prompt(
+            source: ScriptedInput(
+              Stream.value('\x1b[200~1 2 3 4 5\x1b[201~*\t*\t*\t*\t*\r'),
+              output,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '* * * * *',
+      );
+      expect(output.toString(), contains('Paste rejected'));
+    },
+  );
 }

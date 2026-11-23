@@ -487,6 +487,15 @@ final class CronInput {
   String get _limitNote =>
       'A valid expression is at most $maxExpressionLength UTF-16 code units, carries no leading or trailing space, and is validated for the selected profile before review; a rejected draft stays available for correction and later submission.';
 
+  /// The acceptance-stage counterpart of [_limitNote] for entry without a
+  /// configured preview, where a valid draft is accepted directly.
+  String get _acceptanceNote =>
+      'A valid expression is at most $maxExpressionLength UTF-16 code units, carries no leading or trailing space, and is validated for the selected profile before acceptance; a rejected draft stays available for correction and later submission.';
+
+  /// Preview note for entry without a configured preview.
+  String get _unconfiguredPreviewNote =>
+      'No matching preview is configured, so a valid expression is accepted when it is submitted.';
+
   String get _previewNote {
     final config = preview;
     if (config == null) {
@@ -500,6 +509,15 @@ final class CronInput {
         ? r'Type the expression and press Enter to review it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
         : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter reviews the draft. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
     return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_limitNote $_syntaxNote $_previewNote';
+  }
+
+  /// Entry help for the direct path (no configured preview), where a valid
+  /// expression is accepted on submit instead of entering review.
+  String _submitHelp({required bool linear}) {
+    final controls = linear
+        ? r'Type the complete space-separated expression and press Enter to submit it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
+        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits the expression. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+    return 'Help: Entering the expression for the ${profile.name} profile, $_fieldShape. $controls $_acceptanceNote $_syntaxNote $_unconfiguredPreviewNote';
   }
 
   String _reviewHelp({required bool linear}) {
@@ -548,7 +566,7 @@ final class CronInput {
   }
 
   /// Help for the trailing Submit stop (only reached without a preview).
-  String get _submitHelp =>
+  String get _submitStopHelp =>
       'Help: The Submit stop accepts the whole ${profile.name} profile draft, '
       '$_fieldShape. Tab or Shift-Tab moves between the field cells and this '
       'stop; Enter activates Submit; Ctrl+T opens help; Escape cancels; '
@@ -612,8 +630,12 @@ final class CronInput {
         : '${profile.name} · Focus: $actionName · draft: ${draftText()}';
 
     String cellToken(int index) {
-      final inner = cells[index].isEmpty ? ' ' : cells[index];
-      return index == focus ? '[>$inner<]' : '[ $inner ]';
+      // Brackets stay tight (`[x]`, `[]`) so the row never opens a line with
+      // the `[ ` marker sequence bare heading grammars reserve.
+      if (index == focus) {
+        return '[>${cells[index].isEmpty ? ' ' : cells[index]}<]';
+      }
+      return cells[index].isEmpty ? '[]' : '[${cells[index]}]';
     }
 
     void show() {
@@ -621,13 +643,15 @@ final class CronInput {
       spine.opening(
         out,
         title: '$label.',
-        body: '${profile.name} profile; draft: ${draftText()}.',
+        body:
+            '${profile.name} profile. Expression limit '
+            '$maxExpressionLength UTF-16 code units; draft: ${draftText()}.',
         foreground: colors.foreground,
         bodyForeground: colors.foreground,
       );
       write(
         '${List.generate(schema.length, cellToken).join(' ')} '
-        '[${focus == schema.length ? '>$actionName<' : ' $actionName '}]',
+        '[${focus == schema.length ? '>$actionName<' : actionName}]',
       );
       write(cue());
       if (_resolvedInstructions(instructions) != InstructionDisplay.hidden) {
@@ -672,7 +696,9 @@ final class CronInput {
           out,
           transientHelp:
               effectiveProfile.alternateScreen == CapabilitySupport.supported,
-          helpText: preview == null ? _submitHelp : _reviewHelp(linear: false),
+          helpText: preview == null
+              ? _submitStopHelp
+              : _reviewHelp(linear: false),
           outputProfile: effectiveProfile,
           structure: structure,
           resizeObserver: resizeObserver,
@@ -862,8 +888,15 @@ final class CronInput {
             if (key == '\r' || key == '\n') {
               if (line == '/cancel') cancelled = true;
               line = '';
-            } else if (line.length < 16) {
+            } else if (key.length == 1 &&
+                key.codeUnitAt(0) >= 32 &&
+                line.length < '/cancel'.length) {
+              // Only printable characters can extend a /cancel command;
+              // control keys, escape sequences and paste payloads reset
+              // the tracked line instead of corrupting it.
               line += key;
+            } else {
+              line = '';
             }
             // While a linear preview is active, only /cancel is meaningful.
             // Do not leak the cancelled command or other keystrokes into
@@ -884,15 +917,11 @@ final class CronInput {
           budget: config.budget,
           providerTimeout: config.providerTimeout,
           providerInitializer: config.providerInitializer,
-          isCancelled: () =>
-              interrupted || cancelled || config.isCancelled(),
+          isCancelled: () => interrupted || cancelled || config.isCancelled(),
         );
         late final CronPreview result;
         try {
-          result = await CronExpression._(
-            draft,
-            profile,
-          ).preview(cancellable);
+          result = await CronExpression._(draft, profile).preview(cancellable);
         } finally {
           inputKeys.onKey = null;
         }
@@ -1023,21 +1052,27 @@ final class CronInput {
     void Function()? beforeClose,
   }) async {
     final config = preview;
+    if (source is SuppliedAnswer ||
+        (source is! ScriptedInput && config == null)) {
+      // Supplied answers bypass interaction, and interactive sources without
+      // a configured preview stay on the shared text contract, so the
+      // existing TextInput flow is reused rather than restated here. The
+      // component help still describes the cron dialect and clears an
+      // executed /help command like the preview path.
+      return _asCron(
+        await _input._run(
+          source,
+          mode,
+          outputProfile: outputProfile,
+          keys: keys,
+          session: session,
+          helpText: _submitHelp(linear: false),
+          linearHelpText: _submitHelp(linear: true),
+          clearHelpCommand: true,
+        ),
+      );
+    }
     if (source is! ScriptedInput) {
-      if (config == null || source is SuppliedAnswer) {
-        // Without a configured preview the entry and review stages are the
-        // shared text contract, so the existing TextInput flow is reused
-        // rather than restated here; supplied answers bypass interaction.
-        return _asCron(
-          await _input._run(
-            source,
-            mode,
-            outputProfile: outputProfile,
-            keys: keys,
-            session: session,
-          ),
-        );
-      }
       return Unavailable('Unsupported cron input source.');
     }
     final effectiveProfile = _effectiveOutputProfile(source, outputProfile);
@@ -1064,6 +1099,9 @@ final class CronInput {
           outputProfile: outputProfile,
           keys: keys,
           session: session,
+          helpText: _submitHelp(linear: false),
+          linearHelpText: _submitHelp(linear: true),
+          clearHelpCommand: true,
         ),
       );
     }
@@ -1090,12 +1128,14 @@ final class CronInput {
       ).hint(out, text, foreground: colors.foreground);
     }
 
-    writeNotice(
-      '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units.',
-    );
-    writeNotice(
-      'Enter an expression, then /preview, /edit or /submit; /cancel cancels.${linear ? ' /help opens help.' : ' Ctrl+T opens help.'}',
-    );
+    if (linear) {
+      writeNotice(
+        '$label. ${profile.name} profile. Expression limit $maxExpressionLength UTF-16 code units.',
+      );
+      writeNotice(
+        'Enter an expression, then /preview, /edit or /submit; /cancel cancels. /help opens help.',
+      );
+    }
     try {
       if (linear) {
         var draft = _initialDraft;
@@ -1107,6 +1147,7 @@ final class CronInput {
             linear: true,
             sequential: true,
             maxLength: maxExpressionLength,
+            exemptCommandsFromLimit: true,
             clearHelpCommand: true,
             helpText: _entryHelp(linear: true),
             linearHelpText: _entryHelp(linear: true),
@@ -1119,9 +1160,7 @@ final class CronInput {
           if (entry.action != 'submit') return InputEnded();
           draft = entry.value;
           if (!_valid(draft)) {
-            writeNotice(
-              'Invalid cron expression. Correct the retained draft.',
-            );
+            writeNotice('Invalid cron expression. Correct the retained draft.');
             continue;
           }
           final review = await _reviewStage(
