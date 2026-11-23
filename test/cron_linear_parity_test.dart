@@ -70,7 +70,13 @@ void main() {
       Future<PromptResult<CronExpression>> run(PromptMode mode) =>
           CronInput('Schedule', profile: CronProfile.unix).prompt(
             source: ScriptedInput(
-              Stream.value('30 9 15 6 MON\r'),
+              // Rich interaction edits one field cell at a time, so the same
+              // expression is typed across the five cells with Tab moves.
+              Stream.value(
+                mode == PromptMode.rich
+                    ? '30\t9\t15\t6\tMON\r'
+                    : '30 9 15 6 MON\r',
+              ),
               StringBuffer(),
               outputProfile: mode == PromptMode.rich
                   ? _richProfile

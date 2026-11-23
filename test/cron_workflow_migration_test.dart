@@ -109,7 +109,7 @@ void main() {
             preview: _config(),
           ).prompt(
             source: ScriptedInput(
-              Stream.value('* * * * *\r\t\r\t\r'),
+              Stream.value('*\t*\t*\t*\t*\r\t\r\t\r'),
               output,
               supportsRich: false,
               outputProfile: _richProfile,
@@ -204,7 +204,7 @@ void main() {
       );
 
       await pumpEventQueue();
-      input.add('* * * * *\r\t\r\t\r');
+      input.add('*\t*\t*\t*\t*\r\t\r\t\r');
       expect(
         (await pending as Accepted<CronExpression>).value.expression,
         '* * * * *',
@@ -285,7 +285,7 @@ void main() {
           preview: _config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('* * * * *\r\t\x14\x1b\x03'),
+            Stream.value('*\t*\t*\t*\t*\r\t\x14\x1b\x03'),
             output,
             outputProfile: _richProfile,
           ),
@@ -341,7 +341,7 @@ void main() {
         await pumpEventQueue();
         spinner.update('reading expression');
         await pumpEventQueue();
-        input.add('* * * * *\r');
+        input.add('*\t*\t*\t*\t*\r');
         await pumpEventQueue();
         spinner.update('reviewing');
         await pumpEventQueue();
@@ -398,7 +398,7 @@ void main() {
             mode: PromptMode.rich,
           );
       await pumpEventQueue();
-      keys.add('* * * * *');
+      keys.add('*\t*\t*\t*\t*');
       await pumpEventQueue();
       final beforeResize = output.length;
 
@@ -406,10 +406,12 @@ void main() {
       await pumpEventQueue();
 
       // A resize is a repaint only: the retained draft stays in the prompt and
-      // the editable line is redrawn inside the observed width.
+      // the editable line is redrawn inside the observed width. Field cells
+      // keep their drafts across the repaint, which the accepted expression
+      // below proves.
       expect(output.length, greaterThan(beforeResize));
       final tail = _visibleLines(output.toString().substring(beforeResize));
-      expect(tail.join(), contains('> * * * * *'));
+      expect(tail.join(), contains('> *'));
       for (final line in tail) {
         expect(line.length, lessThanOrEqualTo(14));
       }
@@ -464,7 +466,7 @@ void main() {
           preview: _config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('* * * * *\r\r\r\t\t\r'),
+            Stream.value('*\t*\t*\t*\t*\r\r\r\t\t\r'),
             richOutput,
             outputProfile: _richProfile,
           ),
@@ -586,7 +588,7 @@ void main() {
           preview: emptyConfig,
         ).prompt(
           source: ScriptedInput(
-            Stream.value('0 0 31 2 *\r\t\r\x03'),
+            Stream.value('0\t0\t31\t2\t*\r\t\r\x03'),
             richOutput,
             outputProfile: narrow,
           ),
