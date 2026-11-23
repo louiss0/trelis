@@ -79,6 +79,46 @@ void main() {
       },
     );
 
+    test('choice marker gutters use eight aligned columns', () {
+      for (final glyphs in StateGlyphs.values) {
+        for (final style in SingleSelectionStyle.values) {
+          for (final checked in <bool?>[null, false, true]) {
+            for (final focused in [false, true]) {
+              final row = ChoicePresentation(
+                label: '1. Alpha',
+                style: style,
+                checked: checked,
+                selected: checked == null ? false : null,
+                focused: focused,
+              );
+              final rendered = renderChoiceRow(row, glyphs: glyphs);
+              expect(rendered.indexOf('1. Alpha'), 8);
+            }
+          }
+        }
+      }
+    });
+
+    test('compact gutters retain every simultaneous state marker', () {
+      const row = ChoicePresentation(
+        label: '1. Alpha',
+        focused: true,
+        checked: true,
+        isDefault: true,
+        disclosure: DisclosureState.expanded,
+        restriction: ChoiceRestriction.locked,
+        reason: 'owner only',
+      );
+      expect(
+        renderChoiceRow(row, glyphs: StateGlyphs.ascii),
+        'vx  > D[L] 1. Alpha owner only',
+      );
+      expect(
+        renderChoiceRow(row, glyphs: StateGlyphs.unicode),
+        '▾✓  → ★[L] 1. Alpha owner only',
+      );
+    });
+
     test('narrow monochrome rows keep markers intact and labels readable', () {
       const row = ChoicePresentation(
         label: 'Alpha Beta',
@@ -89,7 +129,7 @@ void main() {
       final rendered = renderChoiceRow(
         row,
         glyphs: StateGlyphs.ascii,
-        width: 20,
+        width: 16,
       );
 
       expect(rendered, isNot(contains('\x1b[')));

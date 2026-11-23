@@ -60,7 +60,9 @@ void main() {
     expect(rows[0], startsWith('▾'));
     expect(rows[1], startsWith(' '), reason: 'a leaf keeps a blank disclosure');
     expect(rows[2], startsWith(' '));
-    expect(rows[1].indexOf('2.'), rows[0].indexOf('1.'));
+    // The restricted branch keeps its [!] marker beside the label, so its
+    // label sits one marker-width right of the unrestricted leaf rows.
+    expect(rows[1].indexOf('2.'), rows[0].indexOf('1.') - '[!]'.length);
 
     final collapsed = await _renderTree(
       glyphs: StateGlyphs.unicode,

@@ -108,10 +108,14 @@ final class ChoiceMarkers {
     restriction,
   ].where((part) => part.trim().isNotEmpty).toList();
 
-  /// The fixed-width marker prefix used by [renderChoiceRow].
+  /// The eight-column marker prefix used by [renderChoiceRow].
+  ///
+  /// Group disclosure, selection and focus, then default and restriction.
+  /// Keep each state's column even when blank, without padding between every
+  /// marker: rows stay aligned while labels sit three columns closer.
   String get prefix =>
-      '$disclosure ${selection.padRight(3)} $focus $defaultMarker '
-      '${restriction.padRight(3)} ';
+      '$disclosure${selection.padRight(3)}$focus $defaultMarker'
+      '$restriction ';
 }
 
 /// Theme-wide presentation choices for the choice component families.
