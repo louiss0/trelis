@@ -1,6 +1,6 @@
 # 04 Field-cell presentation and geometry
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-rich-field-cell-entry.md)
 
