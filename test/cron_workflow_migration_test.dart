@@ -125,7 +125,10 @@ void main() {
           profile: CronProfile.unix,
           preview: _config(),
         ).prompt(
-          source: ScriptedInput(Stream.value('* * * * *\r'), StringBuffer()),
+          source: ScriptedInput(
+            Stream.value('*\t*\t*\t*\t*\r'),
+            StringBuffer(),
+          ),
           mode: PromptMode.rich,
         ),
         isA<Unavailable<CronExpression>>(),
@@ -222,7 +225,7 @@ void main() {
           preview: _config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('* * *\x14\x1b\x03'),
+            Stream.value('*\x14\x1b\x03'),
             output,
             outputProfile: _richProfile,
           ),

@@ -354,6 +354,33 @@ void main() {
   );
 
   test(
+    'quartz Tab wraps through the year cell, Submit and back to cell 0',
+    () async {
+      final output = StringBuffer();
+      final result = await CronInput('Schedule', profile: CronProfile.quartz)
+          .prompt(
+            source: ScriptedInput(
+              // Fill all seven cells, Tab onto the trailing Submit stop, Tab
+              // once more to wrap back to cell 0, then Enter submits the
+              // seven-field draft from the first cell.
+              Stream.value('0\t0\t0\t?\t*\tMON\t2024\t\t\r'),
+              output,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '0 0 0 ? * MON 2024',
+      );
+      final text = output.toString();
+      expect(text, contains('quartz · Focus: Submit'));
+      // The wrap lands back on the first cell, not past it.
+      expect(text, contains('quartz · 1/7 second'));
+    },
+  );
+
+  test(
     'rich cells reject a multi-token paste without touching drafts',
     () async {
       final output = StringBuffer();

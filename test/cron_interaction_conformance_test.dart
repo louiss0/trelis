@@ -203,7 +203,7 @@ void main() {
           preview: config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('* * * * *\r\x03'),
+            Stream.value('*\t*\t*\t*\t*\r\x03'),
             StringBuffer(),
             outputProfile: _richProfile,
           ),
