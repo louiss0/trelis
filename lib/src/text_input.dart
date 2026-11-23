@@ -2668,6 +2668,7 @@ Future<({String action, String value})> _edit(
   String Function()? liveLinearHelpText,
   String? Function(String key, String text)? intercept,
   void Function(String text)? onChanged,
+  void Function(bool belowEditableRow)? onEditableRowBoundary,
   String? Function(String draft)? livePreview,
   void Function()? onHelpDismissed,
   void Function(bool visible)? onHelpVisibilityChanged,
@@ -3146,6 +3147,7 @@ Future<({String action, String value})> _edit(
         }
         finishLivePreview();
         output.writeln();
+        if (!sequential && !secret) onEditableRowBoundary?.call(true);
         var text = chars.join();
         final literal =
             synthetic >= 0 ||
@@ -3296,9 +3298,13 @@ Future<({String action, String value})> _edit(
       } else if (!key.startsWith('\x1b') && key.codeUnitAt(0) >= 32) {
         insert(key, false);
       }
-      if (onChanged != null && !sequential && !secret) output.writeln();
+      if (onChanged != null && !sequential && !secret) {
+        output.writeln();
+        onEditableRowBoundary?.call(true);
+      }
       onChanged?.call(chars.join());
       display();
+      onEditableRowBoundary?.call(false);
     }
   } finally {
     if (session != null) session._setPromptRepaint(null);

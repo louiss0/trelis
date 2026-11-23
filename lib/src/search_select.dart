@@ -252,6 +252,11 @@ final class SearchSelect<T> {
     var hadResultsFocus = false;
     var helpVisible = false;
     var lastResultsSignature = '';
+    // While the editor reports a change it has already ended the editable row
+    // with a newline, so the cursor sits one row below the frame the spine
+    // counted; the first repaint in that window rewinds one extra row. The
+    // boundary callback clears the credit once the editor row is repainted.
+    var repaintBelowEditor = false;
     String domainHelp() => switch (_kind) {
       'CommandPalette' =>
         'A reference identifies a command; accepting it does not run it.',
@@ -364,6 +369,10 @@ final class SearchSelect<T> {
     }
 
     void show() {
+      if (repaintBelowEditor) {
+        repaintBelowEditor = false;
+        spine.countRows(1);
+      }
       spine.reset(out);
       final projection = project();
       // The query is answer data, so it stays in the body rows: a diagnostic
@@ -721,6 +730,7 @@ final class SearchSelect<T> {
               request(v);
               show();
             },
+            onEditableRowBoundary: (below) => repaintBelowEditor = below,
             intercept: (key, text) {
               if (key == '\t' || key == '\x1b[A' || key == '\x1b[B') {
                 return 'results';
