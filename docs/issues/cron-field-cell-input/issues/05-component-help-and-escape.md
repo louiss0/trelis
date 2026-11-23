@@ -1,6 +1,6 @@
 # 05 Stage-led component help and entry-stage escape layers
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-rich-field-cell-entry.md)
 
