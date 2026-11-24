@@ -25,17 +25,10 @@ Future<void> main(List<String> arguments) async {
       )
       .start();
 
-  tasks.update('Compile', TaskActivity.running, phase: 'linking');
-  await Future<void>.delayed(const Duration(milliseconds: 400));
-
-  tasks.finishTask('Download', FeedbackOutcome.completed);
-
-  tasks.update('Package', TaskActivity.running, phase: 'archiving');
-  await Future<void>.delayed(const Duration(milliseconds: 400));
-  tasks.finishTask('Compile', FeedbackOutcome.completed);
-
-  await Future<void>.delayed(const Duration(milliseconds: 400));
-  tasks.finishTask('Package', FeedbackOutcome.completed);
-
+  await tasks.runAll({
+    'Download': () => Future<void>.delayed(const Duration(seconds: 2)),
+    'Compile': () => Future<void>.delayed(const Duration(seconds: 4)),
+    'Package': () => Future<void>.delayed(const Duration(seconds: 6)),
+  });
   await tasks.stop();
 }

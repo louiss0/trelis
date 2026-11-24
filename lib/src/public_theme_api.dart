@@ -159,6 +159,27 @@ final class ThemeSpinnerControl extends ThemeLiveFeedbackControl {
 
   /// Reports a meaningful change in activity.
   void update(String state) => _spinner.update(state);
+
+  /// Spins until [work] resolves, then finishes.
+  ///
+  /// [active] becomes the middle word while the work is pending and [detail]
+  /// the end word on the completed line. A thrown error finishes the spinner
+  /// as failed before propagating.
+  Future<T> run<T>(
+    FutureOr<T> Function() work, {
+    String? active,
+    String? detail,
+  }) async {
+    if (active != null) _spinner.update(active);
+    try {
+      final value = await work();
+      await _control.finish(FeedbackOutcome.completed, detail: detail);
+      return value;
+    } catch (error) {
+      await _control.finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
 }
 
 /// Updates a running group of named tasks.
@@ -177,6 +198,28 @@ final class ThemeMultiSpinnerControl extends ThemeLiveFeedbackControl {
   /// Ends one task. Call [finish] or [stop] to release the group itself.
   void finishTask(String task, FeedbackOutcome outcome, {String? detail}) =>
       _group.finishTask(task, outcome, detail: detail);
+
+  /// Runs [task] until [work] resolves, then finishes it.
+  ///
+  /// One promise per spin: [phase] is the middle word while pending and
+  /// [detail] the end word on the completed line. A thrown error finishes
+  /// the task failed before propagating.
+  Future<T> run<T>(
+    String task,
+    FutureOr<T> Function() work, {
+    String? phase,
+    String? detail,
+  }) =>
+      _group.run(task, work, phase: phase, detail: detail);
+
+  /// Runs every task in [work] until its own future resolves.
+  ///
+  /// Returns the results keyed by task; the first thrown error propagates
+  /// after every task has reached a final state.
+  Future<Map<String, Object?>> runAll(
+    Map<String, FutureOr<Object?> Function()> work,
+  ) =>
+      _group.runAll(work);
 }
 
 /// The default environment is built by the terminal seam so native geometry,

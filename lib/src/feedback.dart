@@ -729,6 +729,29 @@ final class Spinner {
     );
   }
 
+  /// Spins until [work] resolves, then finishes.
+  ///
+  /// This is the common case: the spinner's lifetime is exactly the future's.
+  /// [active] becomes the middle word while the work is pending — one
+  /// [update] before awaiting — and [detail] becomes the end word on the
+  /// completed line. When [work] throws the spinner finishes as failed with
+  /// the error as its detail before the error propagates.
+  Future<T> run<T>(
+    FutureOr<T> Function() work, {
+    String? active,
+    String? detail,
+  }) async {
+    if (active != null) update(active);
+    try {
+      final value = await work();
+      finish(FeedbackOutcome.completed, detail: detail);
+      return value;
+    } catch (error) {
+      finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
+
   /// Whether the session region currently repaints live lines in place.
   bool get _regionLive {
     final region = _sessionRegion;
@@ -1150,6 +1173,50 @@ final class MultiSpinner {
     _emitLiveTasks(pendingOnly: true);
     _pending.clear();
     _lastBatch = _clock.elapsed;
+  }
+
+  /// Runs [task] until [work] resolves, then finishes it.
+  ///
+  /// One promise per spin: the task starts running when called and finishes
+  /// exactly when its future settles. [phase] is the middle word shown while
+  /// pending and [detail] the end word on the completed line. When [work]
+  /// throws the task finishes failed with the error as detail before the
+  /// error propagates.
+  Future<T> run<T>(
+    String task,
+    FutureOr<T> Function() work, {
+    String? phase,
+    String? detail,
+  }) async {
+    update(task, TaskActivity.running, phase: phase);
+    try {
+      final value = await work();
+      finishTask(task, FeedbackOutcome.completed, detail: detail);
+      return value;
+    } catch (error) {
+      finishTask(task, FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
+
+  /// Runs every task in [work] until its own future resolves.
+  ///
+  /// One promise per spin: each entry starts its task running immediately
+  /// and finishes it when that future settles — the whole group is done when
+  /// the slowest promise is. Returns the results keyed by task. When work
+  /// throws, that task finishes failed and the first error propagates only
+  /// after every task has reached a final state.
+  Future<Map<String, Object?>> runAll(
+    Map<String, FutureOr<Object?> Function()> work,
+  ) async {
+    final entries = work.entries.toList();
+    final results = await Future.wait(
+      [for (final entry in entries) run(entry.key, entry.value)],
+      eagerError: false,
+    );
+    return {
+      for (var i = 0; i < entries.length; i++) entries[i].key: results[i],
+    };
   }
 
   void finishTask(String task, FeedbackOutcome outcome, {String? detail}) {

@@ -83,6 +83,34 @@ void main() {
       '/ Index: running\n- Index: waiting for disk\nx Index: failed: disk error\n',
     );
   });
+  test('spinner run finishes with the resolved future', () async {
+    final out = StringBuffer();
+    final spinner = Spinner('Index');
+    spinner.start(output: out);
+    final value = await spinner.run(
+      () => Future<int>.value(42),
+      active: 'querying',
+      detail: 'ready',
+    );
+    expect(value, 42);
+    expect(
+      out.toString(),
+      '/ Index: running\n- Index: querying\n+ Index: completed: ready\n',
+    );
+  });
+  test('spinner run finishes failed and rethrows when work throws', () async {
+    final out = StringBuffer();
+    final spinner = Spinner('Index');
+    spinner.start(output: out);
+    await expectLater(
+      spinner.run(() => Future<int>.error(StateError('nope'))),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      out.toString(),
+      '/ Index: running\nx Index: failed: Bad state: nope\n',
+    );
+  });
   test('rich spinner advances its frame glyph and drops the status tag', () {
     final out = StringBuffer();
     final spinner = Spinner('Index');
@@ -231,6 +259,61 @@ void main() {
     },
   );
 
+  test('multi-spinner run finishes each task when its own future resolves', () async {
+    final out = StringBuffer();
+    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+    tasks.start(output: out);
+    final values = await Future.wait([
+      tasks.run('fetch', () => Future<int>.value(1), detail: 'done'),
+      tasks.run('parse', () => Future<int>.value(2)),
+    ]);
+    expect(values, [1, 2]);
+    final text = out.toString();
+    expect(text, contains('fetch: running'));
+    expect(text, contains('parse: running'));
+    expect(text, contains('fetch: completed: done'));
+    expect(text, contains('parse: completed'));
+  });
+  test('multi-spinner run finishes a task failed and rethrows', () async {
+    final out = StringBuffer();
+    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+    tasks.start(output: out);
+    await expectLater(
+      Future.wait([
+        tasks.run('fetch', () => Future<int>.error(StateError('lost'))),
+        tasks.run('parse', () => Future<int>.value(2)),
+      ]),
+      throwsA(isA<StateError>()),
+    );
+    expect(out.toString(), contains('fetch: failed: Bad state: lost'));
+    expect(out.toString(), contains('parse: completed'));
+  });
+  test('multi-spinner runAll returns results and settles every task', () async {
+    final out = StringBuffer();
+    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+    tasks.start(output: out);
+    final results = await tasks.runAll({
+      'fetch': () => Future<int>.value(1),
+      'parse': () => Future<int>.value(2),
+    });
+    expect(results, {'fetch': 1, 'parse': 2});
+    expect(out.toString(), contains('fetch: completed'));
+    expect(out.toString(), contains('parse: completed'));
+  });
+  test('multi-spinner runAll settles siblings before rethrowing', () async {
+    final out = StringBuffer();
+    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+    tasks.start(output: out);
+    await expectLater(
+      tasks.runAll({
+        'fetch': () => Future<int>.error(StateError('lost')),
+        'parse': () => Future<int>.value(2),
+      }),
+      throwsA(isA<StateError>()),
+    );
+    expect(out.toString(), contains('fetch: failed: Bad state: lost'));
+    expect(out.toString(), contains('parse: completed'));
+  });
   test('multi-spinner batching is deterministic with an application-controlled clock', () {
     final out = StringBuffer();
     final clock = _FakeFeedbackClock();
