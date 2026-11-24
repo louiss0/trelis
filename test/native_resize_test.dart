@@ -155,5 +155,8 @@ final class _FakeStdout implements Stdout {
       fails ? throw const StdoutException('geometry unavailable') : rows;
 
   @override
+  bool get supportsAnsiEscapes => false;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

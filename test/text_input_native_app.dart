@@ -277,6 +277,9 @@ final class _FailingStdout implements Stdout {
   @override
   bool get hasTerminal => false;
 
+  @override
+  bool get supportsAnsiEscapes => false;
+
   void _write(Object? value) {
     final armed = failure;
     if (armed != null) throw armed;
