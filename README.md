@@ -572,29 +572,6 @@ Component help leads with the requesting stage (ordering the list, moving a
 picked-up identity, entering a reference, or entering a destination position)
 and names every locked anchor with its reason and displayed reference.
 
-## CommandPalette
-
-`CommandPalette('Commands', [Choice('save', 'Save')]).prompt()` returns a
-`PromptResult` containing the accepted choice identity. The application decides
-whether and how to execute that identity after acceptance; the palette does not
-receive or invoke command actions. Identities must be unique. A `Choice` may
-supply a `disabledReason`; unavailable commands remain visible but cannot be
-accepted.
-
-By default matching is case-insensitive substring matching in source order.
-Rich interaction separates query editing from result acceptance: Enter first
-opens results, and a subsequent Enter accepts the focused enabled command.
-Linear interaction asks for a query and then a stable source reference; `/search`
-edits the query. Neither unmatched query text nor an unavailable reference can
-be accepted as a command. Escape in rich mode and `/cancel` in linear mode
-cancel without acceptance.
-
-An optional `search` callback may provide updated choices from the original
-identities, including availability. Results are displayed in source order, not
-callback order; pending, failed, obsolete, unknown or duplicate results cannot
-be accepted. Supplied answers are source references and are unavailable when
-using dynamic search because availability cannot be verified.
-
 ## DateInput
 
 `DateInput('Date', order: DateFieldOrder.dayMonthYear)` returns a `CivilDate`
@@ -889,23 +866,35 @@ order, the decimal-digit limit and the excluded expressions and colour spaces.
 
 ### Key capture
 
-`Keypress` captures one logical gesture; `KeyChordInput` captures a nonempty
-ordered sequence. In rich mode, `c` arms one capture, `d` declares, `r`
-removes the last gesture, `x` clears, and Enter submits. In linear mode use
-`/capture`, `/declare`, `/remove`, `/clear`, and `/done`; `/cancel` cancels.
-Every capture returns to review: it never submits automatically. Escape exits
-armed capture before cancelling the prompt; Ctrl+C interrupts. These two
-reserved gestures cannot be captured live. Rich `Ctrl+T` and linear `/help`
-explain observed versus declared or ambiguous provenance, the reserved
-gestures, the observation requirement, the declaration vocabulary and sequence
-completion. Help is available before and after a capture but not while capture
-is armed, because the next key is the candidate gesture; the action line says
-so in each mode.
+`Keypress` captures one logical gesture; `Keybind` composes a nonempty
+ordered sequence from a caller-declared catalog. A `Keypress` prompts for a
+gesture the same way as the sequence editor did before: in rich mode, `c`
+arms one capture, `d` declares, `r` removes the reviewed gesture, and Enter
+submits; in linear mode `/capture` arms, `/declare` enters a declaration, and
+`/done` submits. Every capture returns to review: it never submits
+automatically. Escape exits armed capture before cancelling the prompt;
+Ctrl+C interrupts. These two reserved gestures cannot be captured live. Rich
+`Ctrl+T` and linear `/help` explain observed versus declared or ambiguous
+provenance, the reserved gestures, the observation requirement and the
+declaration vocabulary. Help is available before and after a capture but not
+while capture is armed, because the next key is the candidate gesture; the
+action line says so in each mode.
 
-Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`);
-for supplied `KeyChordInput` answers, separate gestures with commas. Modifiers
-are `Ctrl`, `Alt`, `Shift`, and `Meta`, each at most once. Keys are ASCII
-letters or digits, `F1` through `F12`, `Enter`, `Tab`, `Escape`, `Space`,
+`Keybind('Shortcut').prompt()` instead composes one gesture declaration as
+a row of symbol cells — at least two, grown with `+` and shrunk with `-` —
+where every cell but the last cycles a modifier (`Ctrl`, `Alt`, `Shift`,
+`Meta`) and the last cell cycles the key-symbol catalog. Up and Down cycle
+the focused cell through its catalog with wraparound; Tab, Shift+Tab,
+Ctrl+B, Left and Right move focus between cells; Enter submits the ordered
+`List<String>` tokens once every cell is set and no modifier repeats.
+`Keybind.joined('Shortcut')` resolves the `+`-joined declaration string
+(`'Ctrl+Shift+B'`) instead. In linear mode the answer is the `Ctrl+Shift+B`
+declaration (comma-separated tokens also accepted), and supplied answers
+use the same spelling.
+
+Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`).
+Modifiers are `Ctrl`, `Alt`, `Shift`, and `Meta`, each at most once. Keys
+are ASCII letters or digits, `F1` through `F12`, `Enter`, `Tab`, `Escape`, `Space`,
 `Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`, and
 `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`. Declarations are unverified;
 `KeyGesture.warnings` identifies this and reserved declarations. They do not

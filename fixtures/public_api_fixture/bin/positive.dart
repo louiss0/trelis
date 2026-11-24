@@ -44,9 +44,6 @@ void exercise(StructuralTheme theme, List<Object> sink) {
   final ThemePrompt<List<int>> order = theme.sortableSelect<int>('Order', [
     Choice(1, 'A'),
   ]);
-  final ThemePrompt<int> palette = theme.commandPalette<int>('Run', [
-    Choice(1, 'A'),
-  ]);
   final ThemePrompt<MaskedValue> masked = theme.maskedInput(
     'Code',
     templates: [
@@ -71,7 +68,8 @@ void exercise(StructuralTheme theme, List<Object> sink) {
   final ThemePrompt<String> file = theme.filePicker('File');
   final ThemePrompt<String> directory = theme.directoryPicker('Directory');
   final ThemePrompt<KeyGesture> key = theme.keypress('Shortcut');
-  final ThemePrompt<List<KeyGesture>> chord = theme.keyChordInput('Sequence');
+  final ThemePrompt<List<String>> keybind = theme.keybind('Sequence');
+  final ThemePrompt<String> joined = theme.joinedKeybind('Sequence');
   final ThemePrompt<DurationValue> duration = theme.durationInput(
     'Span',
     durationMode: DurationInputMode.elapsed,
@@ -100,7 +98,6 @@ void exercise(StructuralTheme theme, List<Object> sink) {
     autocomplete,
     search,
     order,
-    palette,
     masked,
     number,
     port,
@@ -114,7 +111,8 @@ void exercise(StructuralTheme theme, List<Object> sink) {
     file,
     directory,
     key,
-    chord,
+    keybind,
+    joined,
     duration,
     date,
     feedback,

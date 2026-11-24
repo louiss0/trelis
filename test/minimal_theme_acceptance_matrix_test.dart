@@ -182,21 +182,6 @@ void main() {
       expect((result as Accepted<String>).value, 'a');
     });
 
-    test('CommandPalette / ${mode.name}: choose command identity', () async {
-      final result =
-          await MinimalTheme.commandPalette<String>('Commands', [
-            Choice('save', 'Save'),
-          ]).prompt(
-            source: _scriptedInput(
-              mode,
-              Stream.value(mode == PromptMode.rich ? 'sav\r\r' : 'sav\r1\r'),
-              StringBuffer(),
-            ),
-            mode: mode,
-          );
-      expect((result as Accepted<String>).value, 'save');
-    });
-
     test('SortableSelect / ${mode.name}: reorder two identities', () async {
       final result =
           await MinimalTheme.sortableSelect<String>('Order', [
@@ -539,23 +524,22 @@ void main() {
       expect((result as Accepted<KeyGesture>).value.key, 'a');
     });
 
-    test('KeyChordInput / ${mode.name}: submit ordered gestures', () async {
-      final result = await MinimalTheme.keyChordInput('Sequence').prompt(
-        source: _scriptedInput(
-          mode,
-          Stream.value(
-            mode == PromptMode.rich
-                ? 'cacb\r'
-                : '/capture\ra/capture\rb/done\r',
-          ),
-          StringBuffer(),
-        ),
-        mode: mode,
-      );
-      expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-        'a',
-        'b',
-      ]);
+    test('Keybind / ${mode.name}: submit ordered tokens', () async {
+      final result =
+          await MinimalTheme.keybind(
+            'Sequence',
+            symbols: const ['A', 'B'],
+          ).prompt(
+            source: _scriptedInput(
+              mode,
+              Stream.value(
+                mode == PromptMode.rich ? '\x1b[B\t\x1b[B\x1b[B\r' : 'Ctrl,B\r',
+              ),
+              StringBuffer(),
+            ),
+            mode: mode,
+          );
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'B']);
     });
 
     test('Progress / ${mode.name}: finish work', () {

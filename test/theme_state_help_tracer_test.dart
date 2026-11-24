@@ -156,18 +156,21 @@ void main() {
       );
       expect(before.toString(), contains('Help:'));
 
-      final armed = StringBuffer();
-      final result = await KeyChordInput('Sequence').prompt(
-        source: ScriptedInput(
-          Stream.value('c\x14\r'),
-          armed,
-          outputProfile: _richProfile,
-        ),
-        mode: PromptMode.rich,
-      );
-      expect(result, isA<InputEnded<List<KeyGesture>>>());
-      expect(armed.toString(), isNot(contains('Help:')));
-      expect(armed.toString(), contains('candidate'));
+      final keybindOut = StringBuffer();
+      final result =
+          await Keybind<List<String>>(
+            'Sequence',
+            symbols: const ['A', 'B'],
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\x14\x1b\x1b[B\t\x1b[B\r'),
+              keybindOut,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'A']);
+      expect(keybindOut.toString(), contains('Help:'));
     });
 
     test('a restricted choice is inspectable but cannot be accepted', () async {

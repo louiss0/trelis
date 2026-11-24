@@ -309,15 +309,6 @@ List<_Case> _cases() => [
     richAnswer: '\r\r',
   ),
   _Case(
-    'CommandPalette',
-    'Commands',
-    'sav\r1\r',
-    (mode, input, structure) => CommandPalette<String>('Commands', [
-      Choice('save', 'Save'),
-    ], structure: structure).prompt(source: input, mode: mode),
-    richAnswer: 'sav\r\r',
-  ),
-  _Case(
     'TimezoneSelect',
     'Zone',
     'US/Eastern\r105\r',
@@ -476,14 +467,26 @@ List<_Case> _cases() => [
     richAnswer: 'ca\r',
   ),
   _Case(
-    'KeyChordInput',
+    'Keybind',
     'Sequence',
-    '/capture\ra/capture\rb/done\r',
-    (mode, input, structure) => KeyChordInput(
+    'Ctrl,b\r',
+    (mode, input, structure) => Keybind<List<String>>(
       'Sequence',
+      symbols: const ['a', 'b'],
       structure: structure,
     ).prompt(source: input, mode: mode),
-    richAnswer: 'cacb\r',
+    richAnswer: '\x1b[B\t\x1b[B\r',
+  ),
+  _Case(
+    'JoinedKeybind',
+    'Sequence',
+    'Ctrl,b\r',
+    (mode, input, structure) => Keybind<String>.joined(
+      'Sequence',
+      symbols: const ['a', 'b'],
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\x1b[B\t\x1b[B\r',
   ),
 ];
 

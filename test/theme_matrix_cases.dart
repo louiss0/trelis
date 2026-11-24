@@ -242,15 +242,7 @@ List<ThemeMatrixCase> themeMatrixCases({
     ], structure: structure).prompt(source: input, mode: mode),
     richAnswer: '\r\r',
   ),
-  ThemeMatrixCase(
-    'CommandPalette',
-    'Commands',
-    'sav\r1\r',
-    (mode, input, structure) => CommandPalette<String>('Commands', [
-      Choice('save', 'Save'),
-    ], structure: structure).prompt(source: input, mode: mode),
-    richAnswer: 'sav\r\r',
-  ),
+
   ThemeMatrixCase(
     'TimezoneSelect',
     'Zone',
@@ -410,13 +402,25 @@ List<ThemeMatrixCase> themeMatrixCases({
     richAnswer: 'ca\r',
   ),
   ThemeMatrixCase(
-    'KeyChordInput',
+    'Keybind',
     'Sequence',
-    '/capture\ra/capture\rb/done\r',
-    (mode, input, structure) => KeyChordInput(
+    'Ctrl,B\r',
+    (mode, input, structure) => Keybind<List<String>>(
       'Sequence',
+      symbols: const ['A', 'B'],
       structure: structure,
     ).prompt(source: input, mode: mode),
-    richAnswer: 'cacb\r',
+    richAnswer: '\x1b[B\t\x1b[B\x1b[B\r',
+  ),
+  ThemeMatrixCase(
+    'JoinedKeybind',
+    'Sequence',
+    'Ctrl,B\r',
+    (mode, input, structure) => Keybind<String>.joined(
+      'Sequence',
+      symbols: const ['A', 'B'],
+      structure: structure,
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\x1b[B\t\x1b[B\x1b[B\r',
   ),
 ];

@@ -591,13 +591,6 @@ void main() {
           ),
         );
         expect(zoneHelp, contains('city names and aliases'));
-
-        final commands = StringBuffer();
-        await CommandPalette('Commands', [Choice('save', 'Save')]).prompt(
-          source: _scripted(Stream.value('/help\r/cancel\r'), commands),
-          mode: PromptMode.linear,
-        );
-        expect(_painted(commands), contains('accepting it does not run it'));
       },
     );
 
@@ -664,10 +657,6 @@ void main() {
 
     test('wrappers keep forwarding mode and output profile', () async {
       for (final prompt in <Future<PromptResult<String>> Function()>[
-        () => CommandPalette('Commands', [Choice('save', 'Save')]).prompt(
-          source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
-          mode: PromptMode.rich,
-        ),
         () => TimezoneSelect('Zone').prompt(
           source: ScriptedInput(const Stream<String>.empty(), StringBuffer()),
           mode: PromptMode.rich,

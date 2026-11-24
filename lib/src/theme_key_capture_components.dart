@@ -24,18 +24,19 @@ import 'state_help_presentation.dart'
 import 'terminal_io.dart';
 import 'text_input.dart'
     show
+        CronCellFrame,
         InstructionDisplay,
-        KeyChordInput,
         KeyGesture,
+        Keybind,
         Keypress,
         PromptMode,
         PromptResult;
 import 'theme_session.dart';
 
 /// Which real component a [ThemeKeyCapturePrompt] delegates to.
-enum ThemeKeyCaptureKind { keypress, keyChordInput }
+enum ThemeKeyCaptureKind { keypress, keybind }
 
-/// A reusable, theme-owned key or chord capture prompt.
+/// A reusable, theme-owned keypress or keybind prompt.
 final class ThemeKeyCapturePrompt<T> {
   ThemeKeyCapturePrompt._({
     required this.label,
@@ -43,6 +44,11 @@ final class ThemeKeyCapturePrompt<T> {
     required TerminalEnvironment io,
     ThemeSession? session,
     this.requireObservation = false,
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    this.joined = false,
+    this.cellFrame = CronCellFrame.square,
     this.colors = const ComponentColors(),
     this.structure = PromptStructure.plain,
     this.instructions = InstructionDisplay.themeDefault,
@@ -51,7 +57,10 @@ final class ThemeKeyCapturePrompt<T> {
     InteractionPreferences interaction = const InteractionPreferences(),
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
-  }) : supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
+  }) : modifiers = List<String>.unmodifiable(modifiers),
+       symbols = List<String>.unmodifiable(symbols),
+       initialValue = List<String>.unmodifiable(initialValue),
+       supplementaryHelp = List<String>.unmodifiable(supplementaryHelp),
        _owner =
            session ??
            ThemeSession(
@@ -92,12 +101,17 @@ final class ThemeKeyCapturePrompt<T> {
     factsForPeriod: factsForPeriod,
   );
 
-  /// Captures an ordered, non-empty sequence of logical gestures.
-  static ThemeKeyCapturePrompt<List<KeyGesture>> keyChordInput(
+  /// Composes one logical gesture declaration cell by cell — modifier
+  /// symbols from [modifiers], then one key symbol from [symbols] — and
+  /// resolves the ordered token list.
+  static ThemeKeyCapturePrompt<List<String>> keybind(
     String label, {
     required TerminalEnvironment io,
     ThemeSession? session,
-    bool requireObservation = false,
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    CronCellFrame cellFrame = CronCellFrame.square,
     ComponentColors colors = const ComponentColors(),
     PromptStructure structure = PromptStructure.plain,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
@@ -106,12 +120,52 @@ final class ThemeKeyCapturePrompt<T> {
     InteractionPreferences interaction = const InteractionPreferences(),
     ThemeResolvedCallback? onResolved,
     ThemeInteractionFactsProvider? factsForPeriod,
-  }) => ThemeKeyCapturePrompt<List<KeyGesture>>._(
+  }) => ThemeKeyCapturePrompt<List<String>>._(
     label: label,
-    kind: ThemeKeyCaptureKind.keyChordInput,
+    kind: ThemeKeyCaptureKind.keybind,
     io: io,
     session: session,
-    requireObservation: requireObservation,
+    modifiers: modifiers,
+    symbols: symbols,
+    initialValue: initialValue,
+    cellFrame: cellFrame,
+    colors: colors,
+    structure: structure,
+    instructions: instructions,
+    supplementaryHelp: supplementaryHelp,
+    themeColors: themeColors,
+    interaction: interaction,
+    onResolved: onResolved,
+    factsForPeriod: factsForPeriod,
+  );
+
+  /// The flagged variant: resolves the `+`-joined declaration string.
+  static ThemeKeyCapturePrompt<String> joinedKeybind(
+    String label, {
+    required TerminalEnvironment io,
+    ThemeSession? session,
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    CronCellFrame cellFrame = CronCellFrame.square,
+    ComponentColors colors = const ComponentColors(),
+    PromptStructure structure = PromptStructure.plain,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+    ColorPreferences themeColors = const ColorPreferences(),
+    InteractionPreferences interaction = const InteractionPreferences(),
+    ThemeResolvedCallback? onResolved,
+    ThemeInteractionFactsProvider? factsForPeriod,
+  }) => ThemeKeyCapturePrompt<String>._(
+    label: label,
+    kind: ThemeKeyCaptureKind.keybind,
+    io: io,
+    session: session,
+    modifiers: modifiers,
+    symbols: symbols,
+    initialValue: initialValue,
+    joined: true,
+    cellFrame: cellFrame,
     colors: colors,
     structure: structure,
     instructions: instructions,
@@ -125,6 +179,20 @@ final class ThemeKeyCapturePrompt<T> {
   final String label;
   final ThemeKeyCaptureKind kind;
   final bool requireObservation;
+
+  /// The modifier catalog for every keybind cell but the last.
+  final List<String> modifiers;
+
+  /// The key-symbol catalog for a keybind prompt's last cell.
+  final List<String> symbols;
+
+  /// Whether a keybind prompt resolves the `+`-joined declaration instead
+  /// of the ordered tokens.
+  final bool joined;
+
+  /// Tokens presetting a keybind prompt's leading cells.
+  final List<String> initialValue;
+  final CronCellFrame cellFrame;
   final ComponentColors colors;
   final PromptStructure structure;
   final InstructionDisplay instructions;
@@ -158,15 +226,30 @@ final class ThemeKeyCapturePrompt<T> {
           instructions: instructions,
           supplementaryHelp: supplementaryHelp,
         ).prompt(session: handle.session) as PromptResult<T>;
-      case ThemeKeyCaptureKind.keyChordInput:
-        result = await KeyChordInput(
-          label,
-          requireObservation: requireObservation,
-          colors: palette,
-          structure: structure,
-          instructions: instructions,
-          supplementaryHelp: supplementaryHelp,
-        ).prompt(session: handle.session) as PromptResult<T>;
+      case ThemeKeyCaptureKind.keybind:
+        result = joined
+            ? await Keybind<String>.joined(
+                label,
+                modifiers: modifiers,
+                symbols: symbols,
+                initialValue: initialValue,
+                cellFrame: cellFrame,
+                colors: palette,
+                structure: structure,
+                instructions: instructions,
+                supplementaryHelp: supplementaryHelp,
+              ).prompt(session: handle.session) as PromptResult<T>
+            : await Keybind<List<String>>(
+                label,
+                modifiers: modifiers,
+                symbols: symbols,
+                initialValue: initialValue,
+                cellFrame: cellFrame,
+                colors: palette,
+                structure: structure,
+                instructions: instructions,
+                supplementaryHelp: supplementaryHelp,
+              ).prompt(session: handle.session) as PromptResult<T>;
     }
     if (mode != PresentationMode.screenReader) {
       // The real component advertises its actions while the prompt is live;
@@ -195,17 +278,13 @@ final class ThemeKeyCapturePrompt<T> {
     mode: mode,
     component: ComponentRoute.keyCapture,
     primaryAction: _primaryAction(mode),
-    shortPrimaryAction: kind == ThemeKeyCaptureKind.keypress
-        ? 'Enter'
-        : '/done',
+    shortPrimaryAction: 'Enter',
   );
 
-  String _primaryAction(PresentationMode mode) {
-    final action = mode == PresentationMode.rich ? 'Enter' : '/done';
-    return kind == ThemeKeyCaptureKind.keypress
-        ? '$action submits'
-        : '$action submits the sequence';
-  }
+  String _primaryAction(PresentationMode mode) =>
+      kind == ThemeKeyCaptureKind.keypress
+      ? '${mode == PresentationMode.rich ? 'Enter' : '/done'} submits'
+      : 'Enter submits the sequence';
 
   /// Layers the component override over the palette the period resolved.
   ResolvedColors _componentPalette(

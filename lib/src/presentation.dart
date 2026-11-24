@@ -68,7 +68,7 @@ final class TextInputPresentationContent {
 
 /// The identity model a query/results row uses.
 ///
-/// `SearchSelect`, `CommandPalette` and `TimezoneSelect` present choices whose
+/// `SearchSelect` and `TimezoneSelect` present choices whose
 /// displayed reference identifies the same source choice for the whole prompt.
 /// `Autocomplete` presents response-local candidates: the same text can appear
 /// at a different position for a different query, so a position is not an

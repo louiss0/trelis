@@ -54,22 +54,18 @@ try {
  $parts=$during.Split(':')
  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
  if ($Scenario -eq "cancel") {
-  [NativeProbe]::Text("c"); Start-Sleep -Milliseconds 300
-  [NativeProbe]::Key([char]27, 0x1b, 0); Start-Sleep -Milliseconds 300
   [NativeProbe]::Key([char]27, 0x1b, 0)
  } elseif ($Scenario -eq "interrupt") {
-  [NativeProbe]::Text("c"); Start-Sleep -Milliseconds 300
   [NativeProbe]::Key([char]3, 0x43, 8)
+ } elseif ($Scenario -eq "linear") {
+  [NativeProbe]::Text("Ctrl,B`r")
  } else {
-  if ($Scenario -eq "linear") { [NativeProbe]::Text("/capture`r") } else { [NativeProbe]::Text("c") }
-  Start-Sleep -Milliseconds 300
-  [NativeProbe]::Key([char]1, 0x41, 24)
-  Start-Sleep -Milliseconds 300
-  if ($Scenario -eq "linear") { [NativeProbe]::Text("/capture`r") } else { [NativeProbe]::Text("c") }
-  Start-Sleep -Milliseconds 300
-  [NativeProbe]::Key([char]67, 0x43, 16)
-  Start-Sleep -Milliseconds 300
-  if ($Scenario -eq "linear") { [NativeProbe]::Text("/done`r") } else { [NativeProbe]::Text("`r") }
+  # Rich: Down selects Ctrl in the modifier cell, Tab focuses the key cell, two Downs select B, Enter submits.
+  [NativeProbe]::Key([char]0, 0x28, 0); Start-Sleep -Milliseconds 300
+  [NativeProbe]::Key([char]9, 0x09, 0); Start-Sleep -Milliseconds 300
+  [NativeProbe]::Key([char]0, 0x28, 0); Start-Sleep -Milliseconds 300
+  [NativeProbe]::Key([char]0, 0x28, 0); Start-Sleep -Milliseconds 300
+  [NativeProbe]::Key([char]13, 0x0d, 0)
  }
 
  for($n=0;$n -lt 100;$n++){if((Test-Path $file) -and (Get-Item $file).Length -gt 0){break}; Start-Sleep -Milliseconds 100}
@@ -78,7 +74,7 @@ try {
  if (!(Test-Path "$file.done")) { throw "probe process did not exit" }
  $actual=(Get-Content $file -Raw).Trim()
  $after=''; for($n=0;$n -lt 100;$n++){ $after=[NativeProbe]::State(); if($after -eq $before){break}; Start-Sleep -Milliseconds 100 }
- $expected = switch ($Scenario) { 'cancel' { 'Cancelled<List<KeyGesture>>' } 'interrupt' { 'Interrupted<List<KeyGesture>>' } default { 'A:control+shift:observed,C:shift:observed' } }
+ $expected = switch ($Scenario) { 'cancel' { 'Cancelled<List<String>>' } 'interrupt' { 'Interrupted<List<String>>' } default { 'Ctrl,B' } }
  if($actual -ne $expected){throw "unexpected result: $actual"}
  if($before -ne $after){throw "console state changed: $before -> $after"}
  Set-Content $Report "key capture PASS result=$actual state=$before -> $during -> $after"

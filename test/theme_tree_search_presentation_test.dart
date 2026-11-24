@@ -152,7 +152,7 @@ void main() {
 
       final commandOutput = StringBuffer();
       final accepted =
-          await CommandPalette<String>(
+          await SearchSelect<String>(
             'Commands',
             [Choice('open', 'Open file'), Choice('save', 'Save file')],
             presentation: const ChoicePresentationConfig(

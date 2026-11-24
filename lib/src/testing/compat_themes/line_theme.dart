@@ -344,25 +344,6 @@ abstract final class LineTheme {
     supplementaryHelp: supplementaryHelp,
   );
 
-  static CommandPalette<T> commandPalette<T>(
-    String label,
-    List<Choice<T>> commands, {
-    T? defaultValue,
-    FutureOr<List<Choice<T>>> Function(String query)? search,
-    ColorTheme colors = ColorThemes.terminalDefault,
-    InstructionDisplay instructions = InstructionDisplay.themeDefault,
-    List<String> supplementaryHelp = const [],
-  }) => CommandPalette<T>(
-    label,
-    commands,
-    defaultValue: defaultValue,
-    search: search,
-    structure: PromptStructure.line,
-    colors: colors,
-    instructions: instructions,
-    supplementaryHelp: supplementaryHelp,
-  );
-
   static MaskedInput maskedInput(
     String label, {
     required List<MaskTemplate> templates,
@@ -598,15 +579,42 @@ abstract final class LineTheme {
     supplementaryHelp: supplementaryHelp,
   );
 
-  static KeyChordInput keyChordInput(
+  static Keybind<List<String>> keybind(
     String label, {
-    bool requireObservation = false,
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    CronCellFrame cellFrame = CronCellFrame.square,
     ColorTheme colors = ColorThemes.terminalDefault,
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
-  }) => KeyChordInput(
+  }) => Keybind<List<String>>(
     label,
-    requireObservation: requireObservation,
+    modifiers: modifiers,
+    symbols: symbols,
+    initialValue: initialValue,
+    cellFrame: cellFrame,
+    structure: PromptStructure.line,
+    colors: colors,
+    instructions: instructions,
+    supplementaryHelp: supplementaryHelp,
+  );
+
+  static Keybind<String> joinedKeybind(
+    String label, {
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    CronCellFrame cellFrame = CronCellFrame.square,
+    ColorTheme colors = ColorThemes.terminalDefault,
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) => Keybind<String>.joined(
+    label,
+    modifiers: modifiers,
+    symbols: symbols,
+    initialValue: initialValue,
+    cellFrame: cellFrame,
     structure: PromptStructure.line,
     colors: colors,
     instructions: instructions,

@@ -192,11 +192,6 @@ void main() {
         ], defaultValue: 'a');
         expect(search, isA<SearchSelect<String>>());
 
-        final palette = _commandPaletteSurface[theme]!('Commands', [
-          Choice('save', 'Save'),
-        ], defaultValue: 'save');
-        expect(palette, isA<CommandPalette<String>>());
-
         final sortable = _sortableSelectSurface[theme]!('Order', [
           Choice('a', 'A'),
         ]);
@@ -402,17 +397,6 @@ typedef _SortableSelectFactory = SortableSelect<T> Function<T>(
   List<String> supplementaryHelp,
 });
 
-/// The `commandPalette` factory every structural namespace must expose.
-typedef _CommandPaletteFactory = CommandPalette<T> Function<T>(
-  String,
-  List<Choice<T>>, {
-  T? defaultValue,
-  FutureOr<List<Choice<T>>> Function(String query)? search,
-  ColorTheme colors,
-  InstructionDisplay instructions,
-  List<String> supplementaryHelp,
-});
-
 /// The `maskedInput` factory every structural namespace must expose.
 typedef _MaskedInputFactory = MaskedInput Function(
   String, {
@@ -549,10 +533,25 @@ typedef _KeypressFactory = Keypress Function(
   List<String> supplementaryHelp,
 });
 
-/// The `keyChordInput` factory every structural namespace must expose.
-typedef _KeyChordInputFactory = KeyChordInput Function(
+/// The `keybind` factory every structural namespace must expose.
+typedef _KeybindFactory = Keybind<List<String>> Function(
   String, {
-  bool requireObservation,
+  List<String> modifiers,
+  List<String> symbols,
+  List<String> initialValue,
+  CronCellFrame cellFrame,
+  ColorTheme colors,
+  InstructionDisplay instructions,
+  List<String> supplementaryHelp,
+});
+
+/// The `joinedKeybind` factory every structural namespace must expose.
+typedef _JoinedKeybindFactory = Keybind<String> Function(
+  String, {
+  List<String> modifiers,
+  List<String> symbols,
+  List<String> initialValue,
+  CronCellFrame cellFrame,
   ColorTheme colors,
   InstructionDisplay instructions,
   List<String> supplementaryHelp,
@@ -995,29 +994,6 @@ final Map<String, _SortableSelectFactory> _sortableSelectSurface =
       'BlockTheme': BlockTheme.sortableSelect,
     };
 
-/// The fifteen `commandPalette` tear-offs.
-///
-/// The map value type is the typedef, so a namespace whose signature,
-/// return type or generics drift fails to compile here.
-final Map<String, _CommandPaletteFactory> _commandPaletteSurface =
-    <String, _CommandPaletteFactory>{
-      'PlainTheme': PlainTheme.commandPalette,
-      'RailTheme': RailTheme.commandPalette,
-      'BranchTheme': BranchTheme.commandPalette,
-      'BoxTheme': BoxTheme.commandPalette,
-      'RoundTheme': RoundTheme.commandPalette,
-      'DoubleTheme': DoubleTheme.commandPalette,
-      'MinimalTheme': MinimalTheme.commandPalette,
-      'AsciiTheme': AsciiTheme.commandPalette,
-      'ChevronTheme': ChevronTheme.commandPalette,
-      'BracketTheme': BracketTheme.commandPalette,
-      'FormTheme': FormTheme.commandPalette,
-      'LedgerTheme': LedgerTheme.commandPalette,
-      'ColonTheme': ColonTheme.commandPalette,
-      'LineTheme': LineTheme.commandPalette,
-      'BlockTheme': BlockTheme.commandPalette,
-    };
-
 /// The fifteen `maskedInput` tear-offs.
 ///
 /// The map value type is the typedef, so a namespace whose signature,
@@ -1317,27 +1293,49 @@ final Map<String, _KeypressFactory> _keypressSurface =
       'BlockTheme': BlockTheme.keypress,
     };
 
-/// The fifteen `keyChordInput` tear-offs.
+/// The fifteen `keybind` tear-offs.
 ///
 /// The map value type is the typedef, so a namespace whose signature,
 /// return type or generics drift fails to compile here.
-final Map<String, _KeyChordInputFactory> _keyChordInputSurface =
-    <String, _KeyChordInputFactory>{
-      'PlainTheme': PlainTheme.keyChordInput,
-      'RailTheme': RailTheme.keyChordInput,
-      'BranchTheme': BranchTheme.keyChordInput,
-      'BoxTheme': BoxTheme.keyChordInput,
-      'RoundTheme': RoundTheme.keyChordInput,
-      'DoubleTheme': DoubleTheme.keyChordInput,
-      'MinimalTheme': MinimalTheme.keyChordInput,
-      'AsciiTheme': AsciiTheme.keyChordInput,
-      'ChevronTheme': ChevronTheme.keyChordInput,
-      'BracketTheme': BracketTheme.keyChordInput,
-      'FormTheme': FormTheme.keyChordInput,
-      'LedgerTheme': LedgerTheme.keyChordInput,
-      'ColonTheme': ColonTheme.keyChordInput,
-      'LineTheme': LineTheme.keyChordInput,
-      'BlockTheme': BlockTheme.keyChordInput,
+final Map<String, _KeybindFactory> _keybindSurface = <String, _KeybindFactory>{
+  'PlainTheme': PlainTheme.keybind,
+  'RailTheme': RailTheme.keybind,
+  'BranchTheme': BranchTheme.keybind,
+  'BoxTheme': BoxTheme.keybind,
+  'RoundTheme': RoundTheme.keybind,
+  'DoubleTheme': DoubleTheme.keybind,
+  'MinimalTheme': MinimalTheme.keybind,
+  'AsciiTheme': AsciiTheme.keybind,
+  'ChevronTheme': ChevronTheme.keybind,
+  'BracketTheme': BracketTheme.keybind,
+  'FormTheme': FormTheme.keybind,
+  'LedgerTheme': LedgerTheme.keybind,
+  'ColonTheme': ColonTheme.keybind,
+  'LineTheme': LineTheme.keybind,
+  'BlockTheme': BlockTheme.keybind,
+};
+
+/// The fifteen `joinedKeybind` tear-offs.
+///
+/// The map value type is the typedef, so a namespace whose signature,
+/// return type or generics drift fails to compile here.
+final Map<String, _JoinedKeybindFactory> _joinedKeybindSurface =
+    <String, _JoinedKeybindFactory>{
+      'PlainTheme': PlainTheme.joinedKeybind,
+      'RailTheme': RailTheme.joinedKeybind,
+      'BranchTheme': BranchTheme.joinedKeybind,
+      'BoxTheme': BoxTheme.joinedKeybind,
+      'RoundTheme': RoundTheme.joinedKeybind,
+      'DoubleTheme': DoubleTheme.joinedKeybind,
+      'MinimalTheme': MinimalTheme.joinedKeybind,
+      'AsciiTheme': AsciiTheme.joinedKeybind,
+      'ChevronTheme': ChevronTheme.joinedKeybind,
+      'BracketTheme': BracketTheme.joinedKeybind,
+      'FormTheme': FormTheme.joinedKeybind,
+      'LedgerTheme': LedgerTheme.joinedKeybind,
+      'ColonTheme': ColonTheme.joinedKeybind,
+      'LineTheme': LineTheme.joinedKeybind,
+      'BlockTheme': BlockTheme.joinedKeybind,
     };
 
 /// The fifteen `durationInput` tear-offs.
@@ -1767,20 +1765,6 @@ final _probes = <_SurfaceProbe>[
     expect(value.instructions, a.instructions);
     return value.structure;
   }),
-  _Probe('commandPalette', _commandPaletteSurface, (f, a) {
-    final value = f(
-      'Commands',
-      [Choice('save', 'Save')],
-      defaultValue: 'save',
-      colors: a.colors,
-      instructions: a.instructions,
-      supplementaryHelp: a.help,
-    );
-    expect(value, isA<CommandPalette<String>>());
-    expect(value.colors, a.colors);
-    expect(value.instructions, a.instructions);
-    return value.structure;
-  }),
   _Probe('maskedInput', _maskedInputSurface, (f, a) {
     final value = f(
       'Code',
@@ -1972,15 +1956,34 @@ final _probes = <_SurfaceProbe>[
     expect(value.instructions, a.instructions);
     return value.structure;
   }),
-  _Probe('keyChordInput', _keyChordInputSurface, (f, a) {
+  _Probe('keybind', _keybindSurface, (f, a) {
     final value = f(
       'Sequence',
-      requireObservation: true,
+      modifiers: const ['Ctrl', 'Shift'],
+      symbols: const ['B', 'C'],
+      initialValue: const ['Ctrl'],
+      cellFrame: CronCellFrame.square,
       colors: a.colors,
       instructions: a.instructions,
       supplementaryHelp: a.help,
     );
-    expect(value, isA<KeyChordInput>());
+    expect(value, isA<Keybind<List<String>>>());
+    expect(value.colors, a.colors);
+    expect(value.instructions, a.instructions);
+    return value.structure;
+  }),
+  _Probe('joinedKeybind', _joinedKeybindSurface, (f, a) {
+    final value = f(
+      'Sequence',
+      modifiers: const ['Ctrl', 'Shift'],
+      symbols: const ['B', 'C'],
+      initialValue: const ['Ctrl'],
+      cellFrame: CronCellFrame.square,
+      colors: a.colors,
+      instructions: a.instructions,
+      supplementaryHelp: a.help,
+    );
+    expect(value, isA<Keybind<String>>());
     expect(value.colors, a.colors);
     expect(value.instructions, a.instructions);
     return value.structure;

@@ -11,7 +11,7 @@ void main() {
       for (final chord in [false, true]) {
         final input = StreamController<String>();
         final key = Keypress('Key');
-        final sequence = KeyChordInput('Sequence');
+        final sequence = Keybind<List<String>>('Sequence');
         final pending = chord
             ? sequence.prompt(
                 source: ScriptedInput(input.stream, StringBuffer()),
@@ -19,7 +19,7 @@ void main() {
             : key.prompt(source: ScriptedInput(input.stream, StringBuffer()));
         if (chord) {
           await expectLater(
-            sequence.prompt(source: SuppliedAnswer('A')),
+            sequence.prompt(source: SuppliedAnswer('Ctrl,B')),
             throwsStateError,
           );
         } else {
@@ -31,7 +31,7 @@ void main() {
         await input.close();
         await pending;
         final result = chord
-            ? await sequence.prompt(source: SuppliedAnswer('A'))
+            ? await sequence.prompt(source: SuppliedAnswer('Ctrl,B'))
             : await key.prompt(source: SuppliedAnswer('A'));
         expect(result, isA<Accepted>());
       }
@@ -39,7 +39,39 @@ void main() {
   );
   test('key capture rejects unsafe labels', () {
     expect(() => Keypress('\x1b[2J'), throwsArgumentError);
-    expect(() => KeyChordInput('  '), throwsArgumentError);
+    expect(() => Keybind<List<String>>('  '), throwsArgumentError);
+    expect(
+      () => Keybind<List<String>>('Sequence', modifiers: const []),
+      throwsArgumentError,
+    );
+    expect(
+      () =>
+          Keybind<List<String>>('Sequence', modifiers: const ['Ctrl', 'Ctrl']),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>('Sequence', symbols: const []),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>('Sequence', symbols: const ['NotAKey']),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>('Sequence', symbols: const ['Ctrl+B']),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>('Sequence', initialValue: const ['B']),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>(
+        'Sequence',
+        initialValue: const ['Ctrl', 'Ctrl', 'B'],
+      ),
+      throwsArgumentError,
+    );
   });
 
   test(
@@ -52,36 +84,28 @@ void main() {
       expect(gesture.modifiers, {KeyModifier.shift});
       expect(gesture.provenance, KeyGestureProvenance.declared);
 
-      final sequence = await KeyChordInput('Sequence')
-          .prompt(source: SuppliedAnswer('Ctrl+a,Shift+A'));
-      final gestures = (sequence as Accepted<List<KeyGesture>>).value;
-      expect(gestures.map((g) => g.key), ['a', 'A']);
-      expect(gestures.map((g) => g.provenance), [
-        KeyGestureProvenance.declared,
-        KeyGestureProvenance.declared,
-      ]);
+      final sequence = await Keybind<List<String>>('Sequence')
+          .prompt(source: SuppliedAnswer('Ctrl,Shift,a'));
+      final tokens = (sequence as Accepted<List<String>>).value;
+      expect(tokens, ['Ctrl', 'Shift', 'a']);
     },
   );
 
-  test('scripted captures retain received letter case and ambiguity', () async {
-    final result = await KeyChordInput('Sequence').prompt(
-      source: ScriptedInput(
-        Stream.value('cacA\r'),
-        StringBuffer(),
-        outputProfile: _richProfile,
-      ),
-      mode: PromptMode.rich,
-    );
-    final gestures = (result as Accepted<List<KeyGesture>>).value;
-    expect(gestures.map((g) => g.key), ['a', 'A']);
-    expect(gestures.map((g) => g.modifiers), [
-      <KeyModifier>{},
-      <KeyModifier>{},
-    ]);
-    expect(gestures.map((g) => g.provenance), [
-      KeyGestureProvenance.ambiguous,
-      KeyGestureProvenance.ambiguous,
-    ]);
+  test('scripted keybind selections retain received letter case', () async {
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'A'],
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B\t\x1b[B\x1b[B\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    final tokens = (result as Accepted<List<String>>).value;
+    expect(tokens, ['Ctrl', 'A']);
   });
 
   test('legacy arrow capture retains ambiguous provenance', () async {
@@ -140,18 +164,38 @@ void main() {
     expect(out.toString(), contains('Observation required'));
   });
 
-  test('rich sequence can remove last and clear before review', () async {
-    final result = await KeyChordInput('Sequence').prompt(
-      source: ScriptedInput(
-        Stream.value('cacbrxcz\r'),
-        StringBuffer(),
-        outputProfile: _richProfile,
-      ),
-      mode: PromptMode.rich,
-    );
-    expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-      'z',
-    ]);
+  test('rich keybind cells can be added and removed before submit', () async {
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B+\x1b[B-\x1b[B\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
+  });
+
+  test('rich keybind never drops below two cells', () async {
+    final out = StringBuffer();
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('---\x1b[B\t\x1b[B\r'),
+            out,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
+    expect(out.toString(), contains('at least 2 symbol cells'));
   });
 
   test('Escape cancels armed capture before root cancellation', () async {
@@ -191,36 +235,63 @@ void main() {
     },
   );
 
-  test('linear capture reviews and submits an ordered sequence', () async {
+  test('linear keybind accepts comma-separated gesture tokens', () async {
     final out = StringBuffer();
-    final result = await KeyChordInput('Sequence').prompt(
-      source: ScriptedInput(Stream.value('/capture\ra/capture\rb/done\r'), out),
-      mode: PromptMode.linear,
-    );
-    expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-      'a',
-      'b',
-    ]);
-    expect(out.toString(), contains('Review:'));
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(Stream.value('Ctrl,b\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'b']);
+    expect(out.toString(), contains('Sequence'));
   });
 
-  test(
-    'rich key sequence captures ordered gestures and submits explicitly',
-    () async {
-      final result = await KeyChordInput('Sequence').prompt(
-        source: ScriptedInput(
-          Stream.value('cacb\r'),
-          StringBuffer(),
-          outputProfile: _richProfile,
-        ),
-        mode: PromptMode.rich,
-      );
-      expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-        'a',
-        'b',
-      ]);
-    },
-  );
+  test('linear keybind joins the tokens when the flag is set', () async {
+    final result =
+        await Keybind<String>.joined(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(Stream.value('Ctrl,Shift,b\r'), StringBuffer()),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<String>).value, 'Ctrl+Shift+b');
+  });
+
+  test('rich keybind selects ordered symbols and submits explicitly', () async {
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B\t\x1b[B\x1b[B\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'b']);
+  });
+
+  test('rich joined keybind returns the plus declaration', () async {
+    final result =
+        await Keybind<String>.joined(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B\t\x1b[B\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<String>).value, 'Ctrl+a');
+  });
 
   test('rich capture returns to review before explicit submission', () async {
     final out = StringBuffer();
@@ -236,23 +307,17 @@ void main() {
     expect(out.toString(), contains('Review'));
   });
 
-  test(
-    'a supplied key sequence retains ordered declaration provenance',
-    () async {
-      final result = await KeyChordInput('Sequence')
-          .prompt(source: SuppliedAnswer('Ctrl+A,Alt+B'));
-      final gestures = (result as Accepted<List<KeyGesture>>).value;
-      expect(gestures.map((g) => g.key), ['A', 'B']);
-      expect(gestures.map((g) => g.modifiers), [
-        {KeyModifier.control},
-        {KeyModifier.alt},
-      ]);
-      expect(
-        gestures.every((g) => g.provenance == KeyGestureProvenance.declared),
-        isTrue,
-      );
-    },
-  );
+  test('a supplied keybind declaration resolves its ordered tokens', () async {
+    final result = await Keybind<List<String>>('Sequence')
+        .prompt(source: SuppliedAnswer('Ctrl,Alt,B'));
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'Alt', 'B']);
+    expect(
+      (await Keybind<String>.joined('Sequence')
+              .prompt(source: SuppliedAnswer('Ctrl+Alt+B')))
+          as Accepted<String>,
+      isA<Accepted<String>>().having((a) => a.value, 'value', 'Ctrl+Alt+B'),
+    );
+  });
 
   test('observation-required policy rejects a supplied declaration', () async {
     final result = await Keypress(
@@ -301,10 +366,16 @@ void main() {
     'an explicit terminal adapter is leased, restored and cannot be combined',
     () async {
       final output = StringBuffer();
-      final terminal = _KeyTerminal(Stream.value('ca\r'), output, _richProfile);
-      final result = await KeyChordInput('Sequence')
-          .prompt(terminal: terminal, mode: PromptMode.rich);
-      expect((result as Accepted<List<KeyGesture>>).value.single.key, 'a');
+      final terminal = _KeyTerminal(
+        Stream.value('\x1b[B\t\x1b[B\r'),
+        output,
+        _richProfile,
+      );
+      final result = await Keybind<List<String>>(
+        'Sequence',
+        symbols: const ['a', 'b'],
+      ).prompt(terminal: terminal, mode: PromptMode.rich);
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
       expect(terminal.events, ['acquire', 'restore']);
       expect(output.toString(), contains('Sequence'));
 
@@ -336,15 +407,18 @@ void main() {
         (session) async {
           final spinner = Spinner('Policy');
           spinner.start(session: session);
-          final pending = KeyChordInput('Sequence').prompt(session: session);
+          final pending = Keybind<List<String>>(
+            'Sequence',
+            symbols: const ['a', 'b'],
+          ).prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('c');
+          input.add('\x1b[B');
           await Future<void>.delayed(Duration.zero);
-          input.add('a');
+          input.add('\t');
           await Future<void>.delayed(Duration.zero);
           spinner.update('checking');
           await Future<void>.delayed(Duration.zero);
-          input.add('\r');
+          input.add('\x1b[B\r');
           await input.close();
           spinner.finish(FeedbackOutcome.completed);
           return await pending;
@@ -357,9 +431,9 @@ void main() {
         mode: PromptMode.rich,
       );
 
-      expect((result as Accepted<List<KeyGesture>>).value.single.key, 'a');
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
       expect(output.toString(), contains('[status] - Policy: checking'));
-      expect(output.toString(), contains('Review:'));
+      expect(output.toString(), contains('Sequence'));
     },
   );
 
@@ -400,41 +474,45 @@ void main() {
       expect(help, contains('unverified'));
       expect(help, contains('observation'));
 
-      final armedOutput = StringBuffer();
-      final armed = await KeyChordInput('Sequence').prompt(
-        source: ScriptedInput(
-          Stream.value('c\x14\r'),
-          armedOutput,
-          outputProfile: _richProfile,
-        ),
-        mode: PromptMode.rich,
-      );
-      expect(armed, isA<InputEnded<List<KeyGesture>>>());
-      expect(armedOutput.toString(), contains('Gesture unavailable.'));
-      expect(armedOutput.toString(), isNot(contains('Help:')));
-      expect(armedOutput.toString(), contains('candidate'));
+      final keybindOutput = StringBuffer();
+      final keybind =
+          await Keybind<List<String>>(
+            'Sequence',
+            symbols: const ['a', 'b'],
+          ).prompt(
+            source: ScriptedInput(
+              Stream.value('\x14\x1b\x1b[B\t\x1b[B\r'),
+              keybindOutput,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect((keybind as Accepted<List<String>>).value, ['Ctrl', 'a']);
+      final keybindHelp = keybindOutput.toString();
+      expect(keybindHelp, contains('Help:'));
+      expect(keybindHelp, contains('cell 1 of 2'));
+      expect(keybindHelp, contains('modifier cell'));
     },
   );
 
-  test(
-    'linear help names the workflow, provenance and reserved keys',
-    () async {
-      final out = StringBuffer();
-      final result = await KeyChordInput('Sequence').prompt(
-        source: ScriptedInput(Stream.value('/help\r/capture\ra/done\r'), out),
-        mode: PromptMode.linear,
-      );
-      expect((result as Accepted<List<KeyGesture>>).value.single.key, 'a');
-      final help = out.toString();
-      expect(help, contains('/capture'));
-      expect(help, contains('/done'));
-      expect(help, contains('backslash'));
-      expect(help, contains('Identified paste'));
-      expect(help, contains('ambiguous'));
-      expect(help, contains('unverified'));
-      expect(help, contains('Observation is'));
-    },
-  );
+  test('linear help names the keybind workflow and catalog rules', () async {
+    final out = StringBuffer();
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(Stream.value('/help\rCtrl,b\r'), out),
+          mode: PromptMode.linear,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'b']);
+    final help = out.toString();
+    expect(help, contains('modifier symbols'));
+    expect(help, contains('key symbol'));
+    expect(help, contains('/cancel'));
+    expect(help, contains('backslash'));
+    expect(help, contains('unverified'));
+  });
 
   test('linear declaration entry has its own help and back-out', () async {
     final out = StringBuffer();
@@ -450,41 +528,28 @@ void main() {
     expect(out.toString(), contains('cancels declaration entry'));
   });
 
-  test(
-    'linear capture advertises back-out instead of a help command',
-    () async {
-      final out = StringBuffer();
-      final result = await KeyChordInput('Sequence').prompt(
-        source: ScriptedInput(Stream.value('/capture\r\x1b/cancel\r'), out),
-        mode: PromptMode.linear,
-      );
-      expect(result, isA<Cancelled<List<KeyGesture>>>());
-      expect(out.toString(), contains('Escape cancels capture'));
-      expect(out.toString(), contains('/help is captured as a gesture'));
-      expect(out.toString(), contains('Capture cancelled.'));
-    },
-  );
+  test('linear keybind cancels through the shared text contract', () async {
+    final out = StringBuffer();
+    final result = await Keybind<List<String>>('Sequence').prompt(
+      source: ScriptedInput(Stream.value('/cancel\r'), out),
+      mode: PromptMode.linear,
+    );
+    expect(result, isA<Cancelled<List<String>>>());
+  });
 
   test('synthetic native records keep observed provenance', () async {
-    final result = await KeyChordInput('Sequence', requireObservation: true)
-        .prompt(
-          source: ScriptedInput(
-            Stream.value('c\x1b[901;84;20;12~c\x1b[901;65;0;0~\r'),
-            StringBuffer(),
-            outputProfile: _richProfile,
-          ),
-          mode: PromptMode.rich,
-        );
-    final gestures = (result as Accepted<List<KeyGesture>>).value;
-    expect(gestures.map((g) => g.key), ['T', 'A']);
-    expect(gestures.map((g) => g.modifiers), [
-      {KeyModifier.control},
-      <KeyModifier>{},
-    ]);
-    expect(gestures.map((g) => g.provenance), [
-      KeyGestureProvenance.observed,
-      KeyGestureProvenance.observed,
-    ]);
+    final result = await Keypress('Shortcut', requireObservation: true).prompt(
+      source: ScriptedInput(
+        Stream.value('c\x1b[901;84;20;12~\r'),
+        StringBuffer(),
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    final gesture = (result as Accepted<KeyGesture>).value;
+    expect(gesture.key, 'T');
+    expect(gesture.modifiers, {KeyModifier.control});
+    expect(gesture.provenance, KeyGestureProvenance.observed);
   });
 
   test(
@@ -548,21 +613,21 @@ void main() {
   );
 
   test(
-    'observation policy rejects mixed reviews until only observations remain',
+    'observation policy rejects ambiguous reviews until one remains',
     () async {
       final out = StringBuffer();
-      final result = await KeyChordInput('Sequence', requireObservation: true)
+      final result = await Keypress('Shortcut', requireObservation: true)
           .prompt(
             source: ScriptedInput(
-              Stream.value('cac\x1b[901;65;0;0~\rrrc\x1b[901;66;0;0~\r'),
+              Stream.value('ca\rrc\x1b[901;66;0;0~\r'),
               out,
               outputProfile: _richProfile,
             ),
             mode: PromptMode.rich,
           );
-      final gestures = (result as Accepted<List<KeyGesture>>).value;
-      expect(gestures.single.key, 'B');
-      expect(gestures.single.provenance, KeyGestureProvenance.observed);
+      final gesture = (result as Accepted<KeyGesture>).value;
+      expect(gesture.key, 'B');
+      expect(gesture.provenance, KeyGestureProvenance.observed);
       expect(out.toString(), contains('Observation required'));
       expect(out.toString(), contains('ambiguous'));
     },

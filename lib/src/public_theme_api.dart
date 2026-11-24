@@ -43,6 +43,7 @@ import 'text_input.dart'
         IPAddressValue,
         InstructionDisplay,
         KeyGesture,
+        Keybind,
         MaskInterpretation,
         MaskTemplate,
         MaskedValue,
@@ -692,29 +693,6 @@ abstract class StructuralTheme {
     ).prompt,
   );
 
-  ThemePrompt<T> commandPalette<T>(
-    String label,
-    List<Choice<T>> commands, {
-    T? defaultValue,
-    FutureOr<List<Choice<T>>> Function(String query)? search,
-    ComponentColors colors = const ComponentColors(),
-    InstructionDisplay instructions = InstructionDisplay.themeDefault,
-    List<String> supplementaryHelp = const [],
-  }) => _prompt(
-    ThemeSearchPrompt<T>.commandPalette(
-      label,
-      commands,
-      io: _io,
-      session: _owner,
-      structure: structure,
-      search: search,
-      defaultValue: defaultValue,
-      colors: colors,
-      instructions: instructions,
-      supplementaryHelp: supplementaryHelp,
-    ).prompt,
-  );
-
   // Formatted values.
 
   ThemePrompt<String> slider(
@@ -1168,19 +1146,50 @@ abstract class StructuralTheme {
     ).prompt,
   );
 
-  ThemePrompt<List<KeyGesture>> keyChordInput(
+  ThemePrompt<List<String>> keybind(
     String label, {
-    bool requireObservation = false,
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    CronCellFrame cellFrame = CronCellFrame.square,
     ComponentColors colors = const ComponentColors(),
     InstructionDisplay instructions = InstructionDisplay.themeDefault,
     List<String> supplementaryHelp = const [],
   }) => _prompt(
-    ThemeKeyCapturePrompt.keyChordInput(
+    ThemeKeyCapturePrompt.keybind(
       label,
       io: _io,
       session: _owner,
       structure: structure,
-      requireObservation: requireObservation,
+      modifiers: modifiers,
+      symbols: symbols,
+      initialValue: initialValue,
+      cellFrame: cellFrame,
+      colors: colors,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
+    ).prompt,
+  );
+
+  ThemePrompt<String> joinedKeybind(
+    String label, {
+    List<String> modifiers = Keybind.defaultModifiers,
+    List<String> symbols = Keybind.defaultSymbols,
+    List<String> initialValue = const [],
+    CronCellFrame cellFrame = CronCellFrame.square,
+    ComponentColors colors = const ComponentColors(),
+    InstructionDisplay instructions = InstructionDisplay.themeDefault,
+    List<String> supplementaryHelp = const [],
+  }) => _prompt(
+    ThemeKeyCapturePrompt.joinedKeybind(
+      label,
+      io: _io,
+      session: _owner,
+      structure: structure,
+      modifiers: modifiers,
+      symbols: symbols,
+      initialValue: initialValue,
+      cellFrame: cellFrame,
       colors: colors,
       instructions: instructions,
       supplementaryHelp: supplementaryHelp,

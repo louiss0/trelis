@@ -26,30 +26,6 @@ final class SearchSelect<T> {
       throw ArgumentError('Default identity is not a choice.');
     }
   }
-  SearchSelect._palette(
-    this.label,
-    List<Choice<T>> choices, {
-    this.defaultValue,
-    this.search,
-    this.colors = ColorThemes.terminalDefault,
-    this.structure = PromptStructure.plain,
-    this.instructions = InstructionDisplay.themeDefault,
-    this.presentation,
-    List<String> supplementaryHelp = const [],
-  }) : supplementaryHelp = List.unmodifiable(supplementaryHelp),
-       choices = List.unmodifiable(choices),
-       _kind = 'CommandPalette',
-       _matches = null {
-    if (label.trim().isEmpty || label.runes.any((c) => c < 32 || c == 127)) {
-      throw ArgumentError.value(label, 'label');
-    }
-    if (choices.map((c) => c.value).toSet().length != choices.length) {
-      throw ArgumentError('Choice identities must be unique.');
-    }
-    if (defaultValue != null && !choices.any((c) => c.value == defaultValue)) {
-      throw ArgumentError('Default identity is not a choice.');
-    }
-  }
   SearchSelect._timezone(
     this.label,
     List<Choice<T>> choices, {
@@ -259,8 +235,6 @@ final class SearchSelect<T> {
     // boundary callback clears the credit once the editor row is repainted.
     var repaintBelowEditor = false;
     String domainHelp() => switch (_kind) {
-      'CommandPalette' =>
-        'A reference identifies a command; accepting it does not run it.',
       'TimezoneSelect' => 'Matching covers IANA identifiers, city names and aliases; the canonical identity is returned and no offset or current time is consulted.',
       _ => '',
     };

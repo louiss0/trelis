@@ -73,42 +73,53 @@ void main() {
     },
   );
 
-  test(
-    'a themed chord preserves order, modifiers and provenance across reuse',
-    () async {
-      final output = StringBuffer();
-      final prompt = ThemeKeyCapturePrompt.keyChordInput(
-        'Sequence',
-        io: TerminalEnvironment.scripted(
-          input: _AnswersPerListen(['cac\x1b[901;65;0;0~cb\r', 'cb\r']),
-          output: output,
-          profile: _richProfile,
-          supportsRich: true,
-        ),
-        interaction: const InteractionPreferences(mode: PromptMode.rich),
-      );
-
-      final first = await prompt.prompt();
-      final gestures = (first as Accepted<List<KeyGesture>>).value;
-      expect(gestures.map((g) => g.key), ['a', 'A', 'b']);
-      expect(gestures.map((g) => g.provenance), [
-        KeyGestureProvenance.ambiguous,
-        KeyGestureProvenance.observed,
-        KeyGestureProvenance.ambiguous,
-      ]);
-      final again = await prompt.prompt();
-      expect((again as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-        'b',
-      ]);
-    },
-  );
-
-  test('linear capture reviews typed commands as literal data', () async {
+  test('a themed keybind preserves token order across reuse', () async {
     final output = StringBuffer();
-    final prompt = ThemeKeyCapturePrompt.keyChordInput(
+    final prompt = ThemeKeyCapturePrompt.keybind(
+      'Sequence',
+      symbols: const ['A', 'B'],
+      io: TerminalEnvironment.scripted(
+        input: _AnswersPerListen([
+          '\x1b[B\t\x1b[B\x1b[B\r',
+          '\x1b[B\x1b[B\t\x1b[B\x1b[B\r',
+        ]),
+        output: output,
+        profile: _richProfile,
+        supportsRich: true,
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+    );
+
+    final first = await prompt.prompt();
+    expect((first as Accepted<List<String>>).value, ['Ctrl', 'B']);
+    final again = await prompt.prompt();
+    expect((again as Accepted<List<String>>).value, ['Alt', 'B']);
+  });
+
+  test('a themed joined keybind resolves the plus declaration', () async {
+    final prompt = ThemeKeyCapturePrompt.joinedKeybind(
+      'Sequence',
+      symbols: const ['A', 'B'],
+      io: TerminalEnvironment.scripted(
+        input: Stream.value('\x1b[B\t\x1b[B\x1b[B\r'),
+        output: StringBuffer(),
+        profile: _richProfile,
+        supportsRich: true,
+      ),
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+    );
+
+    final result = await prompt.prompt();
+
+    expect((result as Accepted<String>).value, 'Ctrl+B');
+  });
+
+  test('linear keybind accepts comma-separated declarations', () async {
+    final output = StringBuffer();
+    final prompt = ThemeKeyCapturePrompt.keybind(
       'Sequence',
       io: TerminalEnvironment.scripted(
-        input: Stream.value('/declare\rCtrl+Shift+A\r/capture\rb/done\r'),
+        input: Stream.value('Ctrl,Shift,A\r'),
         output: output,
       ),
       interaction: const InteractionPreferences(mode: PromptMode.linear),
@@ -116,12 +127,8 @@ void main() {
 
     final result = await prompt.prompt();
 
-    final gestures = (result as Accepted<List<KeyGesture>>).value;
-    expect(gestures.map((g) => g.key), ['A', 'b']);
-    expect(gestures.first.modifiers, {KeyModifier.control, KeyModifier.shift});
-    expect(gestures.first.provenance, KeyGestureProvenance.declared);
-    expect(gestures.last.provenance, KeyGestureProvenance.ambiguous);
-    expect(output.toString(), contains('Review:'));
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'Shift', 'A']);
+    expect(output.toString(), contains('Sequence'));
   });
 
   test(
@@ -204,10 +211,11 @@ void main() {
       expect(route.gesture, isNull);
 
       final output = StringBuffer();
-      final prompt = ThemeKeyCapturePrompt.keyChordInput(
+      final prompt = ThemeKeyCapturePrompt.keybind(
         'Sequence',
+        symbols: const ['A', 'B'],
         io: TerminalEnvironment.scripted(
-          input: Stream.value('cacb\x14\x1bcz\r'),
+          input: Stream.value('\x1b[B\t\x1b[B\x14\x1b\x1b[B\r'),
           output: output,
           profile: _richProfile,
           supportsRich: true,
@@ -217,11 +225,7 @@ void main() {
 
       final result = await prompt.prompt();
 
-      expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-        'a',
-        'b',
-        'z',
-      ]);
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'B']);
       expect(output.toString(), contains('Help:'));
       expect(output.toString(), contains('Help dismissed.'));
     },
@@ -314,7 +318,7 @@ void main() {
     ).prompt();
     expect(interrupted, isA<Interrupted<KeyGesture>>());
 
-    final ended = await ThemeKeyCapturePrompt.keyChordInput(
+    final ended = await ThemeKeyCapturePrompt.keybind(
       'Sequence',
       io: TerminalEnvironment.scripted(
         input: const Stream<String>.empty(),
@@ -322,7 +326,7 @@ void main() {
       ),
       interaction: const InteractionPreferences(mode: PromptMode.linear),
     ).prompt();
-    expect(ended, isA<InputEnded<List<KeyGesture>>>());
+    expect(ended, isA<InputEnded<List<String>>>());
   });
 
   test(
@@ -425,13 +429,14 @@ void main() {
   );
 
   test(
-    'special keys and escape back-out keep the reviewed sequence intact',
+    'cell navigation and escape cancellation keep selections intact',
     () async {
       final output = StringBuffer();
-      final result = await ThemeKeyCapturePrompt.keyChordInput(
+      final result = await ThemeKeyCapturePrompt.keybind(
         'Sequence',
+        symbols: const ['A', 'B'],
         io: TerminalEnvironment.scripted(
-          input: Stream.value('c\x1b[Ac\x1bca\r'),
+          input: Stream.value('\x1b[B\t\x1b[B\x1b[B\x1b[D\x1b[B\x1b[B\x1b[C\r'),
           output: output,
           profile: _richProfile,
           supportsRich: true,
@@ -439,12 +444,21 @@ void main() {
         interaction: const InteractionPreferences(mode: PromptMode.rich),
       ).prompt();
 
-      expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-        'ArrowUp',
-        'a',
-      ]);
-      expect(output.toString(), contains('ArrowUp'));
-      expect(output.toString(), contains('Capture cancelled.'));
+      expect((result as Accepted<List<String>>).value, ['Shift', 'B']);
+      expect(output.toString(), contains('cell 2/2'));
+
+      final cancelled = await ThemeKeyCapturePrompt.keybind(
+        'Sequence',
+        symbols: const ['A', 'B'],
+        io: TerminalEnvironment.scripted(
+          input: Stream.value('\x1b'),
+          output: StringBuffer(),
+          profile: _richProfile,
+          supportsRich: true,
+        ),
+        interaction: const InteractionPreferences(mode: PromptMode.rich),
+      ).prompt();
+      expect(cancelled, isA<Cancelled<List<String>>>());
     },
   );
 

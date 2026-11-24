@@ -72,8 +72,8 @@ The complete set of Trelis component tasks and declared interaction/output profi
 **Key gesture**:
 A logical key with the modifiers reported for it, rather than a physical keyboard position or global hotkey registration.
 
-**Key sequence**:
-An ordered series of one or more key gestures entered for KeyChordInput. Completion is explicit rather than inferred from a pause.
+**Keybind declaration**:
+One logical gesture composed for Keybind as a row of symbol cells: one or more modifier cells (Ctrl, Alt, Shift, Meta) followed by one key cell. Completion is explicit: the declaration submits only once every cell holds a catalog member and no modifier repeats. The token form resolves `List<String>`; the joined form resolves the `+`-joined string.
 
 **Choice reference**:
 A displayed reference that identifies the same choice throughout one prompt, independent of filtering, paging or order. It is distinct from the choice's current position.

@@ -122,7 +122,7 @@ COMPONENTS = [
     ('FilePicker', 'file selected'), ('DirectoryPicker', 'browsing'), ('PortInput', 'invalid port'),
     ('IPAddressInput', 'IPv6'), ('DurationInput', 'human readable'), ('CronInput', 'next run'),
     ('TimezoneSelect', 'filtered'), ('RangeSlider', '20 to 80'), ('SortableSelect', 'reordered'),
-    ('KeyChordInput', '2-key chord'), ('StepperForm', 'step 2 of 4'), ('CommandPalette', 'fuzzy command'),
+    ('Keybind', '2-cell bind'), ('StepperForm', 'step 2 of 4'),
 ]
 
 NOTES = {
@@ -255,7 +255,7 @@ def specimen(mode, component):
         gap = component in ('Autocomplete', 'Confirm', 'Select', 'MultiSelect',
                             'SearchSelect', 'Checkbox', 'Radio', 'TreeSelect',
                             'FilePicker', 'DirectoryPicker', 'TimezoneSelect',
-                            'SortableSelect', 'CommandPalette')
+                            'SortableSelect')
         return prompt(mode,label,rows,hint,selection_gap=gap)
     if component == 'TextInput':
         return p('Project name', [line(arrow+' orbit'+cursor,'accent')], 'enter to continue')
@@ -396,22 +396,16 @@ def specimen(mode, component):
                                          line('  2. Schema'),
                                          line('  3. Custom rules')],
                  move+' move / ctrl+'+move+' reorder')
-    if component == 'KeyChordInput':
-        return p('Open command palette', [line(arrow+' [ Ctrl+K, Ctrl+C ]', 'accent'),
-                                          line('2-key chord / no conflict', 'success')],
-                 'esc clear / enter bind')
+    if component == 'Keybind':
+        return p('Bind the gesture', [line(arrow+' [ Ctrl ] [ B ]', 'accent'),
+                                      line('modifier + key / 2 cells', 'success')],
+                 'up/down cycle / + - cells / enter bind')
     if component == 'StepperForm':
         rows = [line('1  Project     orbit', 'success'),
                 line(arrow+' 2  Runtime     [Dart]', 'accent', focused),
                 line('3  Features'),
                 line('4  Review')]
         return p('New workspace',rows,'enter next / alt+left back')
-    if component == 'CommandPalette':
-        return p('Run a command', [line('> new pr'+cursor, 'accent'),
-                                   option('Project: New',True),
-                                   line('  Profile: New'),
-                                   line('  Preferences: Open', 'muted')],
-                 'type to filter / enter run')
 
 
 WIDTH, HEIGHT = 1800, 4300

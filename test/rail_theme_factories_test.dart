@@ -61,10 +61,6 @@ void main() {
         theme.searchSelect<String>('Find', choices),
         isA<ThemePrompt<String>>(),
       );
-      expect(
-        theme.commandPalette<String>('Run', choices),
-        isA<ThemePrompt<String>>(),
-      );
     });
 
     test('formatted and configured families return prompts', () {
@@ -130,10 +126,8 @@ void main() {
       expect(theme.filePicker('File'), isA<ThemePrompt<String>>());
       expect(theme.directoryPicker('Directory'), isA<ThemePrompt<String>>());
       expect(theme.keypress('Shortcut'), isA<ThemePrompt<KeyGesture>>());
-      expect(
-        theme.keyChordInput('Sequence'),
-        isA<ThemePrompt<List<KeyGesture>>>(),
-      );
+      expect(theme.keybind('Sequence'), isA<ThemePrompt<List<String>>>());
+      expect(theme.joinedKeybind('Sequence'), isA<ThemePrompt<String>>());
       expect(theme.text('Done'), isA<ThemeFeedback>());
       expect(theme.progress('Work'), isA<ThemeLiveFeedback>());
       expect(theme.spinner('Work'), isA<ThemeLiveFeedback>());

@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 /// through `package:trelis/trelis.dart` alone, and the shared session seam
 /// must be usable through it.
 void main() {
-  test('the public library exposes all 38 components', () {
+  test('the public library exposes all 37 components', () {
     final components = <Object>[
       TextInput('Name'),
       Password('Secret'),
@@ -19,7 +19,6 @@ void main() {
       Radio<String>('Choice', [Choice('a', 'First')]),
       MultiSelect<String>('Choices', [Choice('a', 'First')]),
       SearchSelect('Fruit', [Choice('a', 'Apple')]),
-      CommandPalette('Commands', [Choice('save', 'Save')]),
       TimezoneSelect('Zone'),
       TreeSelect<String>('Tree', [TreeNode('a', 'A')]),
       SortableSelect<String>('Order', [Choice('a', 'First')]),
@@ -30,7 +29,7 @@ void main() {
       FilePicker('File'),
       DirectoryPicker('Directory'),
       Keypress('Shortcut'),
-      KeyChordInput('Sequence'),
+      Keybind<List<String>>('Sequence'),
       NumberInput('Count', convention: NumericConvention.ascii()),
       PortInput('Port'),
       IPAddressInput('Address'),
@@ -53,10 +52,10 @@ void main() {
       Spinner('Work'),
       MultiSpinner(['build', 'test']),
     ];
-    expect(components, hasLength(38));
+    expect(components, hasLength(37));
     expect(
       components.map((component) => component.runtimeType).toSet(),
-      hasLength(38),
+      hasLength(37),
     );
   });
 

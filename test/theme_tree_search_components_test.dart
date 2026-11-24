@@ -113,12 +113,9 @@ ThemeSearchPrompt<String> _search(
   InteractionPreferences interaction = const InteractionPreferences(),
   OutputProfile profile = const OutputProfile(),
   FutureOr<List<Choice<String>>> Function(String)? search,
-  ThemeSearchComponent kind = ThemeSearchComponent.search,
 }) => ThemeSearchPrompt<String>(
-  kind == ThemeSearchComponent.search ? 'Fruit' : 'Commands',
-  kind == ThemeSearchComponent.search
-      ? _searchChoices()
-      : [Choice('save', 'Save'), Choice('open', 'Open')],
+  'Fruit',
+  _searchChoices(),
   io: TerminalEnvironment.scripted(
     input: Stream.value(input),
     output: output,
@@ -128,7 +125,6 @@ ThemeSearchPrompt<String> _search(
   interaction: interaction,
   instructions: InstructionDisplay.hidden,
   search: search,
-  kind: kind,
 );
 
 final class _AnswersPerListen extends Stream<String> {
@@ -160,102 +156,65 @@ Future<void> _waitUntil(bool Function() predicate) async {
 }
 
 void main() {
-  test(
-    'themed search and command prompts keep identities, hints and help',
-    () async {
-      final searchOutput = StringBuffer();
-      final cancelled = await _search(
-        '\r1\r/cancel\r',
-        searchOutput,
-        interaction: const InteractionPreferences(mode: PromptMode.linear),
-      ).prompt();
-      expect(cancelled, isA<Cancelled<String>>());
-      final searchText = searchOutput.toString();
-      expect(searchText, contains('[!'));
-      expect(searchText, contains('offline'));
-      expect(searchText, contains('Enter a query'));
-      expect(searchText, contains('/help'));
+  test('themed search keeps identities, hints and help', () async {
+    final searchOutput = StringBuffer();
+    final cancelled = await _search(
+      '\r1\r/cancel\r',
+      searchOutput,
+      interaction: const InteractionPreferences(mode: PromptMode.linear),
+    ).prompt();
+    expect(cancelled, isA<Cancelled<String>>());
+    final searchText = searchOutput.toString();
+    expect(searchText, contains('[!'));
+    expect(searchText, contains('offline'));
+    expect(searchText, contains('Enter a query'));
+    expect(searchText, contains('/help'));
 
-      final commandOutput = StringBuffer();
-      final command = await _search(
-        '/help\rSave\r1\r',
-        commandOutput,
-        interaction: const InteractionPreferences(mode: PromptMode.linear),
-        kind: ThemeSearchComponent.commandPalette,
-      ).prompt();
-      expect((command as Accepted<String>).value, 'save');
-      expect(
-        commandOutput.toString(),
-        contains(
-          'A reference identifies a command; accepting it does not run it.',
-        ),
-      );
+    final readerOutput = StringBuffer();
+    final reader = await _search(
+      '/cancel\r',
+      readerOutput,
+      interaction: const InteractionPreferences(
+        mode: PromptMode.linear,
+        screenReader: ScreenReaderPreference.on,
+      ),
+    ).prompt();
+    expect(reader, isA<Cancelled<String>>());
+    final text = readerOutput.toString();
+    expect(text, contains('Fruit, search selection of 3 choices.'));
+    expect(
+      text.indexOf('Fruit, search selection'),
+      lessThan(text.indexOf('Fruit.')),
+    );
+  });
 
-      final readerOutput = StringBuffer();
-      final reader = await _search(
-        '/cancel\r',
-        readerOutput,
-        interaction: const InteractionPreferences(
-          mode: PromptMode.linear,
-          screenReader: ScreenReaderPreference.on,
-        ),
-      ).prompt();
-      expect(reader, isA<Cancelled<String>>());
-      final text = readerOutput.toString();
-      expect(text, contains('Fruit, search selection of 3 choices.'));
-      expect(
-        text.indexOf('Fruit, search selection'),
-        lessThan(text.indexOf('Fruit.')),
-      );
-    },
-  );
+  test('themed search presents rich and screen-reader results', () async {
+    final richSearchOutput = StringBuffer();
+    final richSearch = await _search(
+      '\r\x1b[B\r',
+      richSearchOutput,
+      interaction: const InteractionPreferences(mode: PromptMode.rich),
+      profile: _richProfile,
+    ).prompt();
+    expect((richSearch as Accepted<String>).value, 'c');
+    expect(richSearchOutput.toString(), contains('Fruit SearchSelect:'));
+    expect(richSearchOutput.toString(), contains('→'));
 
-  test(
-    'themed search and command prompts present rich and screen-reader results',
-    () async {
-      final richSearchOutput = StringBuffer();
-      final richSearch = await _search(
-        '\r\x1b[B\r',
-        richSearchOutput,
-        interaction: const InteractionPreferences(mode: PromptMode.rich),
-        profile: _richProfile,
-      ).prompt();
-      expect((richSearch as Accepted<String>).value, 'c');
-      expect(richSearchOutput.toString(), contains('Fruit SearchSelect:'));
-      expect(richSearchOutput.toString(), contains('→'));
-
-      final richCommandOutput = StringBuffer();
-      final richCommand = await _search(
-        '\r\x1b[B\r',
-        richCommandOutput,
-        interaction: const InteractionPreferences(mode: PromptMode.rich),
-        profile: _richProfile,
-        kind: ThemeSearchComponent.commandPalette,
-      ).prompt();
-      expect((richCommand as Accepted<String>).value, 'open');
-      expect(
-        richCommandOutput.toString(),
-        contains('Commands CommandPalette:'),
-      );
-      expect(richCommandOutput.toString(), contains('→'));
-
-      final readerOutput = StringBuffer();
-      final reader = await _search(
-        '/cancel\r',
-        readerOutput,
-        interaction: const InteractionPreferences(
-          mode: PromptMode.linear,
-          screenReader: ScreenReaderPreference.on,
-        ),
-        kind: ThemeSearchComponent.commandPalette,
-      ).prompt();
-      expect(reader, isA<Cancelled<String>>());
-      expect(
-        readerOutput.toString(),
-        contains('Commands, command selection of 2 choices.'),
-      );
-    },
-  );
+    final readerOutput = StringBuffer();
+    final reader = await _search(
+      '/cancel\r',
+      readerOutput,
+      interaction: const InteractionPreferences(
+        mode: PromptMode.linear,
+        screenReader: ScreenReaderPreference.on,
+      ),
+    ).prompt();
+    expect(reader, isA<Cancelled<String>>());
+    expect(
+      readerOutput.toString(),
+      contains('Fruit, search selection of 3 choices.'),
+    );
+  });
 
   test('themed async search rejects failures and recovers without losing the query', () async {
     final requests = PendingRequests<List<Choice<String>>>();
@@ -624,7 +583,7 @@ void main() {
     expect(output.toString(), contains('[x]'));
   });
 
-  test('all five themed families keep terminal outcomes distinct', () async {
+  test('all four themed families keep terminal outcomes distinct', () async {
     final linear = const InteractionPreferences(mode: PromptMode.linear);
     final cases = <({String name, Future<Object> Function(String) run})>[
       (
@@ -646,15 +605,6 @@ void main() {
         name: 'search',
         run: (input) =>
             _search(input, StringBuffer(), interaction: linear).prompt(),
-      ),
-      (
-        name: 'command',
-        run: (input) => _search(
-          input,
-          StringBuffer(),
-          interaction: linear,
-          kind: ThemeSearchComponent.commandPalette,
-        ).prompt(),
       ),
     ];
     for (final component in cases) {
@@ -698,9 +648,6 @@ void main() {
           unavailableOutput,
           interaction: const InteractionPreferences(mode: PromptMode.rich),
           profile: const OutputProfile(glyphs: GlyphSet.ascii),
-          kind: component.name == 'command'
-              ? ThemeSearchComponent.commandPalette
-              : ThemeSearchComponent.search,
         ).prompt(),
       };
       expect(

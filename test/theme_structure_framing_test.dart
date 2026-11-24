@@ -222,14 +222,6 @@ List<_Case> _cases() => [
     richAnswer: '\r\r',
   ),
   _Case(
-    'CommandPalette',
-    'sav\r1\r',
-    (mode, input) => RailTheme.commandPalette<String>('Commands', [
-      Choice('save', 'Save'),
-    ]).prompt(source: input, mode: mode),
-    richAnswer: 'sav\r\r',
-  ),
-  _Case(
     'TimezoneSelect',
     'US/Eastern\r105\r',
     (mode, input) =>
@@ -354,11 +346,22 @@ List<_Case> _cases() => [
     richAnswer: 'ca\r',
   ),
   _Case(
-    'KeyChordInput',
-    '/capture\ra/capture\rb/done\r',
-    (mode, input) =>
-        RailTheme.keyChordInput('Sequence').prompt(source: input, mode: mode),
-    richAnswer: 'cacb\r',
+    'Keybind',
+    'Ctrl,b\r',
+    (mode, input) => RailTheme.keybind(
+      'Sequence',
+      symbols: const ['a', 'b'],
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\x1b[B\t\x1b[B\r',
+  ),
+  _Case(
+    'JoinedKeybind',
+    'Ctrl,b\r',
+    (mode, input) => RailTheme.joinedKeybind(
+      'Sequence',
+      symbols: const ['a', 'b'],
+    ).prompt(source: input, mode: mode),
+    richAnswer: '\x1b[B\t\x1b[B\r',
   ),
 ];
 
@@ -687,10 +690,6 @@ Future<Object?> _branchDispatch(
       return BranchTheme.searchSelect<String>('Fruit', [
         Choice('a', 'Apple'),
       ]).prompt(source: input, mode: mode);
-    case 'CommandPalette':
-      return BranchTheme.commandPalette<String>('Commands', [
-        Choice('save', 'Save'),
-      ]).prompt(source: input, mode: mode);
     case 'TimezoneSelect':
       return BranchTheme.timezoneSelect('Zone')
           .prompt(source: input, mode: mode);
@@ -763,9 +762,16 @@ Future<Object?> _branchDispatch(
       ).prompt(source: input, mode: mode);
     case 'Keypress':
       return BranchTheme.keypress('Shortcut').prompt(source: input, mode: mode);
-    case 'KeyChordInput':
-      return BranchTheme.keyChordInput('Sequence')
-          .prompt(source: input, mode: mode);
+    case 'Keybind':
+      return BranchTheme.keybind(
+        'Sequence',
+        symbols: const ['a', 'b'],
+      ).prompt(source: input, mode: mode);
+    case 'JoinedKeybind':
+      return BranchTheme.joinedKeybind(
+        'Sequence',
+        symbols: const ['a', 'b'],
+      ).prompt(source: input, mode: mode);
     default:
       throw StateError('No branch case for $name');
   }

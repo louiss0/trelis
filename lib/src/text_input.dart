@@ -47,7 +47,6 @@ part 'autocomplete.dart';
 part 'search_select.dart';
 part 'tree_order.dart';
 
-part 'command_palette.dart';
 part 'key_capture.dart';
 
 part 'duration_input.dart';

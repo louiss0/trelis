@@ -47,7 +47,6 @@ Each file below exists in **all 15** folders, always with the same palette.
 | Autocomplete | `autocomplete.dart` | ColorThemes.paper |
 | Checkbox | `checkbox.dart` | ColorThemes.mainframe |
 | ColorInput | `color_input.dart` | ColorThemes.blueprint |
-| CommandPalette | `command_palette.dart` | ColorThemes.ember |
 | Confirm | `confirm.dart` | ColorThemes.orchid |
 | CronInput | `cron_input.dart` | ColorThemes.workbench |
 | DateInput | `date_input.dart` | ColorThemes.tide |
@@ -56,7 +55,7 @@ Each file below exists in **all 15** folders, always with the same palette.
 | EmailInput | `email_input.dart` | ColorThemes.fieldnotes |
 | FilePicker | `file_picker.dart` | ColorThemes.nordic |
 | IPAddressInput | `ip_address_input.dart` | ColorThemes.punch |
-| KeyChordInput | `key_chord_input.dart` | ColorThemes.ledger |
+| Keybind | `keybind.dart` | ColorThemes.ledger |
 | Keypress | `keypress.dart` | ColorThemes.infrared |
 | MaskedInput | `masked_input.dart` | ColorThemes.porcelain |
 | MultiSelect | `multi_select.dart` | ColorThemes.citrus |

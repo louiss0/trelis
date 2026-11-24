@@ -33,7 +33,6 @@ import 'text_input.dart'
     show
         Autocomplete,
         Choice,
-        CommandPalette,
         InstructionDisplay,
         PromptResult,
         SearchSelect,
@@ -375,17 +374,13 @@ final class ThemeAutocompletePrompt {
   }
 }
 
-/// Which real search component a [ThemeSearchPrompt] delegates to.
-enum ThemeSearchComponent { search, commandPalette }
-
-/// ThemeSession-backed SearchSelect and CommandPalette prompts.
+/// ThemeSession-backed SearchSelect prompt.
 final class ThemeSearchPrompt<T> {
   ThemeSearchPrompt(
     this.label,
     List<Choice<T>> choices, {
     required TerminalEnvironment io,
     ThemeSession? session,
-    this.kind = ThemeSearchComponent.search,
     this.search,
     this.defaultValue,
     T? selectedValue,
@@ -444,46 +439,6 @@ final class ThemeSearchPrompt<T> {
     choices,
     io: io,
     session: session,
-    kind: ThemeSearchComponent.search,
-    search: search,
-    defaultValue: defaultValue,
-    selectedValue: selectedValue,
-    instructions: instructions,
-    supplementaryHelp: supplementaryHelp,
-    colors: colors,
-    structure: structure,
-    glyphs: glyphs,
-    themeColors: themeColors,
-    interaction: interaction,
-    onResolved: onResolved,
-    factsForPeriod: factsForPeriod,
-    hints: hints,
-  );
-
-  factory ThemeSearchPrompt.commandPalette(
-    String label,
-    List<Choice<T>> commands, {
-    required TerminalEnvironment io,
-    ThemeSession? session,
-    FutureOr<List<Choice<T>>> Function(String)? search,
-    T? defaultValue,
-    T? selectedValue,
-    InstructionDisplay instructions = InstructionDisplay.themeDefault,
-    List<String> supplementaryHelp = const [],
-    ComponentColors colors = const ComponentColors(),
-    PromptStructure structure = PromptStructure.plain,
-    StateGlyphs glyphs = StateGlyphs.unicode,
-    ColorPreferences themeColors = const ColorPreferences(),
-    InteractionPreferences interaction = const InteractionPreferences(),
-    ThemeResolvedCallback? onResolved,
-    ThemeInteractionFactsProvider? factsForPeriod,
-    NativeHintObservations? hints,
-  }) => ThemeSearchPrompt<T>(
-    label,
-    commands,
-    io: io,
-    session: session,
-    kind: ThemeSearchComponent.commandPalette,
     search: search,
     defaultValue: defaultValue,
     selectedValue: selectedValue,
@@ -501,7 +456,6 @@ final class ThemeSearchPrompt<T> {
 
   final String label;
   final List<Choice<T>> choices;
-  final ThemeSearchComponent kind;
 
   /// Optional asynchronous search. Results must reuse [choices] identities.
   final FutureOr<List<Choice<T>>> Function(String)? search;
@@ -523,30 +477,17 @@ final class ThemeSearchPrompt<T> {
     }
     final palette = handle.componentColors(colors).palette;
     final presentation = _outputConfig(handle, _config);
-    return switch (kind) {
-      ThemeSearchComponent.search => SearchSelect<T>(
-        label,
-        choices,
-        search: search,
-        defaultValue: defaultValue,
-        instructions: instructions,
-        supplementaryHelp: supplementaryHelp,
-        colors: palette,
-        structure: structure,
-        presentation: presentation,
-      ).prompt(session: handle.session),
-      ThemeSearchComponent.commandPalette => CommandPalette<T>(
-        label,
-        choices,
-        search: search,
-        defaultValue: defaultValue,
-        instructions: instructions,
-        supplementaryHelp: supplementaryHelp,
-        colors: palette,
-        structure: structure,
-        presentation: presentation,
-      ).prompt(session: handle.session),
-    };
+    return SearchSelect<T>(
+      label,
+      choices,
+      search: search,
+      defaultValue: defaultValue,
+      instructions: instructions,
+      supplementaryHelp: supplementaryHelp,
+      colors: palette,
+      structure: structure,
+      presentation: presentation,
+    ).prompt(session: handle.session);
   });
 
   /// Starts live feedback sharing this prompt's active period.
@@ -556,10 +497,6 @@ final class ThemeSearchPrompt<T> {
   }) => _owner.startFeedback(start, stop: stop);
 
   String _essential(PresentationMode mode) {
-    final kindName = switch (kind) {
-      ThemeSearchComponent.search => 'search selection',
-      ThemeSearchComponent.commandPalette => 'command selection',
-    };
     final (primary, short) = switch (mode) {
       PresentationMode.rich => (
         'Type a query; Enter opens results and accepts a focused choice',
@@ -570,7 +507,7 @@ final class ThemeSearchPrompt<T> {
     return composePromptPresentation(
       mode: mode,
       prompt: label,
-      essential: '$label, $kindName of ${choices.length} choices.',
+      essential: '$label, search selection of ${choices.length} choices.',
       hint: compactHint(
         mode: mode,
         component: ComponentRoute.standard,

@@ -46,9 +46,6 @@ void main() {
           'Radio': Radio('Choice', [Choice('a', 'A')]).prompt,
           'MultiSelect': MultiSelect('Choices', [Choice('a', 'A')]).prompt,
           'SearchSelect': SearchSelect('Search', [Choice('a', 'A')]).prompt,
-          'CommandPalette': CommandPalette('Command', [
-            Choice('a', 'A'),
-          ]).prompt,
           'TimezoneSelect': TimezoneSelect('Zone').prompt,
           'TreeSelect': TreeSelect('Tree', [TreeNode('a', 'A')]).prompt,
           'SortableSelect': SortableSelect('Order', [Choice('a', 'A')]).prompt,
@@ -69,7 +66,8 @@ void main() {
           'FilePicker': FilePicker('File').prompt,
           'DirectoryPicker': DirectoryPicker('Directory').prompt,
           'Keypress': Keypress('Key').prompt,
-          'KeyChordInput': KeyChordInput('Sequence').prompt,
+          'Keybind': Keybind<List<String>>('Sequence').prompt,
+          'JoinedKeybind': Keybind<String>.joined('Sequence').prompt,
           'NumberInput': NumberInput(
             'Number',
             convention: NumericConvention.ascii(),
@@ -257,18 +255,6 @@ void main() {
       );
       expect((result as Accepted<String>).value, 'a');
     });
-    test('CommandPalette / ${mode.name}: choose command identity', () async {
-      final result = await CommandPalette('Commands', [Choice('save', 'Save')])
-          .prompt(
-            source: scriptedInput(
-              mode,
-              Stream.value(mode == PromptMode.rich ? 'sav\r\r' : 'sav\r1\r'),
-              StringBuffer(),
-            ),
-            mode: mode,
-          );
-      expect((result as Accepted<String>).value, 'save');
-    });
     test('TimezoneSelect / ${mode.name}: resolve alias', () async {
       final result = await TimezoneSelect('Zone').prompt(
         source: scriptedInput(
@@ -363,23 +349,39 @@ void main() {
       );
       expect((result as Accepted<KeyGesture>).value.key, 'a');
     });
-    test('KeyChordInput / ${mode.name}: submit ordered gestures', () async {
-      final result = await KeyChordInput('Sequence').prompt(
-        source: scriptedInput(
-          mode,
-          Stream.value(
-            mode == PromptMode.rich
-                ? 'cacb\r'
-                : '/capture\ra/capture\rb/done\r',
-          ),
-          StringBuffer(),
-        ),
-        mode: mode,
-      );
-      expect((result as Accepted<List<KeyGesture>>).value.map((g) => g.key), [
-        'a',
-        'b',
-      ]);
+    test('Keybind / ${mode.name}: submit ordered tokens', () async {
+      final result =
+          await Keybind<List<String>>(
+            'Sequence',
+            symbols: const ['A', 'B'],
+          ).prompt(
+            source: scriptedInput(
+              mode,
+              Stream.value(
+                mode == PromptMode.rich ? '\x1b[B\t\x1b[B\x1b[B\r' : 'Ctrl,B\r',
+              ),
+              StringBuffer(),
+            ),
+            mode: mode,
+          );
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'B']);
+    });
+    test('JoinedKeybind / ${mode.name}: submit the plus declaration', () async {
+      final result =
+          await Keybind<String>.joined(
+            'Sequence',
+            symbols: const ['A', 'B'],
+          ).prompt(
+            source: scriptedInput(
+              mode,
+              Stream.value(
+                mode == PromptMode.rich ? '\x1b[B\t\x1b[B\x1b[B\r' : 'Ctrl,B\r',
+              ),
+              StringBuffer(),
+            ),
+            mode: mode,
+          );
+      expect((result as Accepted<String>).value, 'Ctrl+B');
     });
     test('DateInput / ${mode.name}: review a leap day', () async {
       final result = await DateInput('Date', order: DateFieldOrder.dayMonthYear)
