@@ -624,6 +624,7 @@ final class Spinner {
     this.label, {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    this.onClosed,
     FeedbackClock? clock,
   }) : themeRenderer = null,
        _clock = clock ?? _SystemFeedbackClock();
@@ -633,6 +634,7 @@ final class Spinner {
     this.label, {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    this.onClosed,
     FeedbackClock? clock,
     required this.themeRenderer,
   }) : _clock = clock ?? _SystemFeedbackClock();
@@ -653,6 +655,13 @@ final class Spinner {
   String _state = 'running';
   int _frame = 0;
   bool _finished = false;
+
+  /// Runs once when the spinner reaches a terminal state.
+  ///
+  /// Theme plumbing wires this to release session participation; standalone
+  /// users can observe it for cleanup. It fires exactly once, on [finish] or
+  /// [dispose], after the final output is written.
+  final FutureOr<void> Function()? onClosed;
 
   void start({
     StringSink? output,
@@ -862,6 +871,25 @@ final class Spinner {
       TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
       _standaloneOwner = null;
     }
+    onClosed?.call();
+  }
+
+  /// Spins until [labels] closes, showing each event as the middle word.
+  ///
+  /// Stream completion finishes the spinner completed with [detail] as the
+  /// end word; a stream error finishes it failed with the error as detail
+  /// before the error propagates.
+  Future<void> follow(Stream<String> labels, {String? detail}) async {
+    try {
+      await for (final label in labels) {
+        if (_finished) break;
+        update(label);
+      }
+      finish(FeedbackOutcome.completed, detail: detail);
+    } catch (error) {
+      finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {
@@ -883,6 +911,7 @@ final class Spinner {
       TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
       _standaloneOwner = null;
     }
+    onClosed?.call();
   }
 }
 
@@ -909,6 +938,7 @@ final class MultiSpinner {
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    this.onClosed,
   }) : themeRenderer = null,
        _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
@@ -933,6 +963,7 @@ final class MultiSpinner {
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    this.onClosed,
     required this.themeRenderer,
   }) : _clock = clock ?? _SystemFeedbackClock() {
     if (interval.isNegative) throw ArgumentError.value(interval, 'interval');
@@ -969,6 +1000,17 @@ final class MultiSpinner {
   bool _inPlace = false;
   int _liveRows = 0;
   bool _closed = false;
+
+  /// Whether the group has reached a terminal state — every task finished
+  /// or [dispose] called.
+  bool get isClosed => _closed;
+
+  /// Runs once when the group reaches a terminal state.
+  ///
+  /// Theme plumbing wires this to release session participation; standalone
+  /// users can observe it for cleanup. It fires exactly once, when the last
+  /// task finishes or on [dispose], after the final output is written.
+  final FutureOr<void> Function()? onClosed;
 
   void start({
     StringSink? output,
@@ -1219,6 +1261,42 @@ final class MultiSpinner {
     };
   }
 
+  /// Runs [task] until its label stream closes, showing each event as the
+  /// task's phase.
+  ///
+  /// Stream completion finishes the task completed with [detail] as the end
+  /// word; a stream error finishes it failed with the error as detail before
+  /// the error propagates.
+  Future<void> follow(
+    String task,
+    Stream<String> labels, {
+    String? detail,
+  }) async {
+    update(task, TaskActivity.running);
+    try {
+      await for (final label in labels) {
+        update(task, TaskActivity.running, phase: label);
+      }
+      finishTask(task, FeedbackOutcome.completed, detail: detail);
+    } catch (error) {
+      finishTask(task, FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
+
+  /// Runs every task until its own label stream closes.
+  ///
+  /// One stream per spin: each entry starts its task running and finishes it
+  /// when that stream closes — the whole group is done when the last stream
+  /// ends. A stream error finishes that task failed and the first error
+  /// propagates only after every task has reached a final state.
+  Future<void> followAll(Map<String, Stream<String>> feeds) async {
+    await Future.wait(
+      [for (final entry in feeds.entries) follow(entry.key, entry.value)],
+      eagerError: false,
+    );
+  }
+
   void finishTask(String task, FeedbackOutcome outcome, {String? detail}) {
     if (_closed) return;
     final state = _task(task);
@@ -1249,6 +1327,7 @@ final class MultiSpinner {
         TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
         _standaloneOwner = null;
       }
+      onClosed?.call();
     }
   }
 
@@ -1332,5 +1411,6 @@ final class MultiSpinner {
       TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
       _standaloneOwner = null;
     }
+    onClosed?.call();
   }
 }

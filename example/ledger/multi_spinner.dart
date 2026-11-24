@@ -25,10 +25,18 @@ Future<void> main(List<String> arguments) async {
       )
       .start();
 
-  await tasks.runAll({
-    'Download': () => Future<void>.delayed(const Duration(seconds: 2)),
-    'Compile': () => Future<void>.delayed(const Duration(seconds: 4)),
-    'Package': () => Future<void>.delayed(const Duration(seconds: 6)),
+  await tasks.followAll({
+    'Download': Stream.periodic(
+      const Duration(milliseconds: 400),
+      (count) => 'chunk ${count + 1}',
+    ).take(5),
+    'Compile': Stream.periodic(
+      const Duration(milliseconds: 500),
+      (count) => 'unit ${count + 1}',
+    ).take(8),
+    'Package': Stream.periodic(
+      const Duration(milliseconds: 600),
+      (count) => 'file ${count + 1}',
+    ).take(10),
   });
-  await tasks.stop();
 }

@@ -111,6 +111,40 @@ void main() {
       '/ Index: running\nx Index: failed: Bad state: nope\n',
     );
   });
+  test('spinner follow shows streamed labels and finishes on close', () async {
+    final out = StringBuffer();
+    final spinner = Spinner('Index');
+    spinner.start(output: out);
+    await spinner.follow(
+      Stream.fromIterable(['reading', 'writing']),
+      detail: 'done',
+    );
+    expect(
+      out.toString(),
+      '/ Index: running\n- Index: reading\n\\ Index: writing\n+ Index: completed: done\n',
+    );
+  });
+  test('spinner follow finishes failed and rethrows on stream error', () async {
+    final out = StringBuffer();
+    final spinner = Spinner('Index');
+    spinner.start(output: out);
+    await expectLater(
+      spinner.follow(Stream<String>.error(StateError('lost'))),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      out.toString(),
+      '/ Index: running\nx Index: failed: Bad state: lost\n',
+    );
+  });
+  test('spinner onClosed fires once on finish and not on later dispose', () {
+    var calls = 0;
+    final spinner = Spinner('Index', onClosed: () => calls++);
+    spinner.start(output: StringBuffer());
+    spinner.finish(FeedbackOutcome.completed);
+    spinner.dispose();
+    expect(calls, 1);
+  });
   test('rich spinner advances its frame glyph and drops the status tag', () {
     final out = StringBuffer();
     final spinner = Spinner('Index');
@@ -313,6 +347,39 @@ void main() {
     );
     expect(out.toString(), contains('fetch: failed: Bad state: lost'));
     expect(out.toString(), contains('parse: completed'));
+  });
+  test('multi-spinner follow streams phases and finishes on close', () async {
+    final out = StringBuffer();
+    final tasks = MultiSpinner(['fetch'], interval: Duration.zero);
+    tasks.start(output: out);
+    await tasks.follow('fetch', Stream.fromIterable(['chunk 1', 'chunk 2']));
+    final text = out.toString();
+    expect(text, contains('fetch: running, chunk 1'));
+    expect(text, contains('fetch: running, chunk 2'));
+    expect(text, contains('fetch: completed'));
+  });
+  test('multi-spinner followAll settles each task and errors rethrow', () async {
+    final out = StringBuffer();
+    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+    tasks.start(output: out);
+    await expectLater(
+      tasks.followAll({
+        'fetch': Stream<String>.error(StateError('lost')),
+        'parse': Stream.fromIterable(['token']),
+      }),
+      throwsA(isA<StateError>()),
+    );
+    expect(out.toString(), contains('fetch: failed: Bad state: lost'));
+    expect(out.toString(), contains('parse: completed'));
+  });
+  test('multi-spinner onClosed fires when the last task finishes', () {
+    var calls = 0;
+    final tasks = MultiSpinner(['a', 'b'], onClosed: () => calls++);
+    tasks.start(output: StringBuffer());
+    tasks.finishTask('a', FeedbackOutcome.completed);
+    expect(calls, 0);
+    tasks.finishTask('b', FeedbackOutcome.completed);
+    expect(calls, 1);
   });
   test('multi-spinner batching is deterministic with an application-controlled clock', () {
     final out = StringBuffer();

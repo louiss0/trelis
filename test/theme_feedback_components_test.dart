@@ -185,7 +185,9 @@ void main() {
         FeedbackOutcome.failed,
         detail: 'offline',
       );
-      await tasks.stop();
+      // The last task's outcome closes the group, which releases the
+      // participation without an explicit stop.
+      await Future<void>.delayed(const Duration(milliseconds: 10));
 
       final text = output.toString();
       expect(text, contains('/ build: running, compiling'));

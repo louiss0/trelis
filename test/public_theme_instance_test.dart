@@ -480,7 +480,7 @@ void main() {
       final control = await pending;
       final ThemeInteractionState? active = theme.resolvedInteraction;
       expect(active?.mode, PromptMode.linear);
-      await control.stop();
+      await control.finish(FeedbackOutcome.cancelled);
       expect(theme.resolvedInteraction, isNull);
     });
 
@@ -528,8 +528,8 @@ void main() {
         expect(clock.timers.every((timer) => timer.cancelled), isTrue);
 
         // Finishing an automatically stopped participant stays idempotent.
-        await spinner.stop();
-        await progress.stop();
+        await spinner.finish(FeedbackOutcome.cancelled);
+        await progress.finish(FeedbackOutcome.cancelled);
       },
     );
 
@@ -577,11 +577,11 @@ void main() {
           .present()
           .timeout(const Duration(seconds: 5));
       expect(adapter.restored, adapter.acquired);
-      await spinner.stop();
+      await spinner.finish(FeedbackOutcome.cancelled);
     });
 
     test(
-      'a reentrant stop during a finish write failure shares the cleanup',
+      'a reentrant finish during a finish write failure shares the cleanup',
       () async {
         final sink = _SwitchableSink();
         final adapter = _CountingAdapter(sink);
@@ -595,7 +595,7 @@ void main() {
         sink.failure = failure;
         sink.onFailure = () {
           unawaited(
-            spinner.stop().then(
+            spinner.finish(FeedbackOutcome.cancelled).then(
               (_) => reentrant.complete(),
               onError: (Object error, StackTrace stackTrace) =>
                   reentrant.completeError(error, stackTrace),

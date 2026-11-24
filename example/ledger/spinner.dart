@@ -16,9 +16,12 @@ Future<void> main(List<String> arguments) async {
         colors: ComponentColors.palette(ColorThemes.neonGrid),
       )
       .start();
-  await spinner.run(
-    () => Future<void>.delayed(const Duration(seconds: 8)),
-    active: 'authenticating',
+  await spinner.follow(
+    Stream.periodic(
+      const Duration(milliseconds: 800),
+      (count) =>
+          const ['authenticating', 'resolving routes', 'loading data'][count % 3],
+    ).take(10),
     detail: 'ready',
   );
 }

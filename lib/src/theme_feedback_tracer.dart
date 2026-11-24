@@ -250,12 +250,14 @@ final class ThemeFeedbackTracer {
   }) async {
     final renderer = _renderer();
     Spinner? component;
-    final handle = await _owner.startFeedback((period) {
+    ThemeFeedbackHandle? handle;
+    handle = await _owner.startFeedback((period) {
       renderer.attach(period);
       final started = Spinner.themed(
         label,
         clock: clock,
         themeRenderer: renderer,
+        onClosed: () => unawaited(handle!.finish()),
       );
       component = started;
       started.start(session: period.session);
@@ -279,13 +281,15 @@ final class ThemeFeedbackTracer {
     final renderer = _renderer();
     final names = tasks.toList();
     MultiSpinner? component;
-    final handle = await _owner.startFeedback((period) {
+    ThemeFeedbackHandle? handle;
+    handle = await _owner.startFeedback((period) {
       renderer.attach(period);
       final started = MultiSpinner.themed(
         tasks,
         interval: interval,
         clock: clock,
         themeRenderer: renderer,
+        onClosed: () => unawaited(handle!.finish()),
       );
       component = started;
       started.start(session: period.session);

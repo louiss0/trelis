@@ -114,7 +114,8 @@ final class ThemeLiveFeedback<C extends ThemeLiveFeedbackControl> {
 /// Explicit completion or cancellation of live feedback.
 ///
 /// There is no public theme close: finishing the last participant restores
-/// the terminal automatically.
+/// the terminal automatically. Feedback whose work has all settled releases
+/// itself without an explicit finish.
 sealed class ThemeLiveFeedbackControl {
   ThemeLiveFeedbackControl._(this._control);
 
@@ -123,9 +124,6 @@ sealed class ThemeLiveFeedbackControl {
   /// Ends feedback with an explicit outcome.
   Future<void> finish(FeedbackOutcome outcome, {String? detail}) =>
       _control.finish(outcome, detail: detail);
-
-  /// Stops presentation without inventing an outcome.
-  Future<void> stop() => _control.stop();
 }
 
 /// Updates a running progress indicator without exposing its lifecycle.
@@ -180,6 +178,22 @@ final class ThemeSpinnerControl extends ThemeLiveFeedbackControl {
       rethrow;
     }
   }
+
+  /// Spins until [labels] closes, showing each event as the middle word.
+  ///
+  /// Stream completion finishes the spinner completed with [detail] as the
+  /// end word; a stream error finishes it failed before propagating.
+  Future<void> follow(Stream<String> labels, {String? detail}) async {
+    try {
+      await for (final label in labels) {
+        _spinner.update(label);
+      }
+      await _control.finish(FeedbackOutcome.completed, detail: detail);
+    } catch (error) {
+      await _control.finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
 }
 
 /// Updates a running group of named tasks.
@@ -195,7 +209,7 @@ final class ThemeMultiSpinnerControl extends ThemeLiveFeedbackControl {
   void update(String task, TaskActivity activity, {String? phase}) =>
       _group.update(task, activity, phase: phase);
 
-  /// Ends one task. Call [finish] or [stop] to release the group itself.
+  /// Ends one task. The group releases itself once every task has finished.
   void finishTask(String task, FeedbackOutcome outcome, {String? detail}) =>
       _group.finishTask(task, outcome, detail: detail);
 
@@ -209,8 +223,13 @@ final class ThemeMultiSpinnerControl extends ThemeLiveFeedbackControl {
     FutureOr<T> Function() work, {
     String? phase,
     String? detail,
-  }) =>
-      _group.run(task, work, phase: phase, detail: detail);
+  }) async {
+    try {
+      return await _group.run(task, work, phase: phase, detail: detail);
+    } finally {
+      await _releaseIfClosed();
+    }
+  }
 
   /// Runs every task in [work] until its own future resolves.
   ///
@@ -218,8 +237,47 @@ final class ThemeMultiSpinnerControl extends ThemeLiveFeedbackControl {
   /// after every task has reached a final state.
   Future<Map<String, Object?>> runAll(
     Map<String, FutureOr<Object?> Function()> work,
-  ) =>
-      _group.runAll(work);
+  ) async {
+    try {
+      return await _group.runAll(work);
+    } finally {
+      await _releaseIfClosed();
+    }
+  }
+
+  /// Runs [task] until its label stream closes.
+  ///
+  /// Each event becomes the task's phase while pending; stream completion
+  /// finishes the task completed with [detail] as the end word, and a stream
+  /// error finishes it failed before propagating.
+  Future<void> follow(
+    String task,
+    Stream<String> labels, {
+    String? detail,
+  }) async {
+    try {
+      await _group.follow(task, labels, detail: detail);
+    } finally {
+      await _releaseIfClosed();
+    }
+  }
+
+  /// Runs every task until its own label stream closes.
+  ///
+  /// One stream per spin: the group releases itself once every task has
+  /// finished; the first stream error propagates after all tasks settle.
+  Future<void> followAll(Map<String, Stream<String>> feeds) async {
+    try {
+      await _group.followAll(feeds);
+    } finally {
+      await _releaseIfClosed();
+    }
+  }
+
+  /// Awaits the participation release a finished group already started.
+  Future<void> _releaseIfClosed() async {
+    if (_group.isClosed) await _control.stop();
+  }
 }
 
 /// The default environment is built by the terminal seam so native geometry,
