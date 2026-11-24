@@ -70,6 +70,47 @@ void main() {
       expect(out.toString(), contains('Build: interrupted'));
     },
   );
+  test('progress run reports through the work callback and finishes', () async {
+    final out = StringBuffer();
+    final progress = Progress('Build', total: 3, interval: Duration.zero);
+    progress.start(output: out);
+    final value = await progress.run((report) async {
+      report(1);
+      report(2);
+      report(3);
+      return 'artifact';
+    }, detail: '3 items');
+    expect(value, 'artifact');
+    expect(out.toString(), contains('completed: 3 items'));
+  });
+  test('progress run finishes failed and rethrows when work throws', () async {
+    final out = StringBuffer();
+    final progress = Progress('Build', total: 3, interval: Duration.zero);
+    progress.start(output: out);
+    await expectLater(
+      progress.run((report) => Future<int>.error(StateError('nope'))),
+      throwsA(isA<StateError>()),
+    );
+    expect(out.toString(), contains('failed: Bad state: nope'));
+  });
+  test('progress follow applies streamed counts and finishes on close', () async {
+    final out = StringBuffer();
+    final progress = Progress('Build', total: 3, interval: Duration.zero);
+    progress.start(output: out);
+    await progress.follow(
+      Stream.fromIterable([1, 2, 3]),
+      detail: '3 items',
+    );
+    expect(out.toString(), contains('completed: 3 items'));
+  });
+  test('progress onClosed fires once on finish and not on later dispose', () {
+    var calls = 0;
+    final progress = Progress('Build', onClosed: () => calls++);
+    progress.start(output: StringBuffer());
+    progress.finish(FeedbackOutcome.completed);
+    progress.dispose();
+    expect(calls, 1);
+  });
   test('spinner presents actual activity and explicit final state without heartbeat', () {
     final out = StringBuffer();
     final spinner = Spinner('Index');

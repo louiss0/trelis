@@ -220,7 +220,8 @@ final class ThemeFeedbackTracer {
   }) async {
     final renderer = _renderer();
     Progress? component;
-    final handle = await _owner.startFeedback((period) {
+    ThemeFeedbackHandle? handle;
+    handle = await _owner.startFeedback((period) {
       renderer.attach(period);
       final started = Progress.themed(
         label,
@@ -229,6 +230,7 @@ final class ThemeFeedbackTracer {
         milestone: milestone,
         clock: clock,
         themeRenderer: renderer,
+        onClosed: () => unawaited(handle!.finish()),
       );
       component = started;
       started.start(session: period.session);

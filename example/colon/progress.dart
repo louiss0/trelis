@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:trelis/trelis.dart';
 
 /// Progress — one component, one structural theme (ColonTheme),
@@ -6,7 +8,7 @@ import 'package:trelis/trelis.dart';
 /// Run: dart run example/colon/progress.dart
 Future<void> main(List<String> arguments) async {
   final theme = ColonTheme(
-    interaction: const InteractionPreferences(mode: PromptMode.linear),
+    interaction: const InteractionPreferences(mode: PromptMode.automatic),
   );
   final progress = await theme
       .progress(
@@ -16,6 +18,10 @@ Future<void> main(List<String> arguments) async {
         colors: ComponentColors.palette(ColorThemes.slate),
       )
       .start();
-  progress.update(2);
-  await progress.finish(FeedbackOutcome.completed, detail: '3 items');
+  await progress.run((report) async {
+    for (var i = 1; i <= 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      report(i);
+    }
+  }, detail: '3 items');
 }

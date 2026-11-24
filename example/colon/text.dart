@@ -6,7 +6,7 @@ import 'package:trelis/trelis.dart';
 /// Run: dart run example/colon/text.dart
 Future<void> main(List<String> arguments) async {
   final theme = ColonTheme(
-    interaction: const InteractionPreferences(mode: PromptMode.linear),
+    interaction: const InteractionPreferences(mode: PromptMode.automatic),
   );
   await theme
       .text(

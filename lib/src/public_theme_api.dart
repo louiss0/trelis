@@ -144,6 +144,41 @@ final class ThemeProgressControl extends ThemeLiveFeedbackControl {
   /// Replaces the work estimate; null makes it indeterminate.
   void setTotal(int? total, {int completed = 0}) =>
       _progress.setTotal(total, completed: completed);
+
+  /// Runs until [work] resolves, then finishes.
+  ///
+  /// [work] receives the progress reporter: call it with each completed
+  /// count while pending. [detail] is the end word on the completed line;
+  /// a thrown error finishes failed before propagating.
+  Future<T> run<T>(
+    FutureOr<T> Function(void Function(int completed) report) work, {
+    String? detail,
+  }) async {
+    try {
+      final value = await work(_progress.update);
+      await _control.finish(FeedbackOutcome.completed, detail: detail);
+      return value;
+    } catch (error) {
+      await _control.finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
+
+  /// Runs until [counts] closes, applying each event as the count.
+  ///
+  /// Stream completion finishes the progress completed with [detail] as the
+  /// end word; a stream error finishes it failed before propagating.
+  Future<void> follow(Stream<int> counts, {String? detail}) async {
+    try {
+      await for (final count in counts) {
+        _progress.update(count);
+      }
+      await _control.finish(FeedbackOutcome.completed, detail: detail);
+    } catch (error) {
+      await _control.finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
 }
 
 /// Updates a running spinner without exposing its lifecycle.

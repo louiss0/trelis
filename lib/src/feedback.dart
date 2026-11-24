@@ -353,6 +353,7 @@ final class Progress {
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    this.onClosed,
   }) : themeRenderer = null,
        _total = total,
        _clock = clock ?? _SystemFeedbackClock() {
@@ -371,6 +372,7 @@ final class Progress {
     FeedbackClock? clock,
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    this.onClosed,
     required this.themeRenderer,
   }) : _total = total,
        _clock = clock ?? _SystemFeedbackClock() {
@@ -401,6 +403,13 @@ final class Progress {
   TerminalSessionFeedbackRegion? _sessionRegion;
   bool _rich = false;
   bool _finished = false;
+
+  /// Runs once when the progress reaches a terminal state.
+  ///
+  /// Theme plumbing wires this to release session participation; standalone
+  /// users can observe it for cleanup. It fires exactly once, on [finish] or
+  /// [dispose], after the final output is written.
+  final FutureOr<void> Function()? onClosed;
 
   void start({
     StringSink? output,
@@ -579,6 +588,44 @@ final class Progress {
     );
   }
 
+  /// Runs until [work] resolves, then finishes.
+  ///
+  /// [work] receives [update] as its reporter: call it with each completed
+  /// count while the future is pending. [detail] is the end word on the
+  /// completed line. When [work] throws the progress finishes failed with
+  /// the error as its detail before the error propagates.
+  Future<T> run<T>(
+    FutureOr<T> Function(void Function(int completed) report) work, {
+    String? detail,
+  }) async {
+    try {
+      final value = await work(update);
+      finish(FeedbackOutcome.completed, detail: detail);
+      return value;
+    } catch (error) {
+      finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
+
+  /// Runs until [counts] closes, applying each event with [update].
+  ///
+  /// Stream completion finishes the progress completed with [detail] as the
+  /// end word; a stream error finishes it failed with the error as detail
+  /// before the error propagates.
+  Future<void> follow(Stream<int> counts, {String? detail}) async {
+    try {
+      await for (final count in counts) {
+        if (_finished) break;
+        update(count);
+      }
+      finish(FeedbackOutcome.completed, detail: detail);
+    } catch (error) {
+      finish(FeedbackOutcome.failed, detail: error.toString());
+      rethrow;
+    }
+  }
+
   /// Release presentation resources without inventing an outcome.
   void dispose() {
     if (_finished) return;
@@ -591,6 +638,7 @@ final class Progress {
       TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
       _standaloneOwner = null;
     }
+    onClosed?.call();
   }
 
   void finish(FeedbackOutcome outcome, {String? detail}) {
@@ -612,6 +660,7 @@ final class Progress {
       TerminalSession.releaseStandaloneFeedbackOutput(_output!, owner);
       _standaloneOwner = null;
     }
+    onClosed?.call();
   }
 }
 

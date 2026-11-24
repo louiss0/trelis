@@ -6,7 +6,7 @@ import 'package:trelis/trelis.dart';
 /// Run: dart run example/line/text.dart
 Future<void> main(List<String> arguments) async {
   final theme = LineTheme(
-    interaction: const InteractionPreferences(mode: PromptMode.linear),
+    interaction: const InteractionPreferences(mode: PromptMode.automatic),
   );
   await theme
       .text(

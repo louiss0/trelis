@@ -6,7 +6,7 @@ import 'package:trelis/trelis.dart';
 /// Run: dart run example/box/text.dart
 Future<void> main(List<String> arguments) async {
   final theme = BoxTheme(
-    interaction: const InteractionPreferences(mode: PromptMode.linear),
+    interaction: const InteractionPreferences(mode: PromptMode.automatic),
   );
   await theme
       .text(
