@@ -161,7 +161,7 @@ observed from the actual stream (next section).
 ## 6. Step 5 — the native terminal path (the default when you pass nothing)
 
 When you call `.prompt()` with no `source` and no `terminal`, it runs the
-native path `_terminal(...)` (`lib/src/text_input.dart:2352`).
+native path `_terminal(...)` (`lib/src/text_input.dart:4024`).
 
 ### 6.1 Input gate (must pass just to get a prompt at all)
 
@@ -172,7 +172,7 @@ if (!stdin.hasTerminal) {
   );
 }
 ```
-(`lib/src/text_input.dart:3542-3544`)
+(`lib/src/text_input.dart:4032-4035`)
 
 `stdin` must be a terminal, or the prompt refuses before doing anything.
 
@@ -181,14 +181,14 @@ if (!stdin.hasTerminal) {
 The prompt's output defaults to **stdout**. So `outputStream` is `stdout` unless the caller passed
 `output:`.
 
-**POSIX** (`_posixTerminal`, `lib/src/text_input.dart:3438`):
+**POSIX** (`_posixTerminal`, `lib/src/text_input.dart:3937`):
 
 ```dart
 final capable =
     outputStream.hasTerminal && Platform.environment['TERM'] != 'dumb';
 ```
 
-**Windows** (`_terminal`, `lib/src/text_input.dart:3533`):
+**Windows** (`_terminal`, `lib/src/text_input.dart:4024`):
 
 ```dart
 var capable =

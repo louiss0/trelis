@@ -435,24 +435,17 @@ String? _pathInspectionFailure(String candidate) {
         calloc.free(name);
       }
     }
-    if (Platform.isLinux ||
-        Platform.isAndroid ||
-        Platform.isMacOS ||
-        Platform.isIOS) {
+    if (!Platform.isWindows) {
       final libc = DynamicLibrary.process();
       final access = libc
           .lookupFunction<
             Int32 Function(Pointer<Utf8>, Int32),
             int Function(Pointer<Utf8>, int)
           >('access');
-      final errno = libc
-          .lookupFunction<Pointer<Int32> Function(), Pointer<Int32> Function()>(
-            Platform.isMacOS || Platform.isIOS
-                ? '__error'
-                : Platform.isAndroid
-                ? '__errno'
-                : '__errno_location',
-          );
+      final errno = posixErrnoAccessor(libc);
+      if (errno == null) {
+        return 'Cannot determine whether target exists on this platform.';
+      }
       final name = candidate.toNativeUtf8();
       try {
         if (access(name, 0) == 0) return 'Cannot inspect target type.';
@@ -463,6 +456,9 @@ String? _pathInspectionFailure(String candidate) {
         calloc.free(name);
       }
     }
+    // Unreachable today — every platform is Windows or not — but falling
+    // through would report a confirmed absence, so the defensive answer is
+    // the failure message rather than null.
     return 'Cannot determine whether target exists on this platform.';
   } catch (_) {
     return 'Cannot determine whether target exists.';

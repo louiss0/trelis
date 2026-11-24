@@ -70,6 +70,24 @@ void main() {
     );
   });
 
+  test(
+    'a console that cannot install a signal source observes nothing',
+    () async {
+      final observer = nativeConsoleResizeObserver(
+        _FakeStdout(),
+        notificationSource: () =>
+            throw UnsupportedError('signal watching unsupported'),
+      );
+
+      await expectLater(observer.notifications, emitsDone);
+      expect(
+        observer.fallbackInterval,
+        greaterThanOrEqualTo(const Duration(milliseconds: 100)),
+      );
+      expect(observer.readDimensions(), (columns: 80, rows: 24));
+    },
+  );
+
   test('a POSIX console observation is woken by a window change', () async {
     if (Platform.isWindows) return;
     final observer = nativeConsoleResizeObserver(_FakeStdout());

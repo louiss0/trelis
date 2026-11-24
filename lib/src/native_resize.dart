@@ -56,11 +56,29 @@ final class NativeConsoleResizeObserver implements TerminalResizeObserver {
 }
 
 /// Observes the console that [output] selects for one native prompt.
-NativeConsoleResizeObserver nativeConsoleResizeObserver(Stdout output) =>
-    NativeConsoleResizeObserver(
-      () => consoleDimensions(output),
-      notifications: _consoleResizeNotifications(),
-    );
+///
+/// [notificationSource] supplies the platform's window-change source; it
+/// exists so tests can stand in for a signal mechanism. A source that cannot
+/// be installed — a platform without watchable signals, or one that throws —
+/// is treated as no source at all, leaving the bounded fallback poll as the
+/// only wake-up.
+NativeConsoleResizeObserver nativeConsoleResizeObserver(
+  Stdout output, {
+  Stream<void> Function()? notificationSource,
+}) => NativeConsoleResizeObserver(
+  () => consoleDimensions(output),
+  notifications: _notifications(
+    notificationSource ?? _consoleResizeNotifications,
+  ),
+);
+
+Stream<void> _notifications(Stream<void> Function() source) {
+  try {
+    return source();
+  } catch (_) {
+    return const Stream<void>.empty();
+  }
+}
 
 /// The usable dimensions of the console [output] is attached to.
 ///

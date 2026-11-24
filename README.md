@@ -47,7 +47,10 @@ switch (result) {
 
 Construction does not acquire the terminal. Each invocation starts a new
 session; overlapping sessions on the same prompt or console are rejected.
-Interactive console input currently requires Windows. Prompt output defaults to
+Interactive console input requires a Windows console or a POSIX terminal;
+hosts beyond Windows, Linux and macOS attempt the POSIX path on a best-effort
+basis and refuse cleanly when their libc or signals cannot participate. Prompt
+output defaults to
 stdout; pass `output: stderr` to select stderr explicitly. Redirected output is sequential,
 without cursor addressing. On a cursor-capable terminal, TextInput keeps the active answer on one
 editable line with the visible cursor at its editing position; instructions and

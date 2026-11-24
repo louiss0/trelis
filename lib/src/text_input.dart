@@ -13,6 +13,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import 'background_query.dart';
 import 'output_profile.dart';
+import 'posix_errno.dart';
 import 'presentation_preferences.dart';
 import 'color_theme.dart';
 import 'native_resize.dart';
@@ -3797,20 +3798,62 @@ Stream<String> _consoleInput(
   return controller.stream;
 }
 
+/// The libc bindings one POSIX invocation needs, resolved before acquisition.
+///
+/// Every symbol is looked up eagerly at construction: `cfmakeraw` is a BSD/GNU
+/// extension rather than standard POSIX, and resolving `poll`/`read` after
+/// termios raw mode is already set would fail a prompt mid-acquisition. A
+/// platform missing any symbol resolves to null through [tryResolve], which
+/// the caller maps to an acquisition refusal rather than an exception.
+final class _PosixC {
+  _PosixC._(DynamicLibrary libc)
+    : tcgetattr = libc
+          .lookupFunction<
+            Int32 Function(Int32, Pointer<Void>),
+            int Function(int, Pointer<Void>)
+          >('tcgetattr'),
+      tcsetattr = libc
+          .lookupFunction<
+            Int32 Function(Int32, Int32, Pointer<Void>),
+            int Function(int, int, Pointer<Void>)
+          >('tcsetattr'),
+      cfmakeraw = libc
+          .lookupFunction<
+            Void Function(Pointer<Void>),
+            void Function(Pointer<Void>)
+          >('cfmakeraw'),
+      poll = libc
+          .lookupFunction<
+            Int32 Function(Pointer<Void>, UintPtr, Int32),
+            int Function(Pointer<Void>, int, int)
+          >('poll'),
+      read = libc
+          .lookupFunction<
+            IntPtr Function(Int32, Pointer<Uint8>, UintPtr),
+            int Function(int, Pointer<Uint8>, int)
+          >('read');
+
+  /// The process's libc bindings, or null when a needed symbol is absent.
+  static _PosixC? tryResolve() {
+    try {
+      return _PosixC._(DynamicLibrary.process());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final int Function(int, Pointer<Void>) tcgetattr;
+  final int Function(int, int, Pointer<Void>) tcsetattr;
+  final void Function(Pointer<Void>) cfmakeraw;
+  final int Function(Pointer<Void>, int, int) poll;
+  final int Function(int, Pointer<Uint8>, int) read;
+}
+
 // Use the authorized terminal descriptor directly so cancelling one session
 // does not close Dart's process-wide stdin stream before the next session.
-Stream<String> _posixInput() {
-  final libc = DynamicLibrary.process();
-  final poll = libc
-      .lookupFunction<
-        Int32 Function(Pointer<Void>, UintPtr, Int32),
-        int Function(Pointer<Void>, int, int)
-      >('poll');
-  final read = libc
-      .lookupFunction<
-        IntPtr Function(Int32, Pointer<Uint8>, UintPtr),
-        int Function(int, Pointer<Uint8>, int)
-      >('read');
+Stream<String> _posixInput(_PosixC posix) {
+  final poll = posix.poll;
+  final read = posix.read;
   final descriptor = calloc<Uint8>(8);
   final data = ByteData.sublistView(descriptor.asTypedList(8));
   data.setInt32(0, 0, Endian.host);
@@ -3821,9 +3864,14 @@ Stream<String> _posixInput() {
   late StreamController<List<int>> controller;
   controller = StreamController<List<int>>(
     onListen: () {
-      signals = ProcessSignal.sigint.watch().listen((_) {
-        if (!controller.isClosed) controller.add([3]);
-      });
+      try {
+        signals = ProcessSignal.sigint.watch().listen((_) {
+          if (!controller.isClosed) controller.add([3]);
+        });
+      } catch (_) {
+        // A platform that cannot watch SIGINT still receives byte 3 typed at
+        // the terminal; only an externally sent signal goes undelivered.
+      }
       timer = Timer.periodic(const Duration(milliseconds: 5), (_) {
         final ready = poll(descriptor.cast(), 1, 0);
         if (ready < 0) {
@@ -3902,22 +3950,10 @@ Future<PromptResult<T>> _posixTerminal<T>(
       'Rich interaction unavailable on the selected output; use linear or automatic mode.',
     );
   }
-  final libc = DynamicLibrary.process();
-  final get = libc
-      .lookupFunction<
-        Int32 Function(Int32, Pointer<Void>),
-        int Function(int, Pointer<Void>)
-      >('tcgetattr');
-  final set = libc
-      .lookupFunction<
-        Int32 Function(Int32, Int32, Pointer<Void>),
-        int Function(int, int, Pointer<Void>)
-      >('tcsetattr');
-  final makeRaw = libc
-      .lookupFunction<
-        Void Function(Pointer<Void>),
-        void Function(Pointer<Void>)
-      >('cfmakeraw');
+  final posix = _PosixC.tryResolve();
+  if (posix == null) {
+    return Unavailable('Terminal capability unavailable.');
+  }
   // termios is platform-specific; reserve more than its size on both supported
   // POSIX platforms and let libc interpret the opaque storage.
   final original = calloc<Uint64>(64);
@@ -3933,7 +3969,7 @@ Future<PromptResult<T>> _posixTerminal<T>(
     } finally {
       if (acquired) {
         acquired = false;
-        if (set(0, 0, original.cast()) != 0) {
+        if (posix.tcsetattr(0, 0, original.cast()) != 0) {
           throw StateError('Cannot restore terminal input.');
         }
       }
@@ -3941,11 +3977,12 @@ Future<PromptResult<T>> _posixTerminal<T>(
   }
 
   try {
-    if (get(0, original.cast()) != 0 || get(0, raw.cast()) != 0) {
+    if (posix.tcgetattr(0, original.cast()) != 0 ||
+        posix.tcgetattr(0, raw.cast()) != 0) {
       return Unavailable('Terminal capability unavailable.');
     }
-    makeRaw(raw.cast());
-    if (set(0, 0, raw.cast()) != 0) {
+    posix.cfmakeraw(raw.cast());
+    if (posix.tcsetattr(0, 0, raw.cast()) != 0) {
       return Unavailable('Cannot acquire terminal input.');
     }
     acquired = true;
@@ -3959,7 +3996,7 @@ Future<PromptResult<T>> _posixTerminal<T>(
     return await _restoreAfter(
       () => run(
         ScriptedInput(
-          _posixInput(),
+          _posixInput(posix),
           outputStream,
           supportsRich: capable,
           outputProfile: profile,
@@ -3997,17 +4034,16 @@ Future<PromptResult<T>> _terminal<T>(
       'Interactive console input is unavailable; supply an explicit input source.',
     );
   }
-  if (Platform.isLinux || Platform.isMacOS) {
+  // Every non-Windows host attempts the termios transport; Dart cannot name
+  // the BSDs or Solaris, so capability probing replaces an OS allowlist. Each
+  // step fails closed: no terminal, no libc binding, or a failed tcgetattr or
+  // tcsetattr returns Unavailable rather than an exception.
+  if (!Platform.isWindows) {
     return _posixTerminal(
       mode,
       outputStream,
       run,
       enableLinearPasteControl: enableLinearPasteControl,
-    );
-  }
-  if (!Platform.isWindows) {
-    return Unavailable(
-      'Interactive console input is unavailable on this platform.',
     );
   }
   var capable =
