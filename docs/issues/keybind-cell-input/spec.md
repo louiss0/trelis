@@ -1,9 +1,9 @@
 # Keybind gesture-cell input
 
-Status: implemented-unstable
+Status: resolved
 Labels: ready-for-agent
-Implementation: complete for the two-region cell model with region
-limits; native/human evidence remains open
+Implementation: complete — two-region cell model with region limits,
+accepted by maintainer after interactive verification
 
 ## Problem Statement
 
