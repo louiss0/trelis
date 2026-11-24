@@ -56,7 +56,7 @@ void main() {
     }
     expect(
       transcript,
-      contains('[status] Background activity: background update 3'),
+      contains('[status] / Background activity: background update 3'),
     );
     expect(
       transcript,
@@ -143,7 +143,7 @@ void main() {
       expect(transcript, isNot(contains('background update')));
       expect(
         transcript,
-        contains('[status] Background activity: waiting while help is open'),
+        contains('[status] - Background activity: waiting while help is open'),
         reason: 'the named regions still report their last known state',
       );
     },

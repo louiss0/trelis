@@ -358,7 +358,7 @@ void main() {
       );
 
       expect((result as Accepted<List<KeyGesture>>).value.single.key, 'a');
-      expect(output.toString(), contains('[status] Policy: checking'));
+      expect(output.toString(), contains('[status] - Policy: checking'));
       expect(output.toString(), contains('Review:'));
     },
   );

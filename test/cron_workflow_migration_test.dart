@@ -364,12 +364,12 @@ void main() {
       '* * * * *',
     );
     final text = output.toString();
-    expect(text, contains('[status] Schedule: reading expression'));
-    expect(text, contains('[status] Schedule: reviewing'));
+    expect(text, contains('[status] - Schedule: reading expression'));
+    expect(text, contains(r'[status] \ Schedule: reviewing'));
     expect(text, contains('Matching preview: complete'));
     // Each background update is followed by a repaint of the retained review
     // editor, so the draft never depends on the last status write.
-    final reviewing = text.indexOf('[status] Schedule: reviewing');
+    final reviewing = text.indexOf(r'[status] \ Schedule: reviewing');
     expect(text.substring(reviewing), contains('\r\x1b[2K> '));
   });
 

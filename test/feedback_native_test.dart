@@ -20,7 +20,7 @@ void main() {
       expect(out, contains('Connection: skipped'));
       expect(
         out,
-        contains('Summary:\nbuild: completed\ntest: failed: test failure'),
+        contains('Summary:\n+ build: completed\nx test: failed: test failure'),
       );
       expect(out, isNot(contains('\x1b')));
       expect(out, isNot(contains('\r')));

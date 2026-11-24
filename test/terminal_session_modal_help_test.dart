@@ -60,12 +60,12 @@ void main() {
       expect(transcript.currentView!.caret, 4);
       expect(output.toString(), contains('\x1b[?1049h'));
       expect(output.toString(), contains('\x1b[?1049l'));
-      expect(output.toString(), contains('[status] Index: reading cache'));
+      expect(output.toString(), contains('[status] - Index: reading cache'));
       expect(output.toString(), contains('[status] Warning: Cache is warming'));
       expect(
         output.toString().indexOf('\x1b[?1049l'),
         lessThan(
-          output.toString().lastIndexOf('[status] Index: reading cache'),
+          output.toString().lastIndexOf('[status] - Index: reading cache'),
         ),
       );
     },
@@ -356,7 +356,7 @@ void main() {
 
       expect(result, isA<Interrupted<String>>());
       expect(output.toString(), contains('Help:'));
-      expect(output.toString(), contains('[status] Index: reading cache'));
+      expect(output.toString(), contains('[status] - Index: reading cache'));
       expect(output.toString(), isNot(contains('\x1b[?1049h')));
       expect(output.toString(), isNot(contains('\x1b[?1049l')));
     },
@@ -401,7 +401,7 @@ void main() {
         }
         expect(output.toString(), contains('\x1b[?1049h'));
         expect(output.toString(), contains('\x1b[?1049l'));
-        expect(output.toString(), contains('[status] Index: reading cache'));
+        expect(output.toString(), contains('[status] - Index: reading cache'));
       }
     },
   );

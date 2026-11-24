@@ -47,7 +47,7 @@ void main() {
     expect(transcript.currentView!.caret, 4);
     expect(
       output.toString(),
-      contains('[status] Feedback (3): Index, Upload +1'),
+      contains('[status] Feedback (3): - Index +2'),
     );
   });
 
@@ -75,7 +75,7 @@ void main() {
       ),
     );
 
-    expect(output.toString(), contains('[status] Index: failed: offline'));
+    expect(output.toString(), contains('[status] x Index: failed: offline'));
     expect(output.toString(), contains('[status] Warning: Cache stale'));
     expect(output.toString(), contains('[status] Error: Network offline'));
     expect(output.toString(), contains('[status] [!] Feedback (0)'));
@@ -116,7 +116,7 @@ void main() {
       isFalse,
       reason: 'the severity indicator describes current feedback',
     );
-    expect(composed, endsWith('[status] Feedback (1): Upload'));
+    expect(composed, endsWith('[status] Feedback (1): - Upload'));
   });
 
   test(
@@ -208,9 +208,9 @@ void main() {
 
       expect(
         output.toString(),
-        contains('[status] Feedback (2): Index, Upload'),
+        contains('[status] Feedback (2): - Index, Upload'),
       );
-      expect(output.toString(), contains('[status] Index: reading cache'));
+      expect(output.toString(), contains(r'[status] \ Index: reading cache'));
       expect(
         output.toString(),
         contains('[status] Upload: running, 10% (1/10)'),

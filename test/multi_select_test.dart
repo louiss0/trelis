@@ -476,11 +476,11 @@ void main() {
 
       expect((result as Accepted<List<String>>).value, ['a']);
       final transcript = output.toString();
-      expect(transcript, contains('[status] Index: refreshing'));
+      expect(transcript, contains('[status] - Index: refreshing'));
       expect(transcript, contains('A [checked]'));
       expect(
         transcript.lastIndexOf('A [checked]'),
-        greaterThan(transcript.indexOf('[status] Index: refreshing')),
+        greaterThan(transcript.indexOf('[status] - Index: refreshing')),
       );
     },
   );

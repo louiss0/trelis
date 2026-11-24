@@ -276,7 +276,7 @@ void main() {
     );
 
     expect((result as Accepted<String>).value, '0.3');
-    expect(output.toString(), contains('[status] Volume: checking'));
+    expect(output.toString(), contains('[status] - Volume: checking'));
     expect(output.toString(), contains('Focus: Submit'));
   });
 
@@ -536,7 +536,7 @@ void main() {
     );
 
     expect((result as Accepted<(String, String)>).value, ('3', '5'));
-    expect(output.toString(), contains('[status] Window: checking'));
+    expect(output.toString(), contains('[status] - Window: checking'));
     expect(output.toString(), contains('Focus: Submit'));
   });
 
@@ -610,7 +610,7 @@ void main() {
     );
 
     expect((result as Accepted<MaskedValue>).value.formatted, '1-2');
-    expect(output.toString(), contains('[status] Code: checking'));
+    expect(output.toString(), contains('[status] - Code: checking'));
   });
 
   test(

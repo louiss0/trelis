@@ -183,6 +183,67 @@ List<String> frameStructureLines(
   ];
 }
 
+/// Spinner frame cycles for a [PromptStructure].
+///
+/// Each structure's atlas specimen freezes one frame of a rotation family;
+/// the live cycle runs the whole family starting at that frame, so two
+/// structures that share a family still spin out of phase. An ASCII profile
+/// uses the `/` cycle for every structure, matching the conservative glyph
+/// convention the rest of the structural vocabulary already follows.
+const _brailleSpin = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+const _circleSpin = '◐◓◑◒';
+const _quarterSpin = '◴◵◶◷';
+const _fillSpin = '◌◔◕●';
+const _diamondSpin = '◈◇◈◆';
+const _starSpin = '*+x·';
+const _asciiSpin = r'/-\|';
+
+(String, int) _spinCycle(PromptStructure structure) => switch (structure) {
+  PromptStructure.plain => (_starSpin, 0),
+  PromptStructure.rail || PromptStructure.box => (_brailleSpin, 2),
+  PromptStructure.branch => (_quarterSpin, 0),
+  PromptStructure.round => (_brailleSpin, 0),
+  PromptStructure.double => (_diamondSpin, 0),
+  PromptStructure.minimal => (_circleSpin, 3),
+  PromptStructure.chevron => (_circleSpin, 1),
+  PromptStructure.bracket => (_circleSpin, 0),
+  PromptStructure.block => (_circleSpin, 2),
+  PromptStructure.line => (_fillSpin, 0),
+  PromptStructure.colon => (_brailleSpin, 3),
+  _ => (_asciiSpin, 0),
+};
+
+/// Frame [frame] of [structure]'s spinner cycle.
+///
+/// Components advance the counter on each emitted activity line; the renderer
+/// maps it into the structure's family so appended transcript lines still
+/// show motion where the output cannot redraw in place.
+String structureSpinFrame(
+  PromptStructure structure,
+  int frame, {
+  required bool ascii,
+}) {
+  final (cycle, anchor) = ascii ? (_asciiSpin, 0) : _spinCycle(structure);
+  return cycle[(anchor + frame) % cycle.length];
+}
+
+/// The waiting marker a task line shows before its work starts.
+String structureWaitGlyph(PromptStructure structure, {required bool ascii}) {
+  if (structure == PromptStructure.plain) return '( )';
+  if (ascii) return '[ ]';
+  return switch (structure) {
+    PromptStructure.rail || PromptStructure.box => '□',
+    PromptStructure.round ||
+    PromptStructure.minimal ||
+    PromptStructure.chevron => '·',
+    PromptStructure.double => '◇',
+    PromptStructure.line => '–',
+    PromptStructure.form || PromptStructure.block => '( )',
+    PromptStructure.ledger => '[-]',
+    _ => '[ ]',
+  };
+}
+
 /// Drawing characters for a [PromptStructure] enclosure.
 ///
 /// A box, rounded or double structure encloses the stage it renders: a top

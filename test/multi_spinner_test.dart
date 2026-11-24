@@ -10,7 +10,7 @@ void main() {
     group.finishTask('build', FeedbackOutcome.completed);
     expect(
       out.toString(),
-      contains('Summary:\nbuild: completed\ntest: failed: broken\n'),
+      contains('Summary:\n+ build: completed\nx test: failed: broken\n'),
     );
   });
   test(
@@ -36,7 +36,7 @@ void main() {
       group.finishTask('a', FeedbackOutcome.completed);
       expect(
         out.toString(),
-        contains('Summary:\na: completed\nb: failed: bad\n'),
+        contains('Summary:\n+ a: completed\nx b: failed: bad\n'),
       );
     },
   );
@@ -58,8 +58,9 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 140));
     final lines = out.toString().substring(before.length).trim().split('\n');
     expect(lines.length, 100);
+    const spin = ['/', '-', r'\', '|'];
     for (var i = 0; i < names.length; i++) {
-      expect(lines[i], '${names[i]}: running, new');
+      expect(lines[i], '${spin[(i + 1) % 4]} ${names[i]}: running, new');
     }
     group.dispose();
   });
@@ -75,12 +76,12 @@ void main() {
       group.finishTask('one\x1b', FeedbackOutcome.failed, detail: 'bad\x1b');
       expect(
         out.toString(),
-        contains('[status] one\\u001b: running, compile\\u001b'),
+        contains('/ one\\u001b: running, compile\\u001b'),
       );
       expect(
         out.toString(),
         contains(
-          '[status] Summary:\n[status] one\\u001b: failed: bad\\u001b\n[status] two: cancelled\n',
+          '[status] Summary:\nx one\\u001b: failed: bad\\u001b\n! two: cancelled\n',
         ),
       );
       expect(out.toString(), isNot(contains('\x1b')));
@@ -132,7 +133,7 @@ void main() {
         () => group.update('unknown', TaskActivity.running),
         throwsArgumentError,
       );
-      expect(out.toString(), 'a: waiting\n');
+      expect(out.toString(), '( ) a: waiting\n');
       group.dispose();
     },
   );

@@ -188,7 +188,7 @@ void main() {
       await tasks.stop();
 
       final text = output.toString();
-      expect(text, contains('Running: build: running, compiling'));
+      expect(text, contains('/ build: running, compiling'));
       expect(text, contains('+ Success: build: completed'));
       expect(text, contains('x Error: test: failed: offline'));
       expect(text, contains('Summary:'));
@@ -344,7 +344,7 @@ void main() {
       RegExp(r'Enter submits; /help opens help').allMatches(text),
       hasLength(1),
     );
-    expect(text, contains('Running: Index: reading'));
+    expect(text, contains('- Index: reading'));
     expect(text, contains('+ Success: Index: completed'));
   });
 
@@ -450,7 +450,7 @@ void main() {
       final text = output.toString();
       expect(text, contains('\x1b[?1049h'));
       expect(text, contains('\x1b[?1049l'));
-      expect(text, contains('[status] Running: Index: reading cache'));
+      expect(text, contains('[status] - Index: reading cache'));
       expect(text, contains('Ctrl+T opens help.'));
       expect(
         text.indexOf('Ctrl+T opens help.'),
@@ -573,7 +573,7 @@ void main() {
 
       expect(
         output.toString(),
-        'Running: Index: running\n'
+        '/ Index: running\n'
         '! Warning: Index: ${outcome.name}: request\n',
       );
     }

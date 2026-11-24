@@ -420,9 +420,31 @@ final class TerminalSessionFeedbackRegion {
 
   bool get rich => _session._feedbackRich;
 
+  /// Whether [writeLive] currently repaints a bottom row in place.
+  ///
+  /// A live region repaints only while the session owns the bottom of the
+  /// screen: rich output, no active prompt frame, and no modal help. When
+  /// this is false the same call appends a transcript line instead, so
+  /// components may report activity without checking the screen shape.
+  bool get live => _session._regionCanRepaintLive(this);
+
   void write(String line) {
     if (_retired) return;
     _session._writeFeedback(this, line);
+  }
+
+  /// Reports the region's repaintable live block.
+  ///
+  /// While [live] is true the block stays at the bottom of the transcript
+  /// and each call repaints it in place; line breaks inside [line] make it a
+  /// multi-row block. Committed lines written by any region land above the
+  /// block, and the block becomes transcript when the region writes a
+  /// committed line itself, when a prompt or modal help claims the screen,
+  /// or when the region retires. While [live] is false the call appends an
+  /// ordinary transcript line instead.
+  void writeLive(String line) {
+    if (_retired) return;
+    _session._writeLiveFeedback(this, line);
   }
 
   void retire() {
@@ -530,6 +552,18 @@ final class TerminalSession {
   /// explicit outcome. A retired failure stays reviewable in the transcript
   /// without marking every later status.
   bool _lastFeedbackLineImportant = false;
+
+  /// The region whose live block is painted at the bottom of the screen.
+  ///
+  /// Live rows repaint in place while rich output owns the screen bottom:
+  /// they only exist while no prompt frame or modal help is painted, so the
+  /// block is always the lowest content. Committed transcript writes land
+  /// above it and the block is repainted beneath them again. [_liveFeedbackText]
+  /// retains the painted content for that repaint; [_liveFeedbackRows] counts
+  /// its visual rows so erasure can rewind past a multi-row block.
+  int? _liveFeedbackRegion;
+  int _liveFeedbackRows = 0;
+  String _liveFeedbackText = '';
   int _nextRegionId = 1;
   void Function()? _promptRepaint;
   bool _activePrompt = false;
@@ -581,6 +615,7 @@ final class TerminalSession {
     _feedbackSnapshots.clear();
     _deferredFeedback.clear();
     _deferredNotices.clear();
+    _dropLiveFeedback();
     // The active prompt cannot be answered through a retired session, so it
     // must end with the original failure instead of waiting for input that can
     // never be acted on, even when the caller caught the write failure.
@@ -647,6 +682,15 @@ final class TerminalSession {
     _liveGenerations.remove(region._id);
     _feedback.remove(region);
     _feedbackSnapshots.remove(region._id);
+    if (_liveFeedbackRegion == region._id) {
+      // A live block that was never ended by a committed line stays as
+      // transcript: the caller retired the region, so its last live state is
+      // the outcome history rather than an animated row.
+      _writeShared(() {
+        if (_liveFeedbackRows > 0) _output.write('\n');
+        _dropLiveFeedback();
+      });
+    }
     if (!_modalHelp && _feedbackNeedsCompaction) {
       _paintCompactFeedback();
       _writeShared(() => _promptRepaint?.call());
@@ -783,6 +827,88 @@ final class TerminalSession {
     });
   }
 
+  /// Whether [region] may currently repaint a bottom live block.
+  ///
+  /// Live repainting needs the screen bottom: rich output, no active prompt
+  /// frame, and no modal help. A live block disappears when any of those
+  /// stops holding, so components may offer live lines unconditionally and
+  /// the session chooses the honest presentation.
+  bool _regionCanRepaintLive(TerminalSessionFeedbackRegion region) =>
+      !_closed &&
+      _liveGenerations[region._id] == region._generation &&
+      _feedback.contains(region) &&
+      _feedbackRich &&
+      !_activePrompt &&
+      _promptRepaint == null &&
+      !_modalHelp;
+
+  /// Erases the painted live block without clearing its bookkeeping.
+  ///
+  /// The block is always the lowest screen content, so erasing to the end of
+  /// the display after rewinding its rows removes exactly the block.
+  void _eraseLiveFeedbackRows() {
+    if (_liveFeedbackRows == 0) return;
+    _output.write('\r');
+    if (_liveFeedbackRows > 1) {
+      _output.write('\x1b[${_liveFeedbackRows - 1}A');
+    }
+    _output.write('\x1b[0J');
+  }
+
+  void _dropLiveFeedback() {
+    _liveFeedbackRegion = null;
+    _liveFeedbackRows = 0;
+    _liveFeedbackText = '';
+  }
+
+  /// Paints [text] as the live block owned by [regionId] at the screen bottom.
+  ///
+  /// Runs inside the shared writer. An existing block is erased first, so the
+  /// same call covers the first paint, a repaint and an ownership transfer.
+  /// Rows carry the transcript tag so a block committed later reads like the
+  /// committed lines around it.
+  void _paintLiveFeedback(int regionId, String text) {
+    _eraseLiveFeedbackRows();
+    _dropLiveFeedback();
+    final painted = _feedbackRich
+        ? text.split('\n').map((row) => '[status] $row').join('\n')
+        : text;
+    _output.write(painted);
+    _liveFeedbackRegion = regionId;
+    _liveFeedbackRows = '\n'.allMatches(painted).length + 1;
+    _liveFeedbackText = painted;
+  }
+
+  /// Writes one committed transcript line above any painted live block.
+  ///
+  /// When [region] owns the live block the write ends it: the block is erased
+  /// and the line takes its place, so an outcome replaces the activity rows
+  /// it concludes. Another region's committed line lands above the block,
+  /// which is then repainted beneath it.
+  void _writeCommittedFeedback(
+    TerminalSessionFeedbackRegion region,
+    String line,
+  ) {
+    _writeShared(() {
+      if (_liveFeedbackRows > 0) {
+        final foreignRegion = _liveFeedbackRegion != region._id;
+        final repaint = foreignRegion ? _liveFeedbackText : '';
+        final repaintRegion = _liveFeedbackRegion;
+        _eraseLiveFeedbackRows();
+        _dropLiveFeedback();
+        _transcriptWriteln('${_feedbackRich ? '[status] ' : ''}$line');
+        if (repaint.isNotEmpty) {
+          _paintLiveFeedback(repaintRegion!, repaint);
+        }
+      } else {
+        if (_promptRepaint != null && _feedbackRich) {
+          _output.write('\r\x1b[2K');
+        }
+        _transcriptWriteln('${_feedbackRich ? '[status] ' : ''}$line');
+      }
+    });
+  }
+
   void _writeFeedback(TerminalSessionFeedbackRegion region, String line) {
     if (_closed ||
         _liveGenerations[region._id] != region._generation ||
@@ -817,13 +943,38 @@ final class TerminalSession {
       }
       _paintCompactFeedback();
     } else {
-      _writeShared(() {
-        if (_promptRepaint != null && _feedbackRich) {
-          _output.write('\r\x1b[2K');
-        }
-        _transcriptWriteln('${_feedbackRich ? '[status] ' : ''}$line');
-      });
+      _writeCommittedFeedback(region, line);
     }
+    _writeShared(() => _promptRepaint?.call());
+  }
+
+  /// Delivers a repaintable live block, or appends it when nothing live fits.
+  ///
+  /// A live block is still snapshot state: it is tracked like any feedback
+  /// line, deferred while help owns painting, and appended as transcript when
+  /// rich output or a prompt frame leaves no bottom row to repaint.
+  void _writeLiveFeedback(
+    TerminalSessionFeedbackRegion region,
+    String line,
+  ) {
+    if (_closed ||
+        _liveGenerations[region._id] != region._generation ||
+        !_feedback.contains(region)) {
+      return;
+    }
+    _feedbackSnapshots[region._id] = line;
+    _lastFeedbackLineImportant = _isImportantFeedback(line);
+    if (_modalHelp) {
+      final deferred = _DeferredFeedbackLine(_nextDeferredSequence++, line);
+      _deferredFeedback[region._id] = deferred;
+      if (_isImportantFeedback(line)) _deferredNotices.add(deferred);
+      return;
+    }
+    if (_feedbackRich && _promptRepaint == null && !_activePrompt) {
+      _writeShared(() => _paintLiveFeedback(region._id, line));
+      return;
+    }
+    _writeCommittedFeedback(region, line);
     _writeShared(() => _promptRepaint?.call());
   }
 
@@ -838,7 +989,20 @@ final class TerminalSession {
     _modalHelp = true;
     _modalUsesAlternateScreen = useAlternateScreen;
     if (useAlternateScreen) {
-      _writeShared(() => _output.write('\x1b[?1049h\x1b[H'));
+      _writeShared(() {
+        if (_liveFeedbackRows > 0) {
+          _output.write('\n');
+          _dropLiveFeedback();
+        }
+        _output.write('\x1b[?1049h\x1b[H');
+      });
+    } else if (_liveFeedbackRows > 0) {
+      _writeShared(() {
+        if (_liveFeedbackRows > 0) {
+          _output.write('\n');
+          _dropLiveFeedback();
+        }
+      });
     }
   }
 
@@ -936,9 +1100,22 @@ final class TerminalSession {
     _promptRepaint = repaint;
     if (repaint == null) {
       _promptGeometry = null;
-    } else if (!_modalHelp && _feedbackNeedsCompaction) {
-      _paintCompactFeedback();
-      _writeShared(repaint);
+    } else {
+      if (_liveFeedbackRows > 0) {
+        // A live block owns the screen bottom until a frame claims it. The
+        // unterminated rows become transcript above the frame, ending live
+        // repainting until the prompt releases the screen again.
+        _writeShared(() {
+          if (_liveFeedbackRows > 0) {
+            _output.write('\n');
+            _dropLiveFeedback();
+          }
+        });
+      }
+      if (!_modalHelp && _feedbackNeedsCompaction) {
+        _paintCompactFeedback();
+        _writeShared(repaint);
+      }
     }
   }
 
@@ -1068,6 +1245,18 @@ final class TerminalSession {
     } catch (error, stackTrace) {
       recordFailure(error, stackTrace);
     }
+    if (_liveFeedbackRows > 0) {
+      try {
+        _writeShared(() {
+          if (_liveFeedbackRows > 0) {
+            _output.write('\n');
+            _dropLiveFeedback();
+          }
+        });
+      } catch (error, stackTrace) {
+        recordFailure(error, stackTrace);
+      }
+    }
     _writer.close();
     _closed = true;
     _promptRepaint = null;
@@ -1119,6 +1308,17 @@ final class TerminalSession {
       throw StateError('A terminal session already has an active prompt.');
     }
     _activePrompt = true;
+    if (_liveFeedbackRows > 0) {
+      // A live block owns the screen bottom only between prompts. Committing
+      // its unterminated rows turns them into transcript above the incoming
+      // frame, which paints without live content beneath it.
+      _writeShared(() {
+        if (_liveFeedbackRows > 0) {
+          _output.write('\n');
+          _dropLiveFeedback();
+        }
+      });
+    }
     try {
       final selected =
           _mode ??

@@ -313,7 +313,7 @@ void main() {
       final text = output.toString();
       expect(text, contains('\x1b[?1049h'));
       expect(text, contains('\x1b[?1049l'));
-      expect(text, contains('[status] Index: reading cache'));
+      expect(text, contains('[status] - Index: reading cache'));
       expect(
         text.indexOf('\x1b[?1049l'),
         lessThan(text.lastIndexOf('Index: completed')),
@@ -363,8 +363,8 @@ void main() {
       await second.finish(() => upload.finish(FeedbackOutcome.completed));
 
       final text = output.toString();
-      expect(text, contains('[status] Feedback (2): Index, Upload'));
-      expect(text, contains('[status] Index: failed: offline'));
+      expect(text, contains('[status] Feedback (2): - Index, Upload'));
+      expect(text, contains('[status] x Index: failed: offline'));
       expect(text, contains('[status] Upload: completed'));
     },
   );

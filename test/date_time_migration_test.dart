@@ -89,7 +89,7 @@ void main() {
       );
 
       expect((result as Accepted<CivilDate>).value.day, 29);
-      expect(output.toString(), contains('[status] Calendar: checking'));
+      expect(output.toString(), contains('[status] - Calendar: checking'));
       expect(output.toString(), contains('Focus: Review'));
     },
   );
@@ -297,7 +297,7 @@ void main() {
       expect(text, contains('day/month/year'));
       // Background feedback continued while help owned the screen, and the
       // retained draft survived dismissal.
-      expect(text, contains('[status] Calendar: checking'));
+      expect(text, contains('[status] - Calendar: checking'));
       expect(text, contains('Help dismissed.'));
     },
   );

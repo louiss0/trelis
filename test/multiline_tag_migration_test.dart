@@ -85,7 +85,7 @@ void main() {
           // The session repaints the editable line after the status write, so
           // the caret and draft stay on screen without another keypress.
           final update = output.toString().substring(beforeUpdate.length);
-          expect(update, contains('[status] Upload: uploading'));
+          expect(update, contains('[status] - Upload: uploading'));
           expect(update, contains('Line 2:'));
           input.add('two\t\r');
           await input.close();
@@ -97,7 +97,7 @@ void main() {
       );
 
       expect((result as Accepted<String>).value, 'one\ntwo');
-      expect(output.toString(), contains('[status] Upload: uploading'));
+      expect(output.toString(), contains('[status] - Upload: uploading'));
     },
   );
 
@@ -179,7 +179,7 @@ void main() {
     expect(duringHelp, helpBlock);
     // Dismissal restores the latest composite and repaints the draft/caret.
     expect(afterDismissal, contains('Help dismissed.'));
-    expect(afterDismissal, contains('[status] Upload: still uploading'));
+    expect(afterDismissal, contains(r'[status] \ Upload: still uploading'));
     expect(afterDismissal, contains('Line 1: ab'));
   });
 
@@ -298,7 +298,7 @@ void main() {
           // The session repaints the editor after the status write, so the
           // unaccepted draft stays visible without another keypress.
           final update = output.toString().substring(beforeUpdate.length);
-          expect(update, contains('[status] Upload: uploading'));
+          expect(update, contains('[status] - Upload: uploading'));
           expect(update, contains('two'));
           input.add('\r');
           await Future<void>.delayed(Duration.zero);

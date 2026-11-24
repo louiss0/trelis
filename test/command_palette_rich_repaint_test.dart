@@ -175,15 +175,15 @@ void main() {
         hasLength(1),
       );
       expect(
-        rows.where((line) => line.contains('[status] Sync: fetching')),
+        rows.where((line) => line.contains('[status] - Sync: fetching')),
         hasLength(1),
       );
       expect(
-        rows.where((line) => line.contains('[status] Sync: merging')),
+        rows.where((line) => line.contains(r'[status] \ Sync: merging')),
         hasLength(1),
       );
       expect(
-        rows.where((line) => line.contains('[status] Sync: completed')),
+        rows.where((line) => line.contains('[status] + Sync: completed')),
         hasLength(1),
       );
     },

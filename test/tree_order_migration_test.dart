@@ -383,7 +383,7 @@ void main() {
     );
 
     expect((result as Accepted<String>).value, 'b');
-    expect(output.toString(), contains('[status] Tree: loading branches'));
+    expect(output.toString(), contains('[status] - Tree: loading branches'));
     // The shared feedback write repaints the live prompt instead of leaving the
     // last frame stale, so the focused row is drawn again after the update.
     expect(rowsAfterFeedback, greaterThan(1));
@@ -425,7 +425,7 @@ void main() {
       );
 
       expect((result as Accepted<List<String>>).value, ['a', 'b']);
-      expect(output.toString(), contains('[status] Order: saving'));
+      expect(output.toString(), contains('[status] - Order: saving'));
       expect(rowsAfterFeedback, greaterThan(1));
     },
   );

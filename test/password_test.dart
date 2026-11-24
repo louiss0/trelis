@@ -195,7 +195,7 @@ void main() {
 
     expect((result as Accepted<String>).value, canary);
     expect(output.toString(), contains('Hidden entry'));
-    expect(output.toString(), contains('[status] Vault: checking entry'));
+    expect(output.toString(), contains('[status] - Vault: checking entry'));
     expect(output.toString(), contains('Enter opens Password actions'));
     expect(output.toString(), isNot(contains(canary)));
     expect(output.toString(), isNot(contains('${canary.length} graphemes')));

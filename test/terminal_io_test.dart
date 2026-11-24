@@ -43,7 +43,7 @@ void main() {
 
     expect(
       output.toString(),
-      'Success: Ready\nIndex: running\nIndex: completed\n',
+      'Success: Ready\n/ Index: running\n+ Index: completed\n',
     );
     expect(terminal.events, isEmpty);
   });

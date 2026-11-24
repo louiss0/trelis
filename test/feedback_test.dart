@@ -80,10 +80,10 @@ void main() {
     spinner.update('running');
     expect(
       out.toString(),
-      'Index: running\nIndex: waiting for disk\nIndex: failed: disk error\n',
+      '/ Index: running\n- Index: waiting for disk\nx Index: failed: disk error\n',
     );
   });
-  test('nonanimated rich feedback retains static state and layout', () {
+  test('rich spinner advances its frame glyph and drops the status tag', () {
     final out = StringBuffer();
     final spinner = Spinner('Index');
     spinner.start(output: out, mode: PromptMode.rich, supportsRich: true);
@@ -91,7 +91,7 @@ void main() {
     spinner.finish(FeedbackOutcome.skipped);
     expect(
       out.toString(),
-      '[status] Index: running\n[status] Index: waiting\n[status] Index: skipped\n',
+      '/ Index: running\n- Index: waiting\n! Index: skipped\n',
     );
   });
   test(
@@ -151,7 +151,7 @@ void main() {
     expect(out.toString(), isNot(contains('1%')));
     expect(out.toString(), contains('completed'));
   });
-  test('static rich spinner uses an explicit status layout', () {
+  test('rich spinner marks live frames and outcomes with glyphs', () {
     final out = StringBuffer();
     final spinner = Spinner('Build');
     spinner.start(output: out, mode: PromptMode.rich, supportsRich: true);
@@ -160,7 +160,7 @@ void main() {
     expect(out.toString(), isNotEmpty);
     expect(
       out.toString(),
-      '[status] Build: running\n[status] Build: waiting\n[status] Build: cancelled\n',
+      '/ Build: running\n- Build: waiting\n! Build: cancelled\n',
     );
   });
   test(

@@ -102,18 +102,74 @@ enum FeedbackState {
 
 /// One display-safe feedback line awaiting theme-owned rendering.
 final class FeedbackLine {
-  const FeedbackLine(this.message, {required this.state});
+  const FeedbackLine(this.message, {required this.state, this.frame = -1});
 
   /// Already-escaped semantic content, without a structural prefix.
   final String message;
   final FeedbackState state;
+
+  /// Live-activity frame for spinner lines.
+  ///
+  /// A nonnegative value cycles the structure's spinner family anchored at
+  /// this index; [feedbackFrameWaiting] marks a task still waiting for work;
+  /// -1 leaves the state's ordinary label.
+  final int frame;
 }
+
+/// [FeedbackLine.frame] value for a task that has not started working.
+const int feedbackFrameWaiting = -2;
+
+/// The marker a spinner line carries before its message.
+///
+/// A live frame cycles the structure's spinner family; a waiting task takes
+/// the structure's waiting marker; an outcome takes the matching state
+/// symbol; an informational line keeps no marker. The marker is display text
+/// composed before structural framing, so a rail or enclosure wraps it with
+/// the line.
+String _liveMarker(
+  PromptStructure structure,
+  FeedbackState state,
+  int frame,
+  OutputProfile? profile,
+) {
+  final ascii =
+      profile == null ||
+      profile.glyphs == GlyphSet.ascii ||
+      profile.glyphs == GlyphSet.automatic;
+  if (frame >= 0) {
+    return '${structureSpinFrame(structure, frame, ascii: ascii)} ';
+  }
+  if (frame == feedbackFrameWaiting) {
+    return '${structureWaitGlyph(structure, ascii: ascii)} ';
+  }
+  return switch (state) {
+    FeedbackState.success => ascii ? '+ ' : '✓ ',
+    FeedbackState.warning => '! ',
+    FeedbackState.failure => ascii ? 'x ' : '× ',
+    _ => '',
+  };
+}
+
+/// Whether the marker above renders a glyph a `[status]` tag would duplicate.
+bool _hasLiveMarker(FeedbackState state, int frame) =>
+    frame >= 0 ||
+    frame == feedbackFrameWaiting ||
+    state == FeedbackState.success ||
+    state == FeedbackState.warning ||
+    state == FeedbackState.failure;
 
 /// Renders structured feedback for one theme-owned active period.
 ///
 /// Components keep their own value and lifecycle semantics; this seam only
 /// replaces their direct terminal formatting when a theme owns the output.
 abstract interface class FeedbackRenderer {
+  /// Whether rendered lines are announced text rather than painted frames.
+  ///
+  /// Screen-reader output must stay a linear transcript: repainting a live
+  /// row re-delivers the same words as control sequences a reader cannot
+  /// present as animation, so live regions fall back to appended lines.
+  bool get screenReader => false;
+
   String render(FeedbackLine line);
 }
 
@@ -559,32 +615,43 @@ final class Progress {
   }
 }
 
+/// The repaint cadence of a live spinner on a repaintable screen.
+const Duration _spinnerFrameTick = Duration(milliseconds: 125);
+
 /// Feedback for activity whose total work is unknown.
 final class Spinner {
   Spinner(
     this.label, {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
-  }) : themeRenderer = null;
+    FeedbackClock? clock,
+  }) : themeRenderer = null,
+       _clock = clock ?? _SystemFeedbackClock();
 
   /// Internal construction seam for theme-owned feedback.
   Spinner.themed(
     this.label, {
     this.colors = ColorThemes.terminalDefault,
     this.structure = PromptStructure.plain,
+    FeedbackClock? clock,
     required this.themeRenderer,
-  });
+  }) : _clock = clock ?? _SystemFeedbackClock();
 
   final FeedbackRenderer? themeRenderer;
   final String label;
   final ColorTheme colors;
   final PromptStructure structure;
+  final FeedbackClock _clock;
   OutputProfile? _profile;
   StringSink? _output;
   Object? _standaloneOwner;
   TerminalSessionFeedbackRegion? _sessionRegion;
   bool _rich = false;
+  bool _inPlace = false;
+  bool _livePainted = false;
+  FeedbackTimer? _frameTimer;
   String _state = 'running';
+  int _frame = 0;
   bool _finished = false;
 
   void start({
@@ -628,11 +695,24 @@ final class Spinner {
         throw StateError('Rich output unavailable');
       }
       _rich = capable && selected != PromptMode.linear;
+      _inPlace =
+          _rich &&
+          (terminal?.supportsRich == true ||
+              (sink is Stdout && sink.hasTerminal));
       _output = sink;
       _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
       _profile = profile;
     }
-    _emit('${_safe(label)}: $_state', state: FeedbackState.running);
+    _emit(
+      '${_safe(label)}: $_state',
+      state: FeedbackState.running,
+      frame: _frame++,
+    );
+    if (_inPlace ||
+        ((_sessionRegion?.rich ?? false) &&
+            !(themeRenderer?.screenReader ?? false))) {
+      _scheduleFrameTick();
+    }
   }
 
   void update(String state) {
@@ -642,29 +722,93 @@ final class Spinner {
     }
     if (state == _state) return;
     _state = state;
-    _emit('${_safe(label)}: ${_safe(state)}', state: FeedbackState.running);
+    _emit(
+      '${_safe(label)}: ${_safe(state)}',
+      state: FeedbackState.running,
+      frame: _frame++,
+    );
+  }
+
+  /// Whether the session region currently repaints live lines in place.
+  bool get _regionLive {
+    final region = _sessionRegion;
+    return region != null &&
+        region.live &&
+        !(themeRenderer?.screenReader ?? false);
+  }
+
+  void _scheduleFrameTick() {
+    if (_finished) return;
+    _frameTimer = _clock.schedule(_spinnerFrameTick, _onFrameTick);
+  }
+
+  /// Advances the spinner family while the screen can actually repaint.
+  ///
+  /// A session that cannot paint the bottom row (a prompt or modal owns it)
+  /// keeps cadence without emitting: an appended frame line every tick would
+  /// grow the transcript without animating anything.
+  void _onFrameTick() {
+    _frameTimer = null;
+    if (_finished) return;
+    if (_sessionRegion != null && !_regionLive) {
+      _scheduleFrameTick();
+      return;
+    }
+    _emit(
+      '${_safe(label)}: ${_safe(_state)}',
+      state: FeedbackState.running,
+      frame: _frame++,
+    );
+    _scheduleFrameTick();
+  }
+
+  /// Repaints the live standalone row, or commits it on the final line.
+  void _paintLive(String styled, {required bool finalLine}) {
+    final out = _output!;
+    if (_livePainted) out.write('\r\x1b[2K');
+    if (finalLine) {
+      out.writeln(styled);
+      _livePainted = false;
+    } else {
+      out.write(styled);
+      _livePainted = true;
+    }
   }
 
   void _emit(
     String line, {
     FeedbackState state = FeedbackState.information,
+    int frame = -1,
     bool finalLine = false,
   }) {
     final region = _sessionRegion;
     final renderer = themeRenderer;
     final styled = renderer != null
-        ? renderer.render(FeedbackLine(line, state: state))
-        : _styleLine(line, finalLine: finalLine);
+        ? renderer.render(FeedbackLine(line, state: state, frame: frame))
+        : _styleLine(line, state: state, frame: frame, finalLine: finalLine);
     if (region != null) {
-      region.write(styled);
+      if (frame >= 0 && _regionLive) {
+        region.writeLive(styled);
+      } else {
+        region.write(styled);
+      }
+    } else if (_inPlace) {
+      _paintLive(styled, finalLine: finalLine);
     } else {
-      _output!.writeln(_rich ? '[status] $styled' : styled);
+      _output!.writeln(
+        _rich && !_hasLiveMarker(state, frame) ? '[status] $styled' : styled,
+      );
     }
   }
 
-  String _styleLine(String line, {required bool finalLine}) {
+  String _styleLine(
+    String line, {
+    required FeedbackState state,
+    required int frame,
+    required bool finalLine,
+  }) {
     final framed = structureFeedbackLine(
-      line,
+      '${_liveMarker(structure, state, frame, _profile)}$line',
       structure: structure,
       profile: _profile,
     );
@@ -682,6 +826,13 @@ final class Spinner {
   void dispose() {
     if (_finished) return;
     _finished = true;
+    _frameTimer?.cancel();
+    _frameTimer = null;
+    if (_livePainted) {
+      // The unterminated live row becomes transcript history.
+      _output!.write('\n');
+      _livePainted = false;
+    }
     _sessionRegion?.retire();
     final owner = _standaloneOwner;
     if (owner != null && _output != null) {
@@ -696,6 +847,8 @@ final class Spinner {
       throw StateError('Not started');
     }
     _finished = true;
+    _frameTimer?.cancel();
+    _frameTimer = null;
     _emit(
       '${_safe(label)}: ${outcome.name}${detail == null ? '' : ': ${_safe(detail)}'}',
       state: _outcomeState(outcome),
@@ -784,10 +937,14 @@ final class MultiSpinner {
   OutputProfile? _profile;
   Duration? _lastBatch;
   FeedbackTimer? _timer;
+  FeedbackTimer? _frameTimer;
+  int _frame = 0;
   StringSink? _output;
   Object? _standaloneOwner;
   TerminalSessionFeedbackRegion? _sessionRegion;
   bool _rich = false;
+  bool _inPlace = false;
+  int _liveRows = 0;
   bool _closed = false;
 
   void start({
@@ -831,17 +988,130 @@ final class MultiSpinner {
         throw StateError('Rich output unavailable');
       }
       _rich = capable && selected != PromptMode.linear;
+      _inPlace =
+          _rich &&
+          (terminal?.supportsRich == true ||
+              (sink is Stdout && sink.hasTerminal));
       _output = sink;
       _standaloneOwner = TerminalSession.claimStandaloneFeedbackOutput(sink);
       _profile = profile;
     }
-    for (final entry in _tasks.entries) {
-      _emit(
-        '${_safe(entry.key)}: ${entry.value.description}',
-        state: FeedbackState.running,
-      );
-      entry.value.shown = entry.value.description;
+    _emitLiveTasks();
+    if (_inPlace ||
+        ((_sessionRegion?.rich ?? false) &&
+            !(themeRenderer?.screenReader ?? false))) {
+      _scheduleFrameTick();
     }
+  }
+
+  /// The tasks still occupying the live block; finished tasks are transcript.
+  Iterable<MapEntry<String, _GroupTask>> get _liveTasks =>
+      _tasks.entries.where((entry) => entry.value.outcome == null);
+
+  /// Whether the session region currently repaints the live block in place.
+  bool get _regionLive {
+    final region = _sessionRegion;
+    return region != null &&
+        region.live &&
+        !(themeRenderer?.screenReader ?? false);
+  }
+
+  String _styledTaskRow(MapEntry<String, _GroupTask> entry) {
+    final state = entry.value;
+    final line = '${_safe(entry.key)}: ${state.description}';
+    final feedbackState = state.outcome == null
+        ? FeedbackState.running
+        : _outcomeState(state.outcome!);
+    final frame = state.outcome == null
+        ? (state.activity == TaskActivity.running
+              ? _frame++
+              : feedbackFrameWaiting)
+        : -1;
+    final renderer = themeRenderer;
+    return renderer != null
+        ? renderer.render(FeedbackLine(line, state: feedbackState, frame: frame))
+        : _styleLine(line, state: feedbackState, frame: frame);
+  }
+
+  /// Shows the current live tasks: a repaint of the whole block when the
+  /// screen can hold it, otherwise one appended line per reported task.
+  ///
+  /// With [pendingOnly] the transcript fallback emits only the tasks whose
+  /// shown description changed, matching the batched flush contract; live
+  /// repaints always redraw the whole block either way.
+  void _emitLiveTasks({bool pendingOnly = false}) {
+    final region = _sessionRegion;
+    if (_inPlace) {
+      _paintBlock();
+      for (final entry in _tasks.entries) {
+        entry.value.shown = entry.value.description;
+      }
+      return;
+    }
+    if (region != null && _regionLive) {
+      region.writeLive(_liveTasks.map(_styledTaskRow).join('\n'));
+      for (final entry in _tasks.entries) {
+        entry.value.shown = entry.value.description;
+      }
+      return;
+    }
+    for (final entry in _tasks.entries) {
+      if (entry.value.outcome == null &&
+          (!pendingOnly || _pending.contains(entry.key))) {
+        _emit(
+          '${_safe(entry.key)}: ${entry.value.description}',
+          state: FeedbackState.running,
+          frame: entry.value.activity == TaskActivity.running
+              ? _frame++
+              : feedbackFrameWaiting,
+        );
+        entry.value.shown = entry.value.description;
+      }
+    }
+  }
+
+  /// Repaints the standalone live block at the screen bottom.
+  void _paintBlock() {
+    final out = _output!;
+    final buffer = StringBuffer();
+    if (_liveRows > 0) {
+      buffer.write('\r');
+      if (_liveRows > 1) buffer.write('\x1b[${_liveRows - 1}A');
+      buffer.write('\x1b[0J');
+    }
+    final rows = [for (final entry in _liveTasks) _styledTaskRow(entry)];
+    buffer.write(rows.join('\n'));
+    out.write(buffer);
+    _liveRows = rows.length;
+  }
+
+  /// Terminates the painted standalone block, leaving it as transcript.
+  void _commitBlock() {
+    if (_liveRows == 0) return;
+    _output!.write('\n');
+    _liveRows = 0;
+  }
+
+  void _scheduleFrameTick() {
+    if (_closed || !_tasks.values.any((task) => task.outcome == null)) return;
+    _frameTimer = _clock.schedule(_spinnerFrameTick, _onFrameTick);
+  }
+
+  /// Advances running task frames while the screen can actually repaint.
+  void _onFrameTick() {
+    _frameTimer = null;
+    if (_closed) return;
+    final region = _sessionRegion;
+    if (region != null && !_regionLive) {
+      _scheduleFrameTick();
+      return;
+    }
+    if (_tasks.values.any(
+      (task) => task.activity == TaskActivity.running && task.outcome == null,
+    )) {
+      _emitLiveTasks();
+    }
+    _scheduleFrameTick();
   }
 
   _GroupTask _task(String task) {
@@ -877,15 +1147,7 @@ final class MultiSpinner {
     _timer?.cancel();
     _timer = null;
     if (_closed || _pending.isEmpty) return;
-    for (final entry in _tasks.entries) {
-      if (_pending.contains(entry.key)) {
-        _emit(
-          '${_safe(entry.key)}: ${entry.value.description}',
-          state: FeedbackState.running,
-        );
-        entry.value.shown = entry.value.description;
-      }
-    }
+    _emitLiveTasks(pendingOnly: true);
     _pending.clear();
     _lastBatch = _clock.elapsed;
   }
@@ -901,10 +1163,18 @@ final class MultiSpinner {
       '${_safe(task)}: ${state.description}',
       state: _outcomeState(outcome),
     );
+    final region = _sessionRegion;
+    if (region != null && _regionLive && _liveTasks.isNotEmpty) {
+      // The committed outcome row ended this region's live block; repaint the
+      // tasks still running beneath it.
+      region.writeLive(_liveTasks.map(_styledTaskRow).join('\n'));
+    }
     if (_tasks.values.every((value) => value.outcome != null)) {
       _summary();
       _closed = true;
       _timer?.cancel();
+      _frameTimer?.cancel();
+      _frameTimer = null;
       _pending.clear();
       _sessionRegion?.retire();
       final owner = _standaloneOwner;
@@ -918,26 +1188,52 @@ final class MultiSpinner {
   void _summary() {
     _emit('Summary:');
     for (final entry in _tasks.entries) {
-      _emit('${_safe(entry.key)}: ${entry.value.description}');
+      final outcome = entry.value.outcome;
+      _emit(
+        '${_safe(entry.key)}: ${entry.value.description}',
+        state: outcome == null
+            ? FeedbackState.information
+            : _outcomeState(outcome),
+      );
     }
   }
 
-  void _emit(String line, {FeedbackState state = FeedbackState.information}) {
+  void _emit(
+    String line, {
+    FeedbackState state = FeedbackState.information,
+    int frame = -1,
+  }) {
     final region = _sessionRegion;
     final renderer = themeRenderer;
     final styled = renderer != null
-        ? renderer.render(FeedbackLine(line, state: state))
-        : _styleLine(line);
+        ? renderer.render(FeedbackLine(line, state: state, frame: frame))
+        : _styleLine(line, state: state, frame: frame);
     if (region != null) {
       region.write(styled);
+    } else if (_inPlace && _liveRows > 0) {
+      // A committed line lands above the live block; the tasks still running
+      // repaint beneath it.
+      final out = _output!;
+      out.write('\r');
+      if (_liveRows > 1) out.write('\x1b[${_liveRows - 1}A');
+      out.write('\x1b[0J');
+      out.writeln(styled);
+      _liveRows = 0;
+      _paintBlock();
     } else {
-      _output!.writeln(_rich ? '[status] $styled' : styled);
+      _output!.writeln(
+        _rich && !_hasLiveMarker(state, frame) ? '[status] $styled' : styled,
+      );
     }
   }
 
-  String _styleLine(String line) {
+  String _styleLine(
+    String line, {
+    required FeedbackState state,
+    required int frame,
+  }) {
     final framed = structureFeedbackLine(
-      line,
+      '${_liveMarker(structure, state, frame, _profile)}$line',
       structure: structure,
       profile: _profile,
     );
@@ -958,7 +1254,10 @@ final class MultiSpinner {
     if (_closed) return;
     _closed = true;
     _timer?.cancel();
+    _frameTimer?.cancel();
+    _frameTimer = null;
     _pending.clear();
+    _commitBlock();
     if (_output != null || _sessionRegion != null) _summary();
     _sessionRegion?.retire();
     final owner = _standaloneOwner;

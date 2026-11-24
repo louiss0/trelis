@@ -24,10 +24,12 @@ import 'feedback.dart'
         Spinner,
         Text,
         TextKind,
+        feedbackFrameWaiting,
         structureFeedbackLine;
 import 'output_profile.dart' show GlyphSet, OutputProfile;
 import 'presentation.dart' show DisplayText;
-import 'prompt_structure.dart' show PromptStructure;
+import 'prompt_structure.dart'
+    show PromptStructure, structureSpinFrame, structureWaitGlyph;
 import 'state_help_presentation.dart' show StateGlyphs, Status, renderStatus;
 import 'theme_session.dart'
     show ThemeFeedbackHandle, ThemeSession, ThemeSessionHandle;
@@ -42,6 +44,9 @@ final class ThemeFeedbackRenderer implements FeedbackRenderer {
 
   /// Binds this renderer to the period that finished initialization.
   void attach(ThemeSessionHandle handle) => _handle = handle;
+
+  @override
+  bool get screenReader => _handle?.interaction.screenReader ?? false;
 
   @override
   String render(FeedbackLine line) {
@@ -82,7 +87,14 @@ final class ThemeFeedbackRenderer implements FeedbackRenderer {
     return switch (line.state) {
       FeedbackState.information => message,
       FeedbackState.hint => 'Hint: $message',
-      FeedbackState.running => 'Running: $message',
+      FeedbackState.running =>
+        screenReader
+            ? 'Running: $message'
+            : line.frame >= 0
+            ? '${structureSpinFrame(structure, line.frame, ascii: glyphs == StateGlyphs.ascii)} $message'
+            : line.frame == feedbackFrameWaiting
+            ? '${structureWaitGlyph(structure, ascii: glyphs == StateGlyphs.ascii)} $message'
+            : 'Running: $message',
       FeedbackState.progress => 'Progress: $message',
       FeedbackState.success =>
         screenReader
@@ -232,12 +244,19 @@ final class ThemeFeedbackTracer {
   }
 
   /// Starts activity whose total work is unknown.
-  Future<ThemeFeedbackControl<Spinner>> spinner(String label) async {
+  Future<ThemeFeedbackControl<Spinner>> spinner(
+    String label, {
+    FeedbackClock? clock,
+  }) async {
     final renderer = _renderer();
     Spinner? component;
     final handle = await _owner.startFeedback((period) {
       renderer.attach(period);
-      final started = Spinner.themed(label, themeRenderer: renderer);
+      final started = Spinner.themed(
+        label,
+        clock: clock,
+        themeRenderer: renderer,
+      );
       component = started;
       started.start(session: period.session);
     }, stop: () => component?.dispose());

@@ -92,10 +92,10 @@ void main() {
     );
 
     expect(answer, 'demo');
-    expect(output.toString(), contains('[status] Index: running'));
-    expect(output.toString(), contains('[status] Index: reading cache'));
+    expect(output.toString(), contains('[status] / Index: running'));
+    expect(output.toString(), contains('[status] - Index: reading cache'));
     expect(output.toString(), contains('Hint: Looking up suggestions'));
-    expect(output.toString(), contains('[status] Index: completed'));
+    expect(output.toString(), contains('[status] + Index: completed'));
     expect(transcript.currentView, isNotNull);
     expect(transcript.currentView!.text, 'demo');
     expect(transcript.currentView!.caret, 4);
@@ -153,15 +153,15 @@ void main() {
     expect(answer, 'demo');
     expect(transcript.currentView!.text, 'demo');
     expect(transcript.currentView!.caret, 4);
-    expect(output.toString(), contains('[status] Index: failed: offline'));
+    expect(output.toString(), contains('[status] x Index: failed: offline'));
     expect(
       output.toString(),
       contains('[status] Upload: running, 100% (10/10)'),
     );
     expect(output.toString(), contains('[status] Upload: running, verifying'));
     expect(output.toString(), contains('[status] Summary:'));
-    expect(output.toString(), contains('[status] compile: completed'));
-    expect(output.toString(), contains('[status] test: failed: broken'));
+    expect(output.toString(), contains('[status] + compile: completed'));
+    expect(output.toString(), contains('[status] x test: failed: broken'));
     expect(output.toString(), isNot(contains('Upload: completed')));
     expect(output.toString(), isNot(contains('stale')));
 

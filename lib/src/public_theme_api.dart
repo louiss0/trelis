@@ -1094,6 +1094,7 @@ abstract class StructuralTheme {
 
   ThemeLiveFeedback<ThemeSpinnerControl> spinner(
     String label, {
+    FeedbackClock? clock,
     ComponentColors colors = const ComponentColors(),
   }) {
     final feedback = ThemeFeedbackTracer(
@@ -1102,7 +1103,7 @@ abstract class StructuralTheme {
       colors: colors,
     );
     return _live(() async {
-      return ThemeSpinnerControl._(await feedback.spinner(label));
+      return ThemeSpinnerControl._(await feedback.spinner(label, clock: clock));
     });
   }
 

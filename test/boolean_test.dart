@@ -314,7 +314,7 @@ void main() {
       );
 
       expect((result as Accepted<bool>).value, isTrue);
-      expect(output.toString(), contains('[status] Policy: checking'));
+      expect(output.toString(), contains('[status] - Policy: checking'));
       expect(output.toString(), contains('Draft: off'));
       expect(output.toString(), contains('Draft: on'));
       expect(output.toString(), contains('Accepted: on'));

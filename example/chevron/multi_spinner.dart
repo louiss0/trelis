@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:trelis/trelis.dart';
 
 /// MultiSpinner — one component, one structural theme (ChevronTheme),
@@ -10,7 +12,7 @@ import 'package:trelis/trelis.dart';
 
 Future<void> main(List<String> arguments) async {
   final theme = ChevronTheme(
-    interaction: const InteractionPreferences(mode: PromptMode.linear),
+    interaction: const InteractionPreferences(mode: PromptMode.automatic),
   );
 
   final tasks = await theme
@@ -24,11 +26,15 @@ Future<void> main(List<String> arguments) async {
       .start();
 
   tasks.update('Compile', TaskActivity.running, phase: 'linking');
+  await Future<void>.delayed(const Duration(milliseconds: 400));
 
   tasks.finishTask('Download', FeedbackOutcome.completed);
 
+  tasks.update('Package', TaskActivity.running, phase: 'archiving');
+  await Future<void>.delayed(const Duration(milliseconds: 400));
   tasks.finishTask('Compile', FeedbackOutcome.completed);
 
+  await Future<void>.delayed(const Duration(milliseconds: 400));
   tasks.finishTask('Package', FeedbackOutcome.completed);
 
   await tasks.stop();
