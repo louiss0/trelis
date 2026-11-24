@@ -9,24 +9,30 @@ final _richProfile = OutputProfile(
 );
 
 void main() {
-  test('unix paste distributes five tokens and focuses the last cell', () async {
-    final output = StringBuffer();
-    final result = await CronInput('Schedule', profile: CronProfile.unix)
-        .prompt(
-          source: ScriptedInput(
-            Stream.value('\x1b[200~1 2 3 4 5\x1b[201~\r'),
-            output,
-            outputProfile: _richProfile,
-          ),
-          mode: PromptMode.rich,
-        );
-    expect((result as Accepted<CronExpression>).value.expression, '1 2 3 4 5');
-    final text = output.toString();
-    // Focus lands on the last populated cell (day-of-week, 5/5) with the
-    // caret at its end, so a bare Enter submits the pasted draft.
-    expect(text, contains('unix · 5/5 day-of-week'));
-    expect(text, isNot(contains('Paste rejected')));
-  });
+  test(
+    'unix paste distributes five tokens and focuses the last cell',
+    () async {
+      final output = StringBuffer();
+      final result = await CronInput('Schedule', profile: CronProfile.unix)
+          .prompt(
+            source: ScriptedInput(
+              Stream.value('\x1b[200~1 2 3 4 5\x1b[201~\r'),
+              output,
+              outputProfile: _richProfile,
+            ),
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '1 2 3 4 5',
+      );
+      final text = output.toString();
+      // Focus lands on the last populated cell (day-of-week, 5/5) with the
+      // caret at its end, so a bare Enter submits the pasted draft.
+      expect(text, contains('unix · 5/5 day-of-week'));
+      expect(text, isNot(contains('Paste rejected')));
+    },
+  );
 
   test('quartz six-token paste clears the year cell', () async {
     final output = StringBuffer();
@@ -115,28 +121,34 @@ void main() {
     expect(text, contains('unix · 2/5 hour'));
   });
 
-  test('padded and newline pastes reject while a clean paste succeeds', () async {
-    final output = StringBuffer();
-    final result = await CronInput('Schedule', profile: CronProfile.unix)
-        .prompt(
-          source: ScriptedInput(
-            // Leading space, trailing space and an embedded newline are all
-            // rejected; the same five tokens without padding distribute.
-            Stream.value(
-              '\x1b[200~ 1 2 3 4 5\x1b[201~'
-              '\x1b[200~1 2 3 4 5 \x1b[201~'
-              '\x1b[200~1 2\n3 4 5\x1b[201~'
-              '\x1b[200~1 2 3 4 5\x1b[201~\r',
+  test(
+    'padded and newline pastes reject while a clean paste succeeds',
+    () async {
+      final output = StringBuffer();
+      final result = await CronInput('Schedule', profile: CronProfile.unix)
+          .prompt(
+            source: ScriptedInput(
+              // Leading space, trailing space and an embedded newline are all
+              // rejected; the same five tokens without padding distribute.
+              Stream.value(
+                '\x1b[200~ 1 2 3 4 5\x1b[201~'
+                '\x1b[200~1 2 3 4 5 \x1b[201~'
+                '\x1b[200~1 2\n3 4 5\x1b[201~'
+                '\x1b[200~1 2 3 4 5\x1b[201~\r',
+              ),
+              output,
+              outputProfile: _richProfile,
             ),
-            output,
-            outputProfile: _richProfile,
-          ),
-          mode: PromptMode.rich,
-        );
-    expect((result as Accepted<CronExpression>).value.expression, '1 2 3 4 5');
-    final text = output.toString();
-    expect('Paste rejected'.allMatches(text).length, 3);
-  });
+            mode: PromptMode.rich,
+          );
+      expect(
+        (result as Accepted<CronExpression>).value.expression,
+        '1 2 3 4 5',
+      );
+      final text = output.toString();
+      expect('Paste rejected'.allMatches(text).length, 3);
+    },
+  );
 
   test('a tab inside a multi-token paste rejects it', () async {
     final output = StringBuffer();

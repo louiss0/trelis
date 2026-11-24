@@ -953,10 +953,7 @@ final class TerminalSession {
   /// A live block is still snapshot state: it is tracked like any feedback
   /// line, deferred while help owns painting, and appended as transcript when
   /// rich output or a prompt frame leaves no bottom row to repaint.
-  void _writeLiveFeedback(
-    TerminalSessionFeedbackRegion region,
-    String line,
-  ) {
+  void _writeLiveFeedback(TerminalSessionFeedbackRegion region, String line) {
     if (_closed ||
         _liveGenerations[region._id] != region._generation ||
         !_feedback.contains(region)) {

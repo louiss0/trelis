@@ -74,10 +74,7 @@ void main() {
       group.update('one\x1b', TaskActivity.running, phase: 'compile\x1b');
       group.finishTask('two', FeedbackOutcome.cancelled);
       group.finishTask('one\x1b', FeedbackOutcome.failed, detail: 'bad\x1b');
-      expect(
-        out.toString(),
-        contains('/ one\\u001b: running, compile\\u001b'),
-      );
+      expect(out.toString(), contains('/ one\\u001b: running, compile\\u001b'));
       expect(
         out.toString(),
         contains(

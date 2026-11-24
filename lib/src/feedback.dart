@@ -1143,7 +1143,9 @@ final class MultiSpinner {
         : -1;
     final renderer = themeRenderer;
     return renderer != null
-        ? renderer.render(FeedbackLine(line, state: feedbackState, frame: frame))
+        ? renderer.render(
+            FeedbackLine(line, state: feedbackState, frame: frame),
+          )
         : _styleLine(line, state: feedbackState, frame: frame);
   }
 
@@ -1301,10 +1303,9 @@ final class MultiSpinner {
     Map<String, FutureOr<Object?> Function()> work,
   ) async {
     final entries = work.entries.toList();
-    final results = await Future.wait(
-      [for (final entry in entries) run(entry.key, entry.value)],
-      eagerError: false,
-    );
+    final results = await Future.wait([
+      for (final entry in entries) run(entry.key, entry.value),
+    ], eagerError: false);
     return {
       for (var i = 0; i < entries.length; i++) entries[i].key: results[i],
     };
@@ -1340,10 +1341,9 @@ final class MultiSpinner {
   /// ends. A stream error finishes that task failed and the first error
   /// propagates only after every task has reached a final state.
   Future<void> followAll(Map<String, Stream<String>> feeds) async {
-    await Future.wait(
-      [for (final entry in feeds.entries) follow(entry.key, entry.value)],
-      eagerError: false,
-    );
+    await Future.wait([
+      for (final entry in feeds.entries) follow(entry.key, entry.value),
+    ], eagerError: false);
   }
 
   void finishTask(String task, FeedbackOutcome outcome, {String? detail}) {

@@ -19,8 +19,11 @@ Future<void> main(List<String> arguments) async {
   await spinner.follow(
     Stream.periodic(
       const Duration(milliseconds: 800),
-      (count) =>
-          const ['authenticating', 'resolving routes', 'loading data'][count % 3],
+      (count) => const [
+        'authenticating',
+        'resolving routes',
+        'loading data',
+      ][count % 3],
     ).take(10),
     detail: 'ready',
   );

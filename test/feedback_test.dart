@@ -93,16 +93,16 @@ void main() {
     );
     expect(out.toString(), contains('failed: Bad state: nope'));
   });
-  test('progress follow applies streamed counts and finishes on close', () async {
-    final out = StringBuffer();
-    final progress = Progress('Build', total: 3, interval: Duration.zero);
-    progress.start(output: out);
-    await progress.follow(
-      Stream.fromIterable([1, 2, 3]),
-      detail: '3 items',
-    );
-    expect(out.toString(), contains('completed: 3 items'));
-  });
+  test(
+    'progress follow applies streamed counts and finishes on close',
+    () async {
+      final out = StringBuffer();
+      final progress = Progress('Build', total: 3, interval: Duration.zero);
+      progress.start(output: out);
+      await progress.follow(Stream.fromIterable([1, 2, 3]), detail: '3 items');
+      expect(out.toString(), contains('completed: 3 items'));
+    },
+  );
   test('progress onClosed fires once on finish and not on later dispose', () {
     var calls = 0;
     final progress = Progress('Build', onClosed: () => calls++);
@@ -334,21 +334,24 @@ void main() {
     },
   );
 
-  test('multi-spinner run finishes each task when its own future resolves', () async {
-    final out = StringBuffer();
-    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
-    tasks.start(output: out);
-    final values = await Future.wait([
-      tasks.run('fetch', () => Future<int>.value(1), detail: 'done'),
-      tasks.run('parse', () => Future<int>.value(2)),
-    ]);
-    expect(values, [1, 2]);
-    final text = out.toString();
-    expect(text, contains('fetch: running'));
-    expect(text, contains('parse: running'));
-    expect(text, contains('fetch: completed: done'));
-    expect(text, contains('parse: completed'));
-  });
+  test(
+    'multi-spinner run finishes each task when its own future resolves',
+    () async {
+      final out = StringBuffer();
+      final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+      tasks.start(output: out);
+      final values = await Future.wait([
+        tasks.run('fetch', () => Future<int>.value(1), detail: 'done'),
+        tasks.run('parse', () => Future<int>.value(2)),
+      ]);
+      expect(values, [1, 2]);
+      final text = out.toString();
+      expect(text, contains('fetch: running'));
+      expect(text, contains('parse: running'));
+      expect(text, contains('fetch: completed: done'));
+      expect(text, contains('parse: completed'));
+    },
+  );
   test('multi-spinner run finishes a task failed and rethrows', () async {
     final out = StringBuffer();
     final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
@@ -399,20 +402,23 @@ void main() {
     expect(text, contains('fetch: running, chunk 2'));
     expect(text, contains('fetch: completed'));
   });
-  test('multi-spinner followAll settles each task and errors rethrow', () async {
-    final out = StringBuffer();
-    final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
-    tasks.start(output: out);
-    await expectLater(
-      tasks.followAll({
-        'fetch': Stream<String>.error(StateError('lost')),
-        'parse': Stream.fromIterable(['token']),
-      }),
-      throwsA(isA<StateError>()),
-    );
-    expect(out.toString(), contains('fetch: failed: Bad state: lost'));
-    expect(out.toString(), contains('parse: completed'));
-  });
+  test(
+    'multi-spinner followAll settles each task and errors rethrow',
+    () async {
+      final out = StringBuffer();
+      final tasks = MultiSpinner(['fetch', 'parse'], interval: Duration.zero);
+      tasks.start(output: out);
+      await expectLater(
+        tasks.followAll({
+          'fetch': Stream<String>.error(StateError('lost')),
+          'parse': Stream.fromIterable(['token']),
+        }),
+        throwsA(isA<StateError>()),
+      );
+      expect(out.toString(), contains('fetch: failed: Bad state: lost'));
+      expect(out.toString(), contains('parse: completed'));
+    },
+  );
   test('multi-spinner onClosed fires when the last task finishes', () {
     var calls = 0;
     final tasks = MultiSpinner(['a', 'b'], onClosed: () => calls++);

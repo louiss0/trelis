@@ -595,11 +595,13 @@ void main() {
         sink.failure = failure;
         sink.onFailure = () {
           unawaited(
-            spinner.finish(FeedbackOutcome.cancelled).then(
-              (_) => reentrant.complete(),
-              onError: (Object error, StackTrace stackTrace) =>
-                  reentrant.completeError(error, stackTrace),
-            ),
+            spinner
+                .finish(FeedbackOutcome.cancelled)
+                .then(
+                  (_) => reentrant.complete(),
+                  onError: (Object error, StackTrace stackTrace) =>
+                      reentrant.completeError(error, stackTrace),
+                ),
           );
         };
 

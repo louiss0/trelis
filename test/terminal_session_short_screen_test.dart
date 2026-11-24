@@ -45,10 +45,7 @@ void main() {
     expect(answer, 'demo');
     expect(transcript.currentView!.text, 'demo');
     expect(transcript.currentView!.caret, 4);
-    expect(
-      output.toString(),
-      contains('[status] Feedback (3): - Index +2'),
-    );
+    expect(output.toString(), contains('[status] Feedback (3): - Index +2'));
   });
 
   test('short feedback keeps failures reviewable and visibly severe', () async {
