@@ -73,7 +73,7 @@ The complete set of Trelis component tasks and declared interaction/output profi
 A logical key with the modifiers reported for it, rather than a physical keyboard position or global hotkey registration.
 
 **Keybind declaration**:
-One logical gesture composed for Keybind as a row of symbol cells: one or more modifier cells (Ctrl, Alt, Shift, Meta) followed by one key cell. Completion is explicit: the declaration submits only once every cell holds a catalog member and no modifier repeats. The token form resolves `List<String>`; the joined form resolves the `+`-joined string.
+One logical gesture composed for Keybind as a row of role-labelled symbol cells: a leading modifier region (Ctrl, Alt, Shift, Meta — up to `modifierKeyLimit` cells) followed by a trailing key region (up to `keyLimit` cells), with no symbol repeating anywhere. `+` grows the focused cell's region; `-` removes the focused cell without emptying a region. Completion is explicit: the declaration submits only once every cell holds a catalog member and no symbol repeats. The token form resolves `List<String>`; the joined form resolves the `+`-joined string.
 
 **Choice reference**:
 A displayed reference that identifies the same choice throughout one prompt, independent of filtering, paging or order. It is distinct from the choice's current position.

@@ -1,7 +1,9 @@
 # Keybind gesture-cell input
 
-Status: ready-for-agent
+Status: implemented-unstable
 Labels: ready-for-agent
+Implementation: complete for the two-region cell model with region
+limits; native/human evidence remains open
 
 ## Problem Statement
 
@@ -16,11 +18,12 @@ composed — the same problem free-form cron entry had before field cells.
 Users want to compose one keybinding as an ordered row of **symbol cells**
 the way they already compose cron expressions: visible cells laid out left
 to right in declaration order, `Tab` between cells, and each cell edited in
-place. A gesture declaration is `Ctrl+Shift+B`: modifier symbols first, one
-key symbol last. Unlike cron's free-text cells, each cell is **select-based**
-and its catalog depends on its position: modifier cells cycle through
-`Ctrl`/`Alt`/`Shift`/`Meta`; the trailing key cell cycles through the whole
-keyboard-symbol vocabulary.
+place. A gesture declaration is `Ctrl+B` or `Ctrl+Shift+B+C`: one or more
+modifier symbols first, then one or more key symbols. Unlike cron's
+free-text cells, each cell is **select-based** and its catalog depends on
+its position: the leading **modifier region** cycles through
+`Ctrl`/`Alt`/`Shift`/`Meta`; the trailing **key region** cycles through
+the whole keyboard-symbol vocabulary.
 
 ## Solution
 
@@ -29,25 +32,35 @@ tests. Replace `KeyChordInput` with **`Keybind`**, a cell-row editor modeled
 on `CronInput`'s field-cell stage that composes **one gesture declaration**:
 
 - The prompt opens with **two cells**: one modifier cell and one key cell.
-  `+` adds a cell after the focused cell; `-` removes the focused cell.
-  Removal refuses below two cells; there is no upper bound.
-- A cell's role is positional: **every cell except the last is a modifier
-  cell** cycling `Ctrl`, `Alt`, `Shift`, `Meta`; **the last cell is the key
-  cell** cycling the full symbol vocabulary (letters, digits, `F1`–`F12`,
-  named keys). A modifier is required — every binding starts with at least
-  one modifier cell.
+  `+` on a **modifier cell** adds another modifier cell to the modifier
+  region (until `modifierKeyLimit`); `+` on a **key cell** adds another
+  key cell to the key region (until `keyLimit`). `-` removes the focused
+  cell; removal refuses to empty either region — a binding keeps at least
+  one modifier cell and one key cell.
+- A cell's role is positional: **the leading modifier cells** cycle `Ctrl`,
+  `Alt`, `Shift`, `Meta`; **the trailing key cells** cycle the full symbol
+  vocabulary (letters, digits, `F1`–`F12`, named keys). A binding is one
+  or more modifiers followed by one or more keys — `Ctrl+B`,
+  `Ctrl+Shift+B+C`.
+- `modifierKeyLimit` and `keyLimit` are caller-set caps on each region's
+  cell count. Each must be a positive `int` no larger than its catalog —
+  the caller can only place a limit the symbols can actually fill, since
+  no symbol may repeat. Defaults are the full catalog sizes.
 - `Enter` validates and accepts the ordered **token list** as
-  `List<String>` (`['Ctrl', 'Shift', 'B']`); duplicate modifiers are
-  rejected because the declaration grammar allows each at most once.
+  `List<String>` (`['Ctrl', 'Shift', 'B']`). **No symbol may repeat
+  anywhere in the row**: the cycle filter skips already-used symbols and
+  submit, paste, linear and `initialValue` validation reject repeats.
+- A **role label** under each cell marks the modifier region and every key
+  cell, so the main cells read at a glance.
 - `Keybind.joined(...)` is the flagged variant whose prompt returns the
-  joined declaration **string** (`'Ctrl+Shift+B'`) instead of the token
+  joined declaration **string** (`'Ctrl+B+C'`) instead of the token
   array.
 
 Inline presentation stays minimal: the prompt label, the framed cell row,
 an **active-format cue** naming the focused cell's position and value, and a
 **compact hint** advertising movement, cell add/remove, submission and help.
 **Linear interaction** keeps task equivalence with a single-line
-`Ctrl+Shift+B`-style declaration entry validated against the same rules.
+`Ctrl+B`-style declaration entry validated against the same rules.
 
 ## User Stories
 
@@ -55,14 +68,15 @@ an **active-format cue** naming the focused cell's position and value, and a
    a row of framed **symbol cells** in declaration order, starting with one
    modifier cell and one key cell, so that the gesture I'm composing is
    spatially visible.
-2. As a CLI end user, I want the first cell — and every cell before the
-   last — to cycle only through `Ctrl`, `Alt`, `Shift` and `Meta`, so that
-   the modifier prefix is the only choice a modifier cell offers.
-3. As a CLI end user, I want the last cell to cycle through every keyboard
-   symbol — letters, digits, `F1`–`F12`, `Enter`, `Tab`, `Escape`, `Space`,
-   `Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`,
-   `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight` — so that the key half
-   of the binding can be anything bindable.
+2. As a CLI end user, I want the first cell to cycle only through `Ctrl`,
+   `Alt`, `Shift` and `Meta`, so that the modifier half of the binding is
+   the only choice that cell offers.
+3. As a CLI end user, I want every later cell to cycle through every
+   keyboard symbol — letters, digits, `F1`–`F12`, `Enter`, `Tab`, `Escape`,
+   `Space`, `Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`,
+   `PageDown`, `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight` — so that
+   the key half of the binding can be anything bindable, including several
+   keys.
 4. As a CLI end user on an unset cell, I want `Up` or `Down` to land on the
    first catalog entry with wraparound cycling, so that filling a new cell
    takes one keystroke.
@@ -72,55 +86,61 @@ an **active-format cue** naming the focused cell's position and value, and a
 6. As a CLI end user, I want `Left` and `Right` to move focus between cells
    as well, so that cell travel works on arrows when there is no caret to
    move.
-7. As a CLI end user, I want `+` to insert a new unset cell right after the
-   focused cell and move focus into it, so that a longer modifier prefix
-   grows where I'm working.
+7. As a CLI end user, I want `+` on a modifier cell to grow the modifier
+   region and `+` on a key cell to grow the key region — a new unset cell
+   of the focused role right after the focused cell, focused on arrival —
+   so that a longer binding grows where I'm working.
 8. As a CLI end user, I want `-` to remove the focused cell, so that I can
-   shrink the prefix; when only two cells remain I want a notice instead of
-   silent failure.
-9. As a CLI end user, when adding or removing cells shifts a set cell into
-   a different role — key cell becoming a modifier cell or vice versa — I
-   want that cell's selection cleared when it is not in the new role's
-   catalog, so that no illegal token survives a structural edit.
+   shrink the binding; when a removal would empty the modifier or key
+   region I want a notice instead of silent failure.
+9. As a CLI end user, I want each region capped — at most
+   `modifierKeyLimit` modifier cells and `keyLimit` key cells — so that a
+   `+` press past a region's cap explains itself instead of silently
+   doing nothing.
 10. As a CLI end user, I want `Enter` from any cell to submit the whole
     gesture, so that I don't have to tab to a trailing action once the
     binding is complete.
-11. As a CLI end user submitting with unset cells or a repeated modifier, I
+11. As a CLI end user submitting with unset cells or a repeated symbol, I
     want validation to keep every selection and move focus to the offending
     cell with an explanatory notice, so that I can fix it in place.
+11a. As a CLI end user cycling a cell, I want symbols already used in other
+    cells skipped, so that I can never select the same key twice.
 12. As a CLI end user, I want a minimal **active-format cue** like
-    `cell 2/3 · Shift · modifier` plus a **compact hint**, so that I always
+    `cell 2/3 · B · key` plus a **compact hint**, so that I always
     know where I am without verbose inline text.
 13. As a CLI end user pressing `Ctrl+T`, I want **component help** that
-    leads with the focused cell's position, role and catalog rules,
-    followed by the full control list and any supplementary help, without
-    mutating the gesture or focus.
+    leads with the focused cell's position, role and catalog rules —
+    the symbol catalog shown **grouped by category** (letters, digits,
+    function keys, named keys) — followed by the full control list and
+    any supplementary help, without mutating the gesture or focus.
 14. As a CLI end user viewing help, I want `Escape` to dismiss help first
     and return me to the exact cell I was editing; a second `Escape`
     performs **prompt cancellation**.
-15. As a CLI end user pasting `Ctrl+Shift+B` (or comma-separated
-    `Ctrl,Shift,B`), I want the tokens to populate cells in order — the
-    cell count growing or shrinking to match, never below two — when the
-    tokens form a valid gesture, so that known bindings paste in one step.
-16. As a CLI end user pasting a single modifier or key symbol, I want it to
-    set the focused cell when the symbol is in that cell's catalog;
-    anything else is rejected with a notice and the draft is untouched.
+15. As a CLI end user pasting `Ctrl+B+C` (or comma-separated `Ctrl,B,C`),
+    I want the tokens to populate cells in order — the cell count growing
+    or shrinking to match, never below two — when the tokens form a valid
+    gesture, so that known bindings paste in one step.
+16. As a CLI end user pasting a single modifier or key symbol, I want it
+    to set the focused cell when the symbol is in that cell's catalog and
+    not already used elsewhere; anything else is rejected with a notice
+    and the draft is untouched.
 17. As a CLI end user on a narrow terminal, I want cells to size to their
     content and wrap whole cells onto continuation rows, so that no cell is
     torn mid-symbol.
 18. As a CLI end user in **linear interaction** or screen-reader mode, I
-    want to type the gesture as a `Ctrl+Shift+B`-style declaration on one
+    want to type the gesture as a `Ctrl+B`-style declaration on one
     line, validated against the same token rules with `/help` and
     `/cancel`, so that non-cursor workflows achieve the same task outcome.
 19. As a CLI developer, I want `theme.keybind(label, ...)` to return
     `ThemePrompt<List<String>>` and `theme.joinedKeybind(label, ...)` to
-    return `ThemePrompt<String>` (the `'Ctrl+Shift+B'` form), so that the
+    return `ThemePrompt<String>` (the 'Ctrl+B+C' form), so that the
     answer shape is chosen at construction.
 20. As a CLI developer, I want `modifiers` and `symbols` catalog
     parameters with defaults — the four modifiers and the full key
     vocabulary — validated at construction (non-empty, unique, members of
-    the declaration grammar), and `initialValue` token validation the same
-    way, throwing `ArgumentError` on bad configuration.
+    the declaration grammar), `modifierKeyLimit`/`keyLimit` caps that may
+    not exceed their catalogs, and `initialValue` token validation the
+    same way, throwing `ArgumentError` on bad configuration.
 21. As a CLI developer running a shared session with live feedback or
     resize events, I want the cell row, focus marker, cue and hint to
     repaint cleanly inside the updated geometry without losing the draft.
@@ -145,7 +165,11 @@ an **active-format cue** naming the focused cell's position and value, and a
   one declaration string. The generic `Keybind<T>` keeps both answer shapes
   statically typed; the theme API mirrors it with `theme.keybind` →
   `ThemePrompt<List<String>>` and `theme.joinedKeybind` →
-  `ThemePrompt<String>`.
+  `ThemePrompt<String>`. This declaration grammar — a leading run of
+  modifiers followed by one or more keys — is a superset of the `Keypress`
+  declare grammar, which still requires exactly one key, so a
+  `Keybind.joined` result is not necessarily a valid `Keypress`
+  declaration.
 - **Catalog contract**: `modifiers` defaults to `['Ctrl', 'Alt', 'Shift',
   'Meta']` and every entry must be one of those four names; `symbols`
   defaults to the full declaration key vocabulary (letters both cases,
@@ -154,46 +178,61 @@ an **active-format cue** naming the focused cell's position and value, and a
   catalogs, invalid entries and duplicates throw `ArgumentError` at
   construction.
 - **`initialValue`**: `List<String>` of tokens, validated at construction —
-  every token but the last must name a modifier, the last must name a
-  symbol, and modifiers may not repeat. The initial cell count is
-  `max(2, initialValue.length)`; a shorter `initialValue` leaves the
-  remaining cells unset (a lone modifier seeds `[modifier, unset]`).
-  Reusable `.prompt()` runs reset to this state.
-- **Cell model**: each cell is unset or holds a token string. A cell's
-  catalog is determined by position: every cell but the last uses
-  `modifiers`; the last uses `symbols`. When a structural edit moves a set
-  cell into the other role, the selection is cleared unless it is a member
-  of the new role's catalog. `Up`/`Down` steps the cell through its catalog
-  with wraparound, settling an unset cell on the first entry. Cells are
-  never text edited — there is no caret, and printable keys other than the
-  `+`/`-` controls are no-ops.
+  the leading run must name modifiers, every later token must name a
+  symbol, counts may not exceed the region limits, and no token may
+  repeat. The initial cell count is `max(2, initialValue.length)`; a
+  shorter `initialValue` leaves the remaining cells unset (a lone modifier
+  seeds `[modifier, unset]`). Reusable `.prompt()` runs reset to this
+  state.
+- **Region caps**: `modifierKeyLimit` and `keyLimit` are `int?`
+  constructor parameters defaulting to their catalog sizes; each must be
+  `>= 1` and `<=` its catalog's length, else `ArgumentError`. The caps are
+  enforced on `+` growth, paste, linear and `initialValue` validation.
+- **Cell model**: each cell is unset or holds a token string. The state is
+  a cell list plus a **modifier-cell count**: cells below the count use
+  the `modifiers` catalog, the rest use `symbols`. `+` inserts an unset
+  cell after the focused cell — in the modifier region it also grows the
+  modifier-cell count; in the key region the count is unchanged —
+  refused at the region's cap with a notice. `-` removes the focused
+  cell, shrinking the modifier count when the removed cell was a modifier
+  cell, and refuses to empty either region with a notice. `Up`/`Down`
+  steps the cell through the catalog entries **not already used in other
+  cells** with wraparound, settling an unset cell on the first free
+  entry. Cells are never text edited — there is no caret, and printable
+  keys other than the `+`/`-` controls are no-ops.
 - **Focus ring and keyboard model** (rich interaction): `Tab` advances and
   `Shift+Tab`/`Ctrl+B` retreat across cells, wrapping at both ends; `Left`
-  and `Right` do the same. `+` (and `=`) inserts an unset cell after the
-  focused cell and focuses it; `-` (and `_`) removes the focused cell,
-  refusing below two cells with a notice. `Enter` validates — every cell
-  set, no repeated modifier — and accepts `Accepted(List<String>)` (or the
-  joined `String`) in cell order, focusing the first offending cell with a
-  notice on failure. `Ctrl+T` opens stage help; `Escape` dismisses help
-  first then cancels; `Ctrl+C` interrupts; EOF ends input.
+  and `Right` do the same. `+` (and `=`) inserts and focuses a new cell of
+  the focused role; `-` (and `_`) removes the focused cell. `Enter`
+  validates — every cell set, no repeated symbol — and accepts
+  `Accepted(List<String>)` (or the joined `String`) in cell order,
+  focusing the first offending cell with a notice on failure. `Ctrl+T`
+  opens stage help; `Escape` dismisses help first then cancels; `Ctrl+C`
+  interrupts; EOF ends input.
 - **Presentation**: cells render as compact single-row framed tokens on the
   same wrapped-row layout as cron's field cells (square or round delimiters
-  via the `cellFrame` parameter), never torn mid-token; the active-format
-  cue reports `cell i/N`, the focused value or `unset`, and the role name
+  via the `cellFrame` parameter), never torn mid-token; a **role-label
+  row** under each cell row marks `modifier` under each modifier-region
+  cell and `key` under every key-region cell; the active-format cue
+  reports `cell i/N`, the focused value or `unset`, and the role name
   (`modifier`/`key`); the compact hint advertises
   move/change/add/remove/submit/help.
 - **Paste**: identified paste containing a token sequence separated by `+`
   or `,` (no whitespace or control characters, token count `>= 2`, forming
-  a valid gesture) resizes the cells to the token count and populates them
-  in order, focusing the last cell; a single catalog symbol sets the
-  focused cell; everything else is rejected with a notice and the draft is
+  a valid gesture within the region limits) resizes the cells to the token
+  count and repopulates both regions in order, focusing the last cell; a
+  single catalog symbol sets the focused cell when it is not already used
+  elsewhere; everything else is rejected with a notice and the draft is
   untouched.
-- **Linear interaction**: single-line `Ctrl+Shift+B`-style declaration
-  entry. Submit validates the tokens: `>= 2`, all but the last modifiers
-  (unique, catalog members), the last a catalog symbol; invalid drafts are
-  retained with a corrective notice. `/help` and `/cancel` keep their
-  shared meaning. `SuppliedAnswer` follows the same grammar — `Ctrl+Shift+B`
-  or comma-separated `Ctrl,Shift,B` — and anything else is `Unavailable`.
+- **Linear interaction**: single-line declaration entry (`Ctrl+B`,
+  `Ctrl+Shift,B`). Submit validates the tokens: `>= 2`, a non-empty
+  leading run of catalog modifiers, the rest catalog symbols, counts
+  within the region limits, no repeats; invalid drafts are retained with a
+  corrective notice. `/help` and `/cancel` keep their shared meaning, and
+  `/help` lists the symbol vocabulary **grouped by category**.
+  `SuppliedAnswer` follows the same grammar —
+  `Ctrl+B` or comma-separated `Ctrl,B,C` — and anything else is
+  `Unavailable`.
 - **Acceptance**: the ordered cell tokens are returned as `Accepted` —
   `List<String>` for `Keybind`, `String` (`tokens.join('+')`) for
   `Keybind.joined`. `Cancelled`, `Interrupted`, `InputEnded` and

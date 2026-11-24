@@ -538,6 +538,8 @@ typedef _KeybindFactory = Keybind<List<String>> Function(
   String, {
   List<String> modifiers,
   List<String> symbols,
+  int? modifierKeyLimit,
+  int? keyLimit,
   List<String> initialValue,
   CronCellFrame cellFrame,
   ColorTheme colors,
@@ -550,6 +552,8 @@ typedef _JoinedKeybindFactory = Keybind<String> Function(
   String, {
   List<String> modifiers,
   List<String> symbols,
+  int? modifierKeyLimit,
+  int? keyLimit,
   List<String> initialValue,
   CronCellFrame cellFrame,
   ColorTheme colors,

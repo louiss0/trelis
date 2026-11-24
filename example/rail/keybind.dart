@@ -8,7 +8,7 @@ import '../support/one_component.dart';
 /// Run: dart run example/rail/keybind.dart [--scripted]
 Future<void> main(List<String> arguments) => runOnePrompt(
   arguments,
-  'Ctrl+Shift+B\r',
+  'Ctrl+B+C\r',
   (io) => RailTheme(io: io)
       .keybind('Shortcut', colors: ComponentColors.palette(ColorThemes.ledger)),
 );

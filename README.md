@@ -866,8 +866,8 @@ order, the decimal-digit limit and the excluded expressions and colour spaces.
 
 ### Key capture
 
-`Keypress` captures one logical gesture; `Keybind` composes a nonempty
-ordered sequence from a caller-declared catalog. A `Keypress` prompts for a
+`Keypress` captures one logical gesture; `Keybind` composes one gesture
+declaration from caller-declared modifier and key-symbol catalogs. A `Keypress` prompts for a
 gesture the same way as the sequence editor did before: in rich mode, `c`
 arms one capture, `d` declares, `r` removes the reviewed gesture, and Enter
 submits; in linear mode `/capture` arms, `/declare` enters a declaration, and
@@ -881,16 +881,21 @@ while capture is armed, because the next key is the candidate gesture; the
 action line says so in each mode.
 
 `Keybind('Shortcut').prompt()` instead composes one gesture declaration as
-a row of symbol cells — at least two, grown with `+` and shrunk with `-` —
-where every cell but the last cycles a modifier (`Ctrl`, `Alt`, `Shift`,
-`Meta`) and the last cell cycles the key-symbol catalog. Up and Down cycle
-the focused cell through its catalog with wraparound; Tab, Shift+Tab,
-Ctrl+B, Left and Right move focus between cells; Enter submits the ordered
-`List<String>` tokens once every cell is set and no modifier repeats.
-`Keybind.joined('Shortcut')` resolves the `+`-joined declaration string
-(`'Ctrl+Shift+B'`) instead. In linear mode the answer is the `Ctrl+Shift+B`
-declaration (comma-separated tokens also accepted), and supplied answers
-use the same spelling.
+a row of labelled symbol cells — a leading modifier region and a trailing
+key region — where modifier cells cycle `Ctrl`, `Alt`, `Shift`, `Meta` and
+key cells cycle the key-symbol catalog. `+` on a modifier cell grows the
+modifier region (up to `modifierKeyLimit`, defaulting to the modifier
+catalog size) and `+` on a key cell grows the key region (up to
+`keyLimit`, defaulting to the symbol catalog size); both limits are
+caller-settable and may not exceed their catalogs. `-` removes the
+focused cell but never empties a region. Up and Down cycle the focused
+cell through the symbols not already used elsewhere; no symbol may be
+selected twice. Tab, Shift+Tab, Ctrl+B, Left and Right move focus between
+cells; Enter submits the ordered `List<String>` tokens once every cell is
+set and no symbol repeats. `Keybind.joined('Shortcut')` resolves the
+`+`-joined declaration string (`'Ctrl+Shift+B'`) instead. In linear mode
+the answer is a `Ctrl+B` or `Ctrl+Shift+B` declaration (comma-separated
+tokens also accepted), and supplied answers use the same spelling.
 
 Declarations use `+` between modifiers and key (for example `Ctrl+Shift+A`).
 Modifiers are `Ctrl`, `Alt`, `Shift`, and `Meta`, each at most once. Keys

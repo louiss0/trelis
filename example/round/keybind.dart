@@ -8,7 +8,7 @@ import '../support/one_component.dart';
 /// Run: dart run example/round/keybind.dart [--scripted]
 Future<void> main(List<String> arguments) => runOnePrompt(
   arguments,
-  'Ctrl+Shift+B\r',
+  'Ctrl+B+C\r',
   (io) => RoundTheme(io: io)
       .keybind('Shortcut', colors: ComponentColors.palette(ColorThemes.ledger)),
 );

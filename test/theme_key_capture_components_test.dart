@@ -119,7 +119,7 @@ void main() {
     final prompt = ThemeKeyCapturePrompt.keybind(
       'Sequence',
       io: TerminalEnvironment.scripted(
-        input: Stream.value('Ctrl,Shift,A\r'),
+        input: Stream.value('Ctrl,A,B\r'),
         output: output,
       ),
       interaction: const InteractionPreferences(mode: PromptMode.linear),
@@ -127,7 +127,7 @@ void main() {
 
     final result = await prompt.prompt();
 
-    expect((result as Accepted<List<String>>).value, ['Ctrl', 'Shift', 'A']);
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'A', 'B']);
     expect(output.toString(), contains('Sequence'));
   });
 

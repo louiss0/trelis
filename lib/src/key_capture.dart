@@ -81,22 +81,26 @@ final class Keypress {
   }
 }
 
-/// One logical gesture declaration — `Ctrl+Shift+B` — composed one
+/// One logical gesture declaration — `Ctrl+B` — composed one
 /// **symbol cell** at a time.
 ///
 /// Rich interaction presents a row of framed cells — a modifier cell and a
 /// key cell to start — navigated like `CronInput`'s field cells. A cell's
-/// catalog depends on its position: every cell but the last cycles the
-/// [modifiers] catalog and the last cell cycles the [symbols] catalog.
-/// `Up`/`Down` cycles the focused cell with wraparound, `+` inserts a cell
-/// after the focused cell, `-` removes the focused cell (never below two),
-/// and `Enter` accepts the ordered token list. Linear interaction keeps
-/// single-line `Ctrl+Shift+B`-style declaration entry.
+/// catalog depends on its region: the leading **modifier cells** cycle the
+/// [modifiers] catalog and the trailing **key cells** cycle the [symbols]
+/// catalog, so a binding is one or more modifiers followed by one or more
+/// keys. `Up`/`Down` cycles the focused cell through the entries not
+/// already used elsewhere; `+` on a modifier cell grows the modifier
+/// region (up to [modifierKeyLimit]) and `+` on a key cell grows the key
+/// region (up to [keyLimit]); `-` removes the focused cell without
+/// emptying either region; `Enter` accepts the ordered token list. A role
+/// label under each cell marks `modifier` or `key`. Linear interaction
+/// keeps single-line declaration entry (`Ctrl+B`, `Ctrl+Shift,B`).
 ///
 /// `Keybind` resolves `PromptResult<List<String>>` — the ordered cell
-/// tokens (`['Ctrl', 'Shift', 'B']`). [Keybind.joined] is the flagged
+/// tokens (`['Ctrl', 'B']`). [Keybind.joined] is the flagged
 /// variant resolving `PromptResult<String>` — the tokens joined with `+`
-/// (`'Ctrl+Shift+B'`).
+/// (`'Ctrl+B'`).
 final class Keybind<T> {
   /// The minimum number of cells in a gesture.
   static const minimumCells = 2;
@@ -203,6 +207,8 @@ final class Keybind<T> {
     String label, {
     List<String> modifiers = defaultModifiers,
     List<String> symbols = defaultSymbols,
+    int? modifierKeyLimit,
+    int? keyLimit,
     List<String> initialValue = const [],
     ColorTheme colors = ColorThemes.terminalDefault,
     PromptStructure structure = PromptStructure.plain,
@@ -213,6 +219,8 @@ final class Keybind<T> {
     label,
     modifiers: modifiers,
     symbols: symbols,
+    modifierKeyLimit: modifierKeyLimit,
+    keyLimit: keyLimit,
     initialValue: initialValue,
     colors: colors,
     structure: structure,
@@ -223,11 +231,13 @@ final class Keybind<T> {
   ) as Keybind<T>;
 
   /// The joined variant: [prompt] resolves `PromptResult<String>` — the
-  /// tokens joined with `+` (`'Ctrl+Shift+B'`).
+  /// tokens joined with `+` (`'Ctrl+B'`).
   factory Keybind.joined(
     String label, {
     List<String> modifiers = defaultModifiers,
     List<String> symbols = defaultSymbols,
+    int? modifierKeyLimit,
+    int? keyLimit,
     List<String> initialValue = const [],
     ColorTheme colors = ColorThemes.terminalDefault,
     PromptStructure structure = PromptStructure.plain,
@@ -238,6 +248,8 @@ final class Keybind<T> {
     label,
     modifiers: modifiers,
     symbols: symbols,
+    modifierKeyLimit: modifierKeyLimit,
+    keyLimit: keyLimit,
     initialValue: initialValue,
     colors: colors,
     structure: structure,
@@ -251,6 +263,8 @@ final class Keybind<T> {
     this.label, {
     required List<String> modifiers,
     required List<String> symbols,
+    required int? modifierKeyLimit,
+    required int? keyLimit,
     required this.initialValue,
     required this.colors,
     required this.structure,
@@ -260,7 +274,9 @@ final class Keybind<T> {
     required this._joined,
   }) : modifiers = List.unmodifiable(modifiers),
        symbols = List.unmodifiable(symbols),
-       supplementaryHelp = List.unmodifiable(supplementaryHelp) {
+       supplementaryHelp = List.unmodifiable(supplementaryHelp),
+       modifierKeyLimit = modifierKeyLimit ?? modifiers.length,
+       keyLimit = keyLimit ?? symbols.length {
     _validateKeyLabel(label);
     const canonical = {'Ctrl', 'Alt', 'Shift', 'Meta'};
     if (modifiers.isEmpty) {
@@ -302,6 +318,20 @@ final class Keybind<T> {
         throw ArgumentError.value(entry, 'symbols', 'duplicate key symbol');
       }
     }
+    if (this.modifierKeyLimit < 1 || this.modifierKeyLimit > modifiers.length) {
+      throw ArgumentError.value(
+        this.modifierKeyLimit,
+        'modifierKeyLimit',
+        'must be between 1 and the modifier catalog size',
+      );
+    }
+    if (this.keyLimit < 1 || this.keyLimit > symbols.length) {
+      throw ArgumentError.value(
+        this.keyLimit,
+        'keyLimit',
+        'must be between 1 and the symbol catalog size',
+      );
+    }
     if (initialValue.isNotEmpty) {
       final seed = initialValue.length == 1
           ? [initialValue.single, null]
@@ -315,12 +345,14 @@ final class Keybind<T> {
       for (final token in initialValue) token,
       for (var i = initialValue.length; i < minimumCells; i++) null,
     ];
+    final seededModifiers = _leadingModifiers(_initialCells);
+    _initialModifierCells = seededModifiers == 0 ? 1 : seededModifiers;
     _input = TextInput(
-      '$label (gesture declaration like Ctrl+Shift+B)',
+      '$label (gesture declaration like Ctrl+B)',
       initialValue: initialValue.join('+'),
       required: true,
       validate: (value) =>
-          _tokenError(value) == null ? null : 'Invalid gesture declaration.',
+          _draftError(value) == null ? null : 'Invalid gesture declaration.',
       colors: colors,
       structure: structure,
       instructions: instructions,
@@ -329,18 +361,26 @@ final class Keybind<T> {
   }
   final String label;
 
-  /// The ordered modifier catalog for every cell but the last
+  /// The ordered modifier catalog for the leading modifier cells
   /// (`'Ctrl'`, `'Alt'`, `'Shift'`, `'Meta'`).
   final List<String> modifiers;
 
-  /// The ordered key-symbol catalog for the last cell (`'B'`, `'F5'`,
-  /// `'ArrowUp'`, ...).
+  /// The ordered key-symbol catalog for the trailing key cells (`'B'`,
+  /// `'F5'`, `'ArrowUp'`, ...).
   final List<String> symbols;
 
-  /// Tokens presetting the leading cells; every token but the last must be
-  /// a [modifiers] member (without repetition) and the last must be a
-  /// [symbols] member. Fewer than [minimumCells] tokens leave the remaining
-  /// initial cells unset.
+  /// The maximum number of modifier cells `+` may grow; defaults to the
+  /// modifier catalog size and may not exceed it.
+  final int modifierKeyLimit;
+
+  /// The maximum number of key cells `+` may grow; defaults to the symbol
+  /// catalog size and may not exceed it.
+  final int keyLimit;
+
+  /// Tokens presetting the leading cells; the leading run must name
+  /// [modifiers] members and every later token a [symbols] member, within
+  /// the region limits and with no token repeating. Fewer than
+  /// [minimumCells] tokens leave the remaining initial cells unset.
   final List<String> initialValue;
   final ColorTheme colors;
   final PromptStructure structure;
@@ -355,40 +395,64 @@ final class Keybind<T> {
   /// Initial cell selections — token strings or null for unset — that
   /// every prompt run resets to.
   late final List<String?> _initialCells;
+
+  /// The modifier-region size [_initialCells] seeds each run with.
+  late final int _initialModifierCells;
   bool _active = false;
 
   /// Splits a linear or pasted draft into candidate tokens, accepting both
-  /// the `Ctrl+Shift+B` declaration spelling and comma separation.
+  /// the `Ctrl+B` declaration spelling and comma separation.
   List<String> _tokenize(String value) => value.split(RegExp(r'[+,]'));
+
+  /// The leading run of [tokens] that names catalog modifiers — the
+  /// modifier-region size a token draft implies.
+  int _leadingModifiers(List<String?> tokens) {
+    var count = 0;
+    while (count < tokens.length && modifiers.contains(tokens[count])) {
+      count++;
+    }
+    return count;
+  }
 
   /// Whole-gesture token validation shared by the linear editor, the
   /// supplied-answer path, paste distribution, `initialValue` seeding and
-  /// the cell stage's submit: at least [minimumCells] tokens, every token
-  /// but the last a unique [modifiers] member, and the last a [symbols]
-  /// member. A trailing null marks the unset key cell of a seeded draft.
+  /// the cell stage's submit: at least [minimumCells] tokens, a non-empty
+  /// leading run of [modifiers] members within [modifierKeyLimit], the
+  /// rest [symbols] members within [keyLimit], and no token repeating
+  /// anywhere. A null marks an unset cell of a seeded draft.
   String? _tokensError(List<String?> tokens) {
     if (tokens.length < minimumCells) {
       return 'a keybind needs at least a modifier and a key.';
     }
-    final seen = <String>{};
-    for (var i = 0; i < tokens.length - 1; i++) {
-      final token = tokens[i];
-      if (!modifiers.contains(token)) {
-        return "'$token' is not a modifier symbol.";
-      }
-      if (!seen.add(token!)) {
-        return "'$token' is already a modifier in this gesture.";
-      }
+    final keyStart = _leadingModifiers(tokens);
+    if (keyStart == 0 || keyStart == tokens.length) {
+      return 'a keybind needs at least a modifier and a key.';
     }
-    final last = tokens.last;
-    if (last != null && !symbols.contains(last)) {
-      return "'$last' is not a bindable key symbol.";
+    if (keyStart > modifierKeyLimit) {
+      return 'a keybind keeps at most $modifierKeyLimit modifier cells.';
+    }
+    if (tokens.length - keyStart > keyLimit) {
+      return 'a keybind keeps at most $keyLimit key cells.';
+    }
+    final seen = <String>{};
+    for (var i = 0; i < tokens.length; i++) {
+      final token = tokens[i];
+      if (token == null) continue;
+      final catalog = i < keyStart ? modifiers : symbols;
+      if (!catalog.contains(token)) {
+        return i < keyStart
+            ? "'$token' is not a modifier symbol."
+            : "'$token' is not a bindable key symbol.";
+      }
+      if (!seen.add(token)) {
+        return "'$token' is already used in this gesture.";
+      }
     }
     return null;
   }
 
   /// The same validation for a raw text draft.
-  String? _tokenError(String value) => _tokensError(_tokenize(value));
+  String? _draftError(String value) => _tokensError(_tokenize(value));
 
   /// The accepted payload: the ordered tokens for [Keybind] or their
   /// `+`-joined declaration for [Keybind.joined].
@@ -406,28 +470,61 @@ final class Keybind<T> {
       'Ctrl+C and Escape are reserved for interruption and cancellation.';
 
   /// Stage help leading with the focused cell and the catalog rules.
-  String _cellHelp(int focus, int cellCount) {
-    final role = focus == cellCount - 1 ? 'key' : 'modifier';
-    final catalog = focus == cellCount - 1 ? symbols : modifiers;
+  String _cellHelp(int focus, int cellCount, int modifierCells) {
+    final role = focus < modifierCells ? 'modifier' : 'key';
+    final catalog = _catalogDescription(
+      focus < modifierCells ? modifiers : symbols,
+    );
     return _withSupplementary(
       'Help: cell ${focus + 1} of $cellCount is a $role cell edited with '
-      'Up and Down, which cycle it through its catalog with wraparound; an '
-      'unset cell starts at the first entry. Every cell but the last is a '
-      'modifier cell (${modifiers.join(', ')}); the last cell is the key '
-      'cell. Tab, Shift+Tab, Ctrl+B, Left and Right move focus across the '
-      'cells; + inserts an unset cell after the focused cell and - removes '
-      'the focused cell (a keybind keeps at least two cells). Enter submits '
-      'the gesture once every cell is set and no modifier repeats; Ctrl+T '
-      'opens this help; Escape cancels. This cell\'s catalog: '
-      '${catalog.join(', ')}. $_declaredNote',
+      'Up and Down, which cycle it through the unused catalog entries '
+      'with wraparound; an unset cell starts at the first unused entry. '
+      'The modifier cells lead '
+      '(${modifiers.join(', ')}, up to $modifierKeyLimit) and the key '
+      'cells follow (up to $keyLimit); no symbol may be used twice. Tab, '
+      'Shift+Tab, Ctrl+B, Left and Right move focus across the cells; + '
+      'inserts an unset cell of the focused role after the focused cell '
+      'and - removes the focused cell (a keybind keeps at least one '
+      'modifier cell and one key cell). Enter submits the gesture once '
+      'every cell is set and no symbol repeats; Ctrl+T opens this help; '
+      'Escape cancels. This cell\'s catalog: $catalog. $_declaredNote',
     );
+  }
+
+  /// A catalog rendered for help: symbols grouped by category (letters,
+  /// digits, function keys, named keys); anything else listed plainly.
+  String _catalogDescription(List<String> catalog) {
+    final letters = <String>[];
+    final digits = <String>[];
+    final functionKeys = <String>[];
+    final namedKeys = <String>[];
+    for (final entry in catalog) {
+      if (RegExp(r'^[A-Za-z]$').hasMatch(entry)) {
+        letters.add(entry);
+      } else if (RegExp(r'^[0-9]$').hasMatch(entry)) {
+        digits.add(entry);
+      } else if (RegExp(r'^F\d+$').hasMatch(entry)) {
+        functionKeys.add(entry);
+      } else {
+        namedKeys.add(entry);
+      }
+    }
+    final groups = <String>[
+      if (letters.isNotEmpty) 'letters ${letters.join(', ')}',
+      if (digits.isNotEmpty) 'digits ${digits.join(', ')}',
+      if (functionKeys.isNotEmpty) 'function keys ${functionKeys.join(', ')}',
+      if (namedKeys.isNotEmpty) 'named keys ${namedKeys.join(', ')}',
+    ];
+    return groups.length == 1 ? catalog.join(', ') : groups.join('; ');
   }
 
   /// Help for the linear declaration entry.
   String get _linearHelp => _withSupplementary(
-    'Help: enter one gesture declaration such as Ctrl+Shift+B: modifier '
-    'symbols first (${modifiers.join(', ')}), each at most once, then one '
-    'key symbol such as B, F5 or ArrowUp. Exact /help and /cancel are '
+    'Help: enter one gesture declaration such as Ctrl+B or Ctrl+Shift+B: '
+    'one or more modifier symbols first (${modifiers.join(', ')}, up to '
+    '$modifierKeyLimit), then one or more key symbols (up to $keyLimit), '
+    'none repeating. Key symbols: '
+    '${_catalogDescription(symbols)}. Exact /help and /cancel are '
     'commands; quote a command with a backslash and double a leading '
     'backslash. $_declaredNote',
   );
@@ -595,7 +692,8 @@ final class Keybind<T> {
   ///
   /// Runs the focus ring `cell 0 -> ... -> cell N-1 -> cell 0` until the
   /// gesture validates. [cells] holds token strings or null for unset
-  /// cells and starts from [_initialCells] on every run.
+  /// cells and starts from [_initialCells] on every run; [modifierCells]
+  /// is the size of the leading modifier region.
   Future<PromptResult<T>> _gestureCells(
     _Keys inputKeys,
     StringSink out,
@@ -604,6 +702,7 @@ final class Keybind<T> {
     TerminalResizeObserver? resizeObserver,
   ) async {
     final cells = List<String?>.of(_initialCells);
+    var modifierCells = _initialModifierCells;
     var focus = 0;
     // The stage repaints against live geometry: resize hints update
     // [stageProfile] and the spine's measured width without touching the
@@ -652,26 +751,23 @@ final class Keybind<T> {
       );
     }
 
-    /// A cell's catalog by position: every cell but the last is a modifier
-    /// cell; the last cell is the key cell.
+    /// A cell's catalog by region: cells below [modifierCells] are
+    /// modifier cells; the rest are key cells.
     List<String> catalogFor(int index) =>
-        index == cells.length - 1 ? symbols : modifiers;
+        index < modifierCells ? modifiers : symbols;
 
-    /// Clears every selection that is not a member of its cell's current
-    /// catalog — a structural edit can shift a set cell into the other
-    /// role, where its old token is illegal.
-    void renormalize() {
-      for (var i = 0; i < cells.length; i++) {
-        final token = cells[i];
-        if (token != null && !catalogFor(i).contains(token)) cells[i] = null;
-      }
-    }
+    /// The symbols already claimed by cells other than [index]; cycling
+    /// skips them so no symbol can be selected twice.
+    Set<String> usedElsewhere(int index) => {
+      for (var i = 0; i < cells.length; i++)
+        if (i != index && cells[i] != null) cells[i]!,
+    };
 
     /// The active-format cue always describes the focused symbol cell.
     String cue() =>
         'cell ${focus + 1}/${cells.length} · '
         '${cells[focus] ?? 'unset'} · '
-        '${focus == cells.length - 1 ? 'key' : 'modifier'}';
+        '${focus < modifierCells ? 'modifier' : 'key'}';
 
     /// The delimiters around one row item, matching the field-cell frame:
     /// unfocused items keep symmetric padding (`[ value ]`, `[   ]` unset);
@@ -758,10 +854,41 @@ final class Keybind<T> {
     /// caret lands inside the framed content column.
     int rowPrefixCells() => structurePrefixCells(structure, ascii: spine.ascii);
 
-    /// Lays out every gesture token into wrapped row lines, reporting the
-    /// focused token's packed line and emitted column. A token is never
-    /// split unless it alone exceeds the inner line width, which [rowToken]
-    /// windows at its tail.
+    /// The role-label row under one packed cell row: each cell's role
+    /// (`modifier` or `key`) centred under its token, shifted right when
+    /// labels would collide and trimmed so the row never outlives
+    /// [limit] display cells.
+    String roleLabelRow(
+      List<({int start, int width, String label})> placements,
+      int? limit,
+    ) {
+      final line = StringBuffer();
+      var textEnd = 0;
+      var minStart = 0;
+      for (final p in placements) {
+        var start =
+            p.start +
+            (p.width > p.label.length ? (p.width - p.label.length) ~/ 2 : 0);
+        if (start < minStart) start = minStart;
+        var label = p.label;
+        if (limit != null && start + label.length > limit) {
+          final room = limit - start;
+          if (room <= 0) break;
+          label = label.substring(0, room);
+        }
+        line
+          ..write(' ' * (start - textEnd))
+          ..write(label);
+        textEnd = start + label.length;
+        minStart = textEnd + 1;
+      }
+      return line.toString().trimRight();
+    }
+
+    /// Lays out every gesture token into wrapped row lines, each followed
+    /// by its role-label line, reporting the focused token's packed line
+    /// and emitted column. A token is never split unless it alone exceeds
+    /// the inner line width, which [rowToken] windows at its tail.
     ({List<String> lines, List<String> tokens, int caretLine, int caretColumn})
     layoutCellRows() {
       final tokens = <({String text, int caretCells})>[
@@ -773,12 +900,20 @@ final class Keybind<T> {
       if (budget == null) {
         var column = 0;
         var caretColumn = 0;
+        final placements = <({int start, int width, String label})>[];
         for (var t = 0; t < tokens.length; t++) {
+          if (t > 0) column += 1;
           if (t == focus) caretColumn = column + tokens[t].caretCells;
-          column += TextDisplayMap(tokens[t].text).cellWidth + (t == 0 ? 0 : 1);
+          final width = TextDisplayMap(tokens[t].text).cellWidth;
+          placements.add((
+            start: column,
+            width: width,
+            label: t < modifierCells ? 'modifier' : 'key',
+          ));
+          column += width;
         }
         return (
-          lines: [tokenTexts.join(' ')],
+          lines: [tokenTexts.join(' '), roleLabelRow(placements, null)],
           tokens: tokenTexts,
           caretLine: 0,
           caretColumn: rowPrefixCells() + caretColumn,
@@ -786,24 +921,28 @@ final class Keybind<T> {
       }
       final lines = <String>[];
       final line = StringBuffer();
+      final placements = <({int start, int width, String label})>[];
       var used = 0;
       var started = false;
-      var lineIndex = 0;
       var caretLine = 0;
       var caretColumn = 0;
+      void flushRow() {
+        lines
+          ..add(line.toString())
+          ..add(roleLabelRow(placements, budget));
+        line.clear();
+        placements.clear();
+        used = 0;
+        started = false;
+      }
+
       for (var t = 0; t < tokens.length; t++) {
         final token = tokens[t];
         final tokenCells = TextDisplayMap(token.text).cellWidth;
-        if (started && used + 1 + tokenCells > budget) {
-          lines.add(line.toString());
-          line.clear();
-          used = 0;
-          started = false;
-          lineIndex++;
-        }
+        if (started && used + 1 + tokenCells > budget) flushRow();
         final startColumn = started ? used + 1 : 0;
         if (t == focus) {
-          caretLine = lineIndex;
+          caretLine = lines.length;
           caretColumn = startColumn + token.caretCells;
         }
         if (started) {
@@ -811,10 +950,15 @@ final class Keybind<T> {
           used += 1;
         }
         line.write(token.text);
+        placements.add((
+          start: startColumn,
+          width: tokenCells,
+          label: t < modifierCells ? 'modifier' : 'key',
+        ));
         used += tokenCells;
         started = true;
       }
-      if (started) lines.add(line.toString());
+      if (started) flushRow();
       return (
         lines: lines,
         tokens: tokenTexts,
@@ -823,10 +967,11 @@ final class Keybind<T> {
       );
     }
 
-    /// Renders the editable region — the wrapped cell row, the active-format
-    /// cue and the compact hint — through the spine into display lines,
-    /// exactly as [show] paints them, plus the focused caret's emitted line
-    /// and column for in-place caret placement.
+    /// Renders the editable region — the wrapped cell rows with their
+    /// role-label rows, the active-format cue and the compact hint —
+    /// through the spine into display lines, exactly as [show] paints
+    /// them, plus the focused caret's emitted line and column for
+    /// in-place caret placement.
     ({List<String> lines, int caretLine, int caretColumn}) renderRegion() {
       final layout = layoutCellRows();
       final buffer = StringBuffer();
@@ -838,12 +983,14 @@ final class Keybind<T> {
       spine._closed = false;
       spine._pendingClose = false;
       try {
-        for (final row in layout.lines) {
+        // Cell rows alternate with role-label rows: odd lines are labels,
+        // drawn muted and not treated as atomic cell tokens.
+        for (var i = 0; i < layout.lines.length; i++) {
           spine.write(
             buffer,
-            row,
-            foreground: colors.foreground,
-            atomicText: layout.tokens,
+            layout.lines[i],
+            foreground: i.isOdd ? colors.muted : colors.foreground,
+            atomicText: i.isOdd ? const <String>[] : layout.tokens,
           );
         }
         spine.write(buffer, cue(), foreground: colors.foreground);
@@ -1048,7 +1195,7 @@ final class Keybind<T> {
       stageHelpOpen = true;
       helpUsedAltScreen =
           stageProfile.alternateScreen == CapabilitySupport.supported;
-      final text = _cellHelp(focus, cells.length);
+      final text = _cellHelp(focus, cells.length, modifierCells);
       final sessionRef = session;
       if (sessionRef != null) {
         sessionRef._openModalHelp(useAlternateScreen: helpUsedAltScreen);
@@ -1107,7 +1254,7 @@ final class Keybind<T> {
     }
 
     /// Ordered whole-draft validation: the first unset cell fails with a
-    /// message naming its position, then the first repeated modifier.
+    /// message naming its position, then the first repeated symbol.
     /// Returns the offending cell index and a message, or null when the
     /// tokens form a valid gesture.
     ({int index, String message})? failure() {
@@ -1120,14 +1267,14 @@ final class Keybind<T> {
         }
       }
       final seen = <String>{};
-      for (var i = 0; i < cells.length - 1; i++) {
+      for (var i = 0; i < cells.length; i++) {
         final token = cells[i]!;
         if (!seen.add(token)) {
           return (
             index: i,
             message:
-                "cell ${i + 1} repeats modifier '$token'; each modifier is "
-                'used at most once.',
+                "cell ${i + 1} repeats '$token'; each symbol is used "
+                'at most once.',
           );
         }
       }
@@ -1135,10 +1282,11 @@ final class Keybind<T> {
     }
 
     /// Distributes an identified paste across the symbol cells. A single
-    /// catalog symbol sets the focused cell; a `+`- or comma-separated
-    /// token sequence repopulates the whole gesture when the tokens form a
-    /// valid declaration. Returns a notice on rejection; [applied] reports
-    /// whether the paste changed the cells.
+    /// catalog symbol sets the focused cell when it is not already used
+    /// elsewhere; a `+`- or comma-separated token sequence repopulates the
+    /// whole gesture when the tokens form a valid declaration. Returns a
+    /// notice on rejection; [applied] reports whether the paste changed
+    /// the cells.
     ({String? notice, bool applied}) applyPaste(String payload) {
       if (payload.isEmpty ||
           payload.runes.any((r) => r < 32 || r == 127) ||
@@ -1150,17 +1298,23 @@ final class Keybind<T> {
       }
       final tokens = _tokenize(payload);
       if (tokens.length == 1) {
-        final catalog = catalogFor(focus);
-        return catalog.contains(tokens.single)
-            ? (() {
-                cells[focus] = tokens.single;
-                return (notice: null, applied: true);
-              })()
-            : (
-                notice:
-                    "'${tokens.single}' is not a ${focus == cells.length - 1 ? 'key' : 'modifier'} symbol.",
-                applied: false,
-              );
+        final token = tokens.single;
+        if (!catalogFor(focus).contains(token)) {
+          return (
+            notice:
+                "'$token' is not a ${focus < modifierCells ? 'modifier' : 'key'} "
+                'symbol.',
+            applied: false,
+          );
+        }
+        if (usedElsewhere(focus).contains(token)) {
+          return (
+            notice: "'$token' is already used in this gesture.",
+            applied: false,
+          );
+        }
+        cells[focus] = token;
+        return (notice: null, applied: true);
       }
       final error = _tokensError(tokens);
       if (error != null) {
@@ -1169,6 +1323,7 @@ final class Keybind<T> {
       cells
         ..clear()
         ..addAll(tokens);
+      modifierCells = _leadingModifiers(tokens);
       focus = cells.length - 1;
       return (notice: null, applied: true);
     }
@@ -1228,30 +1383,65 @@ final class Keybind<T> {
           continue;
         }
         if (key == '\x1b[A' || key == '\x1b[B') {
-          final catalog = catalogFor(focus);
-          final current = cells[focus];
-          final index = current == null ? -1 : catalog.indexOf(current);
-          cells[focus] = index < 0
-              ? catalog[key == '\x1b[B' ? 0 : catalog.length - 1]
-              : catalog[(index + (key == '\x1b[B' ? 1 : catalog.length - 1)) %
-                    catalog.length];
+          // Symbols already claimed by other cells are skipped so no
+          // symbol can be selected twice.
+          final catalog = [
+            for (final entry in catalogFor(focus))
+              if (!usedElsewhere(focus).contains(entry)) entry,
+          ];
+          if (catalog.isEmpty) {
+            notice(
+              'No unused ${focus < modifierCells ? 'modifier' : 'key'} symbols '
+              'remain for cell ${focus + 1}.',
+            );
+          } else {
+            final current = cells[focus];
+            final index = current == null ? -1 : catalog.indexOf(current);
+            cells[focus] = index < 0
+                ? catalog[0]
+                : catalog[(index + (key == '\x1b[B' ? 1 : catalog.length - 1)) %
+                      catalog.length];
+          }
           repaintRegion();
           continue;
         }
         if (key == '+' || key == '=') {
-          cells.insert(focus + 1, null);
-          focus++;
-          renormalize();
+          // + grows the focused cell's region: a modifier cell in the
+          // leading region, a key cell in the trailing region.
+          if (focus < modifierCells) {
+            if (modifierCells >= modifierKeyLimit) {
+              notice(
+                'A keybind keeps at most $modifierKeyLimit modifier cells.',
+              );
+            } else {
+              cells.insert(focus + 1, null);
+              modifierCells++;
+              focus++;
+            }
+          } else {
+            if (cells.length - modifierCells >= keyLimit) {
+              notice('A keybind keeps at most $keyLimit key cells.');
+            } else {
+              cells.insert(focus + 1, null);
+              focus++;
+            }
+          }
           repaintRegion();
           continue;
         }
         if (key == '-' || key == '_') {
-          if (cells.length <= minimumCells) {
-            notice('A keybind keeps at least $minimumCells symbol cells.');
+          // - shrinks the focused cell's region but never empties it.
+          final isModifier = focus < modifierCells;
+          if ((isModifier && modifierCells <= 1) ||
+              (!isModifier && cells.length - modifierCells <= 1)) {
+            notice(
+              'A keybind needs at least one modifier cell and at least '
+              'one key cell.',
+            );
           } else {
             cells.removeAt(focus);
+            if (isModifier) modifierCells--;
             if (focus >= cells.length) focus = cells.length - 1;
-            renormalize();
           }
           repaintRegion();
           continue;

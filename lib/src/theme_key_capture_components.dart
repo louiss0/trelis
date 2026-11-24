@@ -46,6 +46,8 @@ final class ThemeKeyCapturePrompt<T> {
     this.requireObservation = false,
     List<String> modifiers = Keybind.defaultModifiers,
     List<String> symbols = Keybind.defaultSymbols,
+    this.modifierKeyLimit,
+    this.keyLimit,
     List<String> initialValue = const [],
     this.joined = false,
     this.cellFrame = CronCellFrame.square,
@@ -102,14 +104,16 @@ final class ThemeKeyCapturePrompt<T> {
   );
 
   /// Composes one logical gesture declaration cell by cell — modifier
-  /// symbols from [modifiers], then one key symbol from [symbols] — and
-  /// resolves the ordered token list.
+  /// symbols from [modifiers] first, then key symbols from [symbols] —
+  /// and resolves the ordered token list.
   static ThemeKeyCapturePrompt<List<String>> keybind(
     String label, {
     required TerminalEnvironment io,
     ThemeSession? session,
     List<String> modifiers = Keybind.defaultModifiers,
     List<String> symbols = Keybind.defaultSymbols,
+    int? modifierKeyLimit,
+    int? keyLimit,
     List<String> initialValue = const [],
     CronCellFrame cellFrame = CronCellFrame.square,
     ComponentColors colors = const ComponentColors(),
@@ -127,6 +131,8 @@ final class ThemeKeyCapturePrompt<T> {
     session: session,
     modifiers: modifiers,
     symbols: symbols,
+    modifierKeyLimit: modifierKeyLimit,
+    keyLimit: keyLimit,
     initialValue: initialValue,
     cellFrame: cellFrame,
     colors: colors,
@@ -146,6 +152,8 @@ final class ThemeKeyCapturePrompt<T> {
     ThemeSession? session,
     List<String> modifiers = Keybind.defaultModifiers,
     List<String> symbols = Keybind.defaultSymbols,
+    int? modifierKeyLimit,
+    int? keyLimit,
     List<String> initialValue = const [],
     CronCellFrame cellFrame = CronCellFrame.square,
     ComponentColors colors = const ComponentColors(),
@@ -163,6 +171,8 @@ final class ThemeKeyCapturePrompt<T> {
     session: session,
     modifiers: modifiers,
     symbols: symbols,
+    modifierKeyLimit: modifierKeyLimit,
+    keyLimit: keyLimit,
     initialValue: initialValue,
     joined: true,
     cellFrame: cellFrame,
@@ -180,11 +190,17 @@ final class ThemeKeyCapturePrompt<T> {
   final ThemeKeyCaptureKind kind;
   final bool requireObservation;
 
-  /// The modifier catalog for every keybind cell but the last.
+  /// The modifier catalog for a keybind prompt's leading modifier cells.
   final List<String> modifiers;
 
-  /// The key-symbol catalog for a keybind prompt's last cell.
+  /// The key-symbol catalog for a keybind prompt's trailing key cells.
   final List<String> symbols;
+
+  /// The maximum modifier-cell count a keybind prompt may grow.
+  final int? modifierKeyLimit;
+
+  /// The maximum key-cell count a keybind prompt may grow.
+  final int? keyLimit;
 
   /// Whether a keybind prompt resolves the `+`-joined declaration instead
   /// of the ordered tokens.
@@ -232,6 +248,8 @@ final class ThemeKeyCapturePrompt<T> {
                 label,
                 modifiers: modifiers,
                 symbols: symbols,
+                modifierKeyLimit: modifierKeyLimit,
+                keyLimit: keyLimit,
                 initialValue: initialValue,
                 cellFrame: cellFrame,
                 colors: palette,
@@ -243,6 +261,8 @@ final class ThemeKeyCapturePrompt<T> {
                 label,
                 modifiers: modifiers,
                 symbols: symbols,
+                modifierKeyLimit: modifierKeyLimit,
+                keyLimit: keyLimit,
                 initialValue: initialValue,
                 cellFrame: cellFrame,
                 colors: palette,
@@ -284,7 +304,7 @@ final class ThemeKeyCapturePrompt<T> {
   String _primaryAction(PresentationMode mode) =>
       kind == ThemeKeyCaptureKind.keypress
       ? '${mode == PresentationMode.rich ? 'Enter' : '/done'} submits'
-      : 'Enter submits the sequence';
+      : 'Enter submits the gesture';
 
   /// Layers the component override over the palette the period resolved.
   ResolvedColors _componentPalette(

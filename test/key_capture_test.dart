@@ -72,6 +72,38 @@ void main() {
       ),
       throwsArgumentError,
     );
+    expect(
+      () => Keybind<List<String>>('Sequence', modifierKeyLimit: 0),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>('Sequence', modifierKeyLimit: 5),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>(
+        'Sequence',
+        symbols: const ['a', 'b'],
+        keyLimit: 0,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>(
+        'Sequence',
+        symbols: const ['a', 'b'],
+        keyLimit: 3,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => Keybind<List<String>>(
+        'Sequence',
+        modifierKeyLimit: 1,
+        initialValue: const ['Ctrl', 'Shift', 'B'],
+      ),
+      throwsArgumentError,
+    );
   });
 
   test(
@@ -85,9 +117,9 @@ void main() {
       expect(gesture.provenance, KeyGestureProvenance.declared);
 
       final sequence = await Keybind<List<String>>('Sequence')
-          .prompt(source: SuppliedAnswer('Ctrl,Shift,a'));
+          .prompt(source: SuppliedAnswer('Ctrl,a,b'));
       final tokens = (sequence as Accepted<List<String>>).value;
-      expect(tokens, ['Ctrl', 'Shift', 'a']);
+      expect(tokens, ['Ctrl', 'a', 'b']);
     },
   );
 
@@ -180,6 +212,102 @@ void main() {
     expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
   });
 
+  test('+ on a modifier cell grows the modifier region', () async {
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            // Down: cell0=Ctrl; +: new modifier cell focused; Down: Alt
+            // (Ctrl is used); Tab: key cell; Down: a; Enter.
+            Stream.value('\x1b[B+\x1b[B\t\x1b[B\r'),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'Alt', 'a']);
+  });
+
+  test('+ on a modifier cell stops at modifierKeyLimit', () async {
+    final out = StringBuffer();
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+          modifierKeyLimit: 1,
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B+\t\x1b[B\r'),
+            out,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
+    expect(out.toString(), contains('at most 1 modifier'));
+  });
+
+  test('+ on a key cell stops at keyLimit', () async {
+    final out = StringBuffer();
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+          keyLimit: 1,
+        ).prompt(
+          source: ScriptedInput(
+            Stream.value('\x1b[B\t+\x1b[B\r'),
+            out,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
+    expect(out.toString(), contains('at most 1 key'));
+  });
+
+  test('- refuses to empty the modifier region', () async {
+    final out = StringBuffer();
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            // cell0=Ctrl, cell1=a, + grows keys to [Ctrl,a,b]; focus back
+            // on the lone modifier cell: - must refuse.
+            Stream.value('\x1b[B\t\x1b[B+\x1b[B\x1b[Z\x1b[Z-\r'),
+            out,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'a', 'b']);
+    expect(out.toString(), contains('at least one modifier'));
+  });
+
+  test('- refuses to empty the key region', () async {
+    final out = StringBuffer();
+    final result =
+        await Keybind<List<String>>(
+          'Sequence',
+          symbols: const ['a', 'b'],
+        ).prompt(
+          source: ScriptedInput(
+            // cell0=Ctrl, + grows modifiers and Down sets Alt on it; focus
+            // the lone key cell: - must refuse, then Down sets a.
+            Stream.value('\x1b[B+\x1b[B\t-\x1b[B\r'),
+            out,
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'Alt', 'a']);
+    expect(out.toString(), contains('at least one key'));
+  });
+
   test('rich keybind never drops below two cells', () async {
     final out = StringBuffer();
     final result =
@@ -195,7 +323,7 @@ void main() {
           mode: PromptMode.rich,
         );
     expect((result as Accepted<List<String>>).value, ['Ctrl', 'a']);
-    expect(out.toString(), contains('at least 2 symbol cells'));
+    expect(out.toString(), contains('at least one modifier'));
   });
 
   test('Escape cancels armed capture before root cancellation', () async {
@@ -255,10 +383,10 @@ void main() {
           'Sequence',
           symbols: const ['a', 'b'],
         ).prompt(
-          source: ScriptedInput(Stream.value('Ctrl,Shift,b\r'), StringBuffer()),
+          source: ScriptedInput(Stream.value('Ctrl,a,b\r'), StringBuffer()),
           mode: PromptMode.linear,
         );
-    expect((result as Accepted<String>).value, 'Ctrl+Shift+b');
+    expect((result as Accepted<String>).value, 'Ctrl+a+b');
   });
 
   test('rich keybind selects ordered symbols and submits explicitly', () async {
@@ -309,13 +437,13 @@ void main() {
 
   test('a supplied keybind declaration resolves its ordered tokens', () async {
     final result = await Keybind<List<String>>('Sequence')
-        .prompt(source: SuppliedAnswer('Ctrl,Alt,B'));
-    expect((result as Accepted<List<String>>).value, ['Ctrl', 'Alt', 'B']);
+        .prompt(source: SuppliedAnswer('Ctrl,B,C'));
+    expect((result as Accepted<List<String>>).value, ['Ctrl', 'B', 'C']);
     expect(
       (await Keybind<String>.joined('Sequence')
-              .prompt(source: SuppliedAnswer('Ctrl+Alt+B')))
+              .prompt(source: SuppliedAnswer('Ctrl+B+C')))
           as Accepted<String>,
-      isA<Accepted<String>>().having((a) => a.value, 'value', 'Ctrl+Alt+B'),
+      isA<Accepted<String>>().having((a) => a.value, 'value', 'Ctrl+B+C'),
     );
   });
 
@@ -495,6 +623,27 @@ void main() {
     },
   );
 
+  test(
+    'rich stage labels cell roles and groups key help by category',
+    () async {
+      final out = StringBuffer();
+      final result = await Keybind<List<String>>('Sequence').prompt(
+        source: ScriptedInput(
+          Stream.value('\t\x14\x1b\x1b[B\x02\x1b[B\r'),
+          out,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+      expect((result as Accepted<List<String>>).value, ['Ctrl', 'A']);
+      final transcript = out.toString();
+      expect(transcript, contains(RegExp(r'modifier *key')));
+      expect(transcript, contains('letters'));
+      expect(transcript, contains('function keys'));
+      expect(transcript, contains('named keys'));
+    },
+  );
+
   test('linear help names the keybind workflow and catalog rules', () async {
     final out = StringBuffer();
     final result =
@@ -507,7 +656,7 @@ void main() {
         );
     expect((result as Accepted<List<String>>).value, ['Ctrl', 'b']);
     final help = out.toString();
-    expect(help, contains('modifier symbols'));
+    expect(help, contains('modifier symbol'));
     expect(help, contains('key symbol'));
     expect(help, contains('/cancel'));
     expect(help, contains('backslash'));
