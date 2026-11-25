@@ -326,6 +326,11 @@ cancelling; Ctrl+C interrupts. The focused line is displayed in place, with
 literal tabs shown as `\t` and backslashes escaped as `\\` so the draft remains
 unambiguous in the plain ASCII profile.
 
+Framed paste is the lossless route for multiline pasted text. Unframed paste
+cannot be distinguished from typing: CRLF bytes delivered together in one input
+event are treated as Enter's newline gesture, while an LF delivered separately
+from CR is the Ctrl+J finish gesture.
+
 In linear mode, Enter appends a logical line, including an empty line. `/list`
 reviews lines; `/edit`, `/insert` and `/remove` ask for a line number in a
 separate step; removal requires confirmation. `/done` validates and submits.
@@ -333,8 +338,8 @@ Exact `/help` and `/cancel` are also available. A backslash quotes an exact
 command; double a leading backslash to enter one. For example, `\temp` remains
 `\temp`, while `\\server\share` enters `\server\share`; use three leading
 backslashes to enter a UNC pair. Identified framed paste is literal and does
-not execute commands; unframed paste cannot be distinguished from typing, so
-an LF inside unframed paste finishes the answer early.
+not execute commands. Unframed paste cannot be distinguished from typing; its
+CR and LF bytes act as line-entry keys rather than paste data.
 
 Line endings in supplied, initial and framed pasted text normalize CRLF and CR
 to LF. Blank lines and final blank lines are retained. `initialValue` is

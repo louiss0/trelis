@@ -3,6 +3,11 @@
 The current files are copied aside, generators are rerun, outputs are compared
 byte for byte, and the originals are restored on mismatch so a failed check
 does not silently rewrite the worktree.
+
+Generated files are UTF-8 with LF newlines as an explicit cross-platform
+policy. The comparison is byte strict on purpose: content drift must fail,
+and a CRLF working tree or generator output must fail as well rather than
+being tolerated as a line-ending accident.
 """
 
 import shutil
@@ -41,8 +46,17 @@ with tempfile.TemporaryDirectory() as scratch:
                     stdout=subprocess.DEVNULL,
                 )
         for target, backup in backups.items():
-            if target.read_bytes() != backup.read_bytes():
-                print(f'generated diff: {target.relative_to(root)}')
+            regenerated = target.read_bytes()
+            original = backup.read_bytes()
+            relative = target.relative_to(root)
+            if b'\r' in regenerated:
+                print(f'generator output is not LF-only: {relative}')
+                failed = True
+            if b'\r' in original:
+                print(f'checked-in file is not LF-only: {relative}')
+                failed = True
+            if regenerated != original:
+                print(f'generated diff: {relative}')
                 failed = True
     finally:
         for target, backup in backups.items():
