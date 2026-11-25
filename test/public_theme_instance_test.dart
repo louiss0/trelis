@@ -154,6 +154,70 @@ void main() {
     });
 
     test(
+      'rich and linear lifecycle outcomes use the public theme seam',
+      () async {
+        Future<({PromptResult<String> result, String transcript})> run(
+          PromptMode mode,
+          OutputProfile profile,
+        ) async {
+          final output = StringBuffer();
+          final theme = PlainTheme(
+            io: TerminalEnvironment.scripted(
+              input: Stream.value('Ada\r'),
+              output: output,
+              profile: profile,
+            ),
+            interaction: InteractionPreferences(mode: mode),
+          );
+          return (
+            result: await theme.textInput('Name').prompt(),
+            transcript: output.toString(),
+          );
+        }
+
+        final linear = await run(PromptMode.linear, const OutputProfile());
+        expect((linear.result as Accepted<String>).value, 'Ada');
+        expect(linear.transcript, contains('Current text: Ada'));
+        expect(linear.transcript, isNot(contains('\x1b[2K')));
+
+        final rich = await run(
+          PromptMode.rich,
+          OutputProfile(
+            cursor: CapabilitySupport.supported,
+            geometry: OutputGeometry.fixed(columns: 80, rows: 24),
+          ),
+        );
+        expect((rich.result as Accepted<String>).value, 'Ada');
+        expect(rich.transcript, contains('\x1b[2K'));
+      },
+    );
+
+    test(
+      'validation recovery preserves the draft through the public seam',
+      () async {
+        final output = StringBuffer();
+        final theme = PlainTheme(
+          io: TerminalEnvironment.scripted(
+            input: Stream.value('bad\r\x7f\x7f\x7fok\r'),
+            output: output,
+          ),
+          interaction: const InteractionPreferences(mode: PromptMode.linear),
+        );
+
+        final result = await theme
+            .textInput(
+              'Name',
+              validate: (value) => value == 'ok' ? null : 'not ok',
+            )
+            .prompt();
+
+        expect((result as Accepted<String>).value, 'ok');
+        expect(output.toString(), contains('not ok'));
+        expect(output.toString(), contains('Current text: ok'));
+      },
+    );
+
+    test(
       'EOF returns InputEnded and concurrent prompts are rejected',
       () async {
         final theme = PlainTheme(
