@@ -49,10 +49,29 @@ try {
  if(!$attached){throw 'AttachConsole failed'}
  # The Dart launcher itself enables VT output; preserve its normal console baseline.
  $before=[NativeProbe]::State()
- Start-Sleep -Seconds 7
- $during=[NativeProbe]::State()
- $parts=$during.Split(':')
- if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
+ # Bounded-wait for interaction readiness: the application acquiring the
+ # console flips the observed state away from the pre-launch baseline with
+ # VT output enabled, which distinguishes compilation time from prompt
+ # responsiveness instead of assuming a fixed startup delay was enough.
+ $during=''
+ $parts=@()
+ $ready=$false
+ for($n=0;$n -lt 600 -and !$ready;$n++){
+  if(Test-Path "$file.done"){break}
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+  if (([int]$parts[1] -band 4) -ne 0 -and $during -ne $before) {$ready=$true} else {Start-Sleep -Milliseconds 100}
+ }
+ if(Test-Path "$file.done" -and !$ready){
+  # The application finished before any interaction: readiness is moot.
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+ } elseif(!$ready){
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled within 60 seconds: $during"}
+  if ($during -eq $before) {throw "console state never left the pre-launch baseline within 60 seconds: $during"}
+ }
  if ($Scenario -eq "cancel") {
   [NativeProbe]::Key([char]27, 0x1b, 0)
  } elseif ($Scenario -eq "interrupt") {
@@ -61,10 +80,12 @@ try {
   [NativeProbe]::Text("Ctrl,B`r")
  } else {
   # Rich: Down selects Ctrl in the modifier cell, Tab focuses the key cell, two Downs select B, Enter submits.
-  [NativeProbe]::Key([char]0, 0x28, 0); Start-Sleep -Milliseconds 300
-  [NativeProbe]::Key([char]9, 0x09, 0); Start-Sleep -Milliseconds 300
-  [NativeProbe]::Key([char]0, 0x28, 0); Start-Sleep -Milliseconds 300
-  [NativeProbe]::Key([char]0, 0x28, 0); Start-Sleep -Milliseconds 300
+  # Console input records are an ordered queue processed in order, so the
+  # navigation needs no delays; the final result assertion proves the order.
+  [NativeProbe]::Key([char]0, 0x28, 0)
+  [NativeProbe]::Key([char]9, 0x09, 0)
+  [NativeProbe]::Key([char]0, 0x28, 0)
+  [NativeProbe]::Key([char]0, 0x28, 0)
   [NativeProbe]::Key([char]13, 0x0d, 0)
  }
 

@@ -66,14 +66,23 @@ try {
  if($Scenario -eq 'stream-eof') {
   for($n=0; $n -lt 150; $n++) { if((Test-Path $file) -and (Get-Item $file).Length -gt 0) { break }; Start-Sleep -Milliseconds 100 }
   $actual=@(Get-Content $file)
-  Start-Sleep -Seconds 2
-  $after=[NativeProbe]::State()
+  # Bounded-wait for the observable console restoration rather than
+  # assuming a fixed delay was enough.
+  $after=''
+  for($n=0;$n -lt 100;$n++){ $after=[NativeProbe]::State(); if($after -eq $before){break}; Start-Sleep -Milliseconds 100 }
   if($actual.Count -ne 1 -or $actual[0] -ne 'eof') { throw "unexpected EOF results: $($actual -join ',')" }
   if($before -ne $after) { throw "console state changed: $before -> $after" }
   Set-Content -Path $Report -Value "stream-eof PASS result=$($actual[0]) state=$before -> $after"
   return
  }
- Start-Sleep -Seconds 7
+ # Bounded-wait for interaction readiness: the probe acquiring the console
+ # moves the observed state away from the pre-launch baseline, which
+ # distinguishes compilation time from prompt responsiveness.
+ $ready=$false
+ for($n=0;$n -lt 600 -and !$ready;$n++){
+  if([NativeProbe]::State() -ne $before){$ready=$true}else{Start-Sleep -Milliseconds 100}
+ }
+ if(!$ready){throw "console state never left the pre-launch baseline within 60 seconds"}
  switch ($Scenario) {
   'submit' { $char=[char]13; $vk=13; $state=0; $expected='submit:ok' }
   'escape' { $char=[char]27; $vk=27; $state=0; $expected='cancel' }
@@ -95,7 +104,14 @@ try {
    }
    if(!$middle) { throw "first session did not restore console before next session" }
    [NativeProbe]::Key([char]13,13,0)
-   Start-Sleep -Seconds 2
+   # Bounded-wait for the second session to observably reacquire the
+   # console before its scenario keys are injected.
+   $reacquired=$false
+   for($n=0;$n -lt 150 -and !$reacquired;$n++){
+    Start-Sleep -Milliseconds 100
+    if([NativeProbe]::State() -ne $before){$reacquired=$true}
+   }
+   if(!$reacquired){throw "second session did not reacquire the console"}
   }
  }
  for($n=0; $n -lt 100; $n++){ if((Test-Path $file) -and ((Get-Content $file -ErrorAction SilentlyContinue | Measure-Object -Line).Lines -ge 2)){break}; Start-Sleep -Milliseconds 100 }
