@@ -165,4 +165,58 @@ void main() {
     expect(await reader.next(), isNull);
     await coordinator.close();
   });
+
+  test('framed paste remains atomic when the opener fractures beyond the '
+      'escape disambiguation window', () async {
+    // Pty, ssh and pseudoconsole transports may split the paste opener
+    // across reads with arbitrarily long gaps. The opener is unambiguous
+    // sequence data, not a keypress, so the escape disambiguation window
+    // must never corrupt it into a bare escape plus typed text.
+    final input = StreamController<String>();
+    final coordinator = SharedReaderCoordinator();
+    final reader = await coordinator.readerFor(input.stream);
+
+    input.add('\x1b[20');
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    input.add('0~x\r\n/cancel\x1b[201~');
+    await input.close();
+
+    expect(await reader.next(), '\x1b[200~x\r\n/cancel\x1b[201~');
+    expect(await reader.next(), isNull);
+    await coordinator.close();
+  });
+
+  test('a bare escape still flushes after the disambiguation window', () async {
+    final input = StreamController<String>();
+    final coordinator = SharedReaderCoordinator();
+    final reader = await coordinator.readerFor(input.stream);
+
+    input.add('\x1b');
+    final key = await reader.next().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => '<timed out>',
+    );
+    expect(key, '\x1b');
+    await input.close();
+    await coordinator.close();
+  });
+
+  test(
+    'an escape followed within the window by non-sequence text stays a key',
+    () async {
+      final input = StreamController<String>();
+      final coordinator = SharedReaderCoordinator();
+      final reader = await coordinator.readerFor(input.stream);
+
+      input.add('\x1b');
+      await pumpEventQueue();
+      input.add('a');
+      await input.close();
+
+      expect(await reader.next(), '\x1b');
+      expect(await reader.next(), 'a');
+      expect(await reader.next(), isNull);
+      await coordinator.close();
+    },
+  );
 }
