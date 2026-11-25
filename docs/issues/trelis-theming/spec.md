@@ -149,7 +149,7 @@ Use automated regression tests, Windows/Linux/macOS CI and native terminal check
 - Full component help leads with the current stage and provides formats, secondary operations and broader workflow guidance. Generic editing help alone is insufficient for specialized inputs.
 - Supplementary help augments accurate built-in help; it does not replace controls, remove required guidance or rewrite input semantics.
 - Keep prompt labels, state, active-format cues, relevant warnings, validation, interpretation and required review/action content separate from optional instruction copy. Hidden instructions retain help access and protected content.
-- Rich interaction generally uses Ctrl+T and command-aware linear interaction generally uses /help. Preserve explicit exceptions for literal secret entry and raw key capture; never steal answer data to enforce a universal help binding.
+- Rich interaction generally uses F1 and command-aware linear interaction generally uses /help. Preserve explicit exceptions for literal secret entry and raw key capture; never steal answer data to enforce a universal help binding.
 - Help preserves the draft answer, logical focus and caret, subject to legitimate behavior-owned state changes. Use transcript help when a temporary screen is unsupported.
 - Complete missing rich help paths and domain-specific guidance before suppressing the corresponding verbose introduction. Feedback components do not gain artificial interactive help.
 

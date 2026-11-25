@@ -95,7 +95,7 @@ void main() {
             ),
             mode: PromptMode.rich,
           );
-      input.add('\x14');
+      input.add('\x1bOP');
       await settleUntil(() => _helpEvents(transcript) == 1);
       pending.complete(['Ada']);
       await settleUntil(
@@ -155,7 +155,7 @@ void main() {
             ),
             mode: PromptMode.rich,
           );
-      input.add('\x14');
+      input.add('\x1bOP');
       await settleUntil(() => _helpEvents(transcript) == 1);
       expect(output.toString(), contains('Use a preferred name.'));
       input.add('\x1b');
@@ -195,7 +195,7 @@ void main() {
             'Name',
             suggestions: (_) => pending.future,
           ).prompt(session: session);
-          input.add('\x14');
+          input.add('\x1bOP');
           await settleUntil(() => _helpEvents(transcript) == 1);
           pending.complete(['Ada']);
           await settleUntil(
@@ -251,7 +251,7 @@ void main() {
         source: _scriptedInput(input.stream, output),
         mode: PromptMode.rich,
       );
-      input.add('A\x14\x1b');
+      input.add('A\x1bOP\x1b');
       await awaitLoneEscape();
       input.add('\r');
       expect((await result as Accepted<String>).value, 'A');
@@ -366,7 +366,7 @@ void main() {
       source: _scriptedInput(input.stream, StringBuffer()),
       mode: PromptMode.rich,
     );
-    input.add('A\x1b[B\x14\x1b');
+    input.add('A\x1b[B\x1bOP\x1b');
     await awaitLoneEscape();
     input.add('\r\r');
     expect((await result as Accepted<String>).value, 'Ada');

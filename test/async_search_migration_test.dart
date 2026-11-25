@@ -470,10 +470,10 @@ void main() {
             source: _scripted(input.stream, out, transcript: transcript),
             mode: PromptMode.rich,
           );
-      input.add('A\x14');
+      input.add('A\x1bOP');
       await settleUntil(() => _helpEvents(transcript) == 1);
       final painted = _painted(out);
-      expect(painted, contains('Ctrl+T'));
+      expect(painted, contains('F1'));
       expect(painted, contains('Help: Autocomplete.'));
       expect(painted, contains('Tab accepts a candidate'));
       input.add('\x1b');
@@ -560,7 +560,7 @@ void main() {
           source: _scripted(input.stream, out, transcript: transcript),
           mode: PromptMode.rich,
         );
-        input.add('\r\x14');
+        input.add('\r\x1bOP');
         await settleUntil(() => _helpEvents(transcript) == 1);
         final painted = _painted(out);
         expect(painted, contains('Help: SearchSelect results.'));
@@ -643,7 +643,7 @@ void main() {
           Choice('apple', 'Apple'),
           Choice('pear', 'Pear'),
         ]).prompt(source: _scripted(input.stream, out), mode: PromptMode.rich);
-        input.add('pe\x14');
+        input.add('pe\x1bOP');
         await settle();
         input.add('\x1b');
         await awaitLoneEscape();

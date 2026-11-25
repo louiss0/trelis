@@ -267,7 +267,7 @@ void main() {
           TreeNode('c', 'Second root'),
         ]).prompt(
           source: ScriptedInput(
-            Stream.value('\x14\x1b\x14\x1b\x03'),
+            Stream.value('\x1bOP\x1b\x1bOP\x1b\x03'),
             output,
             outputProfile: _richProfile,
           ),
@@ -322,7 +322,7 @@ void main() {
           Choice('b', 'B'),
         ]).prompt(
           source: ScriptedInput(
-            Stream.value('\x14\x1b \x14\x1b\x03'),
+            Stream.value('\x1bOP\x1b \x1bOP\x1b\x03'),
             output,
             outputProfile: _richProfile,
           ),
@@ -504,7 +504,7 @@ void main() {
 
     // A later help request is wrapped at the observed width too, because the
     // effective profile follows the resize.
-    keys.add('\x14');
+    keys.add('\x1bOP');
     await pumpEventQueue();
     final duringHelp = output.length;
     for (final line in _componentLines(

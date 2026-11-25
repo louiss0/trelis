@@ -219,7 +219,7 @@ void main() {
       expect(bottom, greaterThan(0));
       final afterFrame = lines.skip(bottom + 1).join(' ');
       expect(afterFrame, contains('Up/Down navigate'));
-      expect(afterFrame, contains('Ctrl+T'));
+      expect(afterFrame, contains('F1'));
       expect(afterFrame.replaceAll(RegExp(r'\s'), ''), contains('help'));
       expect(text, isNot(contains('┌')));
     },
@@ -518,7 +518,7 @@ void main() {
       expect(bottom, greaterThan(0));
       final afterFrame = lines.skip(bottom + 1).join(' ');
       expect(afterFrame, contains('Space toggles'));
-      expect(afterFrame, contains('Ctrl+T'));
+      expect(afterFrame, contains('F1'));
       expect(
         afterFrame.replaceAll(RegExp(r'\s'), ''),
         contains('Entersubmits'),
@@ -550,7 +550,7 @@ void main() {
       '[checked]',
       '[focused]',
       '[default]',
-      'Ctrl+T',
+      'F1',
     ]) {
       expect(joined, contains(essential), reason: essential);
     }

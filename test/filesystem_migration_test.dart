@@ -190,7 +190,7 @@ void main() {
               allowNonexistent: true,
             ).prompt(
               source: ScriptedInput(
-                Stream.value('\x14\x1bdraft\r\r'),
+                Stream.value('\x1bOP\x1bdraft\r\r'),
                 out,
                 outputProfile: _richProfile,
               ),
@@ -203,7 +203,7 @@ void main() {
         expect(transcript, contains('drive-relative Windows path'));
         expect(transcript, contains('snapshot'));
         expect(transcript, contains('per-open approval'));
-        expect(transcript, contains('Ctrl+T opens this help'));
+        expect(transcript, contains('F1 opens this help'));
         expect(transcript, contains('Help dismissed.'));
         expect(transcript, isNot(contains('Cursor position')));
       });
@@ -277,7 +277,7 @@ void main() {
               allowNonexistent: true,
             ).prompt(
               source: ScriptedInput(
-                Stream.value('draft\r\x14\x1b\r'),
+                Stream.value('draft\r\x1bOP\x1b\r'),
                 out,
                 outputProfile: _richProfile,
               ),
@@ -431,7 +431,7 @@ void main() {
       final out = StringBuffer();
       final result = await FilePicker('File', base: dir.path).prompt(
         source: ScriptedInput(
-          Stream.value('\x14\x1bchoose 1\r\r'),
+          Stream.value('\x1bOP\x1bchoose 1\r\r'),
           out,
           outputProfile: _richProfile,
         ),
@@ -679,7 +679,7 @@ void main() {
       final out = StringBuffer();
       await FilePicker('File', base: dir.path).prompt(
         source: ScriptedInput(
-          Stream.value('\x14\x1b\x03'),
+          Stream.value('\x1bOP\x1b\x03'),
           out,
           outputProfile: _richProfile,
         ),
@@ -747,7 +747,7 @@ void main() {
               base: dir.path,
             ).prompt(session: session);
             await _until(output, 'Current directory:');
-            input.add('\x14');
+            input.add('\x1bOP');
             await _until(output, 'Help: FilePicker browses');
             spinner.update('entries');
             input.add('\x1b');

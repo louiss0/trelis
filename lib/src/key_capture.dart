@@ -486,7 +486,7 @@ final class Keybind<T> {
       'inserts an unset cell of the focused role after the focused cell '
       'and - removes the focused cell (a keybind keeps at least one '
       'modifier cell and one key cell). Enter submits the gesture once '
-      'every cell is set and no symbol repeats; Ctrl+T opens this help; '
+      'every cell is set and no symbol repeats; F1 opens this help; '
       'Escape cancels. This cell\'s catalog: $catalog. $_declaredNote',
     );
   }
@@ -1000,9 +1000,9 @@ final class Keybind<T> {
         spine.hint(
           buffer,
           _resolvedInstructions(instructions) == InstructionDisplay.hidden
-              ? 'Enter submits; Ctrl+T opens help.'
+              ? 'Enter submits; F1 opens help.'
               : 'Tab/Shift-Tab move; Up/Down change; + adds, - removes; '
-                    'Enter submits; Ctrl+T help; Esc cancels.',
+                    'Enter submits; F1 help; Esc cancels.',
           foreground: colors.foreground,
         );
       } finally {
@@ -1348,7 +1348,7 @@ final class Keybind<T> {
           if (key == '\x1b') dismissHelp();
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           openHelp();
           continue;
         }
@@ -1618,7 +1618,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
     );
     final richFocusedAction = (
       title: '$label:',
-      guidance: 'c capture; d declare; r remove last; x clear; Enter submit; Ctrl+T help; Escape cancel.',
+      guidance: 'c capture; d declare; r remove last; x clear; Enter submit; F1 help; Escape cancel.',
     );
     final linearFocusedAction = (
       title: '$label:',
@@ -1719,7 +1719,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
           final key = await keys.next();
           if (key == null || key == '\x1a') return InputEnded();
           if (key == '\x03') return Interrupted();
-          if (key == '\x14') {
+          if (_isHelpGesture(key)) {
             if (help) continue;
             help = true;
             promptSession?._openModalHelp(useAlternateScreen: false);
@@ -1766,7 +1766,7 @@ Future<PromptResult<List<KeyGesture>>> _sequenceInteractive(
             armed = true;
             write(
               selected == PromptMode.rich
-                  ? 'Capture next gesture; Escape cancels capture and returns to review. Ctrl+T is a candidate while capture is armed.'
+                  ? 'Capture next gesture; Escape cancels capture and returns to review. F1 is a candidate while capture is armed.'
                   : 'Capture next gesture; Escape cancels capture and returns to review. /help is captured as a gesture rather than opening help.',
               colors.muted,
             );
@@ -2015,7 +2015,7 @@ String _keyCaptureHelp({
   if (!linear) {
     const reviewEdits =
         'A new capture or declaration replaces the reviewed gesture; r and x remove it.';
-    return 'Help: $scope. c arms exactly one raw capture; the captured gesture is reviewed and never submitted automatically. Escape backs out of capture and returns to the reviewed gestures. While capture is armed every key is a candidate, so Ctrl+T opens this help only before or after a capture. $reviewEdits d declares one logical gesture such as Ctrl+Shift+A from the modifiers Ctrl, Alt, Shift and Meta; declarations are unverified and do not prove delivery or freedom from conflicts. $reserved $provenance $observation Enter submits the reviewed state.';
+    return 'Help: $scope. c arms exactly one raw capture; the captured gesture is reviewed and never submitted automatically. Escape backs out of capture and returns to the reviewed gestures. While capture is armed every key is a candidate, so F1 opens this help only before or after a capture. $reviewEdits d declares one logical gesture such as Ctrl+Shift+A from the modifiers Ctrl, Alt, Shift and Meta; declarations are unverified and do not prove delivery or freedom from conflicts. $reserved $provenance $observation Enter submits the reviewed state.';
   }
   const reviewEdits = '/remove clears the reviewed gesture.';
   return 'Help: $scope. /capture arms exactly one raw capture and always returns to review; typing Escape during capture leaves capture and keeps the reviewed gestures. /declare enters one logical gesture such as Ctrl+Shift+A and Escape cancels declaration entry; declarations are unverified and do not prove delivery or freedom from conflicts. $reviewEdits /done submits the reviewed state; /cancel cancels; Ctrl+C interrupts. Exact /capture, /declare, /remove, /clear, /done, /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal and is not captured as a gesture. $reserved $provenance $observation';

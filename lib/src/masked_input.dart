@@ -481,7 +481,7 @@ final class MaskedInput {
     var draft = initialValue?.formatted ?? '';
     out.heading('$label.');
     out.hint(
-      'Enter raw or formatted value. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      'Enter raw or formatted value. F1 opens help; Escape cancels; Ctrl+C interrupts.',
     );
     while (true) {
       final edit = await _edit(
@@ -926,8 +926,8 @@ final class MaskedInput {
     }
     out.hint(
       caretAtEnd
-          ? 'Enter submits; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.'
-          : 'Left/Right move the caret; Enter submits; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          ? 'Enter submits; F1 opens help; Escape cancels; Ctrl+C interrupts.'
+          : 'Left/Right move the caret; Enter submits; F1 opens help; Escape cancels; Ctrl+C interrupts.',
     );
   }
 
@@ -984,7 +984,7 @@ final class MaskedInput {
           show();
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           if (help) continue;
           help = true;
           out.writeln(

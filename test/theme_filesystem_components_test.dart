@@ -38,7 +38,7 @@ void main() {
 
         expect((result as Accepted<String>).value, endsWith('draft'));
         expect(output.toString(), contains('\x1b[38;2;9;8;7;48;2;1;2;3m'));
-        expect(_displaySafe(output.toString()), contains('Ctrl+T opens help;'));
+        expect(_displaySafe(output.toString()), contains('F1 opens help;'));
       },
     );
 
@@ -239,7 +239,7 @@ void main() {
               lessThan(text.indexOf(_componentAnchor(kind))),
             );
           } else if (rich) {
-            expect(_displaySafe(text), contains('Ctrl+T opens help'));
+            expect(_displaySafe(text), contains('F1 opens help'));
           } else {
             expect(_displaySafe(text), contains('/help opens help.'));
           }
@@ -463,7 +463,7 @@ void main() {
           final text = _displaySafe(output.toString());
           expect(
             text,
-            contains(rich ? 'Ctrl+T opens help' : '/help opens help.'),
+            contains(rich ? 'F1 opens help' : '/help opens help.'),
           );
         }
       },
@@ -475,7 +475,7 @@ void main() {
       final prompt = ThemeFilesystemPrompt.url(
         'Endpoint',
         io: TerminalEnvironment.scripted(
-          input: Stream.value('$draft\x14\x1b\r\r'),
+          input: Stream.value('$draft\x1bOP\x1b\r\r'),
           output: output,
           profile: _richProfile,
           supportsRich: true,
@@ -602,8 +602,8 @@ void main() {
       ]) {
         final output = StringBuffer();
         final helpedInput = kind == ThemeFilesystemKind.path
-            ? 'x\x14\x1bq\r\r'
-            : 'x\x14\x1bq\x7f\x7f${_answer(kind)}';
+            ? 'x\x1bOP\x1bq\r\r'
+            : 'x\x1bOP\x1bq\x7f\x7f${_answer(kind)}';
         final helped = _make(
           kind,
           io: TerminalEnvironment.scripted(
@@ -644,7 +644,7 @@ void main() {
       final prompt = ThemeFilesystemPrompt.path(
         'Path',
         io: TerminalEnvironment.scripted(
-          input: Stream.value('\x1b[D\x14\x1bX\r\r'),
+          input: Stream.value('\x1b[D\x1bOP\x1bX\r\r'),
           output: output,
           profile: _richProfile,
           supportsRich: true,

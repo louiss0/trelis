@@ -203,11 +203,11 @@ void main() {
         );
         expect(text, contains('\x1b[38;2;$border;49m────'));
         expect(text, contains('\x1b[38;2;$muted;49m  '));
-        expect(text, contains('Enter submits. Ctrl+T opens help.'));
+        expect(text, contains('Enter submits. F1 opens help.'));
         expect(text.indexOf('Project name'), lessThan(text.indexOf('──')));
         expect(
           text.indexOf('──'),
-          lessThan(text.indexOf('Ctrl+T opens help.')),
+          lessThan(text.indexOf('F1 opens help.')),
         );
         for (final enclosure in ['╭', '╮', '╰', '╯']) {
           expect(text, isNot(contains(enclosure)));
@@ -236,7 +236,7 @@ void main() {
         expect(text, contains('Unavailable: needs owner role.'));
         expect(text.indexOf('Pick tools'), lessThan(text.indexOf('──')));
         expect(text.indexOf('──'), lessThan(text.indexOf('Starter')));
-        expect(text.indexOf('──'), lessThan(text.indexOf('Ctrl+T help')));
+        expect(text.indexOf('──'), lessThan(text.indexOf('F1 help')));
         for (final enclosure in ['╭', '╮', '╰', '╯']) {
           expect(text, isNot(contains(enclosure)));
         }
@@ -260,8 +260,8 @@ void main() {
           text,
           contains('\x1b[38;2;238;186;116;49m  Unavailable: needs owner role.'),
         );
-        expect(text, contains('Ctrl+T help'));
-        expect(text.indexOf('Ctrl+T help'), greaterThan(text.indexOf('──')));
+        expect(text, contains('F1 help'));
+        expect(text.indexOf('F1 help'), greaterThan(text.indexOf('──')));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
       },
@@ -467,7 +467,7 @@ void main() {
         // Narrow output wraps the status label across lines; it never
         // truncates essential text to fit the nominal column count.
         expect(text, contains('Unavailable: needs owner rol'));
-        expect(text, contains('Ctrl+T help'));
+        expect(text, contains('F1 help'));
         expect(text, contains('-'));
         expect(text, isNot(contains('\x1b[38;2;')));
         expect(text, isNot(contains('\x1b[48;2;')));
@@ -532,7 +532,7 @@ void main() {
 
       expect(presentation.placement, HintPlacement.screenReaderBefore);
       expect(presentation.essentialBefore, 'Pick tools entry. ${hint.text}');
-      expect(presentation.essentialBefore, contains('Ctrl+T opens help'));
+      expect(presentation.essentialBefore, contains('F1 opens help'));
       expect(presentation.lines, [presentation.essentialBefore!, 'Pick tools']);
       expect(sequentialTranscript(presentation, response: 'b'), [
         presentation.essentialBefore!,
@@ -553,7 +553,7 @@ void main() {
 
       expect(presentation.lines, ['Pick tools', hint.shortText]);
       expect(presentation.lines.join(), contains('Enter'));
-      expect(presentation.lines.join(), contains('Ctrl+T help'));
+      expect(presentation.lines.join(), contains('F1 help'));
     });
   });
 }

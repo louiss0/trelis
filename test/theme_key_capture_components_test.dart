@@ -159,7 +159,7 @@ void main() {
       expect(output.toString(), isNot(contains('\x1b[38;2')));
       expect(output.toString(), contains('| '));
       expect(output.toString(), contains('c capture'));
-      expect(output.toString(), contains('Ctrl+T help'));
+      expect(output.toString(), contains('F1 help'));
       expect(output.toString(), contains('Review:'));
     },
   );
@@ -179,7 +179,7 @@ void main() {
     ).prompt();
     expect(rich, isA<Accepted<KeyGesture>>());
     expect(richOutput.toString(), contains('Enter submit'));
-    expect(richOutput.toString(), contains('Ctrl+T help'));
+    expect(richOutput.toString(), contains('F1 help'));
 
     final linearOutput = StringBuffer();
     final linear = await ThemeKeyCapturePrompt.keypress(
@@ -215,7 +215,7 @@ void main() {
         'Sequence',
         symbols: const ['A', 'B'],
         io: TerminalEnvironment.scripted(
-          input: Stream.value('\x1b[B\t\x1b[B\x14\x1b\x1b[B\r'),
+          input: Stream.value('\x1b[B\t\x1b[B\x1bOP\x1b\x1b[B\r'),
           output: output,
           profile: _richProfile,
           supportsRich: true,
@@ -236,7 +236,7 @@ void main() {
     final result = await ThemeKeyCapturePrompt.keypress(
       'Shortcut',
       io: TerminalEnvironment.scripted(
-        input: Stream.value('c\x14\r'),
+        input: Stream.value('c\x1bOP\r'),
         output: output,
         profile: _richProfile,
         supportsRich: true,

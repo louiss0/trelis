@@ -195,7 +195,7 @@ void main() {
         expect(text, contains('\x1b[38;2;$foreground;49m├ Choose features'));
         expect(text, contains('\x1b[38;2;$muted;49m│ '));
         expect(text, contains('\x1b[38;2;$muted;49m└ '));
-        expect(text, contains('Ctrl+T opens help.'));
+        expect(text, contains('F1 opens help.'));
         expect(text, contains('│ '));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
@@ -240,7 +240,7 @@ void main() {
         expect(text, contains('[checked] [default]'));
         expect(text, contains('Unavailable: needs owner role.'));
         expect(text.indexOf('└ '), greaterThan(text.indexOf('Starter')));
-        expect(text, contains('Ctrl+T help'));
+        expect(text, contains('F1 help'));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
       },
@@ -414,7 +414,7 @@ void main() {
         expect(text, contains('[checked]'));
         expect(text, contains('[default]'));
         expect(text, contains('Unavailable: needs owner rol'));
-        expect(text, contains('Ctrl+T help'));
+        expect(text, contains('F1 help'));
         expect(text.indexOf(r'\-'), greaterThan(text.indexOf('Starter')));
         expect(text, isNot(contains('\x1b[38;2;')));
         expect(text, isNot(contains('\x1b[48;2;')));

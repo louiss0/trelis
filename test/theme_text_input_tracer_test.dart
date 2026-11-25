@@ -369,7 +369,7 @@ void main() {
       'Password',
       secret: true,
       io: TerminalEnvironment.scripted(
-        input: Stream.value('$canary\x14\x1b\rsubmit\r'),
+        input: Stream.value('$canary\x1bOP\x1b\rsubmit\r'),
         output: output,
         profile: const OutputProfile(glyphs: GlyphSet.ascii),
       ),

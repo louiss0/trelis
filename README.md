@@ -68,7 +68,7 @@ sequences. Mode precedence is
 `mode`, `userPreference`, `applicationPreference`, then automatic capability
 selection.
 
-For TextInput and Password, Ctrl+T opens temporary help in either mode on
+For TextInput and Password, F1 opens temporary help in either mode on
 VT-enabled Windows consoles and recognized xterm/screen/tmux/rxvt terminals.
 Escape removes that help and restores the previous input view and caret;
 a second Escape cancels. Interruption, EOF and input errors also close the
@@ -79,7 +79,7 @@ remain transcript responses, not temporary screens.
 The compact primary-action/help hint is protected content. An
 `InstructionDisplay.hidden` policy suppresses optional editing guidance only;
 `Enter submits` and the route to full help remain visible in every interactive
-prompt. Hidden-entry components keep Ctrl+T as that route because a typed
+prompt. Hidden-entry components keep F1 as that route because a typed
 `/help` line is answer data there.
 
 Redirected stdin is never consumed implicitly. Supply a literal value with
@@ -230,7 +230,7 @@ Intentional additive changes since that inventory:
 - Component help is component- and stage-specific in both interactions. Hidden
   instructions keep the help route, protected content and validation visible.
   Hidden-draft entry (`Password`, `URLInput`) keeps literal semantics: a typed
-  `/help` line is answer data there, and `Ctrl+T` is the help route.
+  `/help` line is answer data there, and `F1` is the help route.
 
 No accessibility qualification is claimed for any of these changes; the
 whole-library Windows Terminal + NVDA baseline is still outstanding.
@@ -267,7 +267,7 @@ returns `PromptResult<bool>`. The opening line states the default and the curren
 draft in the kind's own words: `Yes`/`No`, `checked`/`unchecked` or `on`/`off`.
 
 In rich mode `Y` and `N` change a Confirm draft while Space toggles a Checkbox or
-Toggle; Enter submits, Ctrl+T opens help, Escape dismisses help before it
+Toggle; Enter submits, F1 opens help, Escape dismisses help before it
 cancels, and Ctrl+C interrupts. In linear mode enter `yes`/`y` or `no`/`n`, or
 submit an empty line to take the displayed default. An unparseable answer
 restates the guidance and keeps the draft. `/help` and `/cancel` are exact
@@ -292,7 +292,7 @@ return the chosen identity; `Radio` changes only how the list is presented.
 
 Rich mode lists every choice with `[focused]`, `[default]` and
 `[unavailable: reason]` markers. Up/Down move the focus between choices, Enter
-accepts the focused enabled choice, Ctrl+T opens component help, Escape
+accepts the focused enabled choice, F1 opens component help, Escape
 dismisses help before it cancels, and Ctrl+C interrupts. Linear mode pages the
 list ten at a time, announces `Page n of m`, and accepts a stable choice
 number, with `/next` and `/previous` for pages. A disabled or out-of-range
@@ -317,9 +317,11 @@ by `NO_COLOR`.
 ## Multiline
 
 `Multiline('Notes').prompt()` starts a fresh session. In rich mode Enter adds
-an LF; Tab cycles Edit, Finish and Insert tab, and Enter activates the focused
-action. Arrow keys move between graphemes and lines, Home/End move to line
-boundaries, and Ctrl+T opens help. Escape dismisses help or an action before
+an LF; Ctrl+J finishes the answer from any action (Ctrl+Enter arrives as the
+same LF on the Windows console path). Tab cycles Edit, Finish and Insert tab,
+and Enter activates the focused action. Arrow keys move between graphemes and
+lines, Home/End move to line
+boundaries, and F1 opens help. Escape dismisses help or an action before
 cancelling; Ctrl+C interrupts. The focused line is displayed in place, with
 literal tabs shown as `\t` and backslashes escaped as `\\` so the draft remains
 unambiguous in the plain ASCII profile.
@@ -331,7 +333,8 @@ Exact `/help` and `/cancel` are also available. A backslash quotes an exact
 command; double a leading backslash to enter one. For example, `\temp` remains
 `\temp`, while `\\server\share` enters `\server\share`; use three leading
 backslashes to enter a UNC pair. Identified framed paste is literal and does
-not execute commands; unframed paste cannot be distinguished from typing.
+not execute commands; unframed paste cannot be distinguished from typing, so
+an LF inside unframed paste finishes the answer early.
 
 Line endings in supplied, initial and framed pasted text normalize CRLF and CR
 to LF. Blank lines and final blank lines are retained. `initialValue` is
@@ -346,7 +349,7 @@ way as the shared editor, so a rich synthetic source declares cursor support and
 positive geometry through its profile. The focused line is repainted inside the
 declared width with `<`/`>` overflow markers around the caret, idle resize
 notifications reflow that line without editing the draft, and component help
-(`Ctrl+T` in rich mode, `/help` in linear mode) names the add-newline, finish,
+(`F1` in rich mode, `/help` in linear mode) names the add-newline, finish,
 insert-tab, review, limit and validation behaviour instead of generic
 submit wording. An attached prompt inherits its `TerminalSession` configuration
 and can stay active while session feedback repaints; session help owns painting
@@ -411,7 +414,7 @@ Supplied answers are literal and do not interpret prompt commands.
 Rows use the same shared choice presentation as `Select` and `Radio`, so the
 stable reference, `[checked]`/`[unchecked]`, `[focused]`, `[default]` and a
 protected `[unavailable: reason]` stay separate and survive wrapping. Rich
-Ctrl+T help and linear `/help` name the toggle, filter, bulk, review and page
+F1 help and linear `/help` name the toggle, filter, bulk, review and page
 actions, the configured bounds and every unavailable reason, including choices
 hidden by the current filter. Toggling, bound rejection, review and acceptance
 messages wrap within the declared width and use the component palette when the
@@ -435,7 +438,7 @@ the caret after the last slot (`1-2|`). A narrow output clips the inline draft
 around the focused slot with truthful `<` and `>` overflow markers; when even
 that slot cannot fit, the layout stacks one slot per line with its description
 and the literal text. Every view names the focused slot and its rule. Escape
-cancels, Ctrl+T opens component help for the focused slot or the submit stage,
+cancels, F1 opens component help for the focused slot or the submit stage,
 and Ctrl+C interrupts. Linear mode offers `/edit` for one slot, `/value` for the
 whole formatted value, `/review` and `/done`. With several templates an
 ambiguous value is listed with its slot contents and the template is chosen by
@@ -443,7 +446,7 @@ number, or through `/template` in linear mode. Paste is accepted as single-line
 printable text and is rejected when it exceeds the template capacity or the
 4096-code-unit frame bound; a paste that needs template resolution is listed
 rather than guessed. Decoding has a bounded work limit, and exceeding it
-preserves the draft for correction. Ctrl+T in rich mode or `/help` in linear
+preserves the draft for correction. F1 in rich mode or `/help` in linear
 mode leads with the current stage (slot editing, submission, interpretation or
 template choice) and keeps the slot and literal rules beside it. Guidance wraps
 within the declared geometry and an idle resize repaints the draft without
@@ -469,12 +472,12 @@ In rich interaction Tab visits the value or endpoints, Edit actions, and Submit.
 Arrow keys adjust a focused value without crossing bounds or the minimum gap;
 inside an editor arrows instead move the text cursor. Enter opens or finishes
 editing and activates Submit. Escape dismisses help or the current editor before
-cancelling; Ctrl+T opens help and Ctrl+C interrupts. Linear range entry asks for
+cancelling; F1 opens help and Ctrl+C interrupts. Linear range entry asks for
 each endpoint and a separate review/submit. Invalid text remains editable.
 A supplied range uses the literal `Lower,Upper` spelling, for example `2,8`;
 it must satisfy the same constraints. EOF does not submit a draft.
 
-Ctrl+T in rich mode or `/help` in linear mode leads with the current stage (the
+F1 in rich mode or `/help` in linear mode leads with the current stage (the
 focused value or endpoint, an edit action, the submit action, or endpoint entry)
 and keeps the bounds, step, units, precision and pair review in the same block.
 Guidance wraps within the declared geometry, an idle resize repaints the current
@@ -594,7 +597,7 @@ offending field, width, repertoire or calendar range and keep the draft.
 
 `DateInput.prompt` also accepts `terminal`, `outputProfile` and `session` like
 the shared editor, and an attached prompt inherits its session configuration
-while feedback repaints. Ctrl+T in rich mode or `/help` in linear mode leads
+while feedback repaints. F1 in rich mode or `/help` in linear mode leads
 with the current stage (the focused field or review) and then the format and
 workflow. Guidance wraps within the declared geometry, an idle resize repaints
 the current editor without changing the draft, and an explicitly requested rich
@@ -643,7 +646,7 @@ keeps every guidance line, validation message and preview report inside the
 declared geometry. An attached prompt inherits its session's input, output, mode
 and profile, shares the session-owned key stream and repaints through the
 session writer, so background feedback and an idle resize repaint the retained
-draft without accepting or changing it. Ctrl+T or `/help` opens component help
+draft without accepting or changing it. F1 or `/help` opens component help
 that leads with the requesting stage (entry or review), keeps the dialect field
 shape, the 4096-code-unit limit, the accepted syntax and the bounded
 matching-preview limitation in the same block, and names the review actions.
@@ -665,7 +668,7 @@ Submit. Up/Down or `+`/`-` adjust the focused segment without carry or wrap;
 formatted editing is available through the Edit action. Each labeled field is a
 local draft, so an incomplete hour, minute, second or period stays in its own
 field until the whole time is valid at Submit. Linear interaction accepts the
-same exact format, retaining invalid drafts for correction. Ctrl+T in rich mode
+same exact format, retaining invalid drafts for correction. F1 in rich mode
 or `/help` in linear mode leads with the requested stage and then the accepted
 format. `TimeInput.prompt` accepts `terminal`, `outputProfile` and `session` the
 same way as `DateInput`; guidance wraps within the declared geometry and an idle
@@ -710,7 +713,7 @@ other migrated prompts: an attached prompt inherits the `TerminalSession`
 configuration, an explicit adapter is leased and restored, and a rich synthetic
 source must declare cursor support and positive geometry. Guidance is measured
 against the declared width and uses the component `ColorTheme` when the profile
-permits colour. Ctrl+T in rich mode or `/help` in linear mode opens
+permits colour. F1 in rich mode or `/help` in linear mode opens
 path-specific component help rather than generic editor instructions: it names
 the base, the existence and target-type policy, literal-path and escaping
 rules, the absent shell expansion, link canonicalization and working-directory
@@ -746,7 +749,7 @@ Both browsers run on the shared backend: `prompt` accepts `terminal`,
 review are measured and styled through the shared writer, and a rich synthetic
 source must declare cursor support and positive geometry. The compact warning
 that hidden entries exist, that links need explicit per-open approval and that
-the base is not a sandbox stays visible outside help. Ctrl+T in rich mode or
+the base is not a sandbox stays visible outside help. F1 in rich mode or
 `/help` in linear mode opens stage-specific help for browsing, literal-path
 entry and review, naming every action, the reference-versus-identity rule, the
 link-approval and cycle rules, the no-sandbox caveat and the later-operation
@@ -786,7 +789,7 @@ snapshot remains active for the whole prompt, so preference changes affect only
 the next invocation.
 
 Entry opens with a compact cue naming the required/optional state, mode, and
-the active decimal and grouping separators. Ctrl+T in rich mode or `/help` in
+the active decimal and grouping separators. F1 in rich mode or `/help` in
 linear mode opens component help with the exact bounds and precision, the digit
 repertoire, and concrete ASCII/native, grouped/ungrouped, positive and negative
 examples. Accepted `NumericAnswer` values retain the original
@@ -861,7 +864,7 @@ color spaces are excluded. No value is silently repaired.
 Both rich and linear entry show textual sRGB, alpha, and normalized HSL hue as
 valid drafts are entered. Rounded hex is explicitly an approximate preview and
 never replaces the answer. No color perception is needed. The opening shows a
-compact sRGB cue; Ctrl+T or `/help` gives the full accepted syntax, the alpha
+compact sRGB cue; F1 or `/help` gives the full accepted syntax, the alpha
 order, the decimal-digit limit and the excluded expressions and colour spaces.
 
 ### Key capture
@@ -874,7 +877,7 @@ submits; in linear mode `/capture` arms, `/declare` enters a declaration, and
 `/done` submits. Every capture returns to review: it never submits
 automatically. Escape exits armed capture before cancelling the prompt;
 Ctrl+C interrupts. These two reserved gestures cannot be captured live. Rich
-`Ctrl+T` and linear `/help` explain observed versus declared or ambiguous
+`F1` and linear `/help` explain observed versus declared or ambiguous
 provenance, the reserved gestures, the observation requirement and the
 declaration vocabulary. Help is available before and after a capture but not
 while capture is armed, because the next key is the candidate gesture; the

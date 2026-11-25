@@ -97,7 +97,7 @@ void main() {
       final transcript = TextInputTranscript();
       final result = await TextInput('Name').prompt(
         source: ScriptedInput(
-          Stream.value('ab\x1b[D\x14\x1bX\r'),
+          Stream.value('ab\x1b[D\x1bOP\x1bX\r'),
           output,
           outputProfile: _richProfile,
           transcript: transcript,
@@ -106,7 +106,7 @@ void main() {
       );
 
       expect((result as Accepted<String>).value, 'aXb');
-      expect(output.toString(), contains('Ctrl+T opens help.'));
+      expect(output.toString(), contains('F1 opens help.'));
       expect(
         transcript.events.map((event) => event.kind),
         contains(TextInputPresentationEventKind.help),
@@ -122,7 +122,7 @@ void main() {
         'Password',
         secret: true,
         io: TerminalEnvironment.scripted(
-          input: Stream.value('$canary\x14\x1b\rsubmit\r'),
+          input: Stream.value('$canary\x1bOP\x1b\rsubmit\r'),
           output: output,
           profile: const OutputProfile(glyphs: GlyphSet.ascii),
         ),
@@ -131,7 +131,7 @@ void main() {
       );
 
       expect((await tracer.prompt() as Accepted<String>).value, canary);
-      expect(output.toString(), contains('Ctrl+T opens help'));
+      expect(output.toString(), contains('F1 opens help'));
       expect(output.toString(), isNot(contains(canary)));
       expect(output.toString(), isNot(contains('18 graphemes')));
     });
@@ -148,7 +148,7 @@ void main() {
       final before = StringBuffer();
       await Keypress('Shortcut').prompt(
         source: ScriptedInput(
-          Stream.value('\x14\x1bca\r'),
+          Stream.value('\x1bOP\x1bca\r'),
           before,
           outputProfile: _richProfile,
         ),
@@ -163,7 +163,7 @@ void main() {
             symbols: const ['A', 'B'],
           ).prompt(
             source: ScriptedInput(
-              Stream.value('\x14\x1b\x1b[B\t\x1b[B\r'),
+              Stream.value('\x1bOP\x1b\x1b[B\t\x1b[B\r'),
               keybindOut,
               outputProfile: _richProfile,
             ),

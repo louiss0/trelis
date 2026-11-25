@@ -308,7 +308,7 @@ void main() {
       expect(richOutput.toString(), contains('not selectable'));
       expect(
         richOutput.toString().replaceAll(RegExp(r'\s+'), ' '),
-        contains('Ctrl+T help'),
+        contains('F1 help'),
       );
 
       final linearOutput = StringBuffer();
@@ -355,7 +355,7 @@ void main() {
       expect(richText, contains('(moving)'));
       expect(richText, contains('[L]'));
       expect(richText, contains('protected'));
-      expect(richText, contains('Ctrl+T help'));
+      expect(richText, contains('F1 help'));
 
       final linearOutput = StringBuffer();
       final linear = await _order(

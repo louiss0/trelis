@@ -43,7 +43,7 @@ void main() {
       final transcript = TextInputTranscript();
       final result = await TextInput('Name').prompt(
         source: ScriptedInput(
-          Stream.value('\x14\x1b\x14\x1banswer\r'),
+          Stream.value('\x1bOP\x1b\x1bOP\x1banswer\r'),
           StringBuffer(),
           transcript: transcript,
         ),

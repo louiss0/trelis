@@ -34,7 +34,7 @@ void main() {
     ]);
     final outFuture = p.stdout.transform(systemEncoding.decoder).join();
     final errFuture = p.stderr.transform(systemEncoding.decoder).join();
-    p.stdin.write('\x14\x1b');
+    p.stdin.write('\x1bOP\x1b');
     await p.stdin.flush();
     await Future<void>.delayed(const Duration(milliseconds: 200));
     p.stdin.write('\x03');

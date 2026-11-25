@@ -89,9 +89,9 @@ void main() {
         expect(text, contains('Accepted: Yes.'));
         final flat = text.replaceAll('\n', '');
         expect(flat, contains('Y/N changes the draft; Enter submits'));
-        expect(flat, contains('Ctrl+T opens help'));
+        expect(flat, contains('F1 opens help'));
         expect(
-          text.indexOf('Ctrl+T opens help'),
+          text.indexOf('F1 opens help'),
           greaterThan(text.indexOf('Continue?')),
         );
       },
@@ -290,7 +290,7 @@ void main() {
             ThemeChoiceOption('c', 'Gamma'),
           ],
           io: TerminalEnvironment.scripted(
-            input: Stream.value('\r\x1b[B\r\x1b[B\x14\x1b\r'),
+            input: Stream.value('\r\x1b[B\r\x1b[B\x1bOP\x1b\r'),
             output: output,
             profile: _richProfile,
             supportsRich: true,

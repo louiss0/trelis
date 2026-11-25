@@ -165,7 +165,7 @@ void main() {
         expect(text, contains('[default]'));
         expect(text, contains('Starter: checked.'));
         expect(text, contains('Space toggles'));
-        expect(text, contains('Ctrl+T help'));
+        expect(text, contains('F1 help'));
         expect(
           text,
           contains(entry.$2),
@@ -216,7 +216,7 @@ void main() {
       // nothing essential is truncated, so compare without wrap whitespace.
       final compact = text.replaceAll(RegExp(r'\s+'), '');
       expect(compact, contains('Spacetoggles'));
-      expect(compact, contains('Ctrl+Thelp'));
+      expect(compact, contains('F1help'));
       expect(text, isNot(contains('\x1b[38;')));
       expect(text, isNot(contains('\x1b[48;')));
       expect(text, isNot(contains('\x1b[2J')));

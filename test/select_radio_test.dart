@@ -190,7 +190,7 @@ void main() {
           Choice('c', 'C'),
         ]).prompt(
           source: ScriptedInput(
-            Stream.value('\x1b[B\x14\x1b\r\x1b[B\r'),
+            Stream.value('\x1b[B\x1bOP\x1b\r\x1b[B\r'),
             out,
             outputProfile: _selectionRichProfile,
           ),

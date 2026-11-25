@@ -27,7 +27,7 @@ Record observations, not what should have happened. Never enter a real secret or
 2. For each mode, run `dart run bin/editable_probe.dart` (plain-rich) and
    `dart run bin/editable_probe.dart --linear` (linear). Without looking at this
    document's key descriptions, discover the label, initial value and help.
-   Use Ctrl+T for help if necessary; Escape should dismiss help, and a second
+   Use F1 for help if necessary; Escape should dismiss help, and a second
    Escape at root should cancel. Verify the shell remains usable.
 3. Restart in each mode. Correct the initial `alpha` using navigation and
    deletion; erase it, press Enter and check the required error remains

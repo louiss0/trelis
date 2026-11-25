@@ -105,7 +105,7 @@ void main() {
     final output = StringBuffer();
     final result = await Multiline('Notes', maxLength: 5).prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x1b\t\r'),
+        Stream.value('\x1bOP\x1b\t\r'),
         output,
         outputProfile: _rich(columns: 40),
       ),
@@ -153,7 +153,7 @@ void main() {
         spinner.update('uploading');
         await Future<void>.delayed(Duration.zero);
         final beforeHelp = output.toString();
-        input.add('\x14');
+        input.add('\x1bOP');
         await Future<void>.delayed(Duration.zero);
         helpBlock = output.toString().substring(beforeHelp.length);
         spinner.update('still uploading');
@@ -319,7 +319,7 @@ void main() {
     final richOutput = StringBuffer();
     final rich = await TagInput('Tags', maxLength: 6).prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x1b\t\r'),
+        Stream.value('\x1bOP\x1b\t\r'),
         richOutput,
         outputProfile: _rich(),
       ),

@@ -426,7 +426,7 @@ void main() {
       final hint = lines.indexWhere((line) => line.startsWith('hint:'));
       expect(hint, greaterThan(lines.indexOf(defaulted.single)));
       final hintText = lines.skip(hint).join(' ');
-      expect(hintText, contains('Ctrl+T'));
+      expect(hintText, contains('F1'));
       expect(hintText.replaceAll(RegExp(r'\s'), ''), contains('Entersubmits'));
       expect(
         text,
@@ -454,7 +454,7 @@ void main() {
       '[checked]',
       '[focused]',
       '[default]',
-      'Ctrl+T',
+      'F1',
     ]) {
       expect(joined, contains(essential), reason: essential);
     }
@@ -612,7 +612,7 @@ void main() {
     final starter = lines.indexWhere((line) => line.contains('Starter'));
     final library = lines.indexWhere((line) => line.contains('Library'));
     final help = lines.indexWhere(
-      (line) => line.startsWith('hint:') && line.contains('Ctrl+T'),
+      (line) => line.startsWith('hint:') && line.contains('F1'),
     );
     expect(starter, greaterThan(0));
     expect(library, greaterThan(starter));

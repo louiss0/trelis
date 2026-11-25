@@ -56,6 +56,12 @@ part 'range_input.dart';
 /// Internal name retained by component parts for the shared reader type.
 typedef _Keys = SharedTerminalReader;
 
+/// The component help gesture: F1 arrives as SS3 `\x1bOP` on most
+/// terminals and as CSI `\x1b[11~` where the application-keypad spelling
+/// is not used. A plain Ctrl byte cannot serve: most are already claimed
+/// by the terminal itself or carry readline conventions.
+bool _isHelpGesture(String key) => key == '\x1bOP' || key == '\x1b[11~';
+
 sealed class PromptResult<T> {}
 
 final class Accepted<T> extends PromptResult<T> {
@@ -2308,7 +2314,7 @@ String _textInputGuidance({
   required bool linear,
   required InstructionDisplay instructions,
 }) {
-  final route = linear ? '/help opens help.' : 'Ctrl+T opens help.';
+  final route = linear ? '/help opens help.' : 'F1 opens help.';
   return switch (_resolvedInstructions(instructions)) {
     InstructionDisplay.compact => 'Enter submits; $route Escape cancels.',
     InstructionDisplay.expanded =>
@@ -3443,7 +3449,7 @@ Future<({String action, String value})> _edit(
         }
         continue;
       }
-      if (key == '\x14') {
+      if (_isHelpGesture(key)) {
         if (help) continue;
         help = true;
         onHelpVisibilityChanged?.call(true);
@@ -3773,6 +3779,7 @@ Stream<String> _consoleInput(
               0x24 => '\x1b[H',
               0x23 => '\x1b[F',
               0x2e => '\x1b[3~',
+              0x70 => '\x1bOP',
               _ => '',
             };
       if (key.isNotEmpty) controller.add(key);
@@ -4314,7 +4321,7 @@ final class Password {
     spine.opening(
       scripted.output,
       title: '$label (${required ? 'Required' : 'Optional'}).',
-      body: 'Hidden entry; Enter opens actions. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+      body: 'Hidden entry; Enter opens actions. F1 opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.foreground,
       bodyForeground: colors.muted,
       closes: !mask && initialValue.isEmpty,
@@ -4356,7 +4363,7 @@ final class Password {
               ? scripted.resizeObserver
               : null,
           session: session,
-          helpText: 'Help: Enter opens Password actions. Use the listed submit, edit, clear, help or cancel action after entry. Ctrl+T opens this help without treating secret text as a command.',
+          helpText: 'Help: Enter opens Password actions. Use the listed submit, edit, clear, help or cancel action after entry. F1 opens this help without treating secret text as a command.',
         );
         if (edit.action == 'cancel') return Cancelled();
         if (edit.action == 'interrupt') return Interrupted();
@@ -4675,7 +4682,7 @@ abstract class _BooleanPrompt {
       out,
       mode == PromptMode.linear
           ? r'Enter yes/y or no/n, or an empty line for the displayed default. /help opens help. /cancel cancels. Both are exact commands. Quote commands with a backslash and double a leading backslash. Identified paste is literal.'
-          : '$_richControl; Enter submits. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          : '$_richControl; Enter submits. F1 opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.muted,
     );
     final inputKeys =
@@ -4731,7 +4738,7 @@ abstract class _BooleanPrompt {
           );
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           if (help) continue;
           help = true;
           writeStyled(_help(linear: false), colors.foreground);
@@ -4810,7 +4817,7 @@ final class Multiline {
         '$label (${required ? 'Required' : 'Optional'}${maxLength == null ? '' : ', maximum $maxLength graphemes'}).',
     guidance: linear
         ? 'Enter adds a line; /done accepts. /list, /edit, /insert, /remove, /help and /cancel are exact commands; /help opens help. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-        : 'Enter inserts a newline. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+        : 'Enter inserts a newline; Ctrl+J finishes the answer. Tab selects Finish or Insert tab; Enter activates the action. Arrows move, Home/End reach line boundaries, Backspace/Delete erase. F1 opens help; Escape cancels; Ctrl+C interrupts.',
   );
 
   /// Current-stage help for this multiline answer.
@@ -4827,7 +4834,7 @@ final class Multiline {
     if (linear) {
       return 'Help: one line per Enter; /list, /edit, /insert, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing. /done accepts the joined lines only after validation. $constraints$validation';
     }
-    return 'Help: Enter inserts a newline; Tab selects Edit, Finish or Insert tab; Enter activates the selected action. Arrows move between lines; Home/End reach line boundaries; Backspace/Delete erase; identified paste keeps its line breaks and tabs. Ctrl+T opens this help; Escape returns to editing or cancels; Ctrl+C interrupts. Finish accepts the joined lines only after validation. $constraints$validation';
+    return 'Help: Enter inserts a newline; Ctrl+J finishes the answer from any action. Tab selects Edit, Finish or Insert tab; Enter activates the selected action. Arrows move between lines; Home/End reach line boundaries; Backspace/Delete erase; identified paste keeps its line breaks and tabs. F1 opens this help; Escape returns to editing or cancels; Ctrl+C interrupts. Finish accepts the joined lines only after validation. $constraints$validation';
   }
 
   Future<PromptResult<String>> prompt({
@@ -5278,7 +5285,7 @@ final class Multiline {
         final key = await inputKeys.next();
         if (key == null || key == '\x1a') return InputEnded();
         if (key == '\x03') return Interrupted();
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           if (help) continue;
           help = true;
           final transient =
@@ -5329,21 +5336,24 @@ final class Multiline {
           out.writeln(['Edit', 'Finish', 'Insert tab'][action]);
           continue;
         }
-        if (key == '\r' || key == '\n') {
-          if (action == 1) {
-            final value = chars.join();
-            final error = _error(value);
-            if (error == null) return Accepted(value);
-            spine.write(
-              out,
-              error,
-              foreground: colors.error,
-              closes: true,
-              event: StageEvent.warning,
-            );
-            action = 0;
-            continue;
-          }
+        // LF is the finish chord: Ctrl+J on POSIX byte streams and
+        // Ctrl+Enter on the Windows console path both arrive as '\n',
+        // while Enter arrives as '\r' and keeps its action/newline role.
+        if (key == '\n' || (key == '\r' && action == 1)) {
+          final value = chars.join();
+          final error = _error(value);
+          if (error == null) return Accepted(value);
+          spine.write(
+            out,
+            error,
+            foreground: colors.error,
+            closes: true,
+            event: StageEvent.warning,
+          );
+          action = 0;
+          continue;
+        }
+        if (key == '\r') {
           if (action == 2) {
             insert('\t');
             action = 0;
@@ -5992,7 +6002,7 @@ abstract class _SingleChoice<T> {
     var page = 0;
     const pageSize = 10;
     final hint = mode == PromptMode.rich
-        ? 'Up/Down navigate; Enter accepts the focused enabled choice. Ctrl+T help; Escape cancels; Ctrl+C interrupts.'
+        ? 'Up/Down navigate; Enter accepts the focused enabled choice. F1 help; Escape cancels; Ctrl+C interrupts.'
         : r'Enter a stable choice number to accept it. /next, /previous, /help and /cancel are exact commands. /help opens help. /cancel cancels. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
     var hintShown = false;
     void show() {
@@ -6138,7 +6148,7 @@ abstract class _SingleChoice<T> {
           show();
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           help = true;
           write(_help(linear: false), colors.foreground);
           continue;
@@ -6423,7 +6433,7 @@ final class MultiSelect<T> {
     ];
     final hint = mode == PromptMode.linear
         ? 'Enter a choice number to toggle. /done, /selected, /filter, /select-visible, /clear-visible, /next, /previous, /help and /cancel are exact commands. /help opens help. /cancel cancels. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-        : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
+        : 'Up/Down navigate; Space toggles; Enter submits; / filters; Ctrl+A select visible; Ctrl+X clear visible; Ctrl+R review; F1 help; Escape cancels; Ctrl+C interrupts.';
     var hintShown = false;
     void show() {
       session?._setPromptGeometry(effectiveProfile.geometry);
@@ -6655,7 +6665,7 @@ final class MultiSelect<T> {
           show();
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           help = true;
           write(_help(linear: false), colors.foreground, closes: true);
           continue;
@@ -6933,7 +6943,7 @@ final class TimeInput {
       out,
       mode == PromptMode.linear
           ? 'Enter a time of day, not a date or timezone. /help describes the format; /cancel cancels.'
-          : 'Edit one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          : 'Edit one field at a time. F1 opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.foreground,
     );
     final inputKeys =
@@ -7046,7 +7056,7 @@ final class TimeInput {
       );
       spine.hint(
         out,
-        'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+        'Focus: ${controls[focus]}. Tab moves; Up/Down or + and - adjust a segment without wrapping; Enter edits a field or activates an action; F1 opens help; Escape cancels; Ctrl+C interrupts.',
         foreground: colors.foreground,
       );
     }
@@ -7271,7 +7281,7 @@ final class TagInput {
     title: '$label: $_styleName tags.',
     guidance:
         'Enter adds; Ctrl+X discards the draft. ${linear ? '/done finishes.' : 'Tab then Enter finishes; Backspace focuses a tag, arrows navigate, Enter edits, Delete removes.'}${maxLength == null ? '' : ' Maximum $maxLength graphemes per canonical tag.'} '
-        '${linear ? '/help opens help.' : 'Ctrl+T opens help.'}',
+        '${linear ? '/help opens help.' : 'F1 opens help.'}',
   );
 
   /// Current-stage help for this tag collection.
@@ -7285,7 +7295,7 @@ final class TagInput {
     if (linear) {
       return 'Help: Enter adds one canonical $_styleName tag and clears the draft; /list, /edit, /remove, /done, /help and /cancel are exact commands. Quote a command with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing. Ctrl+X discards the current draft; /done finishes with the accepted tags only. $constraints';
     }
-    return 'Help: Enter adds the draft as a canonical $_styleName tag and clears the draft; Tab focuses Finish, where Enter submits with an empty draft. Backspace with an empty draft focuses the last accepted tag; Left/Right move between accepted tags; Enter edits the focused tag; Delete removes the focused tag; Ctrl+X discards the draft. Preview shows the current canonical tag. Ctrl+T opens this help; Escape cancels; Ctrl+C interrupts. $constraints';
+    return 'Help: Enter adds the draft as a canonical $_styleName tag and clears the draft; Tab focuses Finish, where Enter submits with an empty draft. Backspace with an empty draft focuses the last accepted tag; Left/Right move between accepted tags; Enter edits the focused tag; Delete removes the focused tag; Ctrl+X discards the draft. Preview shows the current canonical tag. F1 opens this help; Escape cancels; Ctrl+C interrupts. $constraints';
   }
 
   Future<PromptResult<List<String>>> prompt({

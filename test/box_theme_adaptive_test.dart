@@ -45,7 +45,7 @@ void main() {
       expect(text, contains('\x1b[38;2;51;41;31;49m'));
       expect(text, contains('\x1b[38;2;122;102;80;49m'));
       expect(text, isNot(contains('\x1b[48;2;')));
-      expect(text, contains('Ctrl+T'));
+      expect(text, contains('F1'));
     },
   );
 
@@ -110,7 +110,7 @@ void main() {
       expect(text, contains('[unchecked]'));
       expect(text, contains('Not provisioned'));
       expect(text, contains('Enter submits'));
-      expect(text, contains('Ctrl+T'));
+      expect(text, contains('F1'));
       // The focused row uses the dark rust accent on the default surface.
       expect(text, contains('\x1b[38;2;232;135;90;49m'));
       expect(text, isNot(contains('\x1b[48;2;')));
@@ -185,7 +185,7 @@ void main() {
     expect(text, contains('[checked]'));
     expect(text, contains('[unchecked]'));
     expect(text, contains('Not provisioned'));
-    expect(text, contains('Ctrl+T'));
+    expect(text, contains('F1'));
     _expectHintBelowContent(text, '+');
     expect(text, isNot(contains('\x1b[3')));
     expect(text, isNot(contains('\x1b[4')));
@@ -228,8 +228,8 @@ void main() {
 
 /// The compact hint closes the active content after the frame's bottom rule.
 void _expectHintBelowContent(String text, String bottomRule) {
-  final primary = text.indexOf('Ctrl+T opens help.');
-  final hint = primary >= 0 ? primary : text.indexOf('Ctrl+T help');
+  final primary = text.indexOf('F1 opens help.');
+  final hint = primary >= 0 ? primary : text.indexOf('F1 help');
   expect(hint, greaterThan(0));
   final bottom = text.lastIndexOf(bottomRule, hint);
   expect(bottom, greaterThan(0));

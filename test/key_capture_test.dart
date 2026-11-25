@@ -352,6 +352,34 @@ void main() {
     expect(out.toString(), contains('unverified'));
   });
 
+  test('a declared Ctrl+T binding is accepted now that F1 owns help', () async {
+    final result = await Keypress('Shortcut').prompt(
+      source: ScriptedInput(
+        Stream.value('/declare\rCtrl+T\r/done\r'),
+        StringBuffer(),
+      ),
+      mode: PromptMode.linear,
+    );
+    final gesture = (result as Accepted<KeyGesture>).value;
+    expect(gesture.key, 'T');
+    expect(gesture.modifiers, {KeyModifier.control});
+    expect(gesture.provenance, KeyGestureProvenance.declared);
+  });
+
+  test('Ctrl+T no longer opens help in the rich action stage', () async {
+    final out = StringBuffer();
+    final result = await Keypress('Shortcut').prompt(
+      source: ScriptedInput(
+        Stream.value('\x14ca\r'),
+        out,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<KeyGesture>).value.key, 'a');
+    expect(out.toString(), isNot(contains('Help:')));
+  });
+
   test(
     'reserved declarations retain unverified and reserved warnings',
     () async {
@@ -586,7 +614,7 @@ void main() {
       final helpOutput = StringBuffer();
       final result = await Keypress('Shortcut').prompt(
         source: ScriptedInput(
-          Stream.value('\x14\x1bca\r'),
+          Stream.value('\x1bOP\x1bca\r'),
           helpOutput,
           outputProfile: _richProfile,
         ),
@@ -609,7 +637,7 @@ void main() {
             symbols: const ['a', 'b'],
           ).prompt(
             source: ScriptedInput(
-              Stream.value('\x14\x1b\x1b[B\t\x1b[B\r'),
+              Stream.value('\x1bOP\x1b\x1b[B\t\x1b[B\r'),
               keybindOutput,
               outputProfile: _richProfile,
             ),
@@ -629,7 +657,7 @@ void main() {
       final out = StringBuffer();
       final result = await Keybind<List<String>>('Sequence').prompt(
         source: ScriptedInput(
-          Stream.value('\t\x14\x1b\x1b[B\x02\x1b[B\r'),
+          Stream.value('\t\x1bOP\x1b\x1b[B\x02\x1b[B\r'),
           out,
           outputProfile: _richProfile,
         ),
@@ -713,7 +741,7 @@ void main() {
           spinner.start(session: session);
           final pending = Keypress('Shortcut').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('\x14');
+          input.add('\x1bOP');
           await Future<void>.delayed(Duration.zero);
           spinner.update('checking');
           await Future<void>.delayed(Duration.zero);

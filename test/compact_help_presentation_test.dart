@@ -129,7 +129,7 @@ void main() {
         expect(decorated.lines, ['Name.', 'Left/Right move', hint.text]);
         expect(tight.lines, ['Name.', hint.shortText]);
         expect(tight.lines.join(), contains('Enter'));
-        expect(tight.lines.join(), contains('Ctrl+T help'));
+        expect(tight.lines.join(), contains('F1 help'));
       },
     );
   });
@@ -147,7 +147,7 @@ void main() {
       expect(passive.lines, ['Indexing 3 files']);
       expect(passive.hint, isNull);
       expect(passive.lines.join(), isNot(contains('/help')));
-      expect(passive.lines.join(), isNot(contains('Ctrl+T')));
+      expect(passive.lines.join(), isNot(contains('F1')));
       expect(actionable.hint, 'y confirms; /help opens help.');
     });
 
@@ -198,7 +198,7 @@ void main() {
         spaceAvailable: true,
       );
 
-      expect(route.text, contains('Ctrl+T opens help'));
+      expect(route.text, contains('F1 opens help'));
       expect(route.text, contains('hidden values stay hidden'));
       final text = (outcome as HelpShown).text;
       expect(text, isNot(contains(canary)));
@@ -220,10 +220,10 @@ void main() {
 
       expect(rich.kind, HelpRouteKind.outsideCapture);
       expect(rich.gesture, isNull);
-      expect(rich.text, isNot(contains('Ctrl+T')));
+      expect(rich.text, isNot(contains('F1')));
       expect(rich.text, contains('after capture'));
       expect(standard.kind, HelpRouteKind.shortcut);
-      expect(standard.gesture, 'Ctrl+T');
+      expect(standard.gesture, 'F1');
     });
 
     test('unavailable space and failed rendering retain active help state', () {

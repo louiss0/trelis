@@ -832,7 +832,7 @@ final class DateInput {
       out,
       mode == PromptMode.linear
           ? 'Enter a date, then review. /help describes the format; /cancel cancels.'
-          : 'Enter one field at a time. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          : 'Enter one field at a time. F1 opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.foreground,
     );
     final inputKeys = keys ?? _Keys(scripted.input.transform(utf8.encoder));

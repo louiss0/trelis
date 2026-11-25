@@ -323,7 +323,7 @@ void main() {
           spinner = Spinner('Index')..start(session: session);
           final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('\x14');
+          input.add('\x1bOP');
           return await prompt;
         },
         source: ScriptedInput(

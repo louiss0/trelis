@@ -223,9 +223,9 @@ void main() {
             preview: _yearConfig(),
           ).prompt(
             source: ScriptedInput(
-              // Enter Review, open help with Ctrl+T, dismiss with Escape, then
+              // Enter Review, open help with F1, dismiss with Escape, then
               // interrupt to end the prompt after the help text is captured.
-              Stream.value('*\t*\t*\t*\t*\r\t\x14\x1b\x03'),
+              Stream.value('*\t*\t*\t*\t*\r\t\x1bOP\x1b\x03'),
               output,
               outputProfile: _richProfile,
             ),

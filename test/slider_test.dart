@@ -156,7 +156,7 @@ void main() {
       final future = run(
         ScriptedInput(input.stream, output, outputProfile: _richProfile),
       );
-      input.add('\x14\x1b');
+      input.add('\x1bOP\x1b');
       await Future<void>.delayed(const Duration(milliseconds: 150));
       input.add('\x03');
       await input.close();

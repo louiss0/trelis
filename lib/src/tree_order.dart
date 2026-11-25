@@ -242,7 +242,7 @@ final class TreeSelect<T> {
       final controls = switch (stage) {
         _TreeHelpStage.reference => 'A node reference is the number displayed for a node. References are assigned once in preorder and stay stable while branches open and close, so a reference is checked against the current path before anything happens. /open accepts only a direct child of the current path and enters its children; /choose accepts the referenced node only when it is selectable and currently available. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
         _TreeHelpStage.navigating when linear => 'Enter an exact command: /open asks for a stable node reference in the current path and enters its children; /up returns to the parent; /choose asks for a stable node reference and accepts it only when it is selectable and available. Expandability and selectability are independent. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
-        _TreeHelpStage.navigating => 'Up/Down move the focus between visible nodes; Right expands a branch or enters its first child; Left collapses a branch or moves to the parent; Enter accepts the focused node only when it is selectable and available; Ctrl+T dismisses help; Escape cancels and Ctrl+C interrupts.',
+        _TreeHelpStage.navigating => 'Up/Down move the focus between visible nodes; Right expands a branch or enters its first child; Left collapses a branch or moves to the parent; Enter accepts the focused node only when it is selectable and available; F1 dismisses help; Escape cancels and Ctrl+C interrupts.',
       };
       final defaultText = defaultValue == null
           ? 'No node is marked as the default.'
@@ -318,7 +318,7 @@ final class TreeSelect<T> {
     // it before the list.
     final hint = mode == PromptMode.linear
         ? r'/open, /up and /choose are exact commands. /open and /choose ask for a stable node reference. /help and /cancel are exact commands; quote commands with a backslash; double a leading backslash. Identified paste is literal.'
-        : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. Ctrl+T help; Escape cancels; Ctrl+C interrupts.';
+        : 'Up/Down navigate; Right expands or enters; Left collapses or goes to parent; Enter chooses. F1 help; Escape cancels; Ctrl+C interrupts.';
 
     /// One typed tree row: the stable reference, the full path, focus, the
     /// displayed default, the expansion state, selectability and staleness stay
@@ -581,7 +581,7 @@ final class TreeSelect<T> {
           show();
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           help = true;
           final items = visible();
           final focused = items.indexWhere((r) => identical(r.$1, focus));
@@ -868,7 +868,7 @@ final class SortableSelect<T> {
     var moving = false;
     List<int>? moveStart;
     final hint = mode == PromptMode.rich
-        ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; Ctrl+T help; Ctrl+C interrupts.'
+        ? 'Up/Down navigate or move; Space picks up or drops; Enter drops while moving or submits while idle; Escape reverts a move or cancels; F1 help; Ctrl+C interrupts.'
         : r'/move requests a stable choice reference and destination position; /done submits; /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal.';
 
     /// One typed order row: the stable reference, the current position, focus,
@@ -968,12 +968,12 @@ final class SortableSelect<T> {
         _OrderHelpStage.destination => 'Entering a destination position',
       };
       final controls = switch (stage) {
-        _OrderHelpStage.moving => 'Up/Down move the picked-up identity one position at a time; Space or Enter drops it where it is; Escape reverts the whole move to where it started; Ctrl+T dismisses help and Ctrl+C interrupts.',
+        _OrderHelpStage.moving => 'Up/Down move the picked-up identity one position at a time; Space or Enter drops it where it is; Escape reverts the whole move to where it started; F1 dismisses help and Ctrl+C interrupts.',
         _OrderHelpStage.reference => 'Enter the stable number of the identity to move. References never change when positions do, so a reference always names the same identity; a locked anchor cannot be moved. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
         _OrderHelpStage.destination =>
           'Enter a destination position from 1 to ${order.length}. The identity moves to that position and the identities between them shift one place; a move may not cross a locked anchor, and a refused move keeps the current order. Exact /help and /cancel are commands.',
         _OrderHelpStage.ordering when linear => 'Enter an exact command: /move asks for a stable choice reference and then a destination position; /done submits the order shown. Every row keeps its own position and locked state. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal.',
-        _OrderHelpStage.ordering => 'Up/Down move the focus; Space picks up or drops an identity; while moving, Up/Down move it and Enter drops it; while idle, Enter submits the shown order; Escape reverts a move before it cancels; Ctrl+T dismisses help and Ctrl+C interrupts.',
+        _OrderHelpStage.ordering => 'Up/Down move the focus; Space picks up or drops an identity; while moving, Up/Down move it and Enter drops it; while idle, Enter submits the shown order; Escape reverts a move before it cancels; F1 dismisses help and Ctrl+C interrupts.',
       };
       final locked = [
         for (var i = 0; i < choices.length; i++)
@@ -1126,7 +1126,7 @@ final class SortableSelect<T> {
           }
           return Cancelled();
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           help = true;
           write(
             helpText(

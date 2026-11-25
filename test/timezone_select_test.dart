@@ -117,7 +117,7 @@ void main() {
       final result = await TimezoneSelect('Zone').prompt(
         source: _scriptedInput(
           mode == PromptMode.rich
-              ? Stream.value('\x14\x1bUS/Eastern\r\r')
+              ? Stream.value('\x1bOP\x1bUS/Eastern\r\r')
               : Stream.value('/help\rUS/Eastern\r105\r'),
           out,
         ),

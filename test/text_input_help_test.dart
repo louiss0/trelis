@@ -25,7 +25,7 @@ void main() {
       compact.toString(),
       contains('Name (Optional, maximum 3 graphemes).'),
     );
-    expect(compact.toString(), contains('Enter submits; Ctrl+T opens help.'));
+    expect(compact.toString(), contains('Enter submits; F1 opens help.'));
     expect(compact.toString(), isNot(contains('Home/End go to boundaries')));
 
     final expanded = StringBuffer();
@@ -53,8 +53,8 @@ void main() {
       mode: PromptMode.rich,
     );
     expect(hidden.toString(), contains('Name (Required).'));
-    expect(hidden.toString(), contains('Ctrl+T opens help.'));
-    expect(hidden.toString(), contains('Enter submits; Ctrl+T opens help.'));
+    expect(hidden.toString(), contains('F1 opens help.'));
+    expect(hidden.toString(), contains('Enter submits; F1 opens help.'));
   });
 
   test(
@@ -69,7 +69,7 @@ void main() {
             supplementaryHelp: ['Names are shown to collaborators.'],
           ).prompt(
             source: ScriptedInput(
-              Stream.value('ab\x1b[D\x14\x1bX\r'),
+              Stream.value('ab\x1b[D\x1bOP\x1bX\r'),
               output,
               outputProfile: _richProfile,
               transcript: transcript,
@@ -134,7 +134,7 @@ void main() {
       ],
     ).prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x03'),
+        Stream.value('\x1bOP\x03'),
         output,
         outputProfile: _richProfile,
       ),
@@ -154,8 +154,8 @@ void main() {
 
   test('help preserves interruption and EOF outcomes', () async {
     for (final entry in <({String keys, Matcher matcher})>[
-      (keys: '\x14\x03', matcher: isA<Interrupted<String>>()),
-      (keys: '\x14', matcher: isA<InputEnded<String>>()),
+      (keys: '\x1bOP\x03', matcher: isA<Interrupted<String>>()),
+      (keys: '\x1bOP', matcher: isA<InputEnded<String>>()),
     ]) {
       final result = await TextInput('Name').prompt(
         source: ScriptedInput(

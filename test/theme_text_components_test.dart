@@ -38,7 +38,7 @@ void main() {
           output.toString(),
           contains('\x1b[38;2;9;8;7;48;2;1;2;3mName (Optional).'),
         );
-        expect(output.toString(), contains('Ctrl+T opens help.'));
+        expect(output.toString(), contains('F1 opens help.'));
       },
     );
 
@@ -50,7 +50,7 @@ void main() {
         final prompt = ThemeTextPrompt.secret(
           'Password',
           io: TerminalEnvironment.scripted(
-            input: Stream.value('$canary\x14\x1b\rsubmit\r'),
+            input: Stream.value('$canary\x1bOP\x1b\rsubmit\r'),
             output: output,
             profile: const OutputProfile(glyphs: GlyphSet.ascii),
           ),
@@ -65,7 +65,7 @@ void main() {
         expect((result as Accepted<String>).value, canary);
         final text = output.toString();
         expect(text, contains('Hidden entry for Password.'));
-        expect(text, contains('Ctrl+T opens help; hidden values stay hidden.'));
+        expect(text, contains('F1 opens help; hidden values stay hidden.'));
         expect(
           text.indexOf('Hidden entry for Password.'),
           lessThan(text.indexOf('Hidden entry; Enter opens actions.')),
@@ -82,7 +82,7 @@ void main() {
         final prompt = ThemeTextPrompt.secret(
           'Password',
           io: TerminalEnvironment.scripted(
-            input: Stream.value('$canary\x14\x1b\rsubmit\r'),
+            input: Stream.value('$canary\x1bOP\x1b\rsubmit\r'),
             output: output,
             profile: _richProfile,
             supportsRich: true,
@@ -93,7 +93,7 @@ void main() {
         expect((await prompt.prompt() as Accepted<String>).value, canary);
         final text = output.toString();
         expect(text, contains('Hidden entry'));
-        expect(text.replaceAll('\n', ''), contains('Ctrl+T opens help'));
+        expect(text.replaceAll('\n', ''), contains('F1 opens help'));
         expect(text, isNot(contains(canary)));
       },
     );
@@ -119,7 +119,7 @@ void main() {
         expect(output.toString(), contains('Line 2:'));
         expect(
           output.toString().replaceAll('\n', ''),
-          contains('Ctrl+T opens help'),
+          contains('F1 opens help'),
         );
       },
     );
@@ -510,7 +510,7 @@ void main() {
         final prompt = ThemeTextPrompt.text(
           'Name',
           io: TerminalEnvironment.scripted(
-            input: Stream.value('ab\x1b[D\x14\x1bX\r'),
+            input: Stream.value('ab\x1b[D\x1bOP\x1bX\r'),
             output: output,
             profile: _richProfile,
             supportsRich: true,

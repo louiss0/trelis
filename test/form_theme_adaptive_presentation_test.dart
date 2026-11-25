@@ -212,7 +212,7 @@ void main() {
         expect(lines[1].split('').every((char) => char == '─'), isTrue);
         expect(lines.skip(2).any((line) => line.startsWith('│ ')), isTrue);
         expect(text, contains('Enter submits'));
-        expect(text, contains('Ctrl+T opens help.'));
+        expect(text, contains('F1 opens help.'));
         expect(
           lines.indexWhere((line) => line.startsWith('  Left/Right move')),
           greaterThan(1),
@@ -251,7 +251,7 @@ void main() {
         );
         expect(
           plain.indexOf('Enter submits'),
-          lessThan(plain.indexOf('Ctrl+T help')),
+          lessThan(plain.indexOf('F1 help')),
         );
         for (final enclosure in ['┌', '┐', '└', '┘', '╭', '╮', '╰', '╯']) {
           expect(text, isNot(contains(enclosure)));
@@ -277,7 +277,7 @@ void main() {
           text,
           contains('\x1b[38;2;232;181;105;49m│ Unavailable: needs owner role.'),
         );
-        expect(_renderedPromptText(text), contains('Ctrl+T help'));
+        expect(_renderedPromptText(text), contains('F1 help'));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
       },
@@ -495,7 +495,7 @@ void main() {
           reason: 'the status keeps its text label even when it wraps',
         );
         expect(plain, contains('Enter submits'));
-        expect(plain, contains('Ctrl+T help'));
+        expect(plain, contains('F1 help'));
         expect(text, isNot(contains('\x1b[38;2;')));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
@@ -538,7 +538,7 @@ void main() {
         expect(rule.length, lessThanOrEqualTo(24));
         expect(plain, contains('| Ada'));
         expect(plain, contains('Enter submits'));
-        expect(plain, contains(RegExp(r'Ctrl\+\s*T')));
+        expect(plain, contains('F1'));
         expect(plain, contains('help'));
         expect(text, isNot(contains('\x1b[38;2;')));
         expect(text, isNot(contains('\x1b[48;2;')));
@@ -648,7 +648,7 @@ void main() {
           presentation.essentialBefore,
           'Project name entry. ${hint.text}',
         );
-        expect(presentation.essentialBefore, contains('Ctrl+T opens help'));
+        expect(presentation.essentialBefore, contains('F1 opens help'));
         expect(presentation.lines, [
           presentation.essentialBefore!,
           'PROJECT NAME',
@@ -674,7 +674,7 @@ void main() {
       expect(presentation.lines.last, hint.shortText);
       expect(presentation.lines.first, 'PROJECT NAME');
       expect(presentation.lines.join(), contains('Enter'));
-      expect(presentation.lines.join(), contains('Ctrl+T help'));
+      expect(presentation.lines.join(), contains('F1 help'));
       expect(presentation.lines, isNot(contains('!')));
     });
   });

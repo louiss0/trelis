@@ -166,7 +166,7 @@ void main() {
     final output = StringBuffer();
     final result = await Multiline('Notes').prompt(
       source: ScriptedInput(
-        Stream.value('x\x14\x1b\t\r'),
+        Stream.value('x\x1bOP\x1b\t\r'),
         output,
         outputProfile: _richProfile,
       ),
@@ -174,6 +174,29 @@ void main() {
     );
     expect((result as Accepted<String>).value, 'x');
     expect(output.toString(), contains('Help:'));
+  });
+  test('F1 opens rich help in both spellings and Ctrl+T is retired', () async {
+    Future<(PromptResult<String>, String)> run(String input) async {
+      final output = StringBuffer();
+      final result = await Multiline('Notes').prompt(
+        source: ScriptedInput(
+          Stream.value(input),
+          output,
+          outputProfile: _richProfile,
+        ),
+        mode: PromptMode.rich,
+      );
+      return (result, output.toString());
+    }
+
+    for (final f1 in ['\x1bOP', '\x1b[11~']) {
+      final (result, transcript) = await run('x$f1\x1b\t\r');
+      expect((result as Accepted<String>).value, 'x', reason: f1);
+      expect(transcript, contains('Help:'), reason: f1);
+    }
+    final (result, transcript) = await run('x\x14\t\r');
+    expect((result as Accepted<String>).value, 'x');
+    expect(transcript, isNot(contains('Help:')));
   });
   test(
     'linear oversized paste is rejected without changing existing lines',
@@ -313,5 +336,37 @@ void main() {
     );
     expect((result as Accepted<String>).value, 'one\ntwo');
     expect(output.toString(), contains('Finish'));
+  });
+  test('rich Ctrl+J finishes immediately regardless of the focused action', () async {
+    Future<PromptResult<String>> run(String input) =>
+        Multiline('Notes').prompt(
+          source: ScriptedInput(
+            Stream.value(input),
+            StringBuffer(),
+            outputProfile: _richProfile,
+          ),
+          mode: PromptMode.rich,
+        );
+    // LF finishes from the Edit action and from a focused Finish action;
+    // it never waits for the action row to be reached with Tab.
+    expect((await run('one\rtwo\n') as Accepted<String>).value, 'one\ntwo');
+    expect((await run('done\t\n') as Accepted<String>).value, 'done');
+  });
+  test('rich Ctrl+J honours validation and keeps the draft for correction', () async {
+    final output = StringBuffer();
+    final result = await Multiline(
+      'Notes',
+      required: true,
+      validate: (value) => value == 'ok' ? null : 'Enter ok',
+    ).prompt(
+      source: ScriptedInput(
+        Stream.value('bad\n\x01\x1b[3~\x1b[3~\x1b[3~ok\n'),
+        output,
+        outputProfile: _richProfile,
+      ),
+      mode: PromptMode.rich,
+    );
+    expect((result as Accepted<String>).value, 'ok');
+    expect(output.toString(), contains('Enter ok'));
   });
 }

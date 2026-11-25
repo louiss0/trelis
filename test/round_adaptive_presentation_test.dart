@@ -203,10 +203,10 @@ void main() {
         expect(text, contains('─╯\x1b[0m'));
         expect(
           text,
-          contains('\x1b[38;2;$muted;49m  Enter submits. Ctrl+T opens help.'),
+          contains('\x1b[38;2;$muted;49m  Enter submits. F1 opens help.'),
         );
         expect(text.indexOf('╮'), lessThan(text.indexOf('Project name')));
-        expect(text.indexOf('╯'), lessThan(text.indexOf('Ctrl+T opens help.')));
+        expect(text.indexOf('╯'), lessThan(text.indexOf('F1 opens help.')));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
         expect(text, isNot(contains('\x1b[2J')));
@@ -256,8 +256,8 @@ void main() {
           contains('\x1b[38;2;240;190;120;49m  Unavailable: needs owner role.'),
         );
         expect(text.indexOf('╯'), greaterThan(text.indexOf('Starter')));
-        expect(text, contains('Ctrl+T help'));
-        expect(text.indexOf('Ctrl+T help'), greaterThan(text.indexOf('╯')));
+        expect(text, contains('F1 help'));
+        expect(text.indexOf('F1 help'), greaterThan(text.indexOf('╯')));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));
       },
@@ -466,7 +466,7 @@ void main() {
         // Narrow output wraps the status label across lines; it never
         // truncates essential text to fit the nominal column count.
         expect(text, contains('Unavailable: needs owner rol'));
-        expect(text, contains('Ctrl+T help'));
+        expect(text, contains('F1 help'));
         expect(text, isNot(contains('\x1b[38;2;')));
         expect(text, isNot(contains('\x1b[48;2;')));
         expect(text, isNot(contains('\x1b[?1049h')));

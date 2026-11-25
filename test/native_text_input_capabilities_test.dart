@@ -28,7 +28,7 @@ void main() {
 
     final result = await TextInput('Name').prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x03'),
+        Stream.value('\x1bOP\x03'),
         output,
         outputProfile: OutputProfile(
           cursor: CapabilitySupport.supported,

@@ -220,13 +220,13 @@ void main() {
   });
 
   test(
-    'rich and linear Ctrl+T help describes URL entry without the draft',
+    'rich and linear F1 help describes URL entry without the draft',
     () async {
       for (final mode in [PromptMode.rich, PromptMode.linear]) {
         final out = StringBuffer();
         final result = await URLInput('URL', allowedSchemes: {'https'}).prompt(
           source: ScriptedInput(
-            Stream.value('private-draft-path\x14\r\x03'),
+            Stream.value('private-draft-path\x1bOP\r\x03'),
             out,
             outputProfile: mode == PromptMode.rich
                 ? _richProfile
@@ -261,7 +261,7 @@ void main() {
     expect(
       out.toString(),
       isNot(contains('Help: Enter validates an absolute URL')),
-      reason: 'a hidden draft treats /help as answer data; Ctrl+T is the route',
+      reason: 'a hidden draft treats /help as answer data; F1 is the route',
     );
     expect(out.toString(), contains('Enter a valid absolute URL'));
   });

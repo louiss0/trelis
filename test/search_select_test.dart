@@ -66,7 +66,7 @@ void main() {
           source: _scriptedInput(input.stream, output, transcript: transcript),
           mode: PromptMode.rich,
         );
-    input.add('\x14');
+    input.add('\x1bOP');
     await settleUntil(
       () => transcript.events.any(
         (event) => event.kind == TextInputPresentationEventKind.help,
@@ -102,7 +102,7 @@ void main() {
           source: _scriptedInput(input.stream, output, transcript: transcript),
           mode: PromptMode.rich,
         );
-    input.add('\x14');
+    input.add('\x1bOP');
     await settleUntil(
       () => transcript.events.any(
         (event) => event.kind == TextInputPresentationEventKind.help,
@@ -148,7 +148,7 @@ void main() {
         final prompt = SearchSelect('Fruit', [
           Choice('a', 'Apple'),
         ], search: (_) => pending.future).prompt(session: session);
-        input.add('\x14');
+        input.add('\x1bOP');
         await settleUntil(
           () => transcript.events.any(
             (event) => event.kind == TextInputPresentationEventKind.help,
@@ -205,7 +205,7 @@ void main() {
         final prompt = SearchSelect('Fruit', [
           Choice('a', 'Apple'),
         ], search: (_) => pending.future).prompt(session: session);
-        input.add('\x14');
+        input.add('\x1bOP');
         await settleUntil(
           () => transcript.events.any(
             (event) => event.kind == TextInputPresentationEventKind.help,
@@ -241,7 +241,7 @@ void main() {
         final prompt = SearchSelect('Fruit', [
           Choice('a', 'Apple'),
         ]).prompt(session: session);
-        input.add('\r\x14');
+        input.add('\r\x1bOP');
         await settleUntil(
           () => transcript.events.any(
             (event) => event.kind == TextInputPresentationEventKind.help,
@@ -272,7 +272,7 @@ void main() {
         final prompt = SearchSelect('Fruit', [
           Choice('a', 'Apple'),
         ]).prompt(session: session);
-        input.add('\x14');
+        input.add('\x1bOP');
         await settleUntil(
           () => transcript.events.any(
             (event) => event.kind == TextInputPresentationEventKind.help,
@@ -318,7 +318,7 @@ void main() {
   test('query help explains Enter only opens results', () async {
     final out = StringBuffer();
     final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-      source: _scriptedInput(Stream.value('\x14\x1b\r\r'), out),
+      source: _scriptedInput(Stream.value('\x1bOP\x1b\r\r'), out),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'a');
@@ -348,7 +348,7 @@ void main() {
   );
   test('rich results help is dismissed before root cancellation', () async {
     final result = await SearchSelect('Fruit', [Choice('a', 'Apple')]).prompt(
-      source: _scriptedInput(Stream.value('\r\x14\x1b\r'), StringBuffer()),
+      source: _scriptedInput(Stream.value('\r\x1bOP\x1b\r'), StringBuffer()),
       mode: PromptMode.rich,
     );
     expect((result as Accepted<String>).value, 'a');

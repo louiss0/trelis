@@ -248,7 +248,10 @@ final class ThemeTextPrompt {
       ThemeTextComponentKind.text => ('Enter submits', 'Enter'),
       ThemeTextComponentKind.secret => ('Enter opens actions', 'Enter'),
       ThemeTextComponentKind.multiline => switch (mode) {
-        PresentationMode.rich => ('Enter inserts a newline', 'Enter'),
+        PresentationMode.rich => (
+          'Enter inserts a newline; Ctrl+J finishes',
+          'Ctrl+J',
+        ),
         _ => ('Enter adds a line', 'Enter'),
       },
     };

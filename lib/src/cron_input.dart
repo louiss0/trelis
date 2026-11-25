@@ -568,7 +568,7 @@ final class CronInput {
   String _entryHelp({required bool linear}) {
     final controls = linear
         ? r'Type the expression and press Enter to review it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter reviews the draft. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter reviews the draft. F1 opens help; Escape cancels; Ctrl+C interrupts.';
     return _withSupplementary(
       'Help: Entering the expression for the ${profile.name} profile, '
       '$_fieldShape. Field order: $_fieldMap. $controls $_dayRules '
@@ -581,7 +581,7 @@ final class CronInput {
   String _submitHelp({required bool linear}) {
     final controls = linear
         ? r'Type the complete space-separated expression and press Enter to submit it. Exact /help and /cancel are commands; quote a command with a backslash and double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits the expression. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.';
+        : 'Type to edit; Left/Right move; Home/End go to boundaries; Backspace/Delete erase; Enter submits the expression. F1 opens help; Escape cancels; Ctrl+C interrupts.';
     return _withSupplementary(
       'Help: Entering the expression for the ${profile.name} profile, '
       '$_fieldShape. Field order: $_fieldMap. $controls $_acceptanceNote '
@@ -665,7 +665,7 @@ final class CronInput {
       '$_stagePreviewNote $_syntaxNote '
       'Tab or Shift-Tab moves between field cells; Enter '
       '${preview == null ? 'validates and submits the whole draft' : 'validates the whole draft and opens the review stage'}; '
-      'Ctrl+T opens help; Escape dismisses help first, then cancels; '
+      'F1 opens help; Escape dismisses help first, then cancels; '
       'Ctrl+C interrupts.',
     );
   }
@@ -1107,10 +1107,10 @@ final class CronInput {
           buffer,
           _resolvedInstructions(instructions) == InstructionDisplay.hidden
               ? 'Enter ${preview == null ? 'submits' : 'reviews'}; '
-                    'Ctrl+T opens help.'
+                    'F1 opens help.'
               : 'Tab/Shift-Tab move; Enter '
                     '${preview == null ? 'submits' : 'reviews'}; '
-                    'Ctrl+T help; Esc cancels.',
+                    'F1 help; Esc cancels.',
           foreground: colors.foreground,
         );
       } finally {
@@ -1420,7 +1420,7 @@ final class CronInput {
           if (key == '\x1b') dismissHelp();
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           openHelp();
           continue;
         }
@@ -1599,7 +1599,7 @@ final class CronInput {
     const actions = ['Edit', 'Preview', 'Submit'];
     if (!linear) {
       writeNotice(
-        'Review action: Edit. Tab or Shift-Tab changes action; Enter activates; Ctrl+T opens help.',
+        'Review action: Edit. Tab or Shift-Tab changes action; Enter activates; F1 opens help.',
       );
     }
     while (true) {

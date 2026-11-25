@@ -651,7 +651,7 @@ void main() {
       final linear = presentation(PresentationMode.linear);
       final reader = presentation(PresentationMode.screenReader);
       expect(rich.placement, HintPlacement.richBottom);
-      expect(rich.footer, contains('Ctrl+T opens help.'));
+      expect(rich.footer, contains('F1 opens help.'));
       final short = composePromptPresentation(
         mode: PresentationMode.rich,
         prompt: '01 / Project name',
@@ -664,7 +664,7 @@ void main() {
         ),
         availableRows: 2,
       );
-      expect(short.footer, contains('Ctrl+T help'));
+      expect(short.footer, contains('F1 help'));
       expect(linear.placement, HintPlacement.linearAfter);
       expect(linear.lines.last, contains('/help'));
       expect(reader.placement, HintPlacement.screenReaderBefore);

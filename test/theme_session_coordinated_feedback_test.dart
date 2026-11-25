@@ -301,7 +301,7 @@ void main() {
         return await TextInput('Project').prompt(session: handle.session);
       });
       await promptStarted.future;
-      input.add('de\x14');
+      input.add('de\x1bOP');
       await _pump();
       index.update('reading cache');
       input.add('\x1bmo\r');

@@ -395,17 +395,17 @@ HelpRoute helpRoute({
   if (component == ComponentRoute.secret) {
     return const HelpRoute(
       kind: HelpRouteKind.shortcut,
-      text: 'Ctrl+T opens help; hidden values stay hidden.',
-      shortText: 'Ctrl+T help; hidden',
-      gesture: 'Ctrl+T',
+      text: 'F1 opens help; hidden values stay hidden.',
+      shortText: 'F1 help; hidden',
+      gesture: 'F1',
     );
   }
   if (mode == PresentationMode.rich) {
     return HelpRoute(
       kind: HelpRouteKind.shortcut,
-      text: 'Ctrl+T opens help.',
-      shortText: 'Ctrl+T help',
-      gesture: 'Ctrl+T',
+      text: 'F1 opens help.',
+      shortText: 'F1 help',
+      gesture: 'F1',
     );
   }
   return HelpRoute(

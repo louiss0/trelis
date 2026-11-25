@@ -284,7 +284,7 @@ final class Slider {
     hint(
       mode == PromptMode.linear
           ? 'Enter an exact value, then submit. /help explains the bounds; /cancel cancels.'
-          : 'Tab moves through Slider, Edit and Submit; arrows adjust; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          : 'Tab moves through Slider, Edit and Submit; arrows adjust; Enter activates Edit or Submit; F1 opens help; Escape cancels; Ctrl+C interrupts.',
     );
     try {
       if (mode == PromptMode.linear) {
@@ -329,7 +329,7 @@ final class Slider {
           'Value: ${value.isEmpty ? 'not set' : value}.',
         );
         hint(
-          'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust Slider; Enter activates Edit or Submit; F1 opens help; Escape cancels; Ctrl+C interrupts.',
         );
       }
 
@@ -355,7 +355,7 @@ final class Slider {
             show();
             continue;
           }
-          if (key == '\x14') {
+          if (_isHelpGesture(key)) {
             help = true;
             notice(_help(linear: false, focus: focus));
             continue;
@@ -728,7 +728,7 @@ final class RangeSlider {
     hint(
       mode == PromptMode.linear
           ? 'Lower is asked first, then Upper; the pair is reviewed before submission. /help explains the bounds; /cancel cancels.'
-          : 'Focus: Lower. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          : 'Focus: Lower. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; F1 opens help; Escape cancels; Ctrl+C interrupts.',
     );
     try {
       if (mode == PromptMode.linear) {
@@ -812,7 +812,7 @@ final class RangeSlider {
           'Lower: ${lower.isEmpty ? 'not set' : lower}; Upper: ${upper.isEmpty ? 'not set' : upper}.',
         );
         hint(
-          'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          'Focus: ${_focusNames[focus]}. Tab moves; arrows adjust endpoints; Enter activates Edit or Submit; F1 opens help; Escape cancels; Ctrl+C interrupts.',
         );
       }
 
@@ -838,7 +838,7 @@ final class RangeSlider {
             show();
             continue;
           }
-          if (key == '\x14') {
+          if (_isHelpGesture(key)) {
             help = true;
             notice(_help(linear: false, focus: focus));
             continue;

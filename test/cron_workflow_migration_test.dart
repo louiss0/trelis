@@ -225,7 +225,7 @@ void main() {
           preview: _config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('*\x14\x1b\x03'),
+            Stream.value('*\x1bOP\x1b\x03'),
             output,
             outputProfile: _richProfile,
           ),
@@ -237,7 +237,7 @@ void main() {
     expect(text, contains('Help: Editing the minute field cell 1/5'));
     expect(text, contains('five fields'));
     expect(text, contains('4096 UTF-16 code units'));
-    expect(text, contains('Ctrl+T opens help'));
+    expect(text, contains('F1 opens help'));
     expect(text, contains('not scheduler execution'));
     expect(text, contains('Etc/UTC'));
   });
@@ -261,7 +261,7 @@ void main() {
     expect(text, contains('Identified paste is literal'));
     expect(text, contains('not scheduler execution'));
 
-    // A stray Ctrl+T in linear mode must not show rich-worded guidance.
+    // A stray F1 in linear mode must not show rich-worded guidance.
     final ctrlOutput = StringBuffer();
     final interrupted =
         await CronInput(
@@ -269,7 +269,7 @@ void main() {
           profile: CronProfile.unix,
           preview: _config(),
         ).prompt(
-          source: ScriptedInput(Stream.value('\x14\x03'), ctrlOutput),
+          source: ScriptedInput(Stream.value('\x1bOP\x03'), ctrlOutput),
           mode: PromptMode.linear,
         );
     expect(interrupted, isA<Interrupted<CronExpression>>());
@@ -289,7 +289,7 @@ void main() {
           preview: _config(),
         ).prompt(
           source: ScriptedInput(
-            Stream.value('*\t*\t*\t*\t*\r\t\x14\x1b\x03'),
+            Stream.value('*\t*\t*\t*\t*\r\t\x1bOP\x1b\x03'),
             output,
             outputProfile: _richProfile,
           ),

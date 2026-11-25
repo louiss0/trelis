@@ -252,7 +252,7 @@ void main() {
       expect(library, greaterThan(starter));
       expect(help, greaterThan(library));
       expect(lines[help], contains('\u21b3'));
-      expect(lines[help], contains('Ctrl+T'));
+      expect(lines[help], contains('F1'));
       expect(text, isNot(contains('\u2550')));
     },
   );
@@ -568,7 +568,7 @@ void main() {
       expect(hint, greaterThan(lines.indexOf(defaulted.single)));
       expect(lines[hint], startsWith('  -> '));
       final hintText = lines.skip(hint).join(' ');
-      expect(hintText, contains('Ctrl+T'));
+      expect(hintText, contains('F1'));
       expect(hintText.replaceAll(RegExp(r'\s'), ''), contains('Entersubmits'));
       for (final line in lines) {
         expect(line.length, lessThanOrEqualTo(40), reason: line);
@@ -606,7 +606,7 @@ void main() {
       expect(hintStart, greaterThan(0));
       expect(
         lines.skip(hintStart).join('').replaceAll(RegExp(r'\s'), ''),
-        contains('Ctrl+T'),
+        contains('F1'),
       );
     },
   );
@@ -626,7 +626,7 @@ void main() {
       '[checked]',
       '[focused]',
       '[default]',
-      'Ctrl+T',
+      'F1',
     ]) {
       expect(joined, contains(essential), reason: essential);
     }

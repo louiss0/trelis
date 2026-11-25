@@ -85,7 +85,7 @@ void main() {
       // The compact hint states the primary controls and the help route.
       expect(
         text,
-        contains('Tab/Shift-Tab move; Enter submits; Ctrl+T help; Esc cancels'),
+        contains('Tab/Shift-Tab move; Enter submits; F1 help; Esc cancels'),
       );
     },
   );
@@ -111,7 +111,7 @@ void main() {
     final text = output.toString();
     expect(text, contains('unix · 1/5 minute (0-59)'));
     expect(text, isNot(contains('Focus:')));
-    expect(text, contains('Enter reviews; Ctrl+T help; Esc cancels'));
+    expect(text, contains('Enter reviews; F1 help; Esc cancels'));
   });
 
   test('quartz marks the optional year cell in the cue', () async {
@@ -153,7 +153,7 @@ void main() {
     // instructions are hidden, while the editable-controls hint does not.
     expect(text, contains('unix · 1/5 minute (0-59)'));
     expect(text, isNot(contains('Tab/Shift-Tab move')));
-    expect(text, contains('Enter submits; Ctrl+T opens help.'));
+    expect(text, contains('Enter submits; F1 opens help.'));
   });
 
   test(

@@ -213,7 +213,7 @@ final class URLInput {
       out,
       parts: (
         title: '$label.',
-        guidance: 'Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. Ctrl+T opens help. No network check is performed.',
+        guidance: 'Enter an absolute URL. Draft is hidden to avoid disclosing embedded credentials. F1 opens help. No network check is performed.',
       ),
       foreground: colors.foreground,
     );

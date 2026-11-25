@@ -265,19 +265,19 @@ final class SearchSelect<T> {
         // or the route to detailed help.
         guidance: mode == PromptMode.linear
             ? 'Enter a query, then a result reference. /help for help.'
-            : 'Type a query; Enter opens results. Ctrl+T help.',
+            : 'Type a query; Enter opens results. F1 help.',
       ),
       compact: (
         title: '${safe(label)}.',
         guidance: mode == PromptMode.linear
             ? 'Enter a query, then a result reference. /help for help.'
-            : 'Type a query; Enter enters results; Enter accepts a focused result. Ctrl+T help.',
+            : 'Type a query; Enter enters results; Enter accepts a focused result. F1 help.',
       ),
       expanded: (
         title: '${safe(label)}.',
         guidance: mode == PromptMode.linear
             ? 'Enter a query, then a result reference. /search edits query; /next, /previous, /list, /help and /cancel are exact commands. Quote commands with a backslash; double a leading backslash. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-            : 'Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. Ctrl+T help; Escape cancels; Ctrl+C interrupts.',
+            : 'Edit query; Enter or Up/Down enters results without accepting. Tab moves through query, results and Cancel action. Enter accepts a focused enabled result; typing edits query. F1 help; Escape cancels; Ctrl+C interrupts.',
       ),
     );
 
@@ -740,7 +740,7 @@ final class SearchSelect<T> {
           }
           continue;
         }
-        if (key == '\x14') {
+        if (_isHelpGesture(key)) {
           help = true;
           helpVisible = true;
           session?._openModalHelp(useAlternateScreen: false);

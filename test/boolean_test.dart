@@ -195,7 +195,7 @@ void main() {
       final richOutput = StringBuffer();
       final rich = await Toggle('Cache', initialValue: true).prompt(
         source: ScriptedInput(
-          Stream.value('\x14\x1b \r'),
+          Stream.value('\x1bOP\x1b \r'),
           richOutput,
           outputProfile: _richProfile,
         ),

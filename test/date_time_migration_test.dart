@@ -269,7 +269,7 @@ void main() {
           await pumpEventQueue();
           input.add('\t\t\t\r');
           await pumpEventQueue();
-          input.add('\x14');
+          input.add('\x1bOP');
           await pumpEventQueue();
           spinner.update('checking');
           await pumpEventQueue();
@@ -306,7 +306,7 @@ void main() {
     final dateOutput = StringBuffer();
     await DateInput('Date', order: DateFieldOrder.dayMonthYear).prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x1b\x03'),
+        Stream.value('\x1bOP\x1b\x03'),
         dateOutput,
         outputProfile: _richProfile,
       ),
@@ -317,7 +317,7 @@ void main() {
     final timeOutput = StringBuffer();
     await TimeInput('Departure').prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x1b\x03'),
+        Stream.value('\x1bOP\x1b\x03'),
         timeOutput,
         outputProfile: _richProfile,
       ),
@@ -445,7 +445,7 @@ void main() {
       final date = await DateInput('Date', order: DateFieldOrder.yearMonthDay)
           .prompt(
             source: ScriptedInput(
-              Stream.value('\x14\x1b\x03'),
+              Stream.value('\x1bOP\x1b\x03'),
               dateOutput,
               outputProfile: _richProfile,
             ),

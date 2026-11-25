@@ -241,7 +241,7 @@ final class PathInput {
       out,
       linear
           ? r'Enter edits the path, then review and confirm. Exact /help and /cancel are commands; quote them with a backslash. Double a leading backslash: enter three for a UNC pair. Identified paste is literal. Escape cancels; Ctrl+C interrupts.'
-          : 'Enter edits the path, then review and confirm. Ctrl+T opens help; Escape cancels; Ctrl+C interrupts.',
+          : 'Enter edits the path, then review and confirm. F1 opens help; Escape cancels; Ctrl+C interrupts.',
       foreground: colors.muted,
     );
     final entryHelp = _pathEntryHelp(
@@ -348,7 +348,7 @@ String _pathEntryHelp({
   };
   final controls = linear
       ? r'Enter submits the path for review; an empty line submits the current draft. Exact /help and /cancel are commands, and /help is cleared instead of being typed into the path; enter \/help or \/cancel for those literal paths, double a leading backslash to enter one, and enter three for a UNC pair. Identified paste is literal; unframed paste cannot be distinguished from typing.'
-      : 'Enter submits the path for review. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+      : 'Enter submits the path for review. F1 opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
   return 'Help: PathInput accepts one literal native path relative to $base. Entry is not evaluated by a shell, so there is no variable, tilde or glob expansion, no quote stripping, no link canonicalization and no working-directory change; .. segments are retained and a drive-relative Windows path such as C:name is rejected. $existence $type A path with an unusable name, an uninspectable target, or a parent that is not a directory is rejected rather than assumed absent. FilePicker and DirectoryPicker browse the filesystem instead, and opening a link there requires explicit per-open approval. Review shows the resolved candidate before it is returned. Nothing is created, opened or changed, and the result is a snapshot: later filesystem operations can still fail. $controls';
 }
 
@@ -373,7 +373,7 @@ String _pathReviewHelp({
   };
   final controls = linear
       ? r'Enter accepts the reviewed candidate; type edit and press Enter to return to path entry without accepting. Exact /help and /cancel are commands, and /help is cleared instead of being accepted; enter \/help for that literal path. Escape cancels; Ctrl+C interrupts.'
-      : 'Enter accepts the reviewed candidate; type edit to return to path entry without accepting. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+      : 'Enter accepts the reviewed candidate; type edit to return to path entry without accepting. F1 opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
   return 'Help: PathInput review. The candidate ${DisplayText.from(candidate).value} was resolved from the captured base and is returned only after this review. $existence, $type, and nothing was opened, created or changed. Existence and type are a snapshot rather than permission, so a later filesystem operation can still fail. $controls';
 }
 

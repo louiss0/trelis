@@ -1284,7 +1284,7 @@ void main() {
     test('stage help keeps the enclosure grammar', () async {
       final out = StringBuffer();
       await BoxTheme.textInput('Name').prompt(
-        source: _scripted(PromptMode.rich, '\x14\x1bAda\r', out),
+        source: _scripted(PromptMode.rich, '\x1bOP\x1bAda\r', out),
         mode: PromptMode.rich,
       );
       expect(out.toString(), contains('Help:'));

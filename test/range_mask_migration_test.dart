@@ -114,7 +114,7 @@ void main() {
     final output = StringBuffer();
     await Slider('Volume', minimum: '0', maximum: '1', step: '0.2').prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x1b\t\x14\x1b\t\x14\x1b\x03'),
+        Stream.value('\x1bOP\x1b\t\x1bOP\x1b\t\x1bOP\x1b\x03'),
         output,
         outputProfile: _richProfile,
       ),
@@ -355,7 +355,7 @@ void main() {
       minimumGap: '2',
     ).prompt(
       source: ScriptedInput(
-        Stream.value('\x14\x1b\t\x14\x1b\x03'),
+        Stream.value('\x1bOP\x1b\t\x1bOP\x1b\x03'),
         output,
         outputProfile: _richProfile,
       ),
@@ -702,7 +702,7 @@ void main() {
             ],
           ).prompt(
             source: ScriptedInput(
-              Stream.value('\x14\x1b1\x14\x1b2\x14\x1b\r'),
+              Stream.value('\x1bOP\x1b1\x1bOP\x1b2\x1bOP\x1b\r'),
               output,
               outputProfile: _richProfile,
             ),

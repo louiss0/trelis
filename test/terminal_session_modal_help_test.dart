@@ -34,7 +34,7 @@ void main() {
           final spinner = Spinner('Index')..start(session: session);
           final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('de\x14');
+          input.add('de\x1bOP');
           await Future<void>.delayed(Duration.zero);
 
           spinner.update('reading cache');
@@ -84,7 +84,7 @@ void main() {
         first.start(session: session);
         second.start(session: session);
         for (var cycle = 0; cycle < 2; cycle++) {
-          input.add('\x14');
+          input.add('\x1bOP');
           await Future<void>.delayed(Duration.zero);
           if (cycle == 0) {
             // Two independent regions report the same words. They are separate
@@ -128,7 +128,7 @@ void main() {
           final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
           tasks.start(session: session);
-          input.add('\x14');
+          input.add('\x1bOP');
           await Future<void>.delayed(Duration.zero);
           // The outcome line and the final summary line are two occurrences the
           // application emitted; text equality does not merge them.
@@ -167,7 +167,7 @@ void main() {
         final prompt = TextInput('Project').prompt(session: session);
         await Future<void>.delayed(Duration.zero);
         index.start(session: session);
-        input.add('\x14');
+        input.add('\x1bOP');
         await Future<void>.delayed(Duration.zero);
         index.finish(FeedbackOutcome.failed, detail: 'offline');
         input.add('\x1b');
@@ -209,7 +209,7 @@ void main() {
           // region while help owns painting. The failure is a notice the
           // transcript still owes the reader, not a snapshot to overwrite.
           for (var cycle = 0; cycle < 2; cycle++) {
-            input.add('\x14');
+            input.add('\x1bOP');
             await Future<void>.delayed(Duration.zero);
             if (cycle == 0) {
               tasks.finishTask(
@@ -259,7 +259,7 @@ void main() {
           // Two complete help intervals. Retired feedback belongs to history,
           // so returning from help must not print it again.
           for (var cycle = 0; cycle < 2; cycle++) {
-            input.add('\x14');
+            input.add('\x1bOP');
             await Future<void>.delayed(Duration.zero);
             input.add('\x1b');
             await Future<void>.delayed(Duration.zero);
@@ -296,7 +296,7 @@ void main() {
         (session) async {
           final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('de\x14');
+          input.add('de\x1bOP');
           await Future<void>.delayed(Duration.zero);
           input.add('\x1b');
           await Future<void>.delayed(Duration.zero);
@@ -339,7 +339,7 @@ void main() {
           final spinner = Spinner('Index')..start(session: session);
           final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('de\x14');
+          input.add('de\x1bOP');
           await Future<void>.delayed(Duration.zero);
           spinner.update('reading cache');
           input.add('\x03');
@@ -373,7 +373,7 @@ void main() {
             final spinner = Spinner('Index')..start(session: session);
             final prompt = TextInput('Project').prompt(session: session);
             await Future<void>.delayed(Duration.zero);
-            input.add('\x14');
+            input.add('\x1bOP');
             await Future<void>.delayed(Duration.zero);
             spinner.update('reading cache');
             if (failure == null) {

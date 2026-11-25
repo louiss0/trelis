@@ -24,7 +24,7 @@ String _unwrapped(String text) => text.replaceAll('\n', '');
 
 void main() {
   group('rich field-cell component help', () {
-    test('Ctrl+T on a focused cell leads with that field and preserves the '
+    test('F1 on a focused cell leads with that field and preserves the '
         'draft, caret and focus', () async {
       final output = StringBuffer();
       final result =
@@ -36,7 +36,7 @@ void main() {
             source: ScriptedInput(
               // '5', caret moved to the start, help open/dismiss, then '1'
               // inserts before the '5' only if the caret survived -> '15'.
-              Stream.value('5\x1b[D\x14\x1b1\t*\t*\t*\t*\r'),
+              Stream.value('5\x1b[D\x1bOP\x1b1\t*\t*\t*\t*\r'),
               output,
               outputProfile: _richProfile,
             ),
@@ -69,7 +69,7 @@ void main() {
       final result = await CronInput('Schedule', profile: CronProfile.quartz)
           .prompt(
             source: ScriptedInput(
-              Stream.value('0\t0\t0\t?\t*\tMON\t\x14\x1b\r'),
+              Stream.value('0\t0\t0\t?\t*\tMON\t\x1bOP\x1b\r'),
               output,
               outputProfile: _richProfile,
             ),
@@ -86,14 +86,14 @@ void main() {
       expect(text, contains('quartz requires ?'));
     });
 
-    test('Ctrl+T on the last cell leads with that field', () async {
+    test('F1 on the last cell leads with that field', () async {
       final output = StringBuffer();
       final result = await CronInput('Schedule', profile: CronProfile.unix)
           .prompt(
             source: ScriptedInput(
               // The fifth star lands in the last cell (day-of-week); open
               // and dismiss help there, then submit the retained draft.
-              Stream.value('*\t*\t*\t*\t*\x14\x1b\r'),
+              Stream.value('*\t*\t*\t*\t*\x1bOP\x1b\r'),
               output,
               outputProfile: _richProfile,
             ),
@@ -109,7 +109,7 @@ void main() {
       expect(text, contains('No matching preview'));
     });
 
-    test('Ctrl+T inside Review describes the stage controls', () async {
+    test('F1 inside Review describes the stage controls', () async {
       final output = StringBuffer();
       final result =
           await CronInput(
@@ -120,7 +120,7 @@ void main() {
             source: ScriptedInput(
               // Enter opens Review; Review-stage help, dismiss, then Tab to
               // Submit and Enter accepts.
-              Stream.value('*\t*\t*\t*\t*\r\x14\x1b\t\t\r'),
+              Stream.value('*\t*\t*\t*\t*\r\x1bOP\x1b\t\t\r'),
               output,
               outputProfile: _richProfile,
             ),
@@ -144,7 +144,7 @@ void main() {
               // Help opens and dismisses on the first Escape; the second Escape
               // reaches the cell editor and cancels the prompt. The trailing tab
               // keeps the final Escape off the stream boundary.
-              Stream.value('5\x14\x1b\x1b\t'),
+              Stream.value('5\x1bOP\x1b\x1b\t'),
               output,
               outputProfile: _richProfile,
             ),
@@ -158,7 +158,7 @@ void main() {
       final result = await CronInput('Schedule', profile: CronProfile.unix)
           .prompt(
             source: ScriptedInput(
-              Stream.value('5\x14\x03'),
+              Stream.value('5\x1bOP\x03'),
               StringBuffer(),
               outputProfile: _richProfile,
             ),
@@ -171,7 +171,7 @@ void main() {
       final result = await CronInput('Schedule', profile: CronProfile.unix)
           .prompt(
             source: ScriptedInput(
-              Stream.value('5\x14'),
+              Stream.value('5\x1bOP'),
               StringBuffer(),
               outputProfile: _richProfile,
             ),

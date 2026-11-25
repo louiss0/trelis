@@ -180,7 +180,7 @@ void main() {
         input.add(canary);
         await Future<void>.delayed(Duration.zero);
         spinner.update('checking entry');
-        input.add('\x14\x1b\rsubmit\r');
+        input.add('\x1bOP\x1b\rsubmit\r');
         await input.close();
         spinner.finish(FeedbackOutcome.completed);
         return await pending;

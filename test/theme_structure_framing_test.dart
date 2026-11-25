@@ -532,7 +532,7 @@ void main() {
     test('branch help keeps the structure grammar in rich mode', () async {
       final out = StringBuffer();
       await BranchTheme.textInput('Name').prompt(
-        source: _scripted(PromptMode.rich, '\x14\x1bAda\r', out),
+        source: _scripted(PromptMode.rich, '\x1bOP\x1bAda\r', out),
         mode: PromptMode.rich,
       );
       expect(out.toString(), contains('Help:'));

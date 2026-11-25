@@ -20,7 +20,7 @@ void main() {
     await harness.pulse();
     await harness.type('X');
     await harness.pulse();
-    await harness.type('\x14');
+    await harness.type('\x1bOP');
     await harness.pulse();
     await harness.type('\x1b');
     await harness.type('\r');

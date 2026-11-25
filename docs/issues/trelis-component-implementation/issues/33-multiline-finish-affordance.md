@@ -1,6 +1,6 @@
 # 33: Multiline finish is undiscoverable; expected finish chord does nothing
 
-Status: claimed
+Status: resolved
 
 Parent: [Accessible terminal prompt component specification](../../trelis-accessible-prompts/spec.md); delivered by [05](05-multiline.md)
 
@@ -51,10 +51,28 @@ the reader's `_afterCarriageReturn` collapse keeps CRLF on the `\r` path.
 
 ## Acceptance criteria
 
-- [ ] Decide whether the finish affordance is a defect (users cannot
+- [x] Decide whether the finish affordance is a defect (users cannot
       complete the prompt) or a discoverability gap, and whether Enter's
       newline behaviour should remain unconditional.
-- [ ] Either bind a documented finish chord (e.g. LF/Ctrl+J with the CR/LF
+- [x] Either bind a documented finish chord (e.g. LF/Ctrl+J with the CR/LF
       split above, verified against paste and `\x1a` EOF handling) or make
       the focused action/Finish visible without requiring a Tab press.
-- [ ] Update opening guidance and help text to name the real finish gesture.
+- [x] Update opening guidance and help text to name the real finish gesture.
+
+## Answer
+
+Implemented: the rich loop splits CR from LF (`lib/src/text_input.dart` ~5342).
+`\r` keeps the action/newline role; `\n` finishes immediately through the same
+validate-and-accept path used by the Finish action, so Ctrl+J (and Ctrl+Enter
+on the Windows console input path) is a real finish chord. Opening guidance
+and component help now name "Ctrl+J finishes the answer". Framed paste stays
+literal because it is consumed as a single `\x1b[200~…\x1b[201~` key before the
+branch; help swallows `\n` while open, so reading help cannot finish.
+
+Deferred risk (recorded, not blocking): an unframed multi-line paste is
+indistinguishable from typing, so a bare `\n` inside one finishes early —
+documented behavior; terminals that deliver LF for Enter would invert the
+meanings, which needs native evidence before any further chord work.
+
+Tests: `test/multiline_test.dart` adds LF-finish acceptance, LF finish from a
+focused action, and LF validation retaining the draft.

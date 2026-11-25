@@ -1,6 +1,6 @@
 # 34: Ctrl+T is the universal help gesture and collides with host bindings
 
-Status: claimed
+Status: resolved
 
 Parent: [Accessible terminal prompt component specification](../../trelis-accessible-prompts/spec.md)
 
@@ -65,12 +65,38 @@ Ctrl+H/I/J/M (identical to Backspace/Tab/LF/CR — not separate gestures).
 
 ## Acceptance criteria
 
-- [ ] Bind F1 (`\x1bOP` and `\x1b[11~` spellings) as the help gesture at
+- [x] Bind F1 (`\x1bOP` and `\x1b[11~` spellings) as the help gesture at
       every `\x14` dispatch site; remove the Ctrl+T byte check from all
       components with no secondary binding left behind.
-- [ ] Migrate all help/guidance strings consistently, keeping
+- [x] Migrate all help/guidance strings consistently, keeping
       interruption (`\x03`) and EOF (`\x1a`) reserved.
-- [ ] Verify `KeyCapture` accepts a declared Ctrl+T binding once `\x14`
+- [x] Verify `KeyCapture` accepts a declared Ctrl+T binding once `\x14`
       is no longer consumed — the conflict resolves by the removal itself.
-- [ ] Update the shared accessibility contract documentation for the
+- [x] Update the shared accessibility contract documentation for the
       chosen gesture.
+
+## Answer
+
+Implemented: F1 is the component help gesture everywhere. A shared
+`_isHelpGesture` predicate (`lib/src/text_input.dart` ~63) accepts both F1
+spellings (`\x1bOP`, `\x1b[11~`) and replaced the `key == '\x14'` check at all
+15 dispatch sites (TextInput/shared `_edit`, Password-family, Multiline,
+Select, MultiSelect, MaskedInput, CronInput, RangeInput, SearchSelect,
+TreeOrder ×2, Keybind cells, Keypress action stage, editable probe). `\x14` is
+not bound anywhere: it falls through to the ignored-control-byte path.
+
+Every "Ctrl+T" guidance/help string now says F1, including the KeyCapture
+armed-capture wording ("F1 is a candidate while capture is armed"). The
+Windows console input path maps F1's virtual key (0x70) to `\x1bOP`, and the
+probe tokenizer gained the SS3 branch so `\x1bOP` arrives as one key.
+
+The shared accessibility contract (`docs/issues/trelis-theming/spec.md`) and
+the pending cron-field spec now name F1; README guidance updated. Declared
+Ctrl+T works in `Keypress` (`/declare` accepts Ctrl+T with declared
+provenance; `\x14` no longer opens help in the rich action stage).
+
+Tests: F1 help in both spellings plus Ctrl+T retirement
+(`test/multiline_test.dart`), declared-Ctrl+T acceptance and retired `\x14`
+(`test/key_capture_test.dart`); the former `\x14` help sites across the suite
+now drive help with `\x1bOP`. Interruption (`\x03`) and EOF (`\x1a`) remain
+reserved.

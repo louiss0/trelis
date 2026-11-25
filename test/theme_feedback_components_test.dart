@@ -441,7 +441,7 @@ void main() {
       final prompt = owner.prompt(
         (handle) => TextInput('Project').prompt(session: handle.session),
       );
-      input.add('de\x14');
+      input.add('de\x1bOP');
       await _pump();
       index.component.update('reading cache');
       input.add('\x1bmo\r');
@@ -453,9 +453,9 @@ void main() {
       expect(text, contains('\x1b[?1049h'));
       expect(text, contains('\x1b[?1049l'));
       expect(text, contains('[status] - Index: reading cache'));
-      expect(text, contains('Ctrl+T opens help.'));
+      expect(text, contains('F1 opens help.'));
       expect(
-        text.indexOf('Ctrl+T opens help.'),
+        text.indexOf('F1 opens help.'),
         greaterThan(text.indexOf('Project')),
         reason: 'the rich compact hint stays at the bottom of the prompt area',
       );

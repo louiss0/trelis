@@ -338,7 +338,7 @@ void main() {
           Choice('b', 'B', disabledReason: 'offline'),
         ], max: 1).prompt(
           source: ScriptedInput(
-            Stream.value(' \x14\x1b\r'),
+            Stream.value(' \x1bOP\x1b\r'),
             out,
             outputProfile: _multiRichProfile,
           ),

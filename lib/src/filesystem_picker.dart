@@ -666,7 +666,7 @@ String _browseHelp({
   };
   final controls = linear
       ? r'Enter runs the typed action; exact /help and /cancel are commands, and /help is cleared instead of being run. Quote a literal leading backslash with another backslash, and double both leading backslashes of a UNC pair. Identified paste is literal; unframed paste cannot be distinguished from typing. Escape cancels; Ctrl+C interrupts.'
-      : 'Enter runs the typed action. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+      : 'Enter runs the typed action. F1 opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
   return 'Help: $component browses $current and returns $wanted. The listing shows $entries entries and hidden entries are ${showHidden ? 'shown' : 'hidden'}. Actions: open <n> enters a listed directory; choose <n> chooses a listed entry and shows it for review${target == PathTarget.directory ? '; choose without a number reviews the current directory' : ''}; path enters one literal native path; parent moves to the containing directory; refresh relists and replaces the displayed references; hidden toggles hidden entries. An entry number identifies the displayed listing rather than a filesystem identity, so an entry replaced after it was listed is reported as stale and the listing is refreshed instead of targeting the replacement. Links are never followed implicitly: open <n> links approves exactly that one open, a linked cycle or an unresolvable link keeps the current directory, and link approval has no effect on a non-link entry. The base is not a sandbox, so parent and path can leave it. Nothing is created, opened for reading or changed, and the selection is re-inspected at review, so later filesystem operations can still fail. $controls';
 }
 
@@ -684,7 +684,7 @@ String _literalPathHelp({
   };
   final controls = linear
       ? r'Enter submits the typed path for review; an empty line submits an empty path and is rejected. Exact /help and /cancel are commands, and /help is cleared instead of becoming the path; enter \/help for that literal path, quote a literal leading backslash with another backslash, and double both leading backslashes of a UNC pair. Identified paste is literal. Escape cancels; Ctrl+C interrupts.'
-      : 'Enter submits the typed path for review. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+      : 'Enter submits the typed path for review. F1 opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
   return 'Help: $component literal path. The path is literal and relative to $current, with no shell expansion, no quote stripping, no link canonicalization and no working-directory change; .. segments are retained and a drive-relative Windows path such as C:name is rejected. $wanted A path with an unusable name, an uninspectable target, or a parent that is not a directory is rejected rather than assumed absent. Review shows the resolved candidate before it is returned, this browser is not a sandbox, and a returned path is a snapshot: later filesystem operations can still fail. $controls';
 }
 
@@ -702,7 +702,7 @@ String _reviewHelp({
   };
   final controls = linear
       ? r'Enter accepts the reviewed candidate; type edit and press Enter to return to the listing without accepting. Exact /help and /cancel are commands, and /help is cleared instead of being accepted. Escape cancels; Ctrl+C interrupts.'
-      : 'Enter accepts the reviewed candidate; type edit to return to the listing without accepting. Ctrl+T opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
+      : 'Enter accepts the reviewed candidate; type edit to return to the listing without accepting. F1 opens this help; Escape dismisses help or cancels; Ctrl+C interrupts.';
   return 'Help: $component review. The candidate ${DisplayText.from(candidate).value} was re-inspected at review and is returned only when it is still $wanted. The listing is retained, so typing edit returns to the same directory context. Nothing was created, opened for reading or changed, and the result is a snapshot rather than permission, so later filesystem operations can still fail. $controls';
 }
 

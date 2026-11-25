@@ -230,7 +230,7 @@ void main() {
         expect(lines.any((line) => line.startsWith('  ')), isTrue);
         expect(lines.any((line) => line.contains('» ')), isTrue);
         expect(
-          lines.indexWhere((line) => line.contains('Ctrl+T')),
+          lines.indexWhere((line) => line.contains('F1')),
           greaterThan(0),
         );
       },
@@ -259,7 +259,7 @@ void main() {
     expect(bandEnd, greaterThanOrEqualTo(0));
     final starter = lines.indexWhere((line) => line.contains('Starter'));
     final library = lines.indexWhere((line) => line.contains('Library'));
-    final help = lines.indexWhere((line) => line.contains('Ctrl+T'));
+    final help = lines.indexWhere((line) => line.contains('F1'));
     expect(starter, greaterThan(bandEnd));
     expect(library, greaterThan(starter));
     expect(help, greaterThan(library));
@@ -401,7 +401,7 @@ void main() {
     );
     expect(text, isNot(contains('\x1b[38;')));
     expect(text, isNot(contains('\x1b[48;')));
-    expect(text, contains('Ctrl+T'));
+    expect(text, contains('F1'));
 
     text = await _renderSelect(
       background: BackgroundPreference.dark,
@@ -430,7 +430,7 @@ void main() {
         profile: _profile(depth: ColorDepth.none),
       );
       expect(plain, isNot(contains('\x1b[38;')));
-      expect(plain, contains('Ctrl+T'));
+      expect(plain, contains('F1'));
 
       final restricted = await _renderSelect(
         background: BackgroundPreference.light,
@@ -443,7 +443,7 @@ void main() {
       );
       expect(restricted, isNot(contains('\x1b[38;')));
       expect(restricted, isNot(contains('\x1b[48;')));
-      expect(restricted, contains('Ctrl+T'));
+      expect(restricted, contains('F1'));
     },
   );
 
@@ -587,11 +587,11 @@ void main() {
       expect(defaulted.single, isNot(contains('[focused]')));
       expect(text, contains('[unavailable: locked by policy]'));
 
-      final help = lines.indexWhere((line) => line.contains('Ctrl+T'));
+      final help = lines.indexWhere((line) => line.contains('F1'));
       expect(help, greaterThan(lines.indexOf(defaulted.single)));
       final hintText = text.replaceAll(RegExp(r'\s'), '');
       expect(hintText, contains('Entersubmits'));
-      expect(hintText, contains('Ctrl+Thelp'));
+      expect(hintText, contains('F1help'));
 
       for (final line in lines) {
         expect(line.length, lessThanOrEqualTo(40), reason: line);
@@ -616,7 +616,7 @@ void main() {
         '[checked]',
         '[focused]',
         '[default]',
-        'Ctrl+T',
+        'F1',
       ]) {
         expect(joined, contains(essential), reason: essential);
       }
@@ -650,7 +650,7 @@ void main() {
       reason: 'the validation notice stays readable without colour',
     );
     expect(lines.first, startsWith('[ '));
-    expect(lines.where((line) => line.contains('Ctrl+T')), isNotEmpty);
+    expect(lines.where((line) => line.contains('F1')), isNotEmpty);
     expect(
       renderStatus(
         Status.warning,

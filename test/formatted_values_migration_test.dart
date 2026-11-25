@@ -523,7 +523,7 @@ void main() {
       final result = await fixture.prompt(
         _Invocation(
           output: output,
-          keys: '\x14\x1b${fixture.answer}\r',
+          keys: '\x1bOP\x1b${fixture.answer}\r',
           mode: PromptMode.rich,
         ),
       );
@@ -646,7 +646,7 @@ void main() {
 
   test('one shared rich session runs all six formatted inputs', () async {
     final output = StringBuffer();
-    final keys = _formatted.map((f) => '\x14\x1b${f.answer}\r').join();
+    final keys = _formatted.map((f) => '\x1bOP\x1b${f.answer}\r').join();
     final results = await TerminalSession.run(
       (session) async => [
         for (final fixture in _formatted)

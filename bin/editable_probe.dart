@@ -68,7 +68,7 @@ Future<void> main(List<String> args) async {
 
 Future<String> runProbe(Keys keys, bool linear, String initial) async {
   stderr.writeln(
-    'Editable probe (${linear ? 'linear' : 'plain-rich'}). Required text; edit the actual initial value. Left/Right, Home/End, Backspace/Delete; Enter submits. Ctrl+T opens help; Escape dismisses help or cancels; Ctrl+C interrupts.',
+    'Editable probe (${linear ? 'linear' : 'plain-rich'}). Required text; edit the actual initial value. Left/Right, Home/End, Backspace/Delete; Enter submits. F1 opens help; Escape dismisses help or cancels; Ctrl+C interrupts.',
   );
   if (linear) {
     stderr.writeln(
@@ -89,7 +89,7 @@ Future<String> runProbe(Keys keys, bool linear, String initial) async {
     break;
   }
   stderr.writeln(
-    'Text accepted. Hidden secret entry: no echo. Enter opens actions; Ctrl+T opens help; Escape dismisses help or cancels; Ctrl+C interrupts.',
+    'Text accepted. Hidden secret entry: no echo. Enter opens actions; F1 opens help; Escape dismisses help or cancels; Ctrl+C interrupts.',
   );
   var secret = '';
   while (true) {
@@ -198,7 +198,7 @@ Future<({String action, String value})> edit(
       display();
       continue;
     }
-    if (key == '\x14') {
+    if (key == '\x1bOP' || key == '\x1b[11~') {
       help = true;
       stderr.writeln(
         'Help: arrows move, Backspace/Delete erase, Enter submits. Escape dismisses help; Ctrl+C interrupts.',
@@ -334,14 +334,22 @@ class Keys {
         return;
       }
       if (_buffer.startsWith('\x1b')) {
-        final match = RegExp(r'^\x1b\[[0-9;]*[A-Za-z~]').firstMatch(_buffer);
+        final match = RegExp(
+          r'^\x1b(?:\[[0-9;]*[A-Za-z~]|O[A-Za-z])',
+        ).firstMatch(_buffer);
         if (match != null) {
           final s = match.group(0)!;
-          _controller.add(s);
+          _controller.add(
+            s.startsWith('\x1bO') && 'ABCDHF'.contains(s[2])
+                ? '\x1b[${s[2]}'
+                : s,
+          );
           _buffer = _buffer.substring(s.length);
           continue;
         }
-        if (_buffer == '\x1b' || _buffer.startsWith('\x1b[')) {
+        if (_buffer == '\x1b' ||
+            _buffer == '\x1bO' ||
+            _buffer.startsWith('\x1b[')) {
           _timer = Timer(const Duration(milliseconds: 80), () {
             _controller.add('\x1b');
             _buffer = _buffer.substring(1);

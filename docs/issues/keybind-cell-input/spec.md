@@ -108,7 +108,7 @@ an **active-format cue** naming the focused cell's position and value, and a
 12. As a CLI end user, I want a minimal **active-format cue** like
     `cell 2/3 · B · key` plus a **compact hint**, so that I always
     know where I am without verbose inline text.
-13. As a CLI end user pressing `Ctrl+T`, I want **component help** that
+13. As a CLI end user pressing `F1`, I want **component help** that
     leads with the focused cell's position, role and catalog rules —
     the symbol catalog shown **grouped by category** (letters, digits,
     function keys, named keys) — followed by the full control list and
@@ -206,7 +206,7 @@ an **active-format cue** naming the focused cell's position and value, and a
   the focused role; `-` (and `_`) removes the focused cell. `Enter`
   validates — every cell set, no repeated symbol — and accepts
   `Accepted(List<String>)` (or the joined `String`) in cell order,
-  focusing the first offending cell with a notice on failure. `Ctrl+T`
+  focusing the first offending cell with a notice on failure. `F1`
   opens stage help; `Escape` dismisses help first then cancels; `Ctrl+C`
   interrupts; EOF ends input.
 - **Presentation**: cells render as compact single-row framed tokens on the

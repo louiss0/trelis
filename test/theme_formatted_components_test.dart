@@ -29,7 +29,7 @@ void main() {
         expect((await rich.prompt() as Accepted<String>).value, '4');
         final richText = _flatten(richOutput.toString());
         expect(richText, contains('minimum0,maximum10,step1'));
-        expect(richText, contains('Ctrl+Topenshelp'));
+        expect(richText, contains('F1openshelp'));
 
         final linearOutput = StringBuffer();
         final linear = ThemeFormattedPrompt.slider(
@@ -78,7 +78,7 @@ void main() {
           expect(text, isNot(contains('\x1b[')), reason: fixture.name);
           expect(
             _flatten(text),
-            anyOf(contains('/help'), contains('Ctrl+T')),
+            anyOf(contains('/help'), contains('F1')),
             reason: '${fixture.name} must keep the mandatory help route',
           );
         }
@@ -322,7 +322,7 @@ void main() {
         final output = StringBuffer();
         final result = await ThemeFormattedPrompt.number(
           'Amount',
-          io: _linearIo('12\x1b[D3\x14\x1b\r', output),
+          io: _linearIo('12\x1b[D3\x1bOP\x1b\r', output),
           interaction: const InteractionPreferences(mode: PromptMode.linear),
           convention: NumericConvention.ascii(),
         ).prompt();
@@ -452,7 +452,7 @@ void main() {
         fixture.expect(result, fixture.name);
         expect(
           _flatten(output.toString()),
-          anyOf(contains('Ctrl+T'), contains('/help')),
+          anyOf(contains('F1'), contains('/help')),
           reason: '${fixture.name} help route in rich mode',
         );
       }
@@ -594,7 +594,7 @@ void main() {
         );
         final civil = (await date.prompt() as Accepted<CivilDate>).value;
         expect((civil.year, civil.month, civil.day), (2024, 2, 29));
-        expect(_flatten(richDate.toString()), contains('Ctrl+T'));
+        expect(_flatten(richDate.toString()), contains('F1'));
 
         final linearDate = StringBuffer();
         final linearCivil =
@@ -635,7 +635,7 @@ void main() {
                     as Accepted<({int hour, int minute, int? second})>)
                 .value;
         expect(time, (hour: 12, minute: 34, second: null));
-        expect(_flatten(richTime.toString()), contains('Ctrl+T'));
+        expect(_flatten(richTime.toString()), contains('F1'));
 
         final linearTime =
             (await ThemeFormattedPrompt.time(
@@ -695,7 +695,7 @@ void main() {
         ));
         final text = _flatten(output.toString());
         expect(text, contains('minimumgap2'));
-        expect(text, contains('Ctrl+Topenshelp'));
+        expect(text, contains('F1openshelp'));
       },
     );
   });
@@ -942,13 +942,13 @@ TerminalEnvironment _linearIo(String keys, StringSink output) =>
     );
 
 final _richKeys = <String, String>{
-  'CronInput': '\x14\x1b*\t*\t*\t*\t*\r',
-  'MaskedInput': '\x14\x1b12\r',
-  'TagInput': '\x14\x1bHello World\rSecond Tag\r\t\r',
+  'CronInput': '\x1bOP\x1b*\t*\t*\t*\t*\r',
+  'MaskedInput': '\x1bOP\x1b12\r',
+  'TagInput': '\x1bOP\x1bHello World\rSecond Tag\r\t\r',
 };
 
 String _richKeysFor(_TextBackedFixture fixture) =>
-    _richKeys[fixture.name] ?? '\x14\x1b${fixture.keys}';
+    _richKeys[fixture.name] ?? '\x1bOP\x1b${fixture.keys}';
 
 String _essentialFor(String name) => switch (name) {
   'NumberInput' => 'Amount decimal numeric entry.',

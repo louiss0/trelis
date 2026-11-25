@@ -130,7 +130,7 @@ void main() {
           second.start(session: session);
           final prompt = TextInput('Project').prompt(session: session);
           await Future<void>.delayed(Duration.zero);
-          input.add('\x14');
+          input.add('\x1bOP');
           await Future<void>.delayed(Duration.zero);
           first.finish(FeedbackOutcome.failed, detail: 'offline');
           second.finish(FeedbackOutcome.failed, detail: 'offline');

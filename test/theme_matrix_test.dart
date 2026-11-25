@@ -461,7 +461,7 @@ void main() {
       test('$themeName preserves the stage help route', () async {
         final out = StringBuffer();
         await TextInput('Name', structure: structure).prompt(
-          source: _scripted(PromptMode.rich, '\x14\x1bAda\r', out),
+          source: _scripted(PromptMode.rich, '\x1bOP\x1bAda\r', out),
           mode: PromptMode.rich,
         );
         expect(out.toString(), contains('Help:'));
