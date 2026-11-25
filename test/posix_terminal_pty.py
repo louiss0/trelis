@@ -56,6 +56,13 @@ class Resize:
         self.rows = rows
 
 
+class StdoutPaint:
+    """A readiness condition in the fixture's redirected standard output."""
+
+    def __init__(self, text):
+        self.text = text
+
+
 def set_geometry(descriptor, columns, rows):
     fcntl.ioctl(
         descriptor, termios.TIOCSWINSZ,
@@ -91,7 +98,8 @@ class Failure(Exception):
 
 
 def write_artifacts(directory, scenario, phase, transcript, stdout,
-                    returncode, before, after, error):
+                    returncode, before, after, error,
+                    redirected_stderr=None):
     """Persist failure evidence and return the artifact directory path."""
     os.makedirs(directory, exist_ok=True)
     prefix = os.path.join(directory, scenario)
@@ -100,6 +108,9 @@ def write_artifacts(directory, scenario, phase, transcript, stdout,
     if stdout is not None:
         with open(prefix + '-stdout.bin', 'wb') as stream:
             stream.write(stdout)
+    if redirected_stderr is not None:
+        with open(prefix + '-redirected-stderr.bin', 'wb') as stream:
+            stream.write(redirected_stderr)
     with open(prefix + '-detail.txt', 'w') as stream:
         stream.write(
             f'scenario={scenario}\n'
@@ -113,7 +124,7 @@ def write_artifacts(directory, scenario, phase, transcript, stdout,
 
 
 def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
-        artifact_dir=None):
+        artifact_dir=None, redirect_stderr=False):
     """Run one explicitly public scenario.
 
     `scenario` is the fixture argument including the `public-` prefix;
@@ -133,9 +144,21 @@ def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
     command = ['dart', 'run', 'test/text_input_native_app.dart', scenario]
     if trigger_path is not None:
         command.append(trigger_path)
+    # A true redirected-output case must not merely rename the PTY route: the
+    # selected standard-error output is a real non-terminal file while input
+    # remains the PTY. TemporaryFile is unlinked by the OS but stays readable
+    # through its descriptor for diagnostics.
+    redirected_stream = tempfile.TemporaryFile(mode='w+b') if redirect_stderr else None
+
+    def read_redirected_stderr():
+        if redirected_stream is None:
+            return None
+        size = os.fstat(redirected_stream.fileno()).st_size
+        return os.pread(redirected_stream.fileno(), size, 0) if size else b''
+
     process = subprocess.Popen(
         command,
-        stdin=slave, stderr=slave, stdout=subprocess.PIPE,
+        stdin=slave, stderr=redirected_stream or slave, stdout=subprocess.PIPE,
         env={**os.environ, 'TERM': term or 'xterm'},
         # The launched command is not necessarily the process that owns the
         # prompt: `dart` runs the script in a child VM process (observed as
@@ -147,18 +170,30 @@ def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
     )
     transcript = bytearray()
     terminal_output = bytearray()
+    stdout_capture = bytearray()
     stdout = None
     phase = 'startup'
     signalled = False
     started = time.monotonic()
 
+    def drain_stdout(timeout=0.0):
+        """Drain standard output without consuming the PTY transcript."""
+        descriptor = process.stdout.fileno()
+        while select.select([descriptor], [], [], timeout)[0]:
+            chunk = os.read(descriptor, 65536)
+            if not chunk:
+                return
+            stdout_capture.extend(chunk)
+            timeout = 0.0
+
     def fail(phase_name, message):
         error = Failure(scenario, phase_name, message)
         artifact = write_artifacts(
             artifact_dir or tempfile.mkdtemp(prefix='posix-pty-artifacts-'),
-            scenario, phase_name, terminal_output, stdout,
+            scenario, phase_name, terminal_output, bytes(stdout_capture),
             process.poll(), before,
             termios.tcgetattr(slave), error,
+            redirected_stderr=read_redirected_stderr(),
         )
         raise Failure(
             scenario, phase_name,
@@ -175,21 +210,50 @@ def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
             timeout = 0.0
 
     try:
+        stdout_marker = 0
+        redirected_marker = 0
         for prompt, data in inputs:
             phase = f'awaiting prompt paint {prompt!r}'
             deadline = time.monotonic() + 30
-            while prompt not in transcript:
+            while True:
+                drain_stdout()
+                if isinstance(prompt, StdoutPaint):
+                    needle = prompt.text
+                    haystack = bytes(stdout_capture)
+                    offset = stdout_marker
+                    source = 'redirected stdout'
+                elif redirect_stderr:
+                    needle = prompt
+                    haystack = read_redirected_stderr() or b''
+                    offset = redirected_marker
+                    source = 'redirected stderr'
+                else:
+                    needle = prompt
+                    haystack = bytes(transcript)
+                    offset = 0
+                    source = 'terminal transcript'
+                if needle in haystack[offset:]:
+                    break
                 if process.poll() is not None:
-                    stdout, _ = process.communicate()
+                    remainder, _ = process.communicate()
+                    if remainder:
+                        stdout_capture.extend(remainder)
                     fail(phase, f'process exited before {prompt!r}: '
-                                f'stdout={stdout!r}, '
+                                f'stdout={bytes(stdout_capture)!r}, '
+                                f'{source}={haystack!r}, '
                                 f'terminal={bytes(terminal_output)!r}')
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    fail(phase, f'timed out waiting for {prompt!r}: '
-                                f'{bytes(terminal_output)!r}')
+                    fail(phase, f'timed out waiting for {prompt!r} in {source}: '
+                                f'{haystack!r}; '
+                                f'terminal={bytes(terminal_output)!r}')
                 drain(min(remaining, 0.1))
-            transcript.clear()
+            if isinstance(prompt, StdoutPaint):
+                stdout_marker = len(stdout_capture)
+            elif redirect_stderr:
+                redirected_marker = len(read_redirected_stderr() or b'')
+            else:
+                transcript.clear()
             phase = f'sending input after {prompt!r}'
             if isinstance(data, Resize):
                 # A terminal emulator resizing its window sets the PTY geometry
@@ -215,9 +279,11 @@ def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
             deadline = time.monotonic() + 30
             while user_state(termios.tcgetattr(slave)) == user_state(before):
                 if process.poll() is not None:
-                    stdout, _ = process.communicate()
+                    remainder, _ = process.communicate()
+                    if remainder:
+                        stdout_capture.extend(remainder)
                     fail(phase, 'process exited before acquiring the console: '
-                                f'stdout={stdout!r}, '
+                                f'stdout={bytes(stdout_capture)!r}, '
                                 f'terminal={bytes(terminal_output)!r}')
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -228,21 +294,45 @@ def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
                 stream.write('go')
         phase = 'process completion'
         try:
-            stdout, _ = process.communicate(timeout=30)
+            remainder, _ = process.communicate(timeout=30)
+            if remainder:
+                stdout_capture.extend(remainder)
         except subprocess.TimeoutExpired:
             fail(phase, 'process did not exit within 30 seconds: '
                         f'terminal={bytes(terminal_output)!r}')
         drain()
+        stdout = bytes(stdout_capture)
         after = termios.tcgetattr(slave)
         phase = 'result comparison'
+        decoded_stdout = stdout.decode(errors='replace')
+        actual_result = decoded_stdout.strip()
+        if behavior == 'stdout':
+            # The public stdout route intentionally shares one pipe between
+            # prompt output and the machine-readable result. The prompt paint
+            # is therefore part of the contract evidence, while the result is
+            # its final non-empty line (the same separation used on Windows).
+            if b'\x1b' in stdout or b'Name' not in stdout:
+                fail(phase, 'unstable stdout transcript: '
+                            f'stdout={stdout!r}, '
+                            f'terminal={bytes(terminal_output)!r}')
+            lines = [line.strip() for line in decoded_stdout.splitlines()
+                     if line.strip()]
+            actual_result = lines[-1] if lines else ''
+        if behavior == 'redirected':
+            redirected = read_redirected_stderr() or b''
+            if b'\x1b' in redirected or b'Name' not in redirected:
+                fail(phase, 'unstable redirected output: '
+                            f'redirected={redirected!r}, '
+                            f'terminal={bytes(terminal_output)!r}')
         # A group interrupt can also reach the launcher, which may exit with
         # the signal status while the application handles the interrupt and
         # prints its own result. A process that failed to handle the interrupt
         # prints nothing, so the printed result stays the real assertion.
         statuses = {0, -signal.SIGINT} if signalled else {0}
         if (process.returncode not in statuses
-                or stdout.decode().strip() != expected):
+                or actual_result != expected):
             fail(phase, f'exit={process.returncode}, stdout={stdout!r}, '
+                        f'actual_result={actual_result!r}, '
                         f'expected={expected!r}, '
                         f'terminal={bytes(terminal_output)!r}')
         if term == 'dumb' and b'\x1b' in terminal_output:
@@ -259,6 +349,8 @@ def run(scenario, behavior, inputs, expected, term=None, use_trigger=False,
         fail(phase, f'harness error: {error!r}')
     finally:
         stop(process)
+        if redirected_stream is not None:
+            redirected_stream.close()
         os.close(master)
         os.close(slave)
 
@@ -300,6 +392,18 @@ def main():
         # harness releases the injected failure only after the acquired
         # console state is observed, so retirement cannot race acquisition.
         ('session-retire', [], 'retired', None, True),
+        # Redirected coverage is intentionally split by output route. The
+        # stderr case redirects the selected prompt output to a real
+        # non-terminal file while the console remains the input source. The
+        # stdout case selects stdout itself, so prompt paint and the final
+        # machine-readable result share one pipe and are separated exactly as
+        # the Windows harness separates them.
+        (
+            'redirected', [(b'Name', b'\r')], 'alpha', None, False, True,
+        ),
+        (
+            'stdout', [(StdoutPaint(b'Name'), b'\r')], 'alpha', None, False,
+        ),
         ('dumb-auto', [(b'Name', b'\r')], 'alpha', 'dumb', False),
         (
             'dumb-rich', [],
@@ -309,11 +413,14 @@ def main():
     ]
     artifact_dir = os.environ.get('PTY_ARTIFACT_DIR')
     failures = []
-    for behavior, inputs, expected, term, use_trigger in scenarios:
+    for entry in scenarios:
+        behavior, inputs, expected, term, use_trigger = entry[:5]
+        redirect_stderr = entry[5] if len(entry) > 5 else False
         scenario = 'public-' + behavior
         try:
             run(scenario, behavior, inputs, expected, term=term,
-                use_trigger=use_trigger, artifact_dir=artifact_dir)
+                use_trigger=use_trigger, artifact_dir=artifact_dir,
+                redirect_stderr=redirect_stderr)
         except Failure as error:
             print(error)
             failures.append(behavior)
