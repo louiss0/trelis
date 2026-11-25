@@ -178,3 +178,119 @@ no other probe children remain. Artifact copies:
 (`native/` matrix reports plus summary, `native-postfix/` spot-check reports including
 the one preserved FAIL report, `flake-probe/probe-summary.txt`, `htl-probe/` 12 PASS
 reports).
+
+### Review-fix supplement — 2026-11-25
+
+Review-fix work ran on `release-readiness/review-fix`, based directly on local
+integration tip `109354b` (`integration/release-readiness-hardening`). The local
+integration branch was still at that commit when checked, so no merge was needed.
+`git fetch origin integration/release-readiness-hardening` reported that the remote
+ref does not exist, so there was no newer remote integration tip to merge. Nothing
+was pushed. Implementation commits:
+
+- `5eec709` test(native): make Windows harness lifecycles deterministic
+- `7a4d27a` test(native): share text input fixture support
+- `70a893d` test(posix): cover redirected public text output
+- `b432262` build: enforce LF generated palette output
+- `3126778` test(api): reject hidden legacy input sources
+
+#### Standards-axis corrections
+
+- Fixed second-scale sleeps were replaced in the Windows native PowerShell
+  harnesses by explicit child `*.ready` / `*.release` handshakes and bounded
+  polling for observable console state. Millisecond sleeps remain only as bounded
+  poll intervals. `terminal_probe_windows.ps1` additionally waits for the actual
+  `probe 1>`/`probe 2>` screen paints after learning that mode acquisition alone
+  precedes input readiness.
+- Probe cleanup now writes the release file, detaches, gives the child a bounded
+  exit opportunity, and uses `taskkill.exe /T /F` before any last-resort
+  `Stop-Process`, so the PowerShell/Dart process tree rather than only the outer
+  launcher is reaped. ConPTY already uses a kill-on-close job object.
+- `text_input_windows.ps1` is table-driven: behavior, input driver, expected
+  result, route differences and cleanup contract live together. Failure reports
+  carry phase, elapsed/phase elapsed time, result/stderr file content, done and
+  trigger state, dart/outer exit status, console before/during/after state,
+  terminal transcript and artifact path. Reports explicitly label `public` versus
+  `compatibility` routes.
+- The duplicated native fixture support for trigger waits, paint observation and
+  failing output/session-retirement plumbing is shared in
+  `test/support/text_input_native_fixture.dart` by the compatibility and public
+  fixture routes.
+- The workflow now runs `python tool/check_native_harness_determinism.py` and the
+  multiline ConPTY harness with workspace-local `conpty-artifacts`; successful
+  scenario directories are still removed, while a failure upload step retains any
+  remaining diagnostic artifacts with `if-no-files-found: ignore`.
+
+#### Spec-axis corrections
+
+- `test/posix_terminal_pty.py` now covers public stderr redirection through a real
+  non-terminal file and public stdout selection where prompt output and the final
+  machine-readable result share one pipe. It records redirected stderr bytes in
+  failure artifacts. This host cannot execute the POSIX harness (`import fcntl` is
+  unavailable on Windows), so the evidence is static/compile evidence plus CI
+  workflow wiring only, not POSIX runtime evidence.
+- Palette generators write through `tool/lf_output.py`; palette check mode and the
+  generated-diff checker compare bytes, the checker covers all three palette
+  outputs, and `.gitattributes` pins `lib/src/*_palettes.g.dart` to LF.
+- The external public API checker now has explicit hidden-symbol negatives for
+  `PromptSource` and `ScriptedInput`; both were rejected with
+  `UNDEFINED_IDENTIFIER` in the final run.
+
+#### Final local verification battery
+
+| check | exact command | outcome |
+| --- | --- | --- |
+| formatting | `dart format --output=none --set-exit-if-changed .` | PASS, 899 files, 0 changed |
+| analyzer | `dart analyze` | PASS, no issues found |
+| documentation links | `dart run tool/check_doc_links.dart` | PASS, 1256 relative links in 283 Markdown files |
+| tracker integrity | `dart run tool/check_issue_tracker.dart` | PASS, 201 Git-backed tracker files |
+| full Dart tests | `dart test` | PASS, 5706 tests passed, 4 explicit POSIX/platform skips, 0 failures |
+| generated files | `python tool/check_generated_diffs.py` | PASS, `generated diff check: ok (46 targets)` |
+| harness determinism guard | `python tool/check_native_harness_determinism.py` | PASS, `native harness determinism check: ok` |
+| external public API | `dart run tool/check_public_api.dart` | PASS, positive fixture compiles and all negatives reject; ends `negative public API inventory: ok` |
+| PowerShell syntax | `System.Management.Automation.Language.Parser::ParseFile` over `test/*.ps1` | PASS, `powershell parse: ok` |
+| Python syntax | `python -m py_compile test/posix_terminal_pty.py tool/check_native_harness_determinism.py tool/check_generated_diffs.py tool/lf_output.py` | PASS |
+| workflow YAML | Python `yaml.safe_load` on `.github/workflows/platform-regression.yml` | PASS |
+
+Windows native evidence:
+
+- The workflow-equivalent TextInput matrix passed **23/23**: all 22 public
+  scenarios (`rich` through `resize`, including redirected/stdout/dumb/help/
+  session-retirement cases) plus explicitly labeled compatibility `concurrent`.
+  Every report includes exact console restoration evidence, normally
+  `state=503:7:25:1 -> 1008:7:25:1 -> 503:7:25:1`; redirected/stdout/dumb
+  variants truthfully show the applicable linear/output state. Preserved copies:
+  `C:\Users\bvlou\projects\prompty-agent-notes\release-readiness-hardening\review-fix\native\`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File test/multiline_conpty_windows.ps1 -ArtifactRoot "conpty-artifacts"`
+  passed **8/8** (`framed-command`, `typed-command`, `framed-multiline`,
+  `editing`, `f1-modal-help`, `unassigned-function-key`,
+  `application-navigation`, `rich-enter-ctrl-j`) and cleaned successful artifacts;
+  the workspace artifact root was absent afterward as designed.
+- Focused lifecycle sanity checks after the harness rework passed:
+  `terminal_probe_windows.ps1 -Scenario submit` produced
+  `submit PASS results=submit:ok,submit:ok`, and `feedback_windows.ps1` produced
+  `feedback native rich narrow console PASS input mode 503 -> 503`.
+- Post-matrix process inspection found `no native probe processes` among
+  PowerShell/Dart/cmd processes matching the native probe command lines.
+
+Harness timing issue found and corrected during the matrix: an early run of the
+reworked harness failed public `eof` once with `unexpected result: alpha` because
+console acquisition can be observed before the first complete prompt paint, making
+control-key-only input timing-sensitive. No product code changed. The harness now
+waits for the editable default paint before EOF/Escape/Ctrl+C injection; focused
+evidence was 5/5 consecutive public EOF passes, followed by the final 23/23 matrix
+pass. This is a harness-coordination fix, not proof of a product defect.
+
+#### Remaining risk and unverified evidence
+
+- POSIX/Linux/macOS runtime evidence remains unavailable from this Windows host.
+  The POSIX harness compiles under Python and the workflow wiring is present, but
+  no POSIX execution is claimed.
+- GitHub Actions greenness is unverified because nothing was pushed and no CI run
+  was monitored. Local evidence includes workflow YAML parsing and workflow-equivalent
+  Windows harness execution only.
+- The historical orphan-grandchild limitation is narrowed by tree/job cleanup, but
+  Windows process evidence is necessarily host-local. If a future rare failure
+  precedes cleanup abnormally, the retained diagnostic files now include enough
+  process and phase state to bound it rather than silently losing it.
+

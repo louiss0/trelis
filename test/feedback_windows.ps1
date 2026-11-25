@@ -27,10 +27,11 @@ $line = @"
 Set-Location '$root'
 `$host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(30,25)
 `$host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(30,300)
-Start-Sleep -Seconds 4
+for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$done.ready');`$childWait++){ Start-Sleep -Milliseconds 50 }
+if(!(Test-Path '$done.ready')){ exit 3 }
 & '$dart' run test/feedback_native_app.dart wait $Scenario
 Set-Content '$done' done
-Start-Sleep -Seconds 5
+for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$done.release');`$childWait++){ Start-Sleep -Milliseconds 50 }
 "@
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
@@ -41,6 +42,15 @@ try {
  for($n=0;$n -lt 100 -and !$attached;$n++) { $attached=[FeedbackConsoleProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
  if(!$attached){throw 'AttachConsole failed'}
  $before = [FeedbackConsoleProbe]::Mode('CONIN$')
+ # Console sizing is synchronous in the child but console-host attachment is
+ # not. Release compilation only after the narrow geometry is externally
+ # observable, then wait for the application's own final output paint.
+ $narrow=$false
+ for($n=0;$n -lt 100 -and !$narrow;$n++){
+  if([FeedbackConsoleProbe]::Width() -eq 30){$narrow=$true}else{Start-Sleep -Milliseconds 100}
+ }
+ if(!$narrow){throw 'console never became narrow within 10 seconds'}
+ Set-Content -Path "$done.ready" -Value ready
  # Bounded-wait for the application's observable final output line instead
  # of assuming a fixed delay covered compilation and painting.
  $screen=''
@@ -59,8 +69,13 @@ try {
  if ($before -ne $during) {throw "input mode changed: $before -> $during"}
  Set-Content $Report "feedback native $Scenario narrow console PASS input mode $before -> $during"
 } catch { Set-Content $Report "feedback native FAIL $_"; throw } finally {
+ Set-Content -Path "$done.release" -Value release -ErrorAction SilentlyContinue
  [void][FeedbackConsoleProbe]::FreeConsole()
- if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
- Remove-Item $done -Force -ErrorAction SilentlyContinue
+ if($p -and !$p.HasExited){ [void]$p.WaitForExit(1000) }
+ if($p -and !$p.HasExited){
+  & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null
+  if(!$p.WaitForExit(2000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+ }
+ Remove-Item $done,"$done.ready","$done.release" -Force -ErrorAction SilentlyContinue
 }
 

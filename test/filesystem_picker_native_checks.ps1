@@ -44,7 +44,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not create cycle fixture' }
 $results = @()
 function Invoke-Picker([string]$Scenario, [string]$Base, [string]$Keys, [string]$Expected) {
  $file = Join-Path $env:TEMP ("picker-native-" + [guid]::NewGuid() + '.txt')
- $line = "Set-Location '$root'; Start-Sleep -Seconds 2; & '$dart' run test/filesystem_picker_native_app.dart $Scenario '$Base' > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 5"
+ $line = "Set-Location '$root'; for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$file.ready');`$childWait++){ Start-Sleep -Milliseconds 50 }; if(!(Test-Path '$file.ready')){ exit 3 }; & '$dart' run test/filesystem_picker_native_app.dart $Scenario '$Base' > '$file'; Set-Content '$file.done' done; for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$file.release');`$childWait++){ Start-Sleep -Milliseconds 50 }"
  $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
  $p = $null
  try {
@@ -54,6 +54,7 @@ function Invoke-Picker([string]$Scenario, [string]$Base, [string]$Keys, [string]
   for($n=0;$n -lt 100 -and !$attached;$n++){ $attached=[PickerNativeProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
   if(!$attached){throw 'AttachConsole failed'}
   $before=[PickerNativeProbe]::State()
+  Set-Content -Path "$file.ready" -Value ready
   # Bounded-wait for interaction readiness: acquiring the console moves the
   # observed state away from the pre-launch baseline, which distinguishes
   # compilation time from prompt responsiveness.
@@ -72,9 +73,10 @@ function Invoke-Picker([string]$Scenario, [string]$Base, [string]$Keys, [string]
   if($before -ne $after){throw "$Scenario console state changed: $before -> $after"}
   $script:results += "$Scenario PASS result=$actual state=$before -> $after"
  } finally {
+  Set-Content -Path "$file.release" -Value release -ErrorAction SilentlyContinue
   [void][PickerNativeProbe]::FreeConsole()
-  if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
-  Remove-Item $file,"$file.done" -Force -ErrorAction SilentlyContinue
+  if($p -and !$p.HasExited){ [void]$p.WaitForExit(1000) }; if($p -and !$p.HasExited){ & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null; if(!$p.WaitForExit(2000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue} }
+  Remove-Item $file,"$file.release","$file.ready","$file.done" -Force -ErrorAction SilentlyContinue
  }
 }
 try {

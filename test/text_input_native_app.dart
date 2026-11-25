@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:trelis/src/testing/compat_api.dart';
 
+import 'support/text_input_native_fixture.dart';
+
 import 'text_input_public_native_app.dart';
 
 Future<void> main(List<String> args) async {
@@ -89,7 +91,7 @@ Future<void> main(List<String> args) async {
       // through the selected sink; console input, raw mode and restoration are
       // real. The caller catches the write failure, which is legitimate, so
       // retirement itself has to end the idle prompt.
-      final output = _FailingStdout();
+      final output = NativeFixtureFailingStdout();
       final failure = StateError('synthetic shared writer failure');
       var outcome = 'scope-returned';
       await TerminalSession.run(
@@ -100,7 +102,7 @@ Future<void> main(List<String> args) async {
             initialValue: 'alpha',
           ).prompt(session: session);
           // Wait until the prompt has painted and is parked on the console.
-          if (!await _paintedWithin(
+          if (!await paintedTextWithin(
             output,
             'Name',
             const Duration(seconds: 5),
@@ -116,7 +118,7 @@ Future<void> main(List<String> args) async {
           // The harness captures the acquired console state while the prompt is
           // parked, so it releases the failure through a trigger file.
           if (trigger != null &&
-              !await _appearedWithin(File(trigger), _triggerLimit)) {
+              !await fileAppearedWithin(File(trigger), nativeTriggerLimit)) {
             outcome = 'no-trigger';
             return;
           }
@@ -171,67 +173,4 @@ Future<void> main(List<String> args) async {
   } catch (error) {
     print('ERROR:$error');
   }
-}
-
-const _triggerLimit = Duration(seconds: 60);
-
-Future<bool> _appearedWithin(File trigger, Duration limit) async {
-  final deadline = DateTime.now().add(limit);
-  while (!trigger.existsSync()) {
-    if (DateTime.now().isAfter(deadline)) return false;
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-  }
-  return true;
-}
-
-Future<bool> _paintedWithin(
-  _FailingStdout output,
-  String text,
-  Duration limit,
-) async {
-  final deadline = DateTime.now().add(limit);
-  while (!output.text.contains(text)) {
-    if (DateTime.now().isAfter(deadline)) return false;
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-  }
-  return true;
-}
-
-/// A selected output that can be armed to fail like a broken shared writer.
-///
-/// Only the members the native session path actually observes are real; the
-/// rest of the standard output contract is unused here.
-final class _FailingStdout implements Stdout {
-  Object? failure;
-  final StringBuffer _recording = StringBuffer();
-
-  String get text => _recording.toString();
-
-  @override
-  bool get hasTerminal => false;
-
-  @override
-  bool get supportsAnsiEscapes => false;
-
-  void _write(Object? value) {
-    final armed = failure;
-    if (armed != null) throw armed;
-    _recording.write(value);
-  }
-
-  @override
-  void write(Object? object) => _write(object);
-
-  @override
-  void writeAll(Iterable<Object?> objects, [String separator = '']) =>
-      _write(objects.join(separator));
-
-  @override
-  void writeCharCode(int charCode) => _write(String.fromCharCode(charCode));
-
-  @override
-  void writeln([Object? object = '']) => _write('$object\n');
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
