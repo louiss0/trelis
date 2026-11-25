@@ -237,9 +237,10 @@ NumericConvention? _linuxNumericConvention() {
           Int32 Function(Pointer<Utf8>, IntPtr, Pointer<Utf8>, Int32),
           int Function(Pointer<Utf8>, int, Pointer<Utf8>, int)
         >('snprintf');
+    const glibcLcAllMask = 8127;
     final name = localeName.toNativeUtf8();
     try {
-      locale = newlocale(2, name, nullptr);
+      locale = newlocale(glibcLcAllMask, name, nullptr);
     } finally {
       calloc.free(name);
     }
