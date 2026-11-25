@@ -49,13 +49,16 @@ Future<void> runPublicTextInputScenario(
     final result = scenario.contains('password')
         ? await theme().password('Synthetic password').prompt()
         : await namePrompt(theme()).prompt();
-    print(
-      scenario.contains('password')
-          ? (result is Accepted<String> && result.value == 'TrelisCanary7Q9'
-                ? 'accepted'
-                : 'wrong')
-          : describe(result),
-    );
+    print(switch (result) {
+      Accepted<String>(:final value) =>
+        scenario.contains('password')
+            ? (value == 'TrelisCanary7Q9' ? 'accepted' : 'wrong')
+            : value,
+      Cancelled<String>() => 'cancel',
+      Interrupted<String>() => 'interrupt',
+      InputEnded<String>() => 'eof',
+      Unavailable<String>(:final reason) => 'unavailable:$reason',
+    });
     return;
   }
 

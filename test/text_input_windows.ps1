@@ -8,7 +8,7 @@ public static class NativeProbe {
  [StructLayout(LayoutKind.Explicit, Size=20, CharSet=CharSet.Unicode)] public struct Input {
   [FieldOffset(0)] public ushort Type; [FieldOffset(4)] public int Down;
   [FieldOffset(8)] public ushort Repeat; [FieldOffset(10)] public ushort VK;
-  [FieldOffset(14)] public char Char; [FieldOffset(16)] public uint State;
+  [FieldOffset(12)] public ushort Scan; [FieldOffset(14)] public char Char; [FieldOffset(16)] public uint State;
  }
  [StructLayout(LayoutKind.Sequential)] public struct Cursor { public uint Size; public int Visible; }
  [StructLayout(LayoutKind.Sequential)] public struct Coord { public short X; public short Y; }
@@ -25,6 +25,8 @@ public static class NativeProbe {
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetConsoleWindowInfo(IntPtr h,bool absolute,ref Rect window);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool ReadConsoleOutputCharacter(IntPtr h,[Out] ushort[] text,uint length,Coord position,out uint read);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool WriteConsoleInput(IntPtr h,Input[] records,uint length,out uint written);
+ [DllImport("user32.dll")] static extern uint MapVirtualKeyW(uint code,uint mapType);
+ static ushort ScanFor(ushort vk) { return (ushort)(MapVirtualKeyW(vk,0) & 0xffff); }
  public static void Resize(short columns, short rows) {
   var h=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   try {
@@ -60,11 +62,11 @@ public static class NativeProbe {
  }
  public static void Text(string text) {
   var h=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
-  try { var a=new Input[text.Length*2]; for(int j=0;j<text.Length;j++){ var c=text[j]; a[j*2]=new Input{Type=1,Down=1,Repeat=1,VK=(ushort)(c == '~' ? 192 : Char.ToUpper(c)),Char=c}; a[j*2+1]=a[j*2]; a[j*2+1].Down=0; } uint n; if(!WriteConsoleInput(h,a,(uint)a.Length,out n)||n!=a.Length) throw new Exception("inject failed " + Marshal.GetLastWin32Error()); } finally { CloseHandle(h); }
+  try { var a=new Input[text.Length*2]; for(int j=0;j<text.Length;j++){ var c=text[j]; var vk=(ushort)(c == '~' ? 192 : Char.ToUpper(c)); a[j*2]=new Input{Type=1,Down=1,Repeat=1,VK=vk,Scan=ScanFor(vk),Char=c}; a[j*2+1]=a[j*2]; a[j*2+1].Down=0; } uint n; if(!WriteConsoleInput(h,a,(uint)a.Length,out n)||n!=a.Length) throw new Exception("inject failed " + Marshal.GetLastWin32Error()); } finally { CloseHandle(h); }
  }
  public static void Key(char c, ushort vk, uint state) {
   var h=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
-  try { var a=new Input[2]; a[0]=new Input{Type=1,Down=1,Repeat=1,VK=vk,Char=c,State=state}; a[1]=a[0]; a[1].Down=0; uint n; if(!WriteConsoleInput(h,a,2,out n)||n!=2) throw new Exception("inject failed " + Marshal.GetLastWin32Error()); }
+  try { var a=new Input[2]; a[0]=new Input{Type=1,Down=1,Repeat=1,VK=vk,Scan=ScanFor(vk),Char=c,State=state}; a[1]=a[0]; a[1].Down=0; uint n; if(!WriteConsoleInput(h,a,2,out n)||n!=2) throw new Exception("inject failed " + Marshal.GetLastWin32Error()); }
   finally { CloseHandle(h); }
  }
 }
@@ -125,7 +127,7 @@ try {
   $parts=$during.Split(':')
   if (([int]$parts[1] -band 4) -ne 0 -and $during -ne $before) {$ready=$true} else {Start-Sleep -Milliseconds 100}
  }
- if(Test-Path "$file.done" -and !$ready){
+ if((Test-Path "$file.done") -and !$ready){
   # The application finished before any interaction: readiness is moot.
   $during=[NativeProbe]::State()
   $parts=$during.Split(':')
@@ -137,28 +139,46 @@ try {
  }
  if ($Scenario -like 'help-*') {
   $isPassword=$Scenario.Contains('password')
-  if($isPassword){[NativeProbe]::Text('TrelisCanary7Q9')}else{[NativeProbe]::Key([char]0,0x25,0)}
+  # Console mode acquisition precedes the first complete component paint.
+  # Wait for the prompt itself before capturing any reference state; otherwise
+  # a hidden secret prompt can be captured halfway through its opening frame.
+  $promptLabel=if($isPassword){'Synthetic password'}else{'Name'}
+  [void](Wait-Probe {[NativeProbe]::ScreenText()} {param($v) $v.Contains($promptLabel)} 'the opening prompt paint')
+  if($isPassword){
+   [NativeProbe]::Text('TrelisCanary7Q9')
+  }else{
+   [NativeProbe]::Key([char]0,0x25,0)
+   # The hidden-entry path needs no visible echo gate because console input
+   # records are ordered before F1. A visible text edit does: capturing the
+   # pre-help caret before the Left key repaint would make the later exact
+   # restoration comparison race the input pump rather than test the product.
+   [void](Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -match '^6:\d+:> alpha$'} 'the left-arrow caret state')
+  }
   # Capture the quiesced pre-help state: a mistimed capture can only fail
   # the restoration comparison loudly, never pass it falsely.
   $editor=Wait-ProbeSettled {[NativeProbe]::EditorState()} 'the pre-help editor state'
   $screen=Wait-ProbeSettled {[NativeProbe]::ScreenText()} 'the pre-help screen'
-  [NativeProbe]::Key([char]20,84,8)
+  [NativeProbe]::Key([char]0,0x70,0)
   $help=Wait-Probe {[NativeProbe]::ScreenText()} {param($v) $v.Contains('Help:')} 'help to open'
   if($help.Contains('TrelisCanary7Q9')){throw 'help disclosed hidden entry'}
-  # Reopening help must not nest screens or lose the original editor.
-  [NativeProbe]::Key([char]20,84,8)
+  # Reopening help must not nest screens or lose the original editor. The
+  # ordinary text between the repeated F1 and Escape must remain modal noise:
+  # submit outcomes below fail if any of it becomes answer data.
+  [NativeProbe]::Key([char]0,0x70,0)
+  [NativeProbe]::Text('ModalNoise9')
   [NativeProbe]::Key([char]27,27,0)
   # Console input records are processed in order, so the dismissal follows
-  # both help keys; bounded-wait for the observable restored screen and
-  # caret instead of assuming fixed post-key delays were enough.
+  # both help keys and the modal noise; bounded-wait for the observable
+  # restored screen and caret instead of assuming fixed post-key delays were
+  # enough.
   $dismissed=Wait-Probe {[NativeProbe]::ScreenText()} {param($v) $v -eq $screen} 'the original screen to be restored'
   if($dismissed.Contains('Help:')){throw 'dismissed help remains on screen'}
   $restoredCaret=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -eq $editor} 'the editor caret to be restored'
   if($Scenario.Contains('interrupt')) {
-   [NativeProbe]::Key([char]20,84,8)
+   [NativeProbe]::Key([char]0,0x70,0)
    [NativeProbe]::Key([char]3,67,8)
   } elseif($Scenario.Contains('eof')) {
-   [NativeProbe]::Key([char]20,84,8)
+   [NativeProbe]::Key([char]0,0x70,0)
    [NativeProbe]::Key([char]26,90,8)
   } elseif($isPassword){[NativeProbe]::Text("`rsubmit`r")}else{[NativeProbe]::Text("X`r")}
  } else {
