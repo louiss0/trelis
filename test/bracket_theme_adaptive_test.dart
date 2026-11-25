@@ -229,10 +229,7 @@ void main() {
         expect(lines.first, contains('Project name'));
         expect(lines.any((line) => line.startsWith('  ')), isTrue);
         expect(lines.any((line) => line.contains('» ')), isTrue);
-        expect(
-          lines.indexWhere((line) => line.contains('F1')),
-          greaterThan(0),
-        );
+        expect(lines.indexWhere((line) => line.contains('F1')), greaterThan(0));
       },
     );
   }

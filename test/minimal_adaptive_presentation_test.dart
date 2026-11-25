@@ -243,10 +243,7 @@ void main() {
         expect(text, contains('Unavailable: needs owner role.'));
         final plain = _renderedPromptText(text);
         expect(plain.indexOf('Pick tools'), lessThan(plain.indexOf('Starter')));
-        expect(
-          plain.indexOf('Starter'),
-          lessThan(plain.indexOf('F1 help')),
-        );
+        expect(plain.indexOf('Starter'), lessThan(plain.indexOf('F1 help')));
         for (final enclosure in ['┌', '┐', '└', '┘', '╭', '╮', '╰', '╯']) {
           expect(text, isNot(contains(enclosure)));
         }

@@ -1,0 +1,9 @@
+# Generated Dart files are byte-compared against their generators by
+# tool/check_generated_diffs.py. The generator contract is UTF-8 with LF
+# newlines on every host, so checkout must never convert these targets to
+# CRLF: a host `core.autocrlf` setting must not be able to reintroduce
+# nondeterminism into the byte-strict verification. The plain theme sources
+# are the generator templates and are covered by the same patterns.
+lib/src/themes/*_theme.dart text eol=lf
+test/*_theme_factories_test.dart text eol=lf
+test/*_theme_acceptance_matrix_test.dart text eol=lf

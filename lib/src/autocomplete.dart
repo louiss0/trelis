@@ -450,7 +450,8 @@ final class Autocomplete {
         instructions,
         hidden: (
           title: '${safe(label)}.',
-          guidance: 'Type text; Tab accepts a suggestion; Enter submits. F1 help.',
+          guidance:
+              'Type text; Tab accepts a suggestion; Enter submits. F1 help.',
         ),
         compact: (
           title: '${safe(label)}.',

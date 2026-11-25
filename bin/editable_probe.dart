@@ -334,9 +334,8 @@ class Keys {
         return;
       }
       if (_buffer.startsWith('\x1b')) {
-        final match = RegExp(
-          r'^\x1b(?:\[[0-9;]*[A-Za-z~]|O[A-Za-z])',
-        ).firstMatch(_buffer);
+        final match = RegExp(r'^\x1b(?:\[[0-9;]*[A-Za-z~]|O[A-Za-z])')
+            .firstMatch(_buffer);
         if (match != null) {
           final s = match.group(0)!;
           _controller.add(

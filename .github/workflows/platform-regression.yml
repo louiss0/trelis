@@ -17,12 +17,25 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with:
           sdk: 3.13.2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
       - run: dart --version
       - run: dart pub get
+      # Formatting is a required gate ordered before analysis and tests so a
+      # locally green test run cannot hide a red pipeline.
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze
       - run: dart run tool/check_issue_tracker.dart
       - run: dart run tool/check_doc_links.dart
+      # Generated files are byte-compared against their generators. Running
+      # this on the Windows and POSIX matrix entries proves UTF-8/LF
+      # determinism across hosts rather than on one accidental checkout.
+      - run: python tool/check_generated_diffs.py
+      # The external public API checker analyzes the positive fixture as an
+      # external package and requires every negative case to fail with its
+      # expected diagnostic code.
+      - run: dart run tool/check_public_api.dart
       - run: dart test --reporter expanded
 
   posix-native:
