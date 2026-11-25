@@ -8,6 +8,8 @@ compatibility seam. Neither target may be edited by hand.
 import subprocess
 import sys
 
+from lf_output import enforce_lf, write_lf
+
 theme = sys.argv[1]
 name = theme.capitalize() + 'Theme'
 
@@ -34,9 +36,11 @@ for suffix in ['factories', 'acceptance_matrix']:
             )
 
     out_path = f'test/{theme}_theme_{suffix}_test.dart'
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write(result)
+    write_lf(out_path, result)
 
     subprocess.run(['dart', 'format', out_path], check=True,
                    stdout=subprocess.DEVNULL)
+    # The formatter preserves the file's existing line endings, so the LF
+    # policy is enforced again after formatting rather than assumed.
+    enforce_lf(out_path)
     print(f'generated {out_path}')
