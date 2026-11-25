@@ -205,10 +205,7 @@ void main() {
         expect(text, contains('\x1b[38;2;$muted;49m  '));
         expect(text, contains('Enter submits. F1 opens help.'));
         expect(text.indexOf('Project name'), lessThan(text.indexOf('──')));
-        expect(
-          text.indexOf('──'),
-          lessThan(text.indexOf('F1 opens help.')),
-        );
+        expect(text.indexOf('──'), lessThan(text.indexOf('F1 opens help.')));
         for (final enclosure in ['╭', '╮', '╰', '╯']) {
           expect(text, isNot(contains(enclosure)));
         }

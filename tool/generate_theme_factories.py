@@ -8,6 +8,8 @@ structure and authored light/dark palette defaults.
 import subprocess
 import sys
 
+from lf_output import enforce_lf, write_lf
+
 with open('lib/src/themes/plain_theme.dart', 'r', encoding='utf-8') as f:
     source = f.read()
 
@@ -137,8 +139,10 @@ if structure != 'plain':
     )
 
 out_path = f'lib/src/themes/{structure}_theme.dart'
-with open(out_path, 'w', encoding='utf-8') as f:
-    f.write(result)
+write_lf(out_path, result)
 
 subprocess.run(['dart', 'format', out_path], check=True, stdout=subprocess.DEVNULL)
+# The formatter preserves the file's existing line endings, so the LF policy
+# is enforced again after formatting rather than assumed from the host.
+enforce_lf(out_path)
 print(f'generated {out_path}')

@@ -461,10 +461,7 @@ void main() {
             endsWith('draft'),
           );
           final text = _displaySafe(output.toString());
-          expect(
-            text,
-            contains(rich ? 'F1 opens help' : '/help opens help.'),
-          );
+          expect(text, contains(rich ? 'F1 opens help' : '/help opens help.'));
         }
       },
     );
