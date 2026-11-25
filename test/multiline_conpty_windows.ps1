@@ -449,10 +449,35 @@ $cases = @(
     )
   },
   @{
-    Name='function-key'; Mode='linear'; Expected='61,62,63'; Stages=@(
-      (New-PtyStage -Name 'startup-ready' -Phase 'startup' -WaitFor $linearReady -Keys "$esc`OP" -SearchNewOutput $false -TimeoutMilliseconds $StartupTimeoutMs),
-      (New-PtyStage -Name 'help-opened' -Phase 'interaction' -WaitFor 'Help:' -Keys 'abc' -TimeoutMilliseconds $InteractionTimeoutMs),
-      (New-PtyStage -Name 'ordinary-input-painted' -Phase 'interaction' -WaitFor 'abc' -Keys "`r/done`r" -TimeoutMilliseconds $InteractionTimeoutMs)
+    Name='f1-modal-help'; Mode='rich'; Expected='61,62,63'; Stages=@(
+      (New-PtyStage -Name 'startup-ready' -Phase 'startup' -WaitFor $richReady -Keys "$esc`OP" -SearchNewOutput $false -TimeoutMilliseconds $StartupTimeoutMs),
+      # Repeat F1 and type ordinary text while help owns input, then dismiss it.
+      # Input ordering is real terminal input ordering; the transcript contract
+      # below verifies that neither the repeated help key nor the modal noise
+      # became another help screen or answer data.
+      (New-PtyStage -Name 'help-opened' -Phase 'interaction' -WaitFor 'Help:' -Keys ("$esc`OP" + 'ModalNoise9' + $esc) -TimeoutMilliseconds $InteractionTimeoutMs),
+      (New-PtyStage -Name 'help-dismissed' -Phase 'interaction' -WaitFor 'Line 1:' -Keys 'abc' -TimeoutMilliseconds $InteractionTimeoutMs),
+      (New-PtyStage -Name 'ordinary-input-painted' -Phase 'interaction' -WaitFor 'abc' -Keys "`n" -TimeoutMilliseconds $InteractionTimeoutMs)
+    ); TranscriptCheck={
+      param($transcript)
+      $helpCount=[regex]::Matches($transcript,'Help:').Count
+      if($helpCount -ne 1){return "expected exactly one non-nested help screen, saw $helpCount"}
+      if($transcript.Contains('ModalNoise9')){return 'modal input was painted instead of swallowed'}
+      $alternateEnter=[string][char]27+'[?1049h'
+      $alternateLeave=[string][char]27+'[?1049l'
+      $enterCount=[regex]::Matches($transcript,[regex]::Escape($alternateEnter)).Count
+      $leaveCount=[regex]::Matches($transcript,[regex]::Escape($alternateLeave)).Count
+      if($enterCount -ne 1 -or $leaveCount -ne 1){return "expected one alternate-screen help enter/leave pair, saw $enterCount/$leaveCount"}
+      return $null
+    }
+  },
+  @{
+    # F5 is a recognized VT function-key encoding but has no Multiline binding:
+    # it must neither contribute escape bytes as answer data nor prevent the
+    # ordinary input that follows it in the same terminal stream.
+    Name='unassigned-function-key'; Mode='rich'; Expected='61,62,63'; Stages=@(
+      (New-PtyStage -Name 'startup-ready' -Phase 'startup' -WaitFor $richReady -Keys "$esc[15~abc" -SearchNewOutput $false -TimeoutMilliseconds $StartupTimeoutMs),
+      (New-PtyStage -Name 'ordinary-input-painted' -Phase 'interaction' -WaitFor 'abc' -Keys "`n" -TimeoutMilliseconds $InteractionTimeoutMs)
     )
   },
   @{
@@ -505,6 +530,12 @@ foreach($case in $selectedCases) {
     if(-not (Test-Path -LiteralPath $file)) { throw "Result file is missing after a successful child process exit." }
     $actual = (Get-Content -LiteralPath $file -Raw).Trim()
     if($actual -ne $case.Expected) { throw "Expected result $($case.Expected), got $actual." }
+    if($case.ContainsKey('TranscriptCheck') -and $null -ne $case.TranscriptCheck) {
+      $phase = 'transcript-contract'
+      $checker = $case.TranscriptCheck
+      $transcriptError = & $checker $run.Transcript
+      if(-not [string]::IsNullOrEmpty($transcriptError)) { throw "Transcript contract failed: $transcriptError" }
+    }
 
     Write-Output "$($case.Name) PASS"
     $successes++
