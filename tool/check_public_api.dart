@@ -102,6 +102,12 @@ const _internalNames = <String>[
 /// Resolver functions stay internal; hints arrive through theme parameters.
 const _resolverFunctions = <String>['resolveInteraction', 'resolveColors'];
 
+/// Scripted/native input-source types are implementation seams for the
+/// internal compatibility route. The public barrel documents their variants
+/// as intentionally absent, so they need explicit hidden-symbol negatives
+/// rather than only the supplied-answer implementations below.
+const _legacyInputSources = <String>['PromptSource', 'ScriptedInput'];
+
 _Case _snippet(String body, Set<String> codes) => _Case('''
 import 'package:trelis/trelis.dart';
 void main() {
@@ -178,6 +184,7 @@ void main() => print(SuppliedTags(['tag']));
   for (final name in _legacyComponents) 'hidden_$name': _hidden(name),
   for (final name in _internalNames) 'hidden_$name': _hidden(name),
   for (final name in _resolverFunctions) 'hidden_resolver_$name': _hidden(name),
+  for (final name in _legacyInputSources) 'hidden_$name': _hidden(name),
 };
 
 Future<ProcessResult> _analyze(String path) => Process.run('dart', [
