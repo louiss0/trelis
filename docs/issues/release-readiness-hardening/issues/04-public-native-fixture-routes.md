@@ -1,6 +1,6 @@
 # 04 Public theme-instance native fixture routes and behavior matrix
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** none
 
