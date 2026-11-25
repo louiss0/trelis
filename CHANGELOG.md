@@ -55,7 +55,11 @@ screen-reader usability or real-terminal colour quality from this version.
   prior view and caret before it cancels.
 - Framed (bracketed) paste is the lossless route for multiline pasted text;
   unframed paste cannot be distinguished from typing and its CRLF bytes act
-  as key gestures.
+  as key gestures. Escape-sequence decoding now treats an incomplete CSI/SS3
+  sequence as bytes in transit rather than flushing it as a bare Escape after
+  the disambiguation window, so a bracketed-paste opener split across
+  pseudoconsole/pty/ssh reads can no longer corrupt framed paste into typed
+  text. The lone-byte Escape disambiguation window is unchanged.
 
 ### Component inventory
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
@@ -285,6 +287,27 @@ void main() {
         mode: PromptMode.linear,
       );
       expect((result as Accepted<String>).value, 'a\n/done\nb');
+    },
+  );
+  test(
+    'framed paste split beyond the escape window stays literal data',
+    () async {
+      // Transport chunking may split the paste opener across input events
+      // with arbitrarily long gaps. The framed content must remain literal
+      // multiline answer data rather than corrupting into a bare escape and
+      // typed key gestures.
+      final input = StreamController<String>();
+      final prompt = Multiline('Notes').prompt(
+        source: ScriptedInput(input.stream, StringBuffer()),
+        mode: PromptMode.linear,
+      );
+      input.add('\x1b[20');
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      input.add('0~x\r\n/cancel\x1b[201~');
+      input.add('\r/done\r');
+      await input.close();
+      final result = await prompt;
+      expect((result as Accepted<String>).value, 'x\n/cancel');
     },
   );
   test('quoted and identified pasted command lines remain literal', () async {

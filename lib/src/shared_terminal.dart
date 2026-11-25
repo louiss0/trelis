@@ -203,14 +203,26 @@ final class SharedTerminalReader {
           _buffer = _buffer.substring(s.length);
           continue;
         }
-        if (_buffer == '\x1b' ||
-            _buffer == '\x1bO' ||
-            _buffer.startsWith('\x1b[')) {
+        if (_buffer == '\x1b') {
+          // A lone escape byte is the one genuinely ambiguous keypress: it
+          // may be the Escape key or the first byte of a sequence. Flush it
+          // after the disambiguation window if no further bytes arrive.
           _timer = Timer(const Duration(milliseconds: 80), () {
             _emit('\x1b');
             _buffer = _buffer.substring(1);
             _parse();
           });
+          return;
+        }
+        if (_buffer == '\x1bO' || _buffer.startsWith('\x1b[')) {
+          // An incomplete CSI/SS3 sequence is sequence bytes in transit,
+          // never a keypress: pty, ssh and pseudoconsole transports may split
+          // one sequence (for example a bracketed-paste opener) across reads
+          // with arbitrarily long gaps. Wait for the remaining bytes instead
+          // of corrupting the sequence into a bare escape plus typed text.
+          // The traded-away ambiguity — a user pressing Escape and then
+          // typing '[' or 'O' within the window — is byte-for-byte
+          // indistinguishable from a sequence and cannot be recovered anyway.
           return;
         }
       }
