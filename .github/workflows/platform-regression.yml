@@ -57,7 +57,20 @@ jobs:
         with:
           sdk: 3.13.2
       - run: dart pub get
-      - run: python3 test/posix_terminal_pty.py
+      # Every scenario in this harness launches the fixture's explicit
+      # `public-` route, so a green run is public theme-instance lifecycle
+      # evidence; each PASS line is named `public-route/<behavior>`.
+      - name: Public POSIX PTY native lifecycle (public theme-instance route)
+        env:
+          PTY_ARTIFACT_DIR: posix-pty-artifacts
+        run: python3 test/posix_terminal_pty.py
+      - name: Upload POSIX PTY failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: posix-pty-public-lifecycle-artifacts-${{ matrix.os }}
+          path: posix-pty-artifacts/
+          if-no-files-found: ignore
 
   windows-native:
     runs-on: windows-latest
@@ -67,16 +80,48 @@ jobs:
         with:
           sdk: 3.13.2
       - run: dart pub get
-      - name: Public TextInput native lifecycle
+      # Public lifecycle evidence: every scenario in this loop runs through
+      # the fixture's explicit `public-` route (exported theme instances over
+      # TerminalEnvironment.nativeThemeDefault), and report lines are named
+      # `text input public <behavior>`. The set stays focused on behavior
+      # that requires a real console: acquisition/restoration, input decoding,
+      # modal help, resize observation, output refusal/redirection,
+      # writer-failure retirement and interruption/EOF/cancellation outcomes.
+      - name: Public TextInput native lifecycle (public theme-instance route)
         shell: pwsh
         run: |
-          foreach ($scenario in @('rich', 'linear-cursor', 'linear-long', 'help-text-linear', 'help-text-rich', 'help-password-linear', 'help-password-rich', 'help-password-interrupt-linear', 'help-text-eof-rich', 'redirected', 'dumb-auto', 'escape', 'interrupt', 'eof', 'error', 'repeat', 'session-retire', 'resize')) {
-            $report = Join-Path $env:RUNNER_TEMP "text-input-$scenario.txt"
+          New-Item -ItemType Directory -Force native-artifacts | Out-Null
+          foreach ($scenario in @('rich', 'linear-cursor', 'linear-long', 'help-text-linear', 'help-text-rich', 'help-password-linear', 'help-password-rich', 'help-password-interrupt-linear', 'help-text-eof-rich', 'redirected', 'stdout', 'dumb-auto', 'dumb-rich', 'escape', 'interrupt', 'eof', 'error', 'repeat', 'paste', 'unicode', 'session-retire', 'resize')) {
+            $report = Join-Path (Resolve-Path native-artifacts) "text-input-public-$scenario.txt"
+            & powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario $scenario -PublicApi -Report $report
+            if (Test-Path $report) { Get-Content $report }
+            if ($LASTEXITCODE -ne 0) { throw "Public native scenario $scenario failed with exit code $LASTEXITCODE" }
+          }
+      # Compatibility coverage: `concurrent` has no public fixture route
+      # because the public seam serializes prompts through one theme. This
+      # execution exercises the internal compatibility route only; it is
+      # labeled compatibility coverage and is not public lifecycle evidence.
+      - name: TextInput compatibility coverage (internal route, not public lifecycle evidence)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force native-artifacts | Out-Null
+          foreach ($scenario in @('concurrent')) {
+            $report = Join-Path (Resolve-Path native-artifacts) "text-input-compat-$scenario.txt"
             & powershell -NoProfile -ExecutionPolicy Bypass -File test/text_input_windows.ps1 -Scenario $scenario -Report $report
             if (Test-Path $report) { Get-Content $report }
-            if ($LASTEXITCODE -ne 0) { throw "Native scenario $scenario failed with exit code $LASTEXITCODE" }
+            if ($LASTEXITCODE -ne 0) { throw "Compatibility scenario $scenario failed with exit code $LASTEXITCODE" }
           }
-      - name: Multiline paste through the Windows pseudoconsole
+      - name: Upload Windows native lifecycle reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-text-input-reports
+          path: native-artifacts/
+          if-no-files-found: ignore
+      # The multiline pseudoconsole fixture exercises the internal
+      # compatibility route; it is regression coverage for native input
+      # decoding, not public lifecycle evidence.
+      - name: Multiline paste through the Windows pseudoconsole (compatibility route)
         shell: pwsh
         run: |
           & powershell -NoProfile -ExecutionPolicy Bypass -File test/multiline_conpty_windows.ps1

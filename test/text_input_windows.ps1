@@ -185,7 +185,10 @@ try {
  switch ($Scenario) {
   'linear-cursor' {
    if([int]$parts[3] -eq 0){throw "active editor cursor is hidden: $during"}
-   $initial=[NativeProbe]::EditorState()
+   # Bounded-wait for the opening paint: console acquisition is observed
+   # before the first frame reaches the screen, so a single read here can
+   # otherwise race the paint and report an empty row instead of the prompt.
+   $initial=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -match '^7:([0-9]+):> alpha$'} 'the initial caret after the editable default'
    if($initial -notmatch '^7:([0-9]+):> alpha$'){throw "initial cursor is not after the editable default: $initial"}
    $row=$Matches[1]
    [NativeProbe]::Key([char]0,0x24,0)
@@ -199,7 +202,9 @@ try {
   }
   'linear-long' {
    if([int]$parts[3] -eq 0){throw "active editor cursor is hidden: $during"}
-   $initial=[NativeProbe]::EditorState()
+   # Bounded-wait for the opening paint, as in linear-cursor: acquisition is
+   # observed before the first frame, so an unbounded single read can race it.
+   $initial=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -match '^([0-9]+):([0-9]+):> <[0-9]+89$'} 'the clipped long default'
    if($initial -notmatch '^([0-9]+):([0-9]+):> <[0-9]+89$'){throw "long default is not clipped onto one editable line: $initial"}
    $row=$Matches[2]
    [NativeProbe]::Key([char]0,0x24,0)
@@ -276,5 +281,5 @@ try {
  if($before -ne $after){throw "console state changed: $before -> $after"}
  $pubMarker = if ($PublicApi) { ' public' } else { '' }
  Set-Content $Report "text input$pubMarker $Scenario PASS result=$actual state=$before -> $during -> $after"
-} catch { Set-Content $Report "text input $Scenario FAIL $_"; throw }
+} catch { $failMarker = if ($PublicApi) { ' public' } else { '' }; Set-Content $Report "text input$failMarker $Scenario FAIL $_"; throw }
 finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.ready","$file.done","$file.stderr","$file.trigger" -Force -ErrorAction SilentlyContinue }
