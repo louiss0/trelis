@@ -1,6 +1,6 @@
 # 06 Deterministic timing, resize, platform, and locale test evidence
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** none
 
