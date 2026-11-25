@@ -38,7 +38,7 @@ public static class NativeProbe {
 $root = Split-Path $PSScriptRoot -Parent
 $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("editable-probe-" + [guid]::NewGuid() + '.txt')
-$line = "Set-Location '$root'; Start-Sleep -Seconds 3; & '$dart' run test/slider_native_app.dart $Scenario > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
+$line = "Set-Location '$root'; for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$file.ready');`$childWait++){ Start-Sleep -Milliseconds 50 }; if(!(Test-Path '$file.ready')){ exit 3 }; & '$dart' run test/slider_native_app.dart $Scenario > '$file'; Set-Content '$file.done' done; for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$file.release');`$childWait++){ Start-Sleep -Milliseconds 50 }"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
 try {
@@ -49,6 +49,7 @@ try {
  if(!$attached){throw 'AttachConsole failed'}
  # The Dart launcher itself enables VT output; preserve its normal console baseline.
  $before=[NativeProbe]::State()
+ Set-Content -Path "$file.ready" -Value ready
  # Bounded-wait for interaction readiness: the application acquiring the
  # console flips the observed state away from the pre-launch baseline with
  # VT output enabled, which distinguishes compilation time from prompt
@@ -62,7 +63,7 @@ try {
   $parts=$during.Split(':')
   if (([int]$parts[1] -band 4) -ne 0 -and $during -ne $before) {$ready=$true} else {Start-Sleep -Milliseconds 100}
  }
- if(Test-Path "$file.done" -and !$ready){
+ if((Test-Path "$file.done") -and !$ready){
   # The application finished before any interaction: readiness is moot.
   $during=[NativeProbe]::State()
   $parts=$during.Split(':')
@@ -93,6 +94,7 @@ try {
  if($before -ne $after){throw "console state changed: $before -> $after"}
  Set-Content $Report "slider $Scenario PASS result=$actual state=$before -> $during -> $after"
 } catch { Set-Content $Report "slider $Scenario FAIL $_"; throw }
-finally { [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}; Remove-Item $file,"$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
+finally {
+ Set-Content -Path "$file.release" -Value release -ErrorAction SilentlyContinue; [void][NativeProbe]::FreeConsole(); if($p -and !$p.HasExited){ [void]$p.WaitForExit(1000) }; if($p -and !$p.HasExited){ & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null; if(!$p.WaitForExit(2000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue} }; Remove-Item $file,"$file.release","$file.ready","$file.done","$file.stderr" -Force -ErrorAction SilentlyContinue }
 
 

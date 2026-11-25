@@ -11,18 +11,32 @@ public static class NativeProbe {
   [FieldOffset(14)] public char Char; [FieldOffset(16)] public uint State;
  }
  [StructLayout(LayoutKind.Sequential)] public struct Cursor { public uint Size; public int Visible; }
+ [StructLayout(LayoutKind.Sequential)] public struct Coord { public short X; public short Y; }
+ [StructLayout(LayoutKind.Sequential)] public struct Rect { public short Left; public short Top; public short Right; public short Bottom; }
+ [StructLayout(LayoutKind.Sequential)] public struct BufferInfo { public Coord Size; public Coord Position; public ushort Attributes; public Rect Window; public Coord Maximum; }
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool FreeConsole();
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool AttachConsole(uint id);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr CreateFile(string name,uint access,uint share,IntPtr security,uint creation,uint flags,IntPtr template);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool CloseHandle(IntPtr h);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleMode(IntPtr h,out uint mode);
  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleCursorInfo(IntPtr h,out Cursor info);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetConsoleScreenBufferInfo(IntPtr h,out BufferInfo info);
+ [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool ReadConsoleOutputCharacter(IntPtr h,[Out] ushort[] text,uint length,Coord position,out uint read);
  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool WriteConsoleInput(IntPtr h,Input[] records,uint length,out uint written);
  public static string State() {
   var i=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   var o=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
   try { uint im,om; Cursor c; if(!GetConsoleMode(i,out im)||!GetConsoleMode(o,out om)||!GetConsoleCursorInfo(o,out c)) throw new Exception("console state error " + Marshal.GetLastWin32Error()); return im+":"+om+":"+c.Size+":"+c.Visible; }
   finally { CloseHandle(i); CloseHandle(o); }
+ }
+ public static string ScreenText() {
+  var h=CreateFile("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
+  try {
+   BufferInfo info; if(!GetConsoleScreenBufferInfo(h,out info)) throw new Exception("screen state error");
+   var text=new ushort[info.Size.X*(info.Window.Bottom-info.Window.Top+1)]; uint read;
+   if(!ReadConsoleOutputCharacter(h,text,(uint)text.Length,new Coord{X=0,Y=info.Window.Top},out read)) throw new Exception("screen read error");
+   return new string(Array.ConvertAll(text,c=>(char)c),0,(int)read);
+  } finally { CloseHandle(h); }
  }
  public static void Key(char c, ushort vk, uint state) {
   var h=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
@@ -36,7 +50,9 @@ $dart = (Get-Command dart).Source
 $file = Join-Path $env:TEMP ("prompty-probe-" + [guid]::NewGuid() + '.txt')
 if($Scenario -eq 'stream-eof') {
  $line = @'
-Set-Location '__ROOT__'; Start-Sleep -Seconds 4
+Set-Location '__ROOT__'
+for($childWait=0;$childWait -lt 600 -and !(Test-Path '__FILE__.ready');$childWait++){ Start-Sleep -Milliseconds 50 }
+if(!(Test-Path '__FILE__.ready')){ exit 3 }
 $info = New-Object System.Diagnostics.ProcessStartInfo
 $info.FileName = '__DART__'
 $info.Arguments = 'run bin/terminal_probe.dart --stream-stdin'
@@ -49,10 +65,10 @@ $child.StandardInput.Close()
 $result = $child.StandardOutput.ReadToEnd()
 $child.WaitForExit()
 Set-Content -Path '__FILE__' -Value $result.TrimEnd()
-Start-Sleep -Seconds 30
+for($childWait=0;$childWait -lt 600 -and !(Test-Path '__FILE__.release');$childWait++){ Start-Sleep -Milliseconds 50 }
 '@.Replace('__ROOT__',$root).Replace('__DART__',$dart).Replace('__FILE__',$file)
 } else {
- $line = "Set-Location '$root'; Start-Sleep -Seconds 4; & '$dart' run bin/terminal_probe.dart --twice --pause-between > '$file'; Start-Sleep -Seconds 30"
+ $line = "Set-Location '$root'; for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$file.ready');`$childWait++){ Start-Sleep -Milliseconds 50 }; if(!(Test-Path '$file.ready')){ exit 3 }; & '$dart' run bin/terminal_probe.dart --twice --pause-between > '$file'; for(`$childWait=0;`$childWait -lt 600 -and !(Test-Path '$file.release');`$childWait++){ Start-Sleep -Milliseconds 50 }"
 }
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
 $p = $null
@@ -63,6 +79,9 @@ try {
  for ($n=0; $n -lt 100 -and !$attached; $n++) { $attached=[NativeProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
  if(!$attached){throw "AttachConsole failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"}
  $before=[NativeProbe]::State()
+ # The child performs no compilation or process launch until attachment and
+ # baseline capture are complete; this handshake replaces fixed startup waits.
+ Set-Content -Path "$file.ready" -Value ready
  if($Scenario -eq 'stream-eof') {
   for($n=0; $n -lt 150; $n++) { if((Test-Path $file) -and (Get-Item $file).Length -gt 0) { break }; Start-Sleep -Milliseconds 100 }
   $actual=@(Get-Content $file)
@@ -83,6 +102,11 @@ try {
   if([NativeProbe]::State() -ne $before){$ready=$true}else{Start-Sleep -Milliseconds 100}
  }
  if(!$ready){throw "console state never left the pre-launch baseline within 60 seconds"}
+ $openingPaint=$false
+ for($n=0;$n -lt 150 -and !$openingPaint;$n++){
+  if([NativeProbe]::ScreenText().Contains('probe 1>')){$openingPaint=$true}else{Start-Sleep -Milliseconds 100}
+ }
+ if(!$openingPaint){throw 'first probe prompt did not paint within 15 seconds'}
  switch ($Scenario) {
   'submit' { $char=[char]13; $vk=13; $state=0; $expected='submit:ok' }
   'escape' { $char=[char]27; $vk=27; $state=0; $expected='cancel' }
@@ -103,15 +127,20 @@ try {
     if($stateNow -eq $before) { $middle=$stateNow; break }
    }
    if(!$middle) { throw "first session did not restore console before next session" }
+   $continuation=$false
+   for($n=0;$n -lt 150 -and !$continuation;$n++){
+    if([NativeProbe]::ScreenText().Contains('Press Enter for the next session.')){$continuation=$true}else{Start-Sleep -Milliseconds 100}
+   }
+   if(!$continuation){throw 'continuation prompt did not paint within 15 seconds'}
    [NativeProbe]::Key([char]13,13,0)
    # Bounded-wait for the second session to observably reacquire the
-   # console before its scenario keys are injected.
+   # console and paint before its scenario keys are injected.
    $reacquired=$false
    for($n=0;$n -lt 150 -and !$reacquired;$n++){
     Start-Sleep -Milliseconds 100
-    if([NativeProbe]::State() -ne $before){$reacquired=$true}
+    if([NativeProbe]::State() -ne $before -and [NativeProbe]::ScreenText().Contains('probe 2>')){$reacquired=$true}
    }
-   if(!$reacquired){throw "second session did not reacquire the console"}
+   if(!$reacquired){throw "second session did not reacquire the console and paint its prompt"}
   }
  }
  for($n=0; $n -lt 100; $n++){ if((Test-Path $file) -and ((Get-Content $file -ErrorAction SilentlyContinue | Measure-Object -Line).Lines -ge 2)){break}; Start-Sleep -Milliseconds 100 }
@@ -124,7 +153,12 @@ try {
  Set-Content -Path $Report -Value "$Scenario FAIL $_"
  throw
 } finally {
+ Set-Content -Path "$file.release" -Value release -ErrorAction SilentlyContinue
  [void][NativeProbe]::FreeConsole()
- if($p -and !$p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
- Remove-Item $file -Force -ErrorAction SilentlyContinue
+ if($p -and !$p.HasExited){ [void]$p.WaitForExit(1000) }
+ if($p -and !$p.HasExited){
+  & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null
+  if(!$p.WaitForExit(2000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+ }
+ Remove-Item $file,"$file.ready","$file.release" -Force -ErrorAction SilentlyContinue
 }
