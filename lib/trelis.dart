@@ -1,4 +1,4 @@
-/// Accessible, nonvisually reviewable terminal prompts for Dart.
+/// Terminal prompts for Dart with rich and linear interaction.
 ///
 /// This public API is **unstable**: the coordinated theme-instance cutover is
 /// complete, but the independent interaction and colour release gates are not.
