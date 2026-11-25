@@ -81,7 +81,9 @@ void main() {
         isCancelled: () => cancelled,
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Cancellation is observed by the preview's own polling, not by a
+    // fixed delay here: whenever the hung worker finishes spawning it is
+    // killed, and the future completes cancelled well before the timeout.
     cancelled = true;
     expect(
       (await preview.timeout(const Duration(seconds: 2))).status,

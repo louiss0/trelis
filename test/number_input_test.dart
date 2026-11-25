@@ -256,18 +256,22 @@ void main() {
     },
   );
 
-  test('system default resolves effective numeric settings', () async {
-    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) return;
-    final result = await NumberInput('Count')
-        .prompt(source: SuppliedAnswer('123'));
-    expect(
-      (result as Accepted<NumericAnswer?>).value!.coefficient,
-      BigInt.from(123),
-    );
-  });
+  test(
+    'system default resolves effective numeric settings',
+    () async {
+      final result = await NumberInput('Count')
+          .prompt(source: SuppliedAnswer('123'));
+      expect(
+        (result as Accepted<NumericAnswer?>).value!.coefficient,
+        BigInt.from(123),
+      );
+    },
+    skip: (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
+        ? false
+        : 'requires a desktop host',
+  );
 
   test('macOS system default keeps a leading negative sign', () async {
-    if (!Platform.isMacOS) return;
     // The Decimal style reports a leading minus sign in its negative affixes
     // on the en_US CI runners. Resolving without a sign placement, or with a
     // different one, has to show up here rather than pass as "resolved".
@@ -278,14 +282,18 @@ void main() {
       (result as Accepted<NumericAnswer?>).value!.coefficient,
       BigInt.from(-123),
     );
-  });
+  }, skip: Platform.isMacOS ? false : 'requires a macOS host');
 
   test(
     'Linux resolves non-C LC_NUMERIC conventions and category precedence',
     () async {
-      if (!Platform.isLinux) return;
       final installed = Process.runSync('locale', ['-a']);
-      if (installed.exitCode != 0) return;
+      // A non-C numeric locale is a declared prerequisite of this test. Its
+      // absence is a prerequisite diagnostic, not a silent pass; CI provisions
+      // one before the suite runs.
+      if (installed.exitCode != 0) {
+        fail('locale prerequisite missing: `locale -a` is unavailable');
+      }
       final locale = installed.stdout
           .toString()
           .split(RegExp(r'\r?\n'))
@@ -295,7 +303,12 @@ void main() {
                 name.toLowerCase().startsWith('fr_fr.'),
             orElse: () => '',
           );
-      if (locale.isEmpty) return;
+      if (locale.isEmpty) {
+        fail(
+          'locale prerequisite missing: no de_DE or fr_FR locale installed; '
+          'provision one (for example `sudo locale-gen de_DE.UTF-8`)',
+        );
+      }
       for (final environment in [
         {'LC_ALL': locale, 'LC_NUMERIC': 'C', 'LANG': 'C'},
         {'LC_ALL': '', 'LC_NUMERIC': locale, 'LANG': 'C'},
@@ -310,6 +323,7 @@ void main() {
         expect(result.stdout.toString().trim(), '12345:1');
       }
     },
+    skip: Platform.isLinux ? false : 'requires a Linux host',
   );
 
   test(

@@ -54,7 +54,15 @@ function Invoke-Picker([string]$Scenario, [string]$Base, [string]$Keys, [string]
   for($n=0;$n -lt 100 -and !$attached;$n++){ $attached=[PickerNativeProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
   if(!$attached){throw 'AttachConsole failed'}
   $before=[PickerNativeProbe]::State()
-  Start-Sleep -Seconds 6
+  # Bounded-wait for interaction readiness: acquiring the console moves the
+  # observed state away from the pre-launch baseline, which distinguishes
+  # compilation time from prompt responsiveness.
+  $ready=$false
+  for($n=0;$n -lt 600 -and !$ready;$n++){
+   if(Test-Path "$file.done"){break}
+   if([PickerNativeProbe]::State() -ne $before){$ready=$true}else{Start-Sleep -Milliseconds 100}
+  }
+  if(!$ready -and !(Test-Path "$file.done")){throw "$Scenario console state never left the pre-launch baseline within 60 seconds"}
   [PickerNativeProbe]::Text($Keys)
   for($n=0;$n -lt 150 -and !(Test-Path "$file.done");$n++){Start-Sleep -Milliseconds 100}
   if (!(Test-Path "$file.done")) { throw "$Scenario process did not exit" }

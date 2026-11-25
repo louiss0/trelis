@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
+import 'support/bounded_wait.dart';
+
 void main() {
   test(
     'Escape from rich numeric editing returns to slider without cancelling',
@@ -24,7 +26,9 @@ void main() {
         mode: PromptMode.rich,
       );
       input.add('\t\r9\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+      // The trailing lone escape must finish decoder disambiguation before
+      // further input, or the bytes would merge into one ambiguous chunk.
+      await awaitLoneEscape();
       input.add('\t\r');
       await input.close();
       expect((await result as Accepted<String>).value, '2');
@@ -157,7 +161,9 @@ void main() {
         ScriptedInput(input.stream, output, outputProfile: _richProfile),
       );
       input.add('\x1bOP\x1b');
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+      // The lone escape disambiguates and dismisses help; bounded-wait for
+      // the observable dismissal before interrupting.
+      await awaitOutputContains(output, 'Help dismissed');
       input.add('\x03');
       await input.close();
       expect(

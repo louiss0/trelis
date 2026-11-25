@@ -52,7 +52,6 @@ void main() {
     );
   });
   test('Windows UNC quoting preserves both leading backslashes', () async {
-    if (!Platform.isWindows) return;
     final out = StringBuffer();
     final result = await PathInput('Path', allowNonexistent: true).prompt(
       source: ScriptedInput(
@@ -65,7 +64,7 @@ void main() {
       mode: PromptMode.linear,
     );
     expect((result as Accepted<String>).value, r'\\server\share\folder');
-  });
+  }, skip: Platform.isWindows ? false : 'requires a Windows host');
   test('initial command-shaped literal remains data when reopened', () async {
     final out = StringBuffer();
     final result =
