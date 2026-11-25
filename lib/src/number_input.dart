@@ -158,8 +158,6 @@ final class _LConv extends Struct {
   external Pointer<Utf8> decimalPoint;
   external Pointer<Utf8> thousandsSeparator;
   external Pointer<Utf8> grouping;
-  external Pointer<Utf8> internationalDecimalPoint;
-  external Pointer<Utf8> internationalThousandsSeparator;
   external Pointer<Utf8> internationalCurrencySymbol;
   external Pointer<Utf8> currencySymbol;
   external Pointer<Utf8> monetaryDecimalPoint;
@@ -183,6 +181,18 @@ final class _LConv extends Struct {
   external int positiveSignPosition;
   @Uint8()
   external int negativeSignPosition;
+  @Uint8()
+  external int internationalPositiveCurrencyPrecedes;
+  @Uint8()
+  external int internationalPositiveCurrencySeparated;
+  @Uint8()
+  external int internationalNegativeCurrencyPrecedes;
+  @Uint8()
+  external int internationalNegativeCurrencySeparated;
+  @Uint8()
+  external int internationalPositiveSignPosition;
+  @Uint8()
+  external int internationalNegativeSignPosition;
 }
 
 NumericConvention? _linuxNumericConvention() {
