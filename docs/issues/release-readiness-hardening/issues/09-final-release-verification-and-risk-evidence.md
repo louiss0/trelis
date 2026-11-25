@@ -150,11 +150,16 @@ This Windows host cannot execute POSIX PTY natively: no Docker (`docker` not fou
 no WSL distributions installed, and installing infrastructure is out of scope. The
 POSIX PTY harness (`test/posix_terminal_pty.py`) was inspected: every scenario
 launches the fixture `public-` route and reports `public-route/<behavior>`, and the CI
-workflow provisions the Linux locale fixture, but **no POSIX execution evidence exists
-for this commit**. The 4 skipped dart tests are explicit platform declarations. The
-platform regression workflow has not run in GitHub Actions: nothing was pushed (no
-push authorization), so CI greenness is unverified; only local workflow-syntax
-validation (YAML parse) and the workflow-equivalent local executions above exist.
+workflow provisions the Linux locale fixture. The 4 skipped dart tests on Windows are
+explicit platform declarations.
+
+Final POSIX execution evidence now comes from GitHub Actions run
+[45721224547](https://github.com/louiss0/trelis/actions/runs/45721224547) on pushed
+candidate `aead39e90f3ad4e8fa2740e0ac0972ad42d4f4d6`: both
+`posix-native (ubuntu-latest)` and `posix-native (macos-latest)` passed the public
+POSIX PTY native lifecycle. The Dart matrix also passed on Ubuntu, macOS, and Windows.
+The original no-push limitation was true when this answer was first written and is
+superseded by the final CI closure supplement below.
 
 ### 7. Documentation/version consistency
 
@@ -281,16 +286,53 @@ waits for the editable default paint before EOF/Escape/Ctrl+C injection; focused
 evidence was 5/5 consecutive public EOF passes, followed by the final 23/23 matrix
 pass. This is a harness-coordination fix, not proof of a product defect.
 
-#### Remaining risk and unverified evidence
+#### Remaining risk at review-fix completion
 
-- POSIX/Linux/macOS runtime evidence remains unavailable from this Windows host.
-  The POSIX harness compiles under Python and the workflow wiring is present, but
-  no POSIX execution is claimed.
-- GitHub Actions greenness is unverified because nothing was pushed and no CI run
-  was monitored. Local evidence includes workflow YAML parsing and workflow-equivalent
-  Windows harness execution only.
+These bullets were true before the post-review push and are superseded by the final
+CI closure supplement below:
+
+- POSIX/Linux/macOS runtime evidence was unavailable from this Windows host. The
+  POSIX harness compiled under Python and the workflow wiring was present, but no
+  POSIX execution was yet claimed.
+- GitHub Actions greenness was unverified because nothing had been pushed and no CI
+  run had been monitored. Local evidence included workflow YAML parsing and
+  workflow-equivalent Windows harness execution only.
 - The historical orphan-grandchild limitation is narrowed by tree/job cleanup, but
   Windows process evidence is necessarily host-local. If a future rare failure
   precedes cleanup abnormally, the retained diagnostic files now include enough
   process and phase state to bound it rather than silently losing it.
+
+### Final CI closure supplement - 2026-11-25
+
+After the review-fix merge, the integration branch was pushed and the complete
+platform-regression workflow was iterated to green. Final green run:
+[45721224547](https://github.com/louiss0/trelis/actions/runs/45721224547), candidate
+commit `aead39e90f3ad4e8fa2740e0ac0972ad42d4f4d6`, conclusion `success` in all six
+jobs:
+
+- `dart (windows-latest)` - PASS
+- `dart (ubuntu-latest)` - PASS
+- `dart (macos-latest)` - PASS
+- `windows-native` - PASS, including the public TextInput native lifecycle matrix,
+  explicitly labeled compatibility coverage, and the multiline ConPTY lifecycle
+- `posix-native (ubuntu-latest)` - PASS, public POSIX PTY native lifecycle
+- `posix-native (macos-latest)` - PASS, public POSIX PTY native lifecycle
+
+The workflow iteration exposed and fixed two genuine defects rather than hiding them:
+
+1. Linux numeric locale FFI handling was incorrect. CI first exposed a crash/failure
+   in the Linux-only numeric-locale test; `69c2f6e` corrected the Linux `lconv`
+   struct layout and `f1c0fb5` passed a complete glibc locale-category mask to
+   `newlocale`. The final Ubuntu Dart job passed, including the non-C `LC_NUMERIC`
+   precedence test.
+2. The Windows ThaiBuddhistCalendar modern-vector test could be starved by suite
+   contention beside the 400-year PowerShell oracle sweep. `aead39e` gives that test
+   the same bounded two-minute failure window as the cycle test rather than leaving
+   it to runner scheduling. The final Windows Dart job passed.
+
+No acceptance criterion remains blocked on POSIX or GitHub Actions evidence. The
+remaining honest limitation is narrower: CI evidence is hosted-runner evidence, not a
+proof for every terminal emulator, Windows console host, or locale image; the retained
+native diagnostics are the mechanism for investigating future environment-specific
+failures.
 

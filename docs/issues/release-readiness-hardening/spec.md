@@ -1,6 +1,6 @@
 # Release readiness hardening
 
-Status: ready-for-agent
+Status: implemented-unstable
 Labels: ready-for-agent
 
 ## Problem Statement
