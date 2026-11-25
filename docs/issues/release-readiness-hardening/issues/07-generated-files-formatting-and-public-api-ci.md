@@ -1,6 +1,6 @@
 # 07 Generated-file determinism, formatting, and external public API CI
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** none
 
