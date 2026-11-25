@@ -8,6 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+from lf_output import write_lf
+
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / 'tool' / 'rail_ink_blue_palettes.json'
 DEST = ROOT / 'lib' / 'src' / 'rail_ink_blue_palettes.g.dart'
@@ -86,11 +88,11 @@ final class RailAdaptivePalettes {{
 }}
 '''
     if '--check' in sys.argv[1:]:
-        if DEST.read_text(encoding='utf-8') != text:
+        if DEST.read_bytes() != text.encode('utf-8'):
             raise SystemExit(f'{DEST} is stale; regenerate it.')
         print(f'{DEST} is current')
         return
-    DEST.write_text(text, encoding='utf-8')
+    write_lf(DEST, text)
     print(f'Generated {DEST}')
 
 

@@ -7,3 +7,4 @@
 lib/src/themes/*_theme.dart text eol=lf
 test/*_theme_factories_test.dart text eol=lf
 test/*_theme_acceptance_matrix_test.dart text eol=lf
+lib/src/*_palettes.g.dart text eol=lf

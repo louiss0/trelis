@@ -6,6 +6,8 @@ Run: python tool/generate_color_themes.py
 import ast
 from pathlib import Path
 
+from lf_output import write_lf
+
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / 'tool' / 'generate_theme_atlas.py'
 DEST = ROOT / 'lib' / 'src' / 'color_theme_palettes.g.dart'
@@ -101,7 +103,7 @@ abstract final class ColorThemes {{
 {chr(10).join(consts)}
 }}
 '''
-    DEST.write_text(dest_text, encoding='utf-8')
+    write_lf(DEST, dest_text)
     print(f'Generated {len(consts)} palettes in {DEST}')
 
 

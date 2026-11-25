@@ -28,6 +28,18 @@ for theme in THEMES:
     targets.append(root / f'test/{theme}_theme_factories_test.dart')
     targets.append(root / f'test/{theme}_theme_acceptance_matrix_test.dart')
 
+PALETTE_GENERATORS = [
+    'generate_ascii_ink_blue_palettes.py',
+    'generate_color_themes.py',
+    'generate_rail_ink_blue_palettes.py',
+]
+for generated in [
+    'ascii_ink_blue_palettes.g.dart',
+    'color_theme_palettes.g.dart',
+    'rail_ink_blue_palettes.g.dart',
+]:
+    targets.append(root / f'lib/src/{generated}')
+
 with tempfile.TemporaryDirectory() as scratch:
     backups = {}
     for target in targets:
@@ -45,6 +57,12 @@ with tempfile.TemporaryDirectory() as scratch:
                     check=True,
                     stdout=subprocess.DEVNULL,
                 )
+        for generator in PALETTE_GENERATORS:
+            subprocess.run(
+                [sys.executable, f'tool/{generator}'],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
         for target, backup in backups.items():
             regenerated = target.read_bytes()
             original = backup.read_bytes()
