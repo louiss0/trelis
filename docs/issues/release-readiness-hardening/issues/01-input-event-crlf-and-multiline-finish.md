@@ -1,6 +1,6 @@
 # 01 Input-event-local CRLF decoding and Multiline finish
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** none
 
