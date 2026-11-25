@@ -72,7 +72,6 @@ final class SharedTerminalReader {
 
   String _buffer = '';
   bool _discardPaste = false;
-  bool _afterCarriageReturn = false;
   Timer? _timer;
   SharedTerminalReader(
     Stream<List<int>> source, {
@@ -217,21 +216,17 @@ final class SharedTerminalReader {
       }
       final rune = _buffer.runes.first;
       final s = String.fromCharCode(rune);
+      final rest = _buffer.substring(s.length);
       _emit(s);
-      _buffer = _buffer.substring(s.length);
+      // CRLF is one line-ending gesture only when both bytes are present in
+      // this decoded input event. No carriage-return state crosses an event,
+      // a read call or elapsed time: a later LF remains the finish gesture.
+      _buffer = s == '\r' && rest.startsWith('\n') ? rest.substring(1) : rest;
     }
   }
 
   Future<String?> next() async {
-    while (await _iterator.moveNext()) {
-      final key = _iterator.current;
-      if (_afterCarriageReturn && key == '\n') {
-        _afterCarriageReturn = false;
-        continue;
-      }
-      _afterCarriageReturn = key == '\r';
-      return key;
-    }
+    if (await _iterator.moveNext()) return _iterator.current;
     return null;
   }
 
