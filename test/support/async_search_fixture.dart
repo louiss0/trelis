@@ -1,3 +1,5 @@
+export 'bounded_wait.dart' show awaitLoneEscape;
+
 import 'dart:async';
 
 // Deterministic drivers for the asynchronous suggestion/search fixtures.
@@ -34,10 +36,6 @@ Future<void> settleUntil(
     '${description == null ? '' : ': $description'}.',
   );
 }
-
-/// Awaits the shared editor's lone-Escape disambiguation timer.
-Future<void> awaitLoneEscape() =>
-    Future<void>.delayed(const Duration(milliseconds: 120));
 
 /// Requests recorded by query, so a test can complete or fail them in any
 /// order.

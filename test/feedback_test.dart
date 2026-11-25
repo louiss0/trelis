@@ -1,6 +1,8 @@
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
+import 'support/fake_feedback_clock.dart';
+
 void main() {
   test('Text presents literal safe semantic content', () {
     final output = StringBuffer();
@@ -23,19 +25,22 @@ void main() {
       expect(out.toString(), isNot(contains('90%')));
     },
   );
-  test('linear progress coalesces milestones and finalization cancels pending updates', () async {
+  test('linear progress coalesces milestones and finalization cancels pending updates', () {
     final out = StringBuffer();
+    final clock = FakeFeedbackClock();
     final progress = Progress(
       'Work',
       total: 100,
-      interval: const Duration(milliseconds: 60),
+      interval: const Duration(seconds: 5),
+      clock: clock,
     );
     progress.start(output: out);
     progress.update(5);
     progress.update(10);
     progress.update(20);
     progress.update(35);
-    await Future<void>.delayed(const Duration(milliseconds: 90));
+    expect(out.toString(), 'Work: running, 0%\nWork: running, 10%\n');
+    clock.elapse(const Duration(seconds: 5));
     expect(
       out.toString(),
       'Work: running, 0%\nWork: running, 10%\nWork: running, 35%\n',
@@ -44,12 +49,13 @@ void main() {
       'Pending',
       total: 100,
       interval: const Duration(seconds: 2),
+      clock: clock,
     );
     pending.start(output: out);
     pending.update(10);
     pending.update(50);
     pending.finish(FeedbackOutcome.completed);
-    await Future<void>.delayed(const Duration(milliseconds: 90));
+    clock.elapse(const Duration(seconds: 5));
     expect(out.toString(), endsWith('Pending: completed\n'));
     expect(out.toString(), isNot(contains('Pending: running, 50%')));
   });
@@ -225,18 +231,20 @@ void main() {
       expect(out.toString(), contains('failed: long wrapped failure'));
     },
   );
-  test('coalescing never emits an unchanged numeric heartbeat', () async {
+  test('coalescing never emits an unchanged numeric heartbeat', () {
     final out = StringBuffer();
+    final clock = FakeFeedbackClock();
     final progress = Progress(
       'Task',
       total: 100,
-      interval: const Duration(milliseconds: 80),
+      interval: const Duration(seconds: 5),
+      clock: clock,
     );
     progress.start(output: out);
     progress.update(10);
     progress.update(20);
     progress.update(10);
-    await Future<void>.delayed(const Duration(milliseconds: 160));
+    clock.elapse(const Duration(seconds: 10));
     progress.dispose();
     expect(out.toString(), 'Task: running, 0%\nTask: running, 10%\n');
   });
@@ -315,7 +323,7 @@ void main() {
     'progress cadence is deterministic with an application-controlled clock',
     () {
       final out = StringBuffer();
-      final clock = _FakeFeedbackClock();
+      final clock = FakeFeedbackClock();
       final progress = Progress(
         'Upload',
         total: 100,
@@ -430,7 +438,7 @@ void main() {
   });
   test('multi-spinner batching is deterministic with an application-controlled clock', () {
     final out = StringBuffer();
-    final clock = _FakeFeedbackClock();
+    final clock = FakeFeedbackClock();
     final tasks = MultiSpinner(
       ['compile'],
       interval: const Duration(seconds: 5),
@@ -446,44 +454,4 @@ void main() {
     expect(out.toString(), contains('compile: running, latest'));
     tasks.dispose();
   });
-}
-
-final class _FakeFeedbackClock implements FeedbackClock {
-  Duration _elapsed = Duration.zero;
-  final List<_ScheduledCallback> _callbacks = [];
-
-  @override
-  Duration get elapsed => _elapsed;
-
-  @override
-  FeedbackTimer schedule(Duration delay, void Function() callback) {
-    final scheduled = _ScheduledCallback(_elapsed + delay, callback);
-    _callbacks.add(scheduled);
-    return scheduled;
-  }
-
-  void elapse(Duration duration) {
-    _elapsed += duration;
-    while (true) {
-      final due = _callbacks.where((callback) {
-        return !callback.cancelled && callback.when <= _elapsed;
-      }).toList();
-      if (due.isEmpty) return;
-      for (final callback in due) {
-        _callbacks.remove(callback);
-        callback.callback();
-      }
-    }
-  }
-}
-
-final class _ScheduledCallback implements FeedbackTimer {
-  _ScheduledCallback(this.when, this.callback);
-
-  final Duration when;
-  final void Function() callback;
-  bool cancelled = false;
-
-  @override
-  void cancel() => cancelled = true;
 }

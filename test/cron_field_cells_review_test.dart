@@ -214,33 +214,36 @@ void main() {
       },
     );
 
-    test('review help leads with the stage controls before the field map', () async {
-      final output = StringBuffer();
-      final result =
-          await CronInput(
-            'Schedule',
-            profile: CronProfile.unix,
-            preview: _yearConfig(),
-          ).prompt(
-            source: ScriptedInput(
-              // Enter Review, open help with F1, dismiss with Escape, then
-              // interrupt to end the prompt after the help text is captured.
-              Stream.value('*\t*\t*\t*\t*\r\t\x1bOP\x1b\x03'),
-              output,
-              outputProfile: _richProfile,
-            ),
-            mode: PromptMode.rich,
-          );
-      expect(result, isA<Interrupted<CronExpression>>());
-      final text = output.toString().replaceAll('\n', '');
-      expect(text, contains('Help: Reviewing the retained expression'));
-      expect(text, contains('Edit, Preview and Submit'));
-      expect(text, contains('Field order:'));
-      // Stage-led help puts the Review controls ahead of the field map.
-      expect(
-        text.indexOf('Edit, Preview and Submit'),
-        lessThan(text.indexOf('Field order:')),
-      );
-    });
+    test(
+      'review help leads with the stage controls before the field map',
+      () async {
+        final output = StringBuffer();
+        final result =
+            await CronInput(
+              'Schedule',
+              profile: CronProfile.unix,
+              preview: _yearConfig(),
+            ).prompt(
+              source: ScriptedInput(
+                // Enter Review, open help with F1, dismiss with Escape, then
+                // interrupt to end the prompt after the help text is captured.
+                Stream.value('*\t*\t*\t*\t*\r\t\x1bOP\x1b\x03'),
+                output,
+                outputProfile: _richProfile,
+              ),
+              mode: PromptMode.rich,
+            );
+        expect(result, isA<Interrupted<CronExpression>>());
+        final text = output.toString().replaceAll('\n', '');
+        expect(text, contains('Help: Reviewing the retained expression'));
+        expect(text, contains('Edit, Preview and Submit'));
+        expect(text, contains('Field order:'));
+        // Stage-led help puts the Review controls ahead of the field map.
+        expect(
+          text.indexOf('Edit, Preview and Submit'),
+          lessThan(text.indexOf('Field order:')),
+        );
+      },
+    );
   });
 }

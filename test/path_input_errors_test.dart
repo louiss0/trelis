@@ -7,7 +7,6 @@ void main() {
   test(
     'prospective typed path rejects an uninspectable invalid native name',
     () async {
-      if (!Platform.isWindows) return;
       final result = await PathInput(
         'Path',
         allowNonexistent: true,
@@ -15,11 +14,11 @@ void main() {
       ).prompt(source: SuppliedAnswer('bad<name'));
       expect(result, isA<Unavailable<String>>());
     },
+    skip: Platform.isWindows ? false : 'requires a Windows host',
   );
   test(
     'inaccessible target is not accepted as a prospective typed path',
     () async {
-      if (!Platform.isWindows) return;
       final dir = await Directory.systemTemp.createTemp('path-denied-');
       final file = File('${dir.path}\\secret');
       await file.writeAsString('secret');
@@ -51,6 +50,7 @@ void main() {
       ).prompt(source: SuppliedAnswer('secret'));
       expect(result, isA<Unavailable<String>>());
     },
+    skip: Platform.isWindows ? false : 'requires a Windows host',
   );
   test('a file used as a parent is not a prospective path', () async {
     final dir = await Directory.systemTemp.createTemp('path-parent-');

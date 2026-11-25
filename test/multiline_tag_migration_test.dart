@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
+import 'support/bounded_wait.dart';
+
 OutputProfile _rich({int columns = 80, int rows = 24}) => OutputProfile(
   cursor: CapabilitySupport.supported,
   geometry: OutputGeometry.fixed(columns: columns, rows: rows),
@@ -161,8 +163,9 @@ void main() {
         duringHelp = output.toString().substring(beforeHelp.length);
         input.add('\x1b');
         // A lone escape is only distinguishable after the key decoder's
-        // disambiguation delay.
-        await Future<void>.delayed(const Duration(milliseconds: 150));
+        // disambiguation delay, so bounded-wait for the observable
+        // dismissal instead of assuming a fixed delay was enough.
+        await awaitOutputContains(output, 'Help dismissed.');
         afterDismissal = output.toString().substring(beforeHelp.length);
         input.add('\t\r');
         await input.close();

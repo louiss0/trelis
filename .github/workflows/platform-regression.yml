@@ -19,6 +19,13 @@ jobs:
           sdk: 3.13.2
       - run: dart --version
       - run: dart pub get
+      # The Linux numeric-convention test declares a non-C locale fixture as a
+      # prerequisite; provision it here so its absence is never a silent pass.
+      - name: Provision the numeric locale fixture
+        if: runner.os == 'Linux'
+        run: |
+          sudo locale-gen de_DE.UTF-8
+          sudo update-locale
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze
       - run: dart run tool/check_issue_tracker.dart
