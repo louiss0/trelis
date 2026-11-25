@@ -4,7 +4,10 @@ This guide covers the coordinated breaking cutover for adaptive-theme
 presentation ticket 32. The new public API is **unstable**: the interaction and
 colour release gates have not passed, and native/screen-reader evidence is
 still missing. Treat the signatures as a reviewable cutover, not as an
-accessibility or long-term compatibility guarantee.
+accessibility or long-term compatibility guarantee. While those gates remain
+open the package version is a prerelease (`1.0.0-dev.x`); depending on it
+requires an explicit prerelease constraint such as `trelis: 1.0.0-dev.1`,
+because caret constraints like `^1.0.0` do not select prerelease versions.
 
 BREAKING CHANGE: static theme component factories, public direct component
 constructors, invocation-level I/O/session/mode/presentation configuration,
