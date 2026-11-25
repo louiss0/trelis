@@ -40,7 +40,6 @@ void main() {
   });
 
   test('the process accessor reports a failed call as errno', () {
-    if (Platform.isWindows) return;
     final libc = DynamicLibrary.process();
     final accessor = posixErrnoAccessor(libc);
     expect(accessor, isNotNull);
@@ -60,5 +59,5 @@ void main() {
     } finally {
       malloc.free(name);
     }
-  });
+  }, skip: !Platform.isWindows ? false : 'requires a POSIX host');
 }

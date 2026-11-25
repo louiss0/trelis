@@ -1,6 +1,8 @@
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
+import 'support/fake_feedback_clock.dart';
+
 void main() {
   test('group retains each outcome in task order', () {
     final out = StringBuffer();
@@ -15,12 +17,14 @@ void main() {
   });
   test(
     'group batches latest task states and finalization defeats stale updates',
-    () async {
+    () {
       final out = StringBuffer();
-      final group = MultiSpinner([
-        'a',
-        'b',
-      ], interval: const Duration(milliseconds: 50));
+      final clock = FakeFeedbackClock();
+      final group = MultiSpinner(
+        ['a', 'b'],
+        interval: const Duration(seconds: 5),
+        clock: clock,
+      );
       group.start(output: out);
       group.update('a', TaskActivity.running, phase: 'first');
       group.update('a', TaskActivity.running, phase: 'old');
@@ -28,7 +32,7 @@ void main() {
       group.update('a', TaskActivity.running, phase: 'latest');
       group.finishTask('b', FeedbackOutcome.failed, detail: 'bad');
       group.update('b', TaskActivity.running, phase: 'stale');
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      clock.elapse(const Duration(seconds: 5));
       expect(out.toString(), contains('a: running, latest'));
       expect(out.toString(), isNot(contains('a: running, old')));
       expect(out.toString(), isNot(contains('b: waiting, disk')));
@@ -40,12 +44,14 @@ void main() {
       );
     },
   );
-  test('many concurrent tasks share one intermediate batch window', () async {
+  test('many concurrent tasks share one intermediate batch window', () {
     final names = List.generate(100, (i) => 'task-$i');
     final out = StringBuffer();
+    final clock = FakeFeedbackClock();
     final group = MultiSpinner(
       names,
-      interval: const Duration(milliseconds: 80),
+      interval: const Duration(seconds: 5),
+      clock: clock,
     );
     group.start(output: out);
     group.update(names.first, TaskActivity.running, phase: 'initial');
@@ -55,7 +61,7 @@ void main() {
       group.update(name, TaskActivity.running, phase: 'new');
     }
     expect(out.toString(), before);
-    await Future<void>.delayed(const Duration(milliseconds: 140));
+    clock.elapse(const Duration(seconds: 5));
     final lines = out.toString().substring(before.length).trim().split('\n');
     expect(lines.length, 100);
     const spin = ['/', '-', r'\', '|'];

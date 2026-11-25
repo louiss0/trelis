@@ -60,10 +60,29 @@ try {
  if(!$attached){throw 'AttachConsole failed'}
  # The Dart launcher itself enables VT output; preserve its normal console baseline.
  $before=[NativeProbe]::State()
- Start-Sleep -Seconds 7
- $during=[NativeProbe]::State()
- $parts=$during.Split(':')
- if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
+ # Bounded-wait for interaction readiness: the application acquiring the
+ # console flips the observed state away from the pre-launch baseline with
+ # VT output enabled, which distinguishes compilation time from prompt
+ # responsiveness instead of assuming a fixed startup delay was enough.
+ $during=''
+ $parts=@()
+ $ready=$false
+ for($n=0;$n -lt 600 -and !$ready;$n++){
+  if(Test-Path "$file.done"){break}
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+  if (([int]$parts[1] -band 4) -ne 0 -and $during -ne $before) {$ready=$true} else {Start-Sleep -Milliseconds 100}
+ }
+ if(Test-Path "$file.done" -and !$ready){
+  # The application finished before any interaction: readiness is moot.
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+ } elseif(!$ready){
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled within 60 seconds: $during"}
+  if ($during -eq $before) {throw "console state never left the pre-launch baseline within 60 seconds: $during"}
+ }
  $expected = '1-2'
  if ($Target -eq 'adaptive') {
    [NativeProbe]::Text("12`r")

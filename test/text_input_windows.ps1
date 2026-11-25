@@ -77,6 +77,29 @@ $term = if ($Scenario -like 'dumb-*') { "`$env:TERM='dumb';" } else { "" }
 $appScenario = if ($PublicApi) { "public-$Scenario" } else { $Scenario }
 $line = "$term Set-Location '$root'; while (!(Test-Path '$file.ready')) { Start-Sleep -Milliseconds 50 }; & '$dart' run test/text_input_native_app.dart $appScenario '$file.trigger' $redirect > '$file'; Set-Content '$file.done' done; Start-Sleep -Seconds 20"
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line))
+
+# Bounded-waits for an observable console state instead of assuming a fixed
+# post-key delay was enough; fails with the last observed state. Conditions
+# resolve script-scope variables through the script's own scope chain.
+function Wait-Probe([scriptblock]$read, [scriptblock]$ok, [string]$what) {
+  $value = $null
+  for($n=0;$n -lt 50;$n++){
+    $value = & $read
+    if(& $ok $value){return $value}
+    Start-Sleep -Milliseconds 100
+  }
+  throw "timed out waiting for ${what}: $value"
+}
+function Wait-ProbeSettled([scriptblock]$read, [string]$what) {
+  $last = & $read
+  for($n=0;$n -lt 50;$n++){
+    Start-Sleep -Milliseconds 100
+    $current = & $read
+    if($current -eq $last){return $current}
+    $last = $current
+  }
+  throw "timed out waiting for ${what} to settle: $last"
+}
 $p = $null
 try {
  $p=Start-Process powershell.exe -WindowStyle Normal -ArgumentList '-NoProfile','-EncodedCommand',$encoded -PassThru
@@ -89,37 +112,53 @@ try {
  # The Dart launcher itself enables VT output; preserve its normal console baseline.
  $before=[NativeProbe]::State()
  Set-Content "$file.ready" ready
- Start-Sleep -Seconds 7
- $during=[NativeProbe]::State()
- $parts=$during.Split(':')
- if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled: $during"}
+ # Bounded-wait for interaction readiness: the application acquiring the
+ # console flips the observed state away from the pre-launch baseline with
+ # VT output enabled, which distinguishes compilation time from prompt
+ # responsiveness instead of assuming a fixed startup delay was enough.
+ $during=''
+ $parts=@()
+ $ready=$false
+ for($n=0;$n -lt 600 -and !$ready;$n++){
+  if(Test-Path "$file.done"){break}
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+  if (([int]$parts[1] -band 4) -ne 0 -and $during -ne $before) {$ready=$true} else {Start-Sleep -Milliseconds 100}
+ }
+ if(Test-Path "$file.done" -and !$ready){
+  # The application finished before any interaction: readiness is moot.
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+ } elseif(!$ready){
+  $during=[NativeProbe]::State()
+  $parts=$during.Split(':')
+  if (([int]$parts[1] -band 4) -eq 0) {throw "VT output not enabled within 60 seconds: $during"}
+  if ($during -eq $before) {throw "console state never left the pre-launch baseline within 60 seconds: $during"}
+ }
  if ($Scenario -like 'help-*') {
   $isPassword=$Scenario.Contains('password')
   if($isPassword){[NativeProbe]::Text('TrelisCanary7Q9')}else{[NativeProbe]::Key([char]0,0x25,0)}
-  Start-Sleep -Milliseconds 300
-  $editor=[NativeProbe]::EditorState()
-  $screen=[NativeProbe]::ScreenText()
+  # Capture the quiesced pre-help state: a mistimed capture can only fail
+  # the restoration comparison loudly, never pass it falsely.
+  $editor=Wait-ProbeSettled {[NativeProbe]::EditorState()} 'the pre-help editor state'
+  $screen=Wait-ProbeSettled {[NativeProbe]::ScreenText()} 'the pre-help screen'
   [NativeProbe]::Key([char]20,84,8)
-  Start-Sleep -Milliseconds 300
-  $help=[NativeProbe]::ScreenText()
-  if(!$help.Contains('Help:')){throw 'help did not open'}
+  $help=Wait-Probe {[NativeProbe]::ScreenText()} {param($v) $v.Contains('Help:')} 'help to open'
   if($help.Contains('TrelisCanary7Q9')){throw 'help disclosed hidden entry'}
   # Reopening help must not nest screens or lose the original editor.
   [NativeProbe]::Key([char]20,84,8)
-  Start-Sleep -Milliseconds 300
   [NativeProbe]::Key([char]27,27,0)
-  Start-Sleep -Milliseconds 300
-  $dismissed=[NativeProbe]::ScreenText()
+  # Console input records are processed in order, so the dismissal follows
+  # both help keys; bounded-wait for the observable restored screen and
+  # caret instead of assuming fixed post-key delays were enough.
+  $dismissed=Wait-Probe {[NativeProbe]::ScreenText()} {param($v) $v -eq $screen} 'the original screen to be restored'
   if($dismissed.Contains('Help:')){throw 'dismissed help remains on screen'}
-  if($dismissed -ne $screen){throw 'dismissal did not restore the original screen'}
-  if([NativeProbe]::EditorState() -ne $editor){throw 'dismissal misplaced the editor caret'}
+  $restoredCaret=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -eq $editor} 'the editor caret to be restored'
   if($Scenario.Contains('interrupt')) {
    [NativeProbe]::Key([char]20,84,8)
-   Start-Sleep -Milliseconds 300
    [NativeProbe]::Key([char]3,67,8)
   } elseif($Scenario.Contains('eof')) {
    [NativeProbe]::Key([char]20,84,8)
-   Start-Sleep -Milliseconds 300
    [NativeProbe]::Key([char]26,90,8)
   } elseif($isPassword){[NativeProbe]::Text("`rsubmit`r")}else{[NativeProbe]::Text("X`r")}
  } else {
@@ -130,18 +169,12 @@ try {
    if($initial -notmatch '^7:([0-9]+):> alpha$'){throw "initial cursor is not after the editable default: $initial"}
    $row=$Matches[1]
    [NativeProbe]::Key([char]0,0x24,0)
-   Start-Sleep -Milliseconds 300
-   $atHome=[NativeProbe]::EditorState()
-   if($atHome -ne "2:${row}:> alpha"){throw "Home misplaced the cursor: $atHome"}
+   $atHome=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -eq "2:${row}:> alpha"} 'the Home caret state'
    [NativeProbe]::Key([char]0,0x23,0)
-   Start-Sleep -Milliseconds 300
-   $end=[NativeProbe]::EditorState()
-   if($end -ne $initial){throw "End redrew onto another line or misplaced the cursor: $end"}
+   $end=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -eq $initial} 'the End caret state'
    [NativeProbe]::Key([char]0,0x25,0)
    [NativeProbe]::Text('X')
-   Start-Sleep -Milliseconds 300
-   $edited=[NativeProbe]::EditorState()
-   if($edited -ne "7:${row}:> alphXa"){throw "insertion misplaced the cursor: $edited"}
+   $edited=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -eq "7:${row}:> alphXa"} 'the insertion caret state'
    [NativeProbe]::Text("`r")
   }
   'linear-long' {
@@ -150,17 +183,12 @@ try {
    if($initial -notmatch '^([0-9]+):([0-9]+):> <[0-9]+89$'){throw "long default is not clipped onto one editable line: $initial"}
    $row=$Matches[2]
    [NativeProbe]::Key([char]0,0x24,0)
-   Start-Sleep -Milliseconds 300
-   $atHome=[NativeProbe]::EditorState()
-   if($atHome -notmatch "^2:${row}:> 0123456789[0-9]+>$"){throw "Home left the long editor row or stale text: $atHome"}
+   $atHome=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -match "^2:${row}:> 0123456789[0-9]+>$"} 'the Home caret state'
    [NativeProbe]::Key([char]0,0x23,0)
-   Start-Sleep -Milliseconds 300
-   $end=[NativeProbe]::EditorState()
-   if($end -ne $initial){throw "End moved or corrupted the long editor: $end"}
+   $end=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -eq $initial} 'the End caret state'
    [NativeProbe]::Key([char]0,0x25,0)
    [NativeProbe]::Text('X')
-   Start-Sleep -Milliseconds 300
-   $edited=[NativeProbe]::EditorState()
+   $edited=Wait-Probe {[NativeProbe]::EditorState()} {param($v) $v -match "^[0-9]+:${row}:> <[0-9]+8X(?:9|>)$"} 'the insertion caret state'
    # The shared viewport reserves overflow-marker cells. The final 9 may
    # remain visible or be truthfully clipped; the accepted answer below must
    # still contain it. Both shapes must stay on the same editable row.

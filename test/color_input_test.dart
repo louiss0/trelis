@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
+import 'support/bounded_wait.dart';
+
 final _richProfile = OutputProfile(
   cursor: CapabilitySupport.supported,
   geometry: OutputGeometry.fixed(columns: 100, rows: 30),
@@ -17,8 +19,7 @@ void main() {
       mode: PromptMode.linear,
     );
     controller.add('x');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(out.toString(), contains('Preview unavailable'));
+    await awaitOutputContains(out, 'Preview unavailable');
     controller.add('/cancel\r');
     await controller.close();
     await future;

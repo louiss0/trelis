@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
@@ -215,20 +217,21 @@ void main() {
       durationMode: DurationInputMode.elapsed,
       initialValue: '1s',
     );
-    expect(
-      await input.prompt(
-        source: ScriptedInput(
-          (() async* {
-            yield '\x1b';
-            await Future<void>.delayed(const Duration(milliseconds: 200));
-          })(),
-          StringBuffer(),
-          outputProfile: _richProfile,
-        ),
-        mode: PromptMode.rich,
+    // A lone escape only disambiguates while the input stream stays open,
+    // so the stream remains open and the prompt's own completion is the
+    // synchronization rather than a fixed delay.
+    final escapeInput = StreamController<String>();
+    final escaped = input.prompt(
+      source: ScriptedInput(
+        escapeInput.stream,
+        StringBuffer(),
+        outputProfile: _richProfile,
       ),
-      isA<Cancelled>(),
+      mode: PromptMode.rich,
     );
+    escapeInput.add('\x1b');
+    expect(await escaped, isA<Cancelled>());
+    await escapeInput.close();
     expect(
       await input.prompt(
         source: ScriptedInput(

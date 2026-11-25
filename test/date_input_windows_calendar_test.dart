@@ -5,7 +5,6 @@ import 'package:test/test.dart';
 
 void main() {
   test('Windows ThaiBuddhistCalendar agrees on modern boundary vectors', () async {
-    if (!Platform.isWindows) return;
     final ps = await Process.run('powershell.exe', [
       '-NoProfile',
       '-Command',
@@ -26,5 +25,5 @@ void main() {
           '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       expect(iso, parts[1]);
     }
-  });
+  }, skip: Platform.isWindows ? false : 'requires a Windows host');
 }

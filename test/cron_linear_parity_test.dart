@@ -5,6 +5,8 @@ import 'package:trelis/src/testing/compat_api.dart';
 import 'package:trelis/src/theme_formatted_components.dart';
 import 'package:test/test.dart';
 
+import 'support/bounded_wait.dart';
+
 final _richProfile = OutputProfile(
   cursor: CapabilitySupport.supported,
   geometry: OutputGeometry.fixed(columns: 80, rows: 24),
@@ -279,14 +281,12 @@ void main() {
               mode: PromptMode.linear,
             );
         input.add('0 0 31 2 *\r/preview\r');
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-        expect(output.toString(), contains('Calculating preview'));
+        await awaitOutputContains(output, 'Calculating preview');
         // A stray arrow key must not corrupt the /cancel line tracking.
         input.add('\x1b[A');
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await pumpEventQueue();
         input.add('/cancel\r');
-        await Future<void>.delayed(const Duration(milliseconds: 150));
-        expect(output.toString(), contains('Matching preview: cancelled'));
+        await awaitOutputContains(output, 'Matching preview: cancelled');
         input.add('/cancel\r');
         expect(
           await result.timeout(const Duration(seconds: 3)),

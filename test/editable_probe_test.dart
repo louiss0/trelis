@@ -33,14 +33,28 @@ void main() {
       '--test-stream',
     ]);
     final outFuture = p.stdout.transform(systemEncoding.decoder).join();
-    final errFuture = p.stderr.transform(systemEncoding.decoder).join();
+    final errBuffer = StringBuffer();
+    final errDone = p.stderr
+        .transform(systemEncoding.decoder)
+        .listen(errBuffer.write)
+        .asFuture<void>();
     p.stdin.write('\x1bOP\x1b');
     await p.stdin.flush();
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // The trailing lone escape must dismiss help before the interrupt is
+    // sent; bounded-wait for the observable dismissal in the probe's own
+    // output instead of assuming a fixed delay was enough.
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!errBuffer.toString().contains('Help dismissed')) {
+      if (DateTime.now().isAfter(deadline)) {
+        fail('help was not dismissed before the interrupt: $errBuffer');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
     p.stdin.write('\x03');
     await p.stdin.close();
     final out = await outFuture;
-    final err = await errFuture;
+    await errDone;
+    final err = errBuffer.toString();
     expect(await p.exitCode, 0);
     expect(out.trim(), 'interrupt');
     expect(err, contains('Help dismissed'));

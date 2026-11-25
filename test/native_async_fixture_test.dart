@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:trelis/src/testing/compat_api.dart';
 import 'package:test/test.dart';
 
+import 'support/bounded_wait.dart';
+
 import 'autocomplete_native_app.dart' as autocomplete;
 import 'search_select_native_app.dart' as search_select;
 
@@ -28,9 +30,9 @@ void main() {
           mode: PromptMode.rich,
         );
     input.add('a');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await pumpEventQueue();
     input.add('b');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await pumpEventQueue();
     input.add('\x1b[B\r\r');
     expect(
       (await result.timeout(
@@ -57,10 +59,9 @@ void main() {
           mode: PromptMode.rich,
         );
     input.add('fail');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(output.toString(), contains('Search unavailable'));
+    await awaitOutputContains(output, 'Search unavailable');
     input.add('\x7f\x7f\x7f\x7fok');
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await pumpEventQueue();
     input.add('\r\r');
     expect(
       (await result.timeout(

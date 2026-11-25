@@ -5,6 +5,8 @@ import 'package:trelis/src/testing/compat_api.dart';
 import 'package:trelis/src/native_resize.dart';
 import 'package:test/test.dart';
 
+import 'support/bounded_wait.dart';
+
 void main() {
   test('a console observation reports the live geometry it reads', () {
     var reads = 0;
@@ -89,7 +91,6 @@ void main() {
   );
 
   test('a POSIX console observation is woken by a window change', () async {
-    if (Platform.isWindows) return;
     final observer = nativeConsoleResizeObserver(_FakeStdout());
     final seen = Completer<void>();
     final subscription = observer.notifications.listen((_) {
@@ -99,15 +100,14 @@ void main() {
     expect(Process.killPid(pid, ProcessSignal.sigwinch), isTrue);
     await seen.future.timeout(const Duration(seconds: 10));
     await subscription.cancel();
-  });
+  }, skip: !Platform.isWindows ? false : 'requires a POSIX host');
 
   test('a Windows console observation has no signal source', () async {
-    if (!Platform.isWindows) return;
     await expectLater(
       nativeConsoleResizeObserver(_FakeStdout()).notifications,
       emitsDone,
     );
-  });
+  }, skip: Platform.isWindows ? false : 'requires a Windows host');
 
   test(
     'an idle prompt reflows from a polling-only console observation',
@@ -137,11 +137,10 @@ void main() {
       expect(output.toString(), isNot(contains('> <')));
 
       // The console shrinks and raises nothing: no key is sent, so only the
-      // bounded fallback poll can notice the new geometry.
+      // bounded fallback poll can notice the new geometry. Bounded-wait for
+      // the observable reflow instead of assuming one poll interval passed.
       columns = 30;
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-
-      expect(output.toString(), contains('> <'));
+      await awaitOutputContains(output, '> <');
       keys.add('\r');
       expect((await result as Accepted<String>).value, draft);
       await keys.close();

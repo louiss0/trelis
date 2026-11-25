@@ -186,8 +186,9 @@ void main() {
         detail: 'offline',
       );
       // The last task's outcome closes the group, which releases the
-      // participation without an explicit stop.
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+      // participation without an explicit stop. Release is a future chain,
+      // so draining the event queue is the synchronization contract.
+      await _pump();
 
       final text = output.toString();
       expect(text, contains('/ build: running, compiling'));

@@ -41,7 +41,15 @@ try {
  for($n=0;$n -lt 100 -and !$attached;$n++) { $attached=[FeedbackConsoleProbe]::AttachConsole($p.Id); if(!$attached){Start-Sleep -Milliseconds 100} }
  if(!$attached){throw 'AttachConsole failed'}
  $before = [FeedbackConsoleProbe]::Mode('CONIN$')
- Start-Sleep -Seconds 8
+ # Bounded-wait for the application's observable final output line instead
+ # of assuming a fixed delay covered compilation and painting.
+ $screen=''
+ $painted=$false
+ for($n=0;$n -lt 600 -and !$painted;$n++){
+  $screen=[FeedbackConsoleProbe]::Screen()
+  if($screen.Contains('application result')){$painted=$true}else{Start-Sleep -Milliseconds 100}
+ }
+ if(!$painted){throw "feedback output did not paint within 60 seconds"}
  $during = [FeedbackConsoleProbe]::Mode('CONIN$')
  if ([FeedbackConsoleProbe]::Width() -ne 30) {throw "console was not narrow"}
  $screen = [FeedbackConsoleProbe]::Screen() -replace '\s+', ' '
