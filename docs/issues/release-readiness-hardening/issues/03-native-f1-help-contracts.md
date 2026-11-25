@@ -1,6 +1,6 @@
 # 03 Native F1 help and harmless unassigned function keys
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-conpty-staging-and-diagnostics.md)
 
