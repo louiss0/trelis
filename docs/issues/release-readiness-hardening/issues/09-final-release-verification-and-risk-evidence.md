@@ -1,6 +1,6 @@
 # 09 Final verification battery and remaining-risk evidence
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [01](01-input-event-crlf-and-multiline-finish.md), [02](02-conpty-staging-and-diagnostics.md), [03](03-native-f1-help-contracts.md), [04](04-public-native-fixture-routes.md), [05](05-ci-public-native-lifecycle-coverage.md), [06](06-deterministic-tests-and-environment-honesty.md), [07](07-generated-files-formatting-and-public-api-ci.md), [08](08-prerelease-docs-version-and-release-evidence.md)
 
