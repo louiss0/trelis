@@ -1,6 +1,6 @@
 # 05 Windows and POSIX CI public native lifecycle coverage
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [02](02-conpty-staging-and-diagnostics.md), [04](04-public-native-fixture-routes.md)
 
