@@ -1,6 +1,6 @@
 # 02 ConPTY staged input, diagnostics, artifacts, and cleanup
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** none
 
