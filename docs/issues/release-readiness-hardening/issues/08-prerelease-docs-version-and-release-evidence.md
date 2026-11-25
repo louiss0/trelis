@@ -1,6 +1,6 @@
 # 08 Prerelease version, migration documentation, and honest release evidence
 
-Status: ready-for-agent
+Status: claimed
 
 **Blocked by:** [01](01-input-event-crlf-and-multiline-finish.md), [07](07-generated-files-formatting-and-public-api-ci.md)
 
