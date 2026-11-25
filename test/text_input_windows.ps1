@@ -243,6 +243,7 @@ try {
   $actual = ($actual -split "`r?`n")[-1]
  }
  $expected = switch ($Scenario) { 'linear-cursor' { 'alphXa' } 'linear-long' { ('0123456789' * 29) + '012345678X9' } 'repeat' { 'alpha,alpha' } 'resize' { ('0123456789' * 6) } 'error' { 'alpha' } 'eof' { 'eof' } 'escape' { 'cancel' } 'concurrent' { 'busy,alpha' } 'rich' { 'alpha' } 'dumb-auto' { 'alpha' } 'dumb-rich' { 'unavailable:Rich interaction unavailable on the selected output; use linear or automatic mode.' } 'redirected' { 'alpha' } 'stdout' { 'alpha' } 'paste' { '/cancel' } 'unicode' { '1f600' } 'interrupt' { 'interrupt' } 'session-retire' { 'retired' } }
+ if($PublicApi -and $Scenario -eq 'dumb-rich') { $expected = 'unavailable:Rich interaction is unavailable on the selected output.' }
  if($Scenario -like 'help-*') {
   $expected=if($Scenario.Contains('interrupt')){'interrupt'}elseif($Scenario.Contains('eof')){'eof'}elseif($isPassword){'accepted'}else{'alphXa'}
   if([NativeProbe]::ScreenText().Contains('Help:')){throw 'help screen survived prompt exit'}
