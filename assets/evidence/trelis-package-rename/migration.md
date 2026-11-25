@@ -3,6 +3,16 @@
 **Status:** published with the package rename
 **Package:** `trelis` (formerly `prompty`)
 
+> **Historical document.** This guidance was accurate at rename time. The
+> public API later changed breakingly for the theme-instance cutover: direct
+> constructors, static factories, invocation-level configuration and
+> supplied answers described below as "unchanged" are no longer public API.
+> For current migration guidance read
+> `docs/adaptive-theme-public-api-migration.md`. While the package is a
+> prerelease, the dependency constraint must name the prerelease explicitly
+> (for example `trelis: 1.0.0-dev.1`); `^1.0.0` does not select prerelease
+> versions.
+
 ## What changed
 
 The Dart package is renamed from `prompty` to `trelis` to match the project
